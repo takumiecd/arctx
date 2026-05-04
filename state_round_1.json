@@ -1,0 +1,26 @@
+{
+  "round_index": 1,
+  "requirement": {
+    "target_type": "kernel",
+    "target_id": "k2",
+    "parameters": {},
+    "constraints": {},
+    "objective": {
+      "metric": "latency_ms",
+      "direction": "minimize"
+    }
+  },
+  "hypotheses": [],
+  "artifacts": [],
+  "evidence": [],
+  "decisions": [
+    {
+      "round_index": 1,
+      "accepted": false,
+      "reason": "No sufficient improvement (best: N/A, target: 1.05x)",
+      "promoted": [],
+      "rejected": []
+    }
+  ],
+  "metadata": {}
+}
