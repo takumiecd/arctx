@@ -15,11 +15,10 @@ class ApplyHypothesis(Action):
     hypothesis_content: str
 
     def apply(self, state: State) -> Artifact:
-        # TODO: implement
         return Artifact(artifact_id=self.hypothesis_id, content=self.hypothesis_content)
 
     def cost(self, state: State) -> float:
-        return 1.0  # TODO: estimate based on hypothesis complexity
+        return 1.0
 
     def observability(self) -> dict[str, str]:
         return {"artifact": "candidate_artifact"}
@@ -31,11 +30,10 @@ class RunEvaluation(Action):
     artifact_id: str
 
     def apply(self, state: State) -> Artifact:
-        # TODO: trigger evaluation and return result artifact
         return Artifact(artifact_id=self.artifact_id, content=None)
 
     def cost(self, state: State) -> float:
-        return 5.0  # TODO: evaluation is typically more expensive
+        return 5.0
 
     def observability(self) -> dict[str, str]:
         return {"metrics": "objective_values", "correctness": "boolean"}

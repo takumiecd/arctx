@@ -14,15 +14,14 @@ class MCTSNode:
     """Node in the MCTS tree."""
     state: State
     parent: Optional["MCTSNode"] = None
-    children: Dict[Action, "MCTSNode"] = field(default_factory=dict)
+    children: Dict[str, "MCTSNode"] = field(default_factory=dict)
     visit_count: int = 0
     value_sum: float = 0.0
     pareto_values: List[List[float]] = field(default_factory=list)
     action: Optional[Action] = None
 
     def is_terminal(self) -> bool:
-        # TODO: define terminal condition
-        return False
+        return len(self.children) == 0 and self.visit_count > 0
 
     def ucb(self, parent_visit: int, c: float = 1.414) -> float:
         if self.visit_count == 0:
@@ -38,20 +37,22 @@ class MCTSOptimizer:
     def __init__(self, value_predictor=None):
         self.value_predictor = value_predictor
 
-    def search(self, state: State, proposer: Proposer, n_simulations: int, budget) -> Optional[Action]:
+    def search(self, state: State, proposer: Proposer, n_simulations: int, budget=None) -> Optional[Action]:
         root = MCTSNode(state=state)
 
         for _ in range(n_simulations):
-            # Selection
+            # Selection: UCB down to leaf
             node = self._select(root)
 
-            # Expansion
+            # Expansion: proposer generates actions
             if not node.is_terminal():
                 actions = proposer.generate_actions(node.state, n=5, temperature=0.7)
                 for action in actions:
-                    self._expand(node, action)
+                    action_key = str(action)
+                    if action_key not in node.children:
+                        self._expand(node, action)
 
-            # Simulation
+            # Simulation: lightweight value prediction
             value = self._simulate(node)
 
             # Backpropagation
@@ -60,26 +61,32 @@ class MCTSOptimizer:
         return self._best_action(root)
 
     def _select(self, node: MCTSNode) -> MCTSNode:
-        # TODO: UCB selection down to leaf
+        """Select node with highest UCB until reaching a leaf."""
+        while node.children and all(child.visit_count > 0 for child in node.children.values()):
+            node = max(node.children.values(), key=lambda c: c.ucb(node.visit_count))
         return node
 
     def _expand(self, parent: MCTSNode, action: Action) -> MCTSNode:
-        # TODO: create child node
+        """Create child node for the given action."""
         child = MCTSNode(state=parent.state, parent=parent, action=action)
-        parent.children[action] = child
+        parent.children[str(action)] = child
         return child
 
     def _simulate(self, node: MCTSNode) -> float:
-        # TODO: lightweight value prediction
-        return 0.0
+        """Simulate a rollout from this node."""
+        if self.value_predictor and node.action:
+            return self.value_predictor.predict(node.action, node.state)
+        return 0.5  # Default neutral value
 
     def _backpropagate(self, node: MCTSNode, value: float) -> None:
+        """Backpropagate value up the tree."""
         while node is not None:
             node.visit_count += 1
             node.value_sum += value
             node = node.parent
 
     def _best_action(self, root: MCTSNode) -> Optional[Action]:
+        """Select action with highest visit count."""
         if not root.children:
             return None
-        return max(root.children.keys(), key=lambda a: root.children[a].visit_count)
+        return max(root.children.values(), key=lambda c: c.visit_count).action

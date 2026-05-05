@@ -21,14 +21,24 @@ class ValuePredictor:
     """Predict value of an action before full evaluation."""
 
     def predict(self, action: Action, state: State) -> float:
-        # TODO: extract features, apply model
         features = self._extract_features(action, state)
         return self._score(features)
 
     def _extract_features(self, action: Action, state: State) -> ValueFeatures:
-        # TODO: implement feature extraction
-        return ValueFeatures()
+        # Heuristic feature extraction
+        trajectory_len = len(state.trajectory)
+        past_success = sum(1 for t in state.trajectory if t.reward_contribution)
+        
+        return ValueFeatures(
+            similarity_to_past_winners=past_success / max(trajectory_len, 1),
+            complexity_estimate=1.0,  # Default
+            risk_score=0.3 if trajectory_len > 0 else 0.5,
+            expected_validation_success=0.8 if past_success > 0 else 0.5,
+        )
 
     def _score(self, features: ValueFeatures) -> float:
-        # TODO: learned or heuristic scoring
-        return 0.5
+        # Heuristic scoring
+        score = (features.expected_validation_success * 0.4 + 
+                 features.similarity_to_past_winners * 0.3 +
+                 (1.0 - features.risk_score) * 0.3)
+        return score

@@ -66,14 +66,48 @@ class DefaultPlanner:
         self.value_predictor = value_predictor
 
     def create_plan(self, state: State, reward_spec: RewardSpec, horizon: int) -> Plan:
-        # TODO: generate N actions via proposer
-        # TODO: rank by value predictor
-        # TODO: chain top-K into linear plan
-        return Plan()
+        actions = self.proposer.generate_actions(state, n=10, temperature=0.7)
+        
+        if self.value_predictor:
+            scored = [(a, self.value_predictor.predict(a, state)) for a in actions]
+            scored.sort(key=lambda x: x[1], reverse=True)
+            actions = [a for a, _ in scored[:horizon]]
+        else:
+            actions = actions[:horizon]
+        
+        steps = []
+        for action in actions:
+            steps.append(PlannedStep(
+                action=action,
+                expected_observation=Observation(action_id=str(action)),
+            ))
+        
+        return Plan(steps=steps, confidence=0.5)
 
     def step(self, state: State, plan: Plan) -> Tuple[Action, Plan]:
         return plan.next_step()
 
     def update(self, state: State, plan: Plan, observation: Observation) -> Plan:
-        # TODO: check replanning triggers
+        # Check deviation trigger
+        if plan.steps:
+            expected = plan.steps[0].expected_observation
+            if expected and observation:
+                deviation = self._compute_deviation(expected, observation)
+                if deviation > 0.5:  # threshold
+                    # Trigger replan
+                    return self._replan(state, plan)
         return plan
+
+    def _compute_deviation(self, expected: Observation, actual: Observation) -> float:
+        if not expected.metrics or not actual.metrics:
+            return 0.0
+        diffs = []
+        for k in expected.metrics:
+            if k in actual.metrics:
+                diffs.append(abs(expected.metrics[k] - actual.metrics[k]))
+        return sum(diffs) / len(diffs) if diffs else 0.0
+
+    def _replan(self, state: State, plan: Plan) -> Plan:
+        if plan.fallbacks:
+            return plan.fallbacks[0]
+        return Plan()  # Empty plan as fallback

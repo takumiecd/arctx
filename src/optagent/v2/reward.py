@@ -14,6 +14,15 @@ class Objective:
     normalizer: Callable[[float], float] = field(default_factory=lambda: lambda x: x)
     reference: float | None = None
 
+    def compute_improvement(self, value: float) -> float:
+        """Compute improvement ratio over reference."""
+        if self.reference is None or self.reference == 0:
+            return 1.0
+        if self.direction == "minimize":
+            return self.reference / value if value > 0 else float('inf')
+        else:  # maximize
+            return value / self.reference if self.reference > 0 else float('inf')
+
 
 @dataclass
 class Constraint:
@@ -22,12 +31,18 @@ class Constraint:
     kind: Literal["hard", "soft"]
     penalty: float = 0.0
 
+    def check(self, state: Any, observation: Any) -> bool:
+        return self.predicate(state, observation)
+
 
 @dataclass
 class CostModel:
     """Cost accounting for cost-aware search."""
     units: Literal["wallclock_s", "dollars", "evaluations"] = "wallclock_s"
     accumulator: Callable[[list[float]], float] = field(default_factory=lambda: sum)
+
+    def total_cost(self, costs: list[float]) -> float:
+        return self.accumulator(costs)
 
 
 class Aggregator:
@@ -54,7 +69,6 @@ class Lexicographic(Aggregator):
         self.order = order
 
     def aggregate(self, objectives: dict[str, float]) -> float:
-        # Return tuple for lexicographic comparison
         return tuple(objectives.get(k, float('inf')) for k in self.order)
 
 
@@ -79,3 +93,11 @@ class RewardSpec:
     constraints: list[Constraint] = field(default_factory=list)
     aggregator: Aggregator = field(default_factory=lambda: WeightedSum({}))
     cost_model: CostModel = field(default_factory=CostModel)
+
+    def evaluate(self, metrics: dict[str, float]) -> dict[str, float]:
+        """Evaluate metrics against objectives and constraints."""
+        results = {}
+        for obj in self.objectives:
+            if obj.name in metrics:
+                results[obj.name] = obj.compute_improvement(metrics[obj.name])
+        return results
