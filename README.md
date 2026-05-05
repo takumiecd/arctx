@@ -109,6 +109,7 @@ direction-setting layer.
 ## Documentation
 
 - [Direction](docs/DIRECTION.md)
+- [Agent Model](docs/AGENT_MODEL.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Purpose and Design](docs/PURPOSE_AND_DESIGN.md)
 - [Workflow](docs/WORKFLOW.md)

@@ -23,6 +23,11 @@ If an optimization attempt cannot explain why it was tried, what evidence it
 produced, why it was accepted or rejected, and what should be learned from it,
 then optagent has not done its job.
 
+The agent model is described in [Agent Model](AGENT_MODEL.md). The short version:
+optimization is a state-transition process where investigation, implementation,
+verification, and failure analysis are all actions that update what the agent
+knows.
+
 ## Product Shape
 
 The stable architecture should be:
