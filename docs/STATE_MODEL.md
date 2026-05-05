@@ -339,8 +339,8 @@ new_state = agent.optimize(requirements, state=loaded_state)
 ### 基本的な最適化
 
 ```python
-from optagent.core.manager import ManagerAgent
-from optagent.core.state_model import Requirements
+from optagent import ManagerAgent
+from optagent.v1.core.state_model import Requirements
 
 # 1. 要求を定義
 R = Requirements(
@@ -382,11 +382,10 @@ state2 = state1.advance(new_H, new_C)
 ## テスト実行
 
 ```bash
-cd /home/ware10sai/dev/optimization-agent
-PYTHONPATH=src python3 -m unittest tests.test_state_model tests.test_manager -v
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m pytest tests/v1 -q
 ```
 
 ## 参考文献
 
 - `kernel_optimizer_architecture.md` - 元のアーキテクチャ仕様
-- `docs/STATE_MODEL_MAPPING.md` - 対応表
+- `docs/archive/STATE_MODEL_MAPPING.md` - 旧対応表

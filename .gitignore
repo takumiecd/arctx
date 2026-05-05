@@ -1,1 +1,20 @@
 __pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# optagent generated run/output files
+runs/
+optagent_output/
+state_round_*.json
+request_*.json
+attempts.jsonl
+decisions.jsonl
+findings.jsonl
+requirements.json
+run.json

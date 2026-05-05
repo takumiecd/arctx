@@ -100,7 +100,7 @@ class BatchOptimizer:
         report.results.sort(key=lambda r: r.requirement_id)
         speedups = []
         for result in report.results:
-            # v2 compatibility
+            # Current workflow state compatibility
             if result.state and hasattr(result.state, 'algorithm'):
                 for ev in result.state.algorithm.evidence:
                     if hasattr(ev, 'speedup') and ev.speedup is not None:
@@ -146,7 +146,7 @@ class BatchOptimizer:
     def _update_stats(report: BatchReport, result: BatchResult) -> None:
         if result.success:
             report.successful += 1
-            # v2 compatibility: check algorithm.evidence for decisions
+                # Current workflow state: check algorithm.evidence for decisions.
             if result.state and hasattr(result.state, 'algorithm'):
                 evidence = result.state.algorithm.evidence
                 if evidence:

@@ -68,7 +68,7 @@ class RequirementRecord:
         requirement: Any,
         requirement_id: str | None = None,
     ) -> "RequirementRecord":
-        """Build a canonical requirement from v1/v2/domain requirement objects."""
+        """Build a canonical requirement from workflow or domain requirement objects."""
         target_type = getattr(requirement, "target_type", "unknown")
         target_id = getattr(requirement, "target_id", str(requirement))
         return cls(

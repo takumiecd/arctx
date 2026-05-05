@@ -24,7 +24,7 @@ class BatchResult:
     def to_dict(self) -> dict[str, Any]:
         decision = None
         if self.state:
-            # v2 compatibility
+            # Current workflow state compatibility
             if hasattr(self.state, 'algorithm') and self.state.algorithm.evidence:
                 last_ev = self.state.algorithm.evidence[-1]
                 decision = getattr(last_ev, 'decision_recommendation', None)
@@ -96,7 +96,7 @@ class BatchReport:
             lines.append(f"- **Duration**: {result.duration_sec:.1f}s")
             
             if result.success and result.state:
-                # v2 compatibility
+                # Current workflow state compatibility
                 if hasattr(result.state, 'algorithm') and result.state.algorithm.evidence:
                     last_ev = result.state.algorithm.evidence[-1]
                     decision_rec = getattr(last_ev, 'decision_recommendation', 'unknown')

@@ -112,7 +112,7 @@ class ManagerAgent:
 
         State transition: X_t -> X_{t+1}
         """
-        # Convert v1.5 Requirement to v2 Requirements if needed
+        # Convert legacy public Requirement to the workflow Requirements model if needed.
         if isinstance(requirements, RequirementV1):
             requirements = Requirements(
                 target_type=requirements.target_type,

@@ -34,9 +34,9 @@ state = agent.optimize(requirement)
 ```
 
 補足: `KernelOptimizationStrategy`, `OpenCodeBackend`, `MultiSizeEvaluator` は
-v1 component として存在しますが、トップレベル API ではなく
-`optagent.v1.*` から直接 import します。現在の最小 workflow は
-file protocol と default mock path で動き、Evidence Graph を run directory に保存します。
+現在の workflow 実装配下にあります。トップレベル API ではなく
+`optagent.v1.*` から直接 import します。現在の最小 workflow は file protocol と
+default mock path で動き、Evidence Graph を run directory に保存します。
 
 ### Step 1: INITIALIZE（初期化）
 
