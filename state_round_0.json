@@ -1,0 +1,59 @@
+{
+  "algorithm": {
+    "requirements": {
+      "target_type": "kernel",
+      "target_id": "k2",
+      "parameters": {},
+      "constraints": {},
+      "objective": {
+        "metric": "latency_ms",
+        "direction": "minimize"
+      },
+      "promotion": {
+        "allowed": false,
+        "require_correctness": true,
+        "require_dispatch_diagnosis": true
+      }
+    },
+    "hypotheses": [
+      {
+        "id": "h_0_default",
+        "target_keys": [],
+        "claim": "Default optimization hypothesis",
+        "proposed_change": "Apply standard optimizations",
+        "expected_effect": "Improve performance for target conditions",
+        "risk": "",
+        "files_expected": [],
+        "stop_conditions": [],
+        "metadata": {}
+      }
+    ],
+    "evidence": [
+      {
+        "hypothesis_id": "h_0_default",
+        "artifact_id": "mock",
+        "candidate_spec": "",
+        "baseline_spec": "",
+        "dispatch_keys": [],
+        "correctness": "passed",
+        "eligible": true,
+        "mean_ms_candidate": null,
+        "mean_ms_baseline": null,
+        "speedup": 1.5,
+        "regressions": [],
+        "failure_reason": "",
+        "decision_recommendation": "inconclusive",
+        "raw_output": "",
+        "metadata": {}
+      }
+    ],
+    "round_index": 0
+  },
+  "analysis": {
+    "decisions": [
+      "inconclusive"
+    ],
+    "converged": false
+  },
+  "timestamp": 1777968839.815422
+}

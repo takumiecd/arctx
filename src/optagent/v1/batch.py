@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+from optagent.core.store import StateStore
 from optagent.v1.core.manager import ManagerAgent
 from optagent.v1.core.models import Requirement
 from optagent.v1.core.state import OptimizationState
@@ -127,6 +128,10 @@ class BatchOptimizer:
         start = time.monotonic()
         try:
             manager = self.manager_factory()
+            if hasattr(manager, "work_dir"):
+                manager.work_dir = run_dir
+            if hasattr(manager, "state_store"):
+                manager.state_store = StateStore(run_dir)
             state = manager.optimize(requirement)
             result.state = state
             result.success = True

@@ -16,6 +16,20 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from optagent.core.ids import sequential_id
+from optagent.core.schema import (
+    ActionRecord,
+    ArtifactRecord,
+    AttemptRecord,
+    DecisionRecord,
+    EvidenceRecord as CanonicalEvidenceRecord,
+    FindingRecord,
+    HypothesisRecord,
+    ObservationRecord,
+    RequirementRecord,
+    canonical_decision_status,
+)
+from optagent.core.store import StateStore
 from optagent.v1.core.state_model import (
     AlgorithmState,
     Artifact,
@@ -82,18 +96,20 @@ class ManagerAgent:
         self.evaluator = evaluator
         self.analyzer = analyzer
         self.promotion_gate = PromotionGate()
+        self.state_store: StateStore | None = None
         
         # Store legacy components for backward compatibility
         self._strategy = strategy
         self._backend = backend
 
-    def optimize(self, requirements: Requirements | RequirementV1, state=None, return_v1_state: bool = False) -> OptimizerState:
-        """Run one optimization round (v2 interface).""
-        
-        State transition: X_t -> X_{t+1}
-        """
+    def optimize(
+        self,
+        requirements: Requirements | RequirementV1,
+        state=None,
+        return_v1_state: bool = False,
+    ) -> OptimizerState:
         """Run one optimization round.
-        
+
         State transition: X_t -> X_{t+1}
         """
         # Convert v1.5 Requirement to v2 Requirements if needed
@@ -105,6 +121,11 @@ class ManagerAgent:
                 constraints=dict(requirements.constraints),
                 objective=dict(requirements.objective),
             )
+        if self.state_store is None or self.state_store.root != self.work_dir:
+            self.state_store = StateStore(self.work_dir)
+
+        requirement_record = RequirementRecord.from_requirement(requirements)
+        self.state_store.save_requirement(requirement_record)
         
         # Initialize or resume state
         if state is None:
@@ -140,6 +161,16 @@ class ManagerAgent:
             
             # Phase 7: Analyze and decide next action
             analysis = self._analyze_results(state, decisions)
+
+            # Evidence Graph: persist each evaluated attempt as a JSONL node.
+            self._record_attempts(
+                requirement_record=requirement_record,
+                hypotheses=approved,
+                artifacts=artifacts,
+                evidence_list=evidence_list,
+                decisions=decisions,
+                state=state,
+            )
             
             # Save state
             self._save_state(state, analysis)
@@ -219,7 +250,11 @@ class ManagerAgent:
         
         return hypotheses
 
-    def _review_hypotheses(self, hypotheses: list[Hypothesis], state: OptimizerState) -> list[Hypothesis]:
+    def _review_hypotheses(
+        self,
+        hypotheses: list[Hypothesis],
+        state: OptimizerState,
+    ) -> list[Hypothesis]:
         """Validate and approve hypotheses.
         
         Guardrail: Expected effect must be measurable.
@@ -231,7 +266,11 @@ class ManagerAgent:
             approved.append(h)
         return approved
 
-    def _build_artifacts(self, hypotheses: list[Hypothesis], state: OptimizerState) -> list[Artifact]:
+    def _build_artifacts(
+        self,
+        hypotheses: list[Hypothesis],
+        state: OptimizerState,
+    ) -> list[Artifact]:
         """Build isolated artifacts from approved hypotheses.
         
         B_t = materialize(H_t)
@@ -270,7 +309,11 @@ class ManagerAgent:
         
         return artifacts
 
-    def _evaluate_artifacts(self, artifacts: list[Artifact], state: OptimizerState) -> list[EvidenceRecord]:
+    def _evaluate_artifacts(
+        self,
+        artifacts: list[Artifact],
+        state: OptimizerState,
+    ) -> list[EvidenceRecord]:
         """Evaluate artifacts against baselines.
         
         C_t = evaluate(B_t, R)
@@ -321,7 +364,11 @@ class ManagerAgent:
         
         return evidence_list
 
-    def _apply_promotion_gate(self, evidence_list: list[EvidenceRecord], requirements: Requirements) -> list[str]:
+    def _apply_promotion_gate(
+        self,
+        evidence_list: list[EvidenceRecord],
+        requirements: Requirements,
+    ) -> list[str]:
         """Apply promotion gate to evidence.
         
         D_t = decide(C_t, R)
@@ -353,6 +400,134 @@ class ManagerAgent:
             "timestamp": time.time(),
         }
         state_path.write_text(json.dumps(state_data, indent=2, default=str))
+
+    def _record_attempts(
+        self,
+        requirement_record: RequirementRecord,
+        hypotheses: list[Hypothesis],
+        artifacts: list[Artifact],
+        evidence_list: list[EvidenceRecord],
+        decisions: list[str],
+        state: OptimizerState,
+    ) -> None:
+        """Append canonical Evidence Graph attempts for this workflow round."""
+        if self.state_store is None:
+            self.state_store = StateStore(self.work_dir)
+
+        prior_attempts = len(self.state_store.read_attempts())
+        hypotheses_by_id = {h.id: h for h in hypotheses}
+        evidence_by_hypothesis = {e.hypothesis_id: e for e in evidence_list}
+
+        for index, artifact in enumerate(artifacts, start=1):
+            attempt_index = prior_attempts + index
+            attempt_id = sequential_id("attempt", attempt_index)
+            hypothesis = hypotheses_by_id.get(artifact.hypothesis_id)
+            evidence = evidence_by_hypothesis.get(artifact.hypothesis_id)
+            decision = decisions[index - 1] if index - 1 < len(decisions) else "needs_more_evidence"
+
+            action = ActionRecord(
+                action_id=f"action:{attempt_id}",
+                action_type="apply_hypothesis",
+                estimated_cost=None,
+                expected_observation_schema={
+                    "artifact": "candidate artifact",
+                    "evidence": "correctness, eligibility, regressions, speedup",
+                },
+                metadata={"workflow": "v1.hypothesis_test"},
+            )
+
+            observation = None
+            canonical_evidence = None
+            if evidence is not None:
+                observation = ObservationRecord(
+                    observation_id=f"observation:{attempt_id}",
+                    action_id=action.action_id,
+                    raw_output_path=evidence.raw_output,
+                    metrics={
+                        key: value
+                        for key, value in {
+                            "speedup": evidence.speedup,
+                            "mean_ms_candidate": evidence.mean_ms_candidate,
+                            "mean_ms_baseline": evidence.mean_ms_baseline,
+                        }.items()
+                        if value is not None
+                    },
+                    metadata={"source": "v1.EvidenceRecord"},
+                )
+                canonical_evidence = CanonicalEvidenceRecord.from_evidence(evidence)
+                canonical_evidence.evidence_id = f"evidence:{attempt_id}"
+
+            finding = self._finding_from_decision(attempt_id, decision, evidence)
+            attempt = AttemptRecord(
+                attempt_id=attempt_id,
+                requirement_id=requirement_record.requirement_id,
+                hypothesis=HypothesisRecord.from_hypothesis(hypothesis) if hypothesis else None,
+                action=action,
+                artifact=ArtifactRecord.from_artifact(artifact),
+                observation=observation,
+                evidence=canonical_evidence,
+                decision=DecisionRecord(
+                    decision_id=f"decision:{attempt_id}",
+                    status=canonical_decision_status(decision),
+                    reason=self._decision_reason(decision, evidence),
+                    policy=dict(state.algorithm.requirements.promotion),
+                    metadata={"v1_decision": decision},
+                ),
+                finding=finding,
+                metadata={"round_index": state.algorithm.round_index},
+            )
+            self.state_store.append_attempt(attempt)
+
+    @staticmethod
+    def _decision_reason(decision: str, evidence: EvidenceRecord | None) -> str:
+        if evidence is None:
+            return "No evidence was produced for this artifact."
+        if decision == "accepted":
+            return "Candidate passed promotion criteria."
+        if decision == "needs_narrower_scope":
+            return "Candidate is not eligible for the full target scope or has regressions."
+        if decision in {"inconclusive", "needs_more_evidence"}:
+            return "Evidence is incomplete for promotion."
+        if decision == "unsafe":
+            return "Candidate was marked unsafe."
+        if evidence.correctness != "passed":
+            return "Correctness did not pass."
+        return "Candidate did not meet the required improvement threshold."
+
+    @staticmethod
+    def _finding_from_decision(
+        attempt_id: str,
+        decision: str,
+        evidence: EvidenceRecord | None,
+    ) -> FindingRecord | None:
+        if evidence is None:
+            return None
+        if decision == "accepted":
+            return FindingRecord(
+                finding_id=f"finding:{attempt_id}",
+                summary="Candidate satisfied promotion criteria.",
+                promising="Reuse this hypothesis pattern for similar requirements.",
+            )
+        if decision == "needs_narrower_scope":
+            regressions = ", ".join(evidence.regressions)
+            return FindingRecord(
+                finding_id=f"finding:{attempt_id}",
+                summary="Candidate may work only under a narrower scope.",
+                avoid=f"Do not promote broadly while regressions exist: {regressions}"
+                if regressions
+                else "Do not promote broadly until eligibility is narrowed.",
+                promising="Retry with narrower dispatch or workload constraints.",
+            )
+        if decision in {"rejected", "unsafe"}:
+            return FindingRecord(
+                finding_id=f"finding:{attempt_id}",
+                summary="Candidate should not be promoted as evaluated.",
+                avoid=(
+                    evidence.failure_reason
+                    or "Avoid repeating this candidate without new evidence."
+                ),
+            )
+        return None
 
     # ------------------------------------------------------------------
     # Parsing helpers
