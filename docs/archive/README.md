@@ -1,11 +1,13 @@
 # Archived Notes
 
-This directory contains older research and migration notes.
+このディレクトリには、古い設計メモや実験的な計画資料を置いています。
 
-They are kept for reference, but they do not define the current project
-direction. The active direction is:
+参照用には残しますが、現在の正本ではありません。
 
-- `docs/DIRECTION.md`
-- `docs/ARCHITECTURE.md`
-- `docs/PURPOSE_AND_DESIGN.md`
-- `docs/WORKFLOW.md`
+現在の正本は以下です。
+
+- `docs/ja/DIRECTION.md`
+- `docs/ja/STATE_MODEL.md`
+- `docs/ja/AGENT_LOOP.md`
+
+英語版は、日本語版が固まってから対応訳として追加します。
