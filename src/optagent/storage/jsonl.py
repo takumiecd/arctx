@@ -20,7 +20,7 @@ from optagent.core.schema.state import (
     StateNode,
     StateSnapshot,
 )
-from optagent.core.tree import PredictionDAG, TraceDAG
+from optagent.core.dag import PredictionDAG, TraceDAG
 from optagent.core.schema.transitions import (
     ObservedTransition,
     PredictedTransition,

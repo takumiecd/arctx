@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from optagent.core.schema.state import StateNode, TraceContext
-from optagent.core.tree import PredictionDAG
+from optagent.core.dag import PredictionDAG
 
 
 def trace_impl(

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from optagent.core.ids import sequential_id, slugify, timestamp_id
 from optagent.core.schema.requirements import Requirement
 from optagent.core.schema.state import StateNode, StateSnapshot
-from optagent.core.tree import PredictionDAG, TraceDAG
+from optagent.core.dag import PredictionDAG, TraceDAG
 
 
 def _snapshot_hash(snapshot: StateSnapshot) -> str:

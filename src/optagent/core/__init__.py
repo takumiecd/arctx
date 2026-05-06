@@ -29,7 +29,7 @@ from optagent.core.schema import (
     StateSnapshot,
     TraceContext,
 )
-from optagent.core.tree import PredictionDAG, TraceDAG
+from optagent.core.dag import PredictionDAG, TraceDAG
 from optagent.core.types import (
     ActionType,
     DecisionStatus,
