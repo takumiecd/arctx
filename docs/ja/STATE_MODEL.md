@@ -324,6 +324,297 @@ Transition
 
 予測と観測がズレたとき、それは失敗ではなく学習信号です。
 
+## 遷移の全体像
+
+optagent の 1 step は、次の流れで表します。
+
+```text
+State_t
+  ├─ select action
+  │    └─ Action_t
+  │        ├─ intent
+  │        ├─ expected_observation
+  │        └─ estimated_state_delta
+  │
+  ├─ execute action
+  │    └─ Observation_t
+  │
+  ├─ evaluate observation
+  │    └─ Evidence_t
+  │
+  ├─ compare expected vs actual
+  │    └─ PredictionError_t
+  │
+  ├─ decide
+  │    └─ Decision_t
+  │
+  ├─ learn
+  │    └─ Finding_t
+  │
+  └─ update state
+       └─ State_t+1
+```
+
+数式的に書くと、以下です。
+
+```text
+Action_t = policy(State_t)
+Observation_t = execute(Action_t)
+Evidence_t = evaluate(Observation_t, State_t.requirement)
+PredictionError_t = compare(Action_t.expected_observation, Observation_t)
+Decision_t = decide(Evidence_t, State_t.requirement.promotion_policy)
+Finding_t = learn(Evidence_t, PredictionError_t, Decision_t)
+State_t+1 = update(State_t, Action_t, Evidence_t, Decision_t, Finding_t)
+```
+
+ここで重要なのは、`execute` 以外はすべて再実行可能であるべきという点です。
+raw observation が保存されていれば、後から evaluator や promotion policy を変えて
+再評価できます。
+
+## 遷移の種類
+
+すべての action は状態遷移を起こしますが、遷移の意味は action type によって違います。
+
+### 1. 調査遷移
+
+原因がわからないとき、不確実性を減らすための遷移です。
+
+```text
+State_t:
+  open_questions:
+    - bottleneck は launch overhead か memory access か
+
+Action_t:
+  type: InvestigationAction
+  intent: profile workload by shape
+  expected_observation:
+    - small shape では launch overhead が支配的に見えるはず
+
+Observation_t:
+  profiler output
+
+Evidence_t:
+  small shape: launch overhead high
+  large shape: memory bandwidth high
+
+Finding_t:
+  small と large で原因が違う可能性が高い
+
+State_t+1:
+  open_questions:
+    - large shape の memory layout を調べる
+  knowledge:
+    - small shape は launch-bound
+  active_branches:
+    - branch_launch_overhead_small
+    - branch_memory_layout_large
+```
+
+調査遷移では、candidate artifact が生まれないことがあります。
+それでも、問いが減ったり branch が分かれたりすれば有効な遷移です。
+
+### 2. 実装遷移
+
+仮説に基づいて candidate artifact を作る遷移です。
+
+```text
+State_t:
+  knowledge:
+    - small shape は launch-bound
+
+Action_t:
+  type: ImplementationAction
+  intent: implement fused dispatch for small shapes
+  expected_observation:
+    - small shape latency improves
+    - large shape remains neutral
+
+Artifact_t:
+  patch: artifacts/attempt_0007.patch
+
+Observation_t:
+  test output
+  benchmark matrix
+
+Evidence_t:
+  correctness: passed
+  speedup_small: 1.18
+  speedup_large: 0.92
+  regressions:
+    - batch_size=64
+
+Decision_t:
+  needs_narrower_scope
+
+Finding_t:
+  fused dispatch is promising only for small batch
+
+State_t+1:
+  artifacts:
+    - candidate_0007 retained as scoped candidate
+  knowledge:
+    - do not promote this candidate for large batch
+  active_branches:
+    - branch_launch_overhead_small continues
+    - large batch path pruned for this candidate
+```
+
+実装遷移では、artifact ができたこと自体よりも、
+その artifact がどの条件で使えるかを明らかにすることが重要です。
+
+### 3. 検証遷移
+
+candidate を promotion できるか確認する遷移です。
+
+```text
+State_t:
+  artifacts:
+    - candidate_0007
+  open_questions:
+    - batch_size<=4 なら regression はないか
+
+Action_t:
+  type: VerificationAction
+  intent: run narrowed benchmark matrix
+  expected_observation:
+    - batch_size<=4 では correctness passed
+    - batch_size<=4 では speedup >= 1.05
+
+Evidence_t:
+  correctness: passed
+  eligible_scope: batch_size<=4
+  geometric_mean_speedup: 1.11
+  regressions: []
+
+Decision_t:
+  accepted
+
+Finding_t:
+  candidate is promotable for small batch inference scope
+
+State_t+1:
+  artifacts:
+    - candidate_0007 becomes incumbent for batch_size<=4
+  open_questions:
+    - removed narrowed-scope verification question
+```
+
+検証遷移は、新しい実装を作らないことがあります。
+既存 candidate の証拠を厚くするための遷移です。
+
+### 4. 分析遷移
+
+予測と観測がズレたとき、その原因を説明するための遷移です。
+
+```text
+State_t:
+  prediction_error:
+    - expected large neutral, observed large regression
+
+Action_t:
+  type: AnalysisAction
+  intent: explain large-shape regression
+  expected_observation:
+    - regression is caused by dispatch overhead or memory layout mismatch
+
+Observation_t:
+  benchmark breakdown
+  code inspection notes
+
+Finding_t:
+  fused path adds overhead when compute dominates
+
+State_t+1:
+  knowledge:
+    - avoid fused dispatch for compute-dominant large shapes
+  active_branches:
+    - branch_launch_overhead_small retained
+    - branch_large_fused_dispatch pruned
+```
+
+分析遷移は、失敗を次の探索に使える知識へ変換するための遷移です。
+
+### 5. 範囲調整遷移
+
+candidate 自体は有望だが、適用範囲が広すぎるときの遷移です。
+
+```text
+State_t:
+  decision:
+    - needs_narrower_scope
+
+Action_t:
+  type: ScopeRefinementAction
+  intent: restrict dispatch scope to batch_size<=4
+
+Evidence_t:
+  eligible_scope: batch_size<=4
+  regressions outside scope: excluded
+
+Decision_t:
+  accepted or needs_more_evidence
+
+State_t+1:
+  artifacts:
+    - candidate with narrowed dispatch policy
+  knowledge:
+    - scope constraint added
+```
+
+範囲調整遷移は、`rejected` と `accepted` の中間を扱うために重要です。
+最適化では「全部には効かないが、条件付きなら使える」候補が多いためです。
+
+## 状態更新の対象
+
+`State_t+1` では、少なくとも以下が更新されます。
+
+```text
+State_t+1
+├── artifacts
+│   ├── candidate 追加
+│   ├── incumbent 更新
+│   └── scoped candidate 更新
+├── knowledge
+│   ├── finding 追加
+│   ├── ruled-out region 追加
+│   └── scope constraint 追加
+├── open_questions
+│   ├── 解決済み question を削除
+│   └── 新しい question を追加
+├── active_branches
+│   ├── branch を伸ばす
+│   ├── branch を prune する
+│   └── branch を merge する
+├── predictions
+│   ├── 外れた予測を記録
+│   └── 新しい予測を追加
+└── budget
+    └── action cost を差し引く
+```
+
+一方で、`Evidence Graph` には append-only で `Attempt` を追加します。
+
+```text
+EvidenceGraph_t+1 = EvidenceGraph_t + Attempt_t
+```
+
+つまり、`State` は現在の作業状態として更新され、
+`Evidence Graph` は過去の事実として追記されます。
+
+## 遷移の終了条件
+
+run は次のいずれかで終了します。
+
+- promotion 可能な candidate が見つかった
+- budget が尽きた
+- すべての有望 branch が prune された
+- 追加 evidence が必要だが、現在の環境では取れない
+- unsafe な兆候があり、人間の確認が必要になった
+- 人間が十分と判断した
+
+終了時にも `Finding` を残します。
+成功だけでなく、「なぜこれ以上進めないか」も次回の重要な知識です。
+
 ## 不変条件
 
 状態モデルには以下の不変条件を置きます。
