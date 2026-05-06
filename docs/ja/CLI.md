@@ -133,9 +133,69 @@ $ optagent plan my_run \
 
 - ``KeyError`` — 指定した ``run_id`` が存在しない場合
 
+## ``optagent predict``
+
+指定したplanから予測outcome（PredictedTransition）を作成します。
+
+```bash
+optagent predict <run_id> <plan_id> [options]
+```
+
+### 引数
+
+| 引数 | 必須 | 説明 |
+|-----|------|------|
+| ``run_id`` | ○ | 対象のrun識別子 |
+| ``plan_id`` | ○ | 予測するplanの識別子 |
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--predictor`` | ``default`` | 使用するpredictorの名前 |
+| ``--max-outcomes`` | ``1`` | 作成する予測outcomeの最大数 |
+| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+
+### 出力
+
+成功時、作成された予測outcomeの一覧をJSON配列で標準出力に出力します。
+
+```bash
+$ optagent predict run_req_kernel_20260506_082356 p_exec_0001 --max-outcomes 2
+[
+  {
+    "transition_id": "t_pred_0001",
+    "transition_kind": "predicted",
+    "parent_plan_id": "p_exec_0001",
+    "outcome_id": "outcome_1",
+    "outcome_label": "default predicted outcome",
+    "predicted_result": {
+      "status": "unknown",
+      "predictor": "default"
+    },
+    "to_predicted_state_id": "s_pred_0001"
+  },
+  {
+    "transition_id": "t_pred_0002",
+    "transition_kind": "predicted",
+    "parent_plan_id": "p_exec_0001",
+    "outcome_id": "outcome_2",
+    "outcome_label": "default predicted outcome",
+    "predicted_result": {
+      "status": "unknown",
+      "predictor": "default"
+    },
+    "to_predicted_state_id": "s_pred_0002"
+  }
+]
+```
+
+### エラー
+
+- ``KeyError`` — 指定した ``run_id`` または ``plan_id`` が存在しない場合
+
 ## 今後追加予定のコマンド
 
-- ``optagent predict`` — planから予測outcomeを作成
 - ``optagent promote`` — 予測を実行結果に対応づける
 - ``optagent observe`` — 予測と対応づけずに結果を記録
 - ``optagent trace`` — 実行履歴を辿る
