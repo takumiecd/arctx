@@ -1,5 +1,30 @@
 # 状態モデル
 
+## 現在の用語方針
+
+CLI/API 仕様では、`ActionSpec` を独立 object として作らず、実行内容は `Plan` に持たせます。
+この文書には過去の設計メモとして `ActionSpec`、`PredictionTree`、`EvidenceTree`、
+`TransitionRecord` という語が残っています。
+
+現時点では、以下の対応で読み替えます。
+
+```text
+ActionSpec:
+  Plan に統合する。
+
+PredictionTree:
+  PredictionDAG。
+
+EvidenceTree:
+  TraceDAG。
+
+TransitionRecord:
+  ObservedTransition を中心とする trace 側の実行済み transition。
+```
+
+API としての正本は [API 仕様ドラフト](API.md) です。
+この文書は、source of truth / derived record / working memory の概念説明として残します。
+
 ## 中心原則
 
 optagent の状態モデルは、次の考え方を中心に置きます。

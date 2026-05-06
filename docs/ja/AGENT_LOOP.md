@@ -1,5 +1,13 @@
 # エージェントの思考ループ
 
+## 現在の用語方針
+
+API 仕様では、`ActionSpec` を独立 object として作らず、実行内容は `Plan` に持たせます。
+この文書で `ActionSpec` と書いている箇所は、API 上は `ExecutionPlan` または `PredictionPlan` と読み替えます。
+`EvidenceTree` は `TraceDAG`、`PredictionTree` は `PredictionDAG` と読み替えます。
+
+API としての正本は [API 仕様ドラフト](API.md) です。
+
 ## 基本思想
 
 最適化エージェントは、単にコードを書いて benchmark を回す存在ではありません。
