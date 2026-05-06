@@ -107,9 +107,9 @@ class TestCliPredictCommand:
 
     def test_cli_parse_args_predict(self):
         """argparse should correctly parse predict subcommand."""
-        args = parse_args(["predict", "my_run", "p_exec_0001"])
+        args = parse_args(["predict", "p_exec_0001", "--run", "my_run"])
         assert args.command == "predict"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
         assert args.plan_id == "p_exec_0001"
         assert args.predictor == "default"
         assert args.max_outcomes == 1
@@ -117,7 +117,7 @@ class TestCliPredictCommand:
     def test_cli_parse_args_predict_with_options(self):
         """argparse should handle all predict options."""
         args = parse_args([
-            "predict", "my_run", "p_exec_0001",
+            "predict", "p_exec_0001", "--run", "my_run",
             "--predictor", "custom",
             "--max-outcomes", "5",
             "--store-dir", "/tmp/runs",
@@ -134,7 +134,7 @@ class TestCliPredictCommand:
             run_id, plan_id = self._create_run_with_plan(store_dir)
 
             exit_code = main([
-                "predict", run_id, plan_id,
+                "predict", plan_id, "--run", run_id,
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0

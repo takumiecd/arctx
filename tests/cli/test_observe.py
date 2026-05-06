@@ -153,9 +153,9 @@ class TestCliObserveCommand:
 
     def test_cli_parse_args_observe(self):
         """argparse should correctly parse observe subcommand."""
-        args = parse_args(["observe", "my_run", "p_exec_0001", "--result-id", "r_0001"])
+        args = parse_args(["observe", "p_exec_0001", "--run", "my_run", "--result-id", "r_0001"])
         assert args.command == "observe"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
         assert args.plan_id == "p_exec_0001"
         assert args.result_id == "r_0001"
         assert args.status == "completed"
@@ -163,7 +163,7 @@ class TestCliObserveCommand:
     def test_cli_parse_args_observe_with_options(self):
         """argparse should handle all observe options."""
         args = parse_args([
-            "observe", "my_run", "p_exec_0001",
+            "observe", "p_exec_0001", "--run", "my_run",
             "--result-id", "r_0001",
             "--status", "failed",
             "--artifact", "patch.diff",
@@ -189,7 +189,7 @@ class TestCliObserveCommand:
             run_id, plan_id = self._create_run_with_plan(store_dir)
 
             exit_code = main([
-                "observe", run_id, plan_id,
+                "observe", plan_id, "--run", run_id,
                 "--result-id", "r_0001",
                 "--store-dir", str(store_dir),
             ])

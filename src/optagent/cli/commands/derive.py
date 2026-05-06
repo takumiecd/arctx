@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from optagent.cli.context import resolve_run_id
 from optagent.storage.jsonl import JsonlRunStore
 
 
@@ -13,8 +14,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "derive", help="Attach a derived record to an observed transition"
     )
-    parser.add_argument("run_id", help="Run identifier")
     parser.add_argument("transition_id", help="Observed transition identifier")
+    parser.add_argument("--run", default=None, help="Run identifier")
     parser.add_argument(
         "--type",
         dest="derived_type",
@@ -116,7 +117,7 @@ def cli_derive(args) -> int:
         payload["text"] = args.text
 
     result = run_derive_command(
-        run_id=args.run_id,
+        run_id=resolve_run_id(getattr(args, 'run', None), args.store_dir),
         transition_id=args.transition_id,
         derived_type=args.derived_type,
         payload=payload,

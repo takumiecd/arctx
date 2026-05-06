@@ -5,13 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 
+from optagent.cli.context import resolve_run_id
 from optagent.storage.jsonl import JsonlRunStore
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``show`` subcommand parser."""
     parser = subparsers.add_parser("show", help="Show run details")
-    parser.add_argument("run_id", help="Run identifier")
+    parser.add_argument("run_id", nargs="?", default=None, help="Run identifier (optional if --run or current context is set)")
+    parser.add_argument("--run", default=None, help="Run identifier")
     parser.add_argument(
         "--state",
         dest="state_id",
@@ -109,7 +111,7 @@ def cli_show(args) -> int:
     Prints the result as JSON to stdout.
     """
     result = run_show_command(
-        run_id=args.run_id,
+        run_id=resolve_run_id(getattr(args, 'run', None), args.store_dir),
         state_id=args.state_id,
         plan_id=args.plan_id,
         transition_id=args.transition_id,

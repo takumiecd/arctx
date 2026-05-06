@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from optagent.cli.context import resolve_run_id
 from optagent.storage.jsonl import JsonlRunStore
 
 
@@ -13,7 +14,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "refresh", help="Re-anchor the PredictionDAG to the current observed state"
     )
-    parser.add_argument("run_id", help="Run identifier")
+    parser.add_argument("run_id", nargs="?", default=None, help="Run identifier (optional if --run or current context is set)")
+    parser.add_argument("--run", default=None, help="Run identifier")
     parser.add_argument(
         "--store-dir",
         default=".optagent/runs",
@@ -63,7 +65,7 @@ def cli_refresh(args) -> int:
     Prints the new PredictionDAG as JSON to stdout.
     """
     result = run_refresh_command(
-        run_id=args.run_id,
+        run_id=resolve_run_id(getattr(args, 'run', None), args.store_dir),
         store_dir=args.store_dir,
     )
     print(json.dumps(result["prediction_dag"], ensure_ascii=False, indent=2))

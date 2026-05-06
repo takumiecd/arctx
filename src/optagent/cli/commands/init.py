@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 import optagent
+from optagent.cli.context import save_current_run
 from optagent.core.schema.requirements import Requirement
 from optagent.storage.jsonl import JsonlRunStore
 
@@ -83,6 +84,7 @@ def run_init_command(
         raise FileExistsError(f"run directory already exists: {run_path}")
 
     store.save_run(handle)
+    save_current_run(handle.run_id, store_dir)
     return {"run_id": handle.run_id}
 
 

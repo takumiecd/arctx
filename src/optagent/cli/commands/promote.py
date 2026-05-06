@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from optagent.cli.context import resolve_run_id
 from optagent.storage.jsonl import JsonlRunStore
 
 
@@ -13,7 +14,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "promote", help="Promote a predicted transition to an observed transition"
     )
-    parser.add_argument("run_id", help="Run identifier")
+    parser.add_argument("run_id", nargs="?", default=None, help="Run identifier (optional if --run or current context is set)")
+    parser.add_argument("--run", default=None, help="Run identifier")
     parser.add_argument(
         "--predicted-transition-id",
         required=True,
@@ -133,7 +135,7 @@ def cli_promote(args) -> int:
     Prints the created observed transition as JSON to stdout.
     """
     result = run_promote_command(
-        run_id=args.run_id,
+        run_id=resolve_run_id(getattr(args, 'run', None), args.store_dir),
         predicted_transition_id=args.predicted_transition_id,
         result_id=args.result_id,
         status=args.status,

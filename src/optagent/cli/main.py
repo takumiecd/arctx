@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from optagent.cli.commands.current import add_parser as add_current_parser, cli_current
 from optagent.cli.commands.init import add_parser as add_init_parser, cli_init
 from optagent.cli.commands.list import add_parser as add_list_parser, cli_list
 from optagent.cli.commands.observe import add_parser as add_observe_parser, cli_observe
@@ -17,6 +18,7 @@ from optagent.cli.commands.snapshot import add_parser as add_snapshot_parser, cl
 from optagent.cli.commands.state import add_parser as add_state_parser, cli_state
 from optagent.cli.commands.show import add_parser as add_show_parser, cli_show
 from optagent.cli.commands.trace import add_parser as add_trace_parser, cli_trace
+from optagent.cli.commands.use import add_parser as add_use_parser, cli_use
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -26,6 +28,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    add_current_parser(subparsers)
     add_init_parser(subparsers)
     add_list_parser(subparsers)
     add_observe_parser(subparsers)
@@ -38,6 +41,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_snapshot_parser(subparsers)
     add_state_parser(subparsers)
     add_trace_parser(subparsers)
+    add_use_parser(subparsers)
 
     return parser
 
@@ -52,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     args = parse_args(argv)
 
+    if args.command == "current":
+        return cli_current(args)
     if args.command == "init":
         return cli_init(args)
     if args.command == "list":
@@ -76,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_state(args)
     if args.command == "trace":
         return cli_trace(args)
+    if args.command == "use":
+        return cli_use(args)
 
     return 1
 

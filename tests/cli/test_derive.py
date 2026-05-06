@@ -132,16 +132,16 @@ class TestCliDeriveCommand:
 
     def test_cli_parse_args_derive(self):
         """argparse should correctly parse derive subcommand."""
-        args = parse_args(["derive", "my_run", "t_obs_0001"])
+        args = parse_args(["derive", "t_obs_0001", "--run", "my_run"])
         assert args.command == "derive"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
         assert args.transition_id == "t_obs_0001"
         assert args.derived_type == "finding"
 
     def test_cli_parse_args_derive_with_options(self):
         """argparse should handle all derive options."""
         args = parse_args([
-            "derive", "my_run", "t_obs_0001",
+            "derive", "t_obs_0001", "--run", "my_run",
             "--type", "evidence",
             "--id", "d_custom",
             "--text", "latency improved",
@@ -161,7 +161,7 @@ class TestCliDeriveCommand:
             run_id, transition_id = self._create_run_with_observation(store_dir)
 
             exit_code = main([
-                "derive", run_id, transition_id,
+                "derive", transition_id, "--run", run_id,
                 "--text", "test derive",
                 "--store-dir", str(store_dir),
             ])

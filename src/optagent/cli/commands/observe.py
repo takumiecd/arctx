@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from optagent.cli.context import resolve_run_id
 from optagent.storage.jsonl import JsonlRunStore
 
 
@@ -29,8 +30,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "observe", help="Record an execution result without prediction match"
     )
-    parser.add_argument("run_id", help="Run identifier")
     parser.add_argument("plan_id", help="Execution plan identifier")
+    parser.add_argument("--run", default=None, help="Run identifier")
     parser.add_argument("--result-id", required=True, help="Result identifier")
     parser.add_argument(
         "--status",
@@ -148,7 +149,7 @@ def cli_observe(args) -> int:
     Prints the created observed transition as JSON to stdout.
     """
     result = run_observe_command(
-        run_id=args.run_id,
+        run_id=resolve_run_id(getattr(args, 'run', None), args.store_dir),
         plan_id=args.plan_id,
         result_id=args.result_id,
         status=args.status,

@@ -5,13 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 
+from optagent.cli.context import resolve_run_id
 from optagent.storage.jsonl import JsonlRunStore
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``trace`` subcommand parser."""
     parser = subparsers.add_parser("trace", help="Trace observed history from current state")
-    parser.add_argument("run_id", help="Run identifier")
+    parser.add_argument("run_id", nargs="?", default=None, help="Run identifier (optional if --run or current context is set)")
+    parser.add_argument("--run", default=None, help="Run identifier")
     parser.add_argument(
         "--depth",
         type=int,
@@ -68,7 +70,7 @@ def cli_trace(args) -> int:
     Prints the trace history as JSON to stdout.
     """
     result = run_trace_command(
-        run_id=args.run_id,
+        run_id=resolve_run_id(getattr(args, 'run', None), args.store_dir),
         depth=args.depth,
         store_dir=args.store_dir,
     )

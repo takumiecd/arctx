@@ -5,14 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 
+from optagent.cli.context import resolve_run_id
 from optagent.storage.jsonl import JsonlRunStore
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``predict`` subcommand parser."""
     parser = subparsers.add_parser("predict", help="Predict outcomes for a plan")
-    parser.add_argument("run_id", help="Run identifier")
     parser.add_argument("plan_id", help="Plan identifier")
+    parser.add_argument("--run", default=None, help="Run identifier")
     parser.add_argument(
         "--predictor",
         default="default",
@@ -86,7 +87,7 @@ def cli_predict(args) -> int:
     Prints the created predictions as JSON to stdout.
     """
     result = run_predict_command(
-        run_id=args.run_id,
+        run_id=resolve_run_id(getattr(args, 'run', None), args.store_dir),
         plan_id=args.plan_id,
         predictor=args.predictor,
         max_outcomes=args.max_outcomes,
