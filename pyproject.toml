@@ -38,6 +38,9 @@ kernel = [
     "numpy>=1.24",
 ]
 
+[project.scripts]
+optagent = "optagent.cli.main:main"
+
 [project.urls]
 Homepage = "https://github.com/takumiecd/optimization-agent"
 Repository = "https://github.com/takumiecd/optimization-agent"
