@@ -59,6 +59,7 @@ LLM、探索アルゴリズム、planner、heuristic は差し替え可能です
 optagent
 ├── core
 │   ├── canonical schema
+│   ├── StateNode / ActionSpec / ActionResult / TransitionRecord
 │   ├── PredictionTree / EvidenceTree
 │   ├── PromotionGate inputs/outputs
 │   └── StateStore
@@ -72,16 +73,20 @@ optagent
 │   ├── executors
 │   ├── evaluators
 │   └── sandbox/worktree policy
-└── storage
-    ├── run directories
-    ├── artifacts
-    ├── raw outputs
-    ├── evidence
-    └── findings
+├── storage
+│   ├── run directories
+│   ├── artifacts
+│   ├── raw outputs
+│   ├── evidence
+│   └── findings
+└── legacy
+    ├── previous core
+    ├── v1
+    └── v2
 ```
 
-現在のコードには `v1` や `v2` という歴史的な名前が残っています。
-ただし、今後の設計ではそれらをプロダクトの中心概念として扱いません。
+旧実装は `legacy` に退避します。
+`v1` や `v2` は参考実装として残しますが、今後の設計ではプロダクトの中心概念として扱いません。
 
 ## 作らないもの
 

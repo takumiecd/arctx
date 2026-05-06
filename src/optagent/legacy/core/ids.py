@@ -1,4 +1,4 @@
-"""Identifier helpers for run and transition records."""
+"""Identifier helpers for optimization runs and evidence graph records."""
 
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ def slugify(value: str, fallback: str = "item") -> str:
 
 
 def timestamp_id(prefix: str, now: datetime | None = None) -> str:
-    """Return a timestamp-based id."""
+    """Return a timestamp-based id suitable for run directories."""
     current = now or datetime.now(timezone.utc)
     return f"{slugify(prefix)}_{current.strftime('%Y%m%d_%H%M%S')}"
 
 
 def sequential_id(prefix: str, index: int, width: int = 4) -> str:
-    """Return ids such as ``state_0001``."""
+    """Return ids like attempt_0001."""
     return f"{slugify(prefix)}_{index:0{width}d}"

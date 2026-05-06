@@ -1,28 +1,35 @@
-"""optagent - State-transition optimization agent framework."""
+"""optagent.
+
+The public package is intentionally small while the project is being rebuilt
+around the state-transition model documented in ``docs/ja``.
+"""
+
+from optagent.core.schema import (
+    ActionResult,
+    ActionSpec,
+    Decision,
+    Evidence,
+    Finding,
+    Observation,
+    PredictionError,
+    Requirement,
+    StateDelta,
+    StateNode,
+    TransitionRecord,
+)
 
 __version__ = "0.1.0"
 
-# v1 exports
-from optagent.v1.core.manager import ManagerAgent
-from optagent.v1.core.models import (
-    Artifact,
-    Decision,
-    Evidence,
-    Hypothesis,
-    OptimizationConfig,
-    Requirement,
-)
-from optagent.v1.core.state import OptimizationState
-from optagent.v1.core.workflow import WorkflowStep
-
 __all__ = [
-    "ManagerAgent",
-    "Artifact",
+    "ActionResult",
+    "ActionSpec",
     "Decision",
     "Evidence",
-    "Hypothesis",
-    "OptimizationConfig",
-    "OptimizationState",
+    "Finding",
+    "Observation",
+    "PredictionError",
     "Requirement",
-    "WorkflowStep",
+    "StateDelta",
+    "StateNode",
+    "TransitionRecord",
 ]
