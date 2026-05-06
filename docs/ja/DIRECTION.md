@@ -34,7 +34,7 @@ Requirement
 中心に置くのは **PredictionTree / EvidenceTree** です。
 
 `PredictionTree` は、まだ実行していない未来予測です。
-`EvidenceTree` は、実際に実行した試行と証拠の履歴です。
+`EvidenceTree` は、実際に実行した遷移と source-of-truth facts の履歴です。
 
 `StateNode` は点です。
 `TransitionRecord` は矢印です。

@@ -11,12 +11,7 @@ Requirement
       -> TransitionRecord
           -> ActionSpec
           -> ActionResult
-          -> Observation
-          -> Evidence
-          -> PredictionError
-          -> Decision
-          -> Finding
-          -> StateDelta
+          -> DerivedRecords
       -> StateNode
 ```
 
@@ -36,7 +31,7 @@ Requirement
 
 ```text
 src/optagent
-├── core/       # StateNode, ActionSpec, ActionResult, TransitionRecord
+├── core/       # StateNode, ActionSpec, ActionResult, TransitionRecord, DerivedRecord
 ├── workflows/  # 状態遷移を回す workflow
 ├── domains/    # kernel / code などの domain plugin
 ├── execution/  # executor, evaluator, sandbox policy

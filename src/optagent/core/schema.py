@@ -5,8 +5,8 @@ The new model uses points and arrows:
 ``StateNode -- TransitionRecord --> StateNode``.
 
 ``ActionSpec`` captures the plan made before execution. ``ActionResult``
-captures the facts produced by execution. ``TransitionRecord`` binds them to
-evidence, decision, finding, and the state delta that creates the next node.
+captures the facts produced by execution. ``TransitionRecord`` stores those
+source-of-truth records plus optional derived interpretations.
 ``StateContext`` is the view used by an agent when it needs to read past
 evidence and predicted futures around the current state.
 """
@@ -38,6 +38,15 @@ DecisionStatus = Literal[
 
 NodeStatus = Literal["predicted", "observed", "pruned", "merged"]
 ResultStatus = Literal["completed", "failed", "timeout", "skipped"]
+DerivedType = Literal[
+    "observation",
+    "evidence",
+    "prediction_error",
+    "decision",
+    "finding",
+    "state_delta",
+    "summary",
+]
 
 
 def to_jsonable(value: Any) -> JSONValue:
@@ -308,20 +317,31 @@ class StateDelta:
 
 
 @dataclass(frozen=True)
+class DerivedRecord:
+    """Interpretation or compression derived from transition facts."""
+
+    derived_id: str
+    source_transition_id: str
+    derived_type: DerivedType
+    payload: dict[str, JSONValue]
+    generator: str
+    confidence: float | None = None
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return to_jsonable(self)  # type: ignore[return-value]
+
+
+@dataclass(frozen=True)
 class TransitionRecord:
-    """The arrow from one StateNode to another."""
+    """The source-of-truth arrow from one StateNode to another."""
 
     transition_id: str
     from_state_id: str
     to_state_id: str
     action_spec: ActionSpec
-    action_result: ActionResult | None = None
-    observation: Observation | None = None
-    evidence: Evidence | None = None
-    prediction_error: PredictionError | None = None
-    decision: Decision | None = None
-    finding: Finding | None = None
-    state_delta: StateDelta = field(default_factory=StateDelta)
+    action_result: ActionResult
+    derived_records: tuple[DerivedRecord, ...] = ()
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, JSONValue]:
