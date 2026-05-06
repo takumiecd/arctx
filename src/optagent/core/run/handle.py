@@ -90,3 +90,38 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
             "prediction_dag": 0,
         },
     )
+
+
+# Attach methods from submodules so RunHandle stays thin.
+from optagent.core.run.helpers import (  # noqa: E402
+    find_plan_impl as _find_plan,
+    make_predicted_state_impl as _make_predicted_state,
+    plan_from_state_id_impl as _plan_from_state_id,
+    predicted_depth_for_plan_impl as _predicted_depth_for_plan,
+)
+from optagent.core.run.observe import observe_impl as _observe_impl  # noqa: E402
+from optagent.core.run.plan import plan_impl as _plan_impl  # noqa: E402
+from optagent.core.run.predict import (  # noqa: E402
+    predict_impl as _predict_impl,
+    select_prediction_impl as _select_prediction_impl,
+)
+from optagent.core.run.promote import (  # noqa: E402
+    _append_observed_transition as _append_observed_transition_impl,
+    promote_impl as _promote_impl,
+)
+from optagent.core.run.trace import refresh_impl as _refresh_impl, trace_impl as _trace_impl  # noqa: E402
+
+RunHandle._find_plan = _find_plan
+RunHandle._make_predicted_state = _make_predicted_state
+RunHandle._plan_from_state_id = _plan_from_state_id
+RunHandle._predicted_depth_for_plan = _predicted_depth_for_plan
+RunHandle._append_observed_transition = _append_observed_transition_impl
+RunHandle.plan = _plan_impl
+RunHandle.predict = _predict_impl
+RunHandle.select_prediction = _select_prediction_impl
+RunHandle.promote = _promote_impl
+RunHandle.observe = _observe_impl
+RunHandle.result = _observe_impl
+RunHandle.trace = _trace_impl
+RunHandle.history = _trace_impl
+RunHandle.refresh = _refresh_impl
