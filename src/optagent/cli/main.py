@@ -6,6 +6,7 @@ import argparse
 import sys
 
 from optagent.cli.commands.init import add_parser as add_init_parser, cli_init
+from optagent.cli.commands.observe import add_parser as add_observe_parser, cli_observe
 from optagent.cli.commands.plan import add_parser as add_plan_parser, cli_plan
 from optagent.cli.commands.predict import add_parser as add_predict_parser, cli_predict
 
@@ -18,6 +19,7 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     add_init_parser(subparsers)
+    add_observe_parser(subparsers)
     add_plan_parser(subparsers)
     add_predict_parser(subparsers)
 
@@ -36,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "init":
         return cli_init(args)
+    if args.command == "observe":
+        return cli_observe(args)
     if args.command == "plan":
         return cli_plan(args)
     if args.command == "predict":

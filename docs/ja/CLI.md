@@ -194,10 +194,63 @@ $ optagent predict run_req_kernel_20260506_082356 p_exec_0001 --max-outcomes 2
 
 - ``KeyError`` — 指定した ``run_id`` または ``plan_id`` が存在しない場合
 
+## ``optagent observe``
+
+planの実行結果を記録します。予測と対応づけず、事実だけを保存します。
+
+```bash
+optagent observe <run_id> <plan_id> --result-id <result_id> [options]
+```
+
+### 引数
+
+| 引数 | 必須 | 説明 |
+|-----|------|------|
+| ``run_id`` | ○ | 対象のrun識別子 |
+| ``plan_id`` | ○ | 実行したplanの識別子 |
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--result-id`` | （必須） | 結果の識別子 |
+| ``--status`` | ``completed`` | 実行ステータス |
+| ``--artifact`` | （なし） | アーティファクトパス（複数可） |
+| ``--raw-output`` | （なし） | 生出力パス（複数可） |
+| ``--log`` | （なし） | ログパス（複数可） |
+| ``--metric`` | （なし） | メトリクス（``key=value``、複数可） |
+| ``--error`` | （なし） | エラーメッセージ（複数可） |
+| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+
+### 出力
+
+成功時、作成された ``ObservedTransition`` をJSONで標準出力に出力します。
+
+```bash
+$ optagent observe run_001 p_exec_0001 --result-id r_0001 --status completed \
+    --artifact patch.diff --metric speedup=1.15
+{
+  "transition_id": "t_obs_0001",
+  "transition_kind": "observed",
+  "execution_plan_id": "p_exec_0001",
+  "action_result": {
+    "result_id": "r_0001",
+    "status": "completed",
+    "artifacts": ["patch.diff"],
+    "metrics": {"speedup": 1.15}
+  }
+}
+```
+
+実行後、run の ``current_observed_state_id`` が進みます。
+
+### エラー
+
+- ``KeyError`` — 指定した ``run_id`` または ``plan_id`` が存在しない場合
+
 ## 今後追加予定のコマンド
 
 - ``optagent promote`` — 予測を実行結果に対応づける
-- ``optagent observe`` — 予測と対応づけずに結果を記録
 - ``optagent trace`` — 実行履歴を辿る
 - ``optagent refresh`` — PredictionDAGを作り直す
 - ``optagent list`` — 保存済みrunの一覧を表示
