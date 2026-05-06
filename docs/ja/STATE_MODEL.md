@@ -13,10 +13,10 @@ optagent の状態モデルは、次の考え方を中心に置きます。
 そのため、状態モデルでは以下を分けて扱います。
 
 - 実行前に決める計画
-- 実行して得た結果
-- 結果から作る証拠
-- 証拠にもとづく判断
-- 次の状態に反映する学習
+- 実行して得た事実
+- 事実から作る解釈
+- 解釈にもとづく判断
+- 次の action 選択に使う圧縮された作業記憶
 
 この一連の変化を `TransitionRecord` として記録します。
 
@@ -32,12 +32,7 @@ StateNode
 State_t
   -> ActionSpec
   -> ActionResult
-  -> Observation
-  -> Evidence
-  -> PredictionError
-  -> Decision
-  -> Finding
-  -> StateDelta
+  -> DerivedRecords
   -> State_t+1
 ```
 
@@ -58,7 +53,7 @@ ActionResult:
 
 TransitionRecord:
   矢印。
-  StateNode から StateNode への遷移を、予測・結果・証拠・判断込みで記録する。
+  StateNode から StateNode への遷移を、計画・事実・任意の解釈込みで記録する。
 ```
 
 この分解の目的は、予測と観測を比較できる形で試行を残すことです。
@@ -67,6 +62,58 @@ TransitionRecord:
 `ActionSpec` は実行前の計画です。
 `ActionResult` は実行後に得られた事実です。
 この二つを分けることで、「何を期待していたか」と「実際に何が起きたか」を明確に比較できます。
+
+## Source of Truth / Derived / Working Memory
+
+optagent の中心は、LLM の解釈を保存することではなく、
+あとから再解釈できる事実をきれいに保存することです。
+
+```text
+source of truth:
+  ActionSpec
+  ActionResult
+
+derived:
+  Observation
+  Evidence
+  PredictionError
+  Decision
+  Finding
+  StateDelta
+
+working memory:
+  StateSnapshot
+```
+
+### source of truth
+
+`ActionSpec` と `ActionResult` は source of truth です。
+
+`ActionSpec` は、その時点で何をしようとしていたかを表します。
+これは実行後には再現しにくいため、実行前の計画として保存します。
+
+`ActionResult` は、実行して出てきた事実です。
+artifact、raw output、stdout、stderr、exit code、timeout、metric、実行時間、環境情報などを含みます。
+
+これらは、後から別の evaluator、別の LLM、別の promotion policy で再評価するための原本です。
+
+### derived
+
+`Observation`、`Evidence`、`PredictionError`、`Decision`、`Finding`、`StateDelta` は derived record です。
+source of truth から作る解釈、判断、要約、圧縮です。
+
+derived record は便利ですが、事実そのものではありません。
+LLM や evaluator は確率的・設定依存に振る舞うため、同じ raw result から異なる解釈が出ることがあります。
+そのため derived record は、必要に応じて作り直せる cache として扱います。
+
+### working memory
+
+`StateSnapshot` は、次の action を選ぶための working memory です。
+すべての raw fact を入れる場所ではありません。
+過去の事実や derived record から、次の判断に必要なものだけを圧縮して持ちます。
+
+例えば `knowledge` は source of truth ではありません。
+過去の `TransitionRecord` と derived record から作った、次の action 選択用の要約です。
 
 ## State と Tree
 
@@ -372,8 +419,8 @@ ActionResult:
 ## TransitionRecord
 
 `TransitionRecord` が矢印です。
-一つの試行について、実行前の計画、実行後の結果、そこから作った証拠、
-判断、学習、状態差分をまとめます。
+一つの試行について、実行前の計画と実行後の事実を必ず残します。
+そこから作った観測、証拠、判断、学習、状態差分は derived record として任意に追加します。
 
 ```text
 TransitionRecord
@@ -382,12 +429,7 @@ TransitionRecord
 ├── to_state_id
 ├── action_spec
 ├── action_result
-├── observation
-├── evidence
-├── prediction_error
-├── decision
-├── finding
-└── state_delta
+└── derived_records
 ```
 
 図にすると、次の関係です。
@@ -400,11 +442,12 @@ TransitionRecord
        │ TransitionRecord T7
        │  ├─ ActionSpec
        │  ├─ ActionResult
-       │  ├─ Evidence
-       │  ├─ PredictionError
-       │  ├─ Decision
-       │  ├─ Finding
-       │  └─ StateDelta
+       │  └─ DerivedRecords
+       │     ├─ Evidence
+       │     ├─ PredictionError
+       │     ├─ Decision
+       │     ├─ Finding
+       │     └─ StateDelta
        v
 ┌──────────────┐
 │ StateNode S7 │
@@ -417,8 +460,42 @@ TransitionRecord
 - 何をしようとしたのか
 - 何が起きると予測していたのか
 - 実際には何が起きたのか
-- どの証拠をもとに判断したのか
-- 次の状態に何を反映したのか
+- どの raw fact が保存されているのか
+- どの derived record が追加されているのか
+
+`Decision` や `Finding` は `TransitionRecord` に直接必須で持たせません。
+それらは `ActionResult` から後で作れる解釈です。
+必要なら複数の evaluator や LLM が、同じ transition に対して別々の derived record を追加できます。
+
+```text
+DerivedRecord
+├── derived_id
+├── source_transition_id
+├── derived_type
+│   ├── observation
+│   ├── evidence
+│   ├── prediction_error
+│   ├── decision
+│   ├── finding
+│   ├── state_delta
+│   └── summary
+├── payload
+├── generator
+├── confidence
+└── metadata
+```
+
+`generator` には、何がその derived record を作ったかを残します。
+
+例:
+
+```text
+generator:
+  evaluator:benchmark_parser:v1
+  promotion_gate:v1
+  llm:gpt-5.5:prompt_hash_abc
+  human:takumi
+```
 
 ## PredictionTree
 
@@ -461,6 +538,8 @@ PlannedTransition
 ## EvidenceTree
 
 `EvidenceTree` は、実際に実行した遷移の履歴です。
+名前に `Evidence` が入っていますが、source of truth は `ActionSpec` と `ActionResult` です。
+`Evidence` は必要に応じて追加される derived record です。
 
 ```text
 EvidenceTree
@@ -468,7 +547,7 @@ EvidenceTree
 depth 0   [S0: observed baseline state]
              |
              | TransitionRecord T1
-             | ActionSpec + ActionResult + Evidence
+             | ActionSpec + ActionResult + optional DerivedRecords
              v
 depth 1   [S1: observed state after action]
 
@@ -503,8 +582,9 @@ S0
 S7_predicted
 ```
 
-実行後は、`ActionResult` と `Evidence` が得られ、
+実行後は、`ActionResult` が得られ、
 `TransitionRecord` として EvidenceTree に記録されます。
+その後、必要に応じて `Evidence` や `Decision` などの derived record を追加します。
 
 ```text
 EvidenceTree
@@ -516,21 +596,22 @@ S0
  │    implement fused dispatch
  │  ActionResult:
  │    patch, test logs, benchmark logs
- │  Evidence:
- │    small +18%, large -8%
- │  PredictionError:
- │    large was not neutral
- │  Decision:
- │    needs_narrower_scope
- │  Finding:
- │    useful only for small batch
+ │  DerivedRecords:
+ │    Evidence:
+ │      small +18%, large -8%
+ │    PredictionError:
+ │      large was not neutral
+ │    Decision:
+ │      needs_narrower_scope
+ │    Finding:
+ │      useful only for small batch
  v
 S7_observed
 ```
 
 このとき、`ActionSpec` は変更しません。
 実行前の予測は `ActionSpec` に残し、実行後の事実は `ActionResult` に残します。
-予測との差分は `PredictionError` として保存します。
+予測との差分は、必要なら `PredictionError` derived record として保存します。
 
 ## 状態遷移の 1 step
 
@@ -541,13 +622,7 @@ StateNode S_t
   -> choose ActionSpec
   -> execute ActionSpec
   -> produce ActionResult
-  -> derive Observation
-  -> normalize Evidence
-  -> compare expected vs actual
-  -> produce PredictionError
-  -> decide
-  -> learn Finding
-  -> compute StateDelta
+  -> optionally derive Observation / Evidence / PredictionError / Decision / Finding / StateDelta
   -> create StateNode S_t+1
   -> append TransitionRecord
 ```
@@ -557,22 +632,14 @@ StateNode S_t
 ```text
 ActionSpec_t = policy(StateNode_t)
 ActionResult_t = execute(ActionSpec_t)
-Observation_t = observe(ActionResult_t)
-Evidence_t = evaluate(Observation_t, requirement)
-PredictionError_t = compare(ActionSpec_t.expected_observation, Observation_t)
-Decision_t = decide(Evidence_t, promotion_policy)
-Finding_t = learn(Evidence_t, PredictionError_t, Decision_t)
-StateDelta_t = reduce(ActionResult_t, Evidence_t, Finding_t)
+DerivedRecords_t = derive(ActionSpec_t, ActionResult_t, context)
+StateDelta_t = select_state_delta(DerivedRecords_t)
 StateNode_t+1 = apply(StateNode_t, StateDelta_t)
 TransitionRecord_t = record(
   StateNode_t,
   ActionSpec_t,
   ActionResult_t,
-  Evidence_t,
-  PredictionError_t,
-  Decision_t,
-  Finding_t,
-  StateDelta_t,
+  DerivedRecords_t,
   StateNode_t+1,
 )
 ```
@@ -600,15 +667,15 @@ ActionResult:
   raw_outputs:
     - profiler output
 
-Evidence:
-  small shape: launch overhead high
-  large shape: memory bandwidth high
-
-StateDelta:
-  knowledge += small shape is launch-bound
-  open_questions += large shape の memory layout を調べる
-  active_branches += branch_launch_overhead_small
-  active_branches += branch_memory_layout_large
+DerivedRecords:
+  Evidence:
+    small shape: launch overhead high
+    large shape: memory bandwidth high
+  StateDelta:
+    knowledge += small shape is launch-bound
+    open_questions += large shape の memory layout を調べる
+    active_branches += branch_launch_overhead_small
+    active_branches += branch_memory_layout_large
 
 S1:
   原因候補が分岐した状態
@@ -637,25 +704,22 @@ ActionResult:
     - tests.txt
     - benchmark.txt
 
-Evidence:
-  correctness: passed
-  small speedup: 1.18
-  large speedup: 0.92
-
-PredictionError:
-  large latency was not neutral
-
-Decision:
-  needs_narrower_scope
-
-Finding:
-  fused dispatch is promising only for small batch
-
-StateDelta:
-  artifacts += scoped candidate
-  knowledge += do not promote broadly for large batch
-  active_branches += small batch scope refinement
-  pruned_branches += large fused dispatch
+DerivedRecords:
+  Evidence:
+    correctness: passed
+    small speedup: 1.18
+    large speedup: 0.92
+  PredictionError:
+    large latency was not neutral
+  Decision:
+    needs_narrower_scope
+  Finding:
+    fused dispatch is promising only for small batch
+  StateDelta:
+    artifacts += scoped candidate
+    knowledge += do not promote broadly for large batch
+    active_branches += small batch scope refinement
+    pruned_branches += large fused dispatch
 
 S1:
   scoped candidate と新しい finding を持つ状態
@@ -677,18 +741,17 @@ ActionResult:
   raw_outputs:
     - narrowed_benchmark.txt
 
-Evidence:
-  correctness: passed
-  eligible_scope: batch_size<=4
-  geometric_mean_speedup: 1.11
-  regressions: []
-
-Decision:
-  accepted
-
-StateDelta:
-  incumbent += candidate for batch_size<=4
-  open_questions -= narrowed scope verification
+DerivedRecords:
+  Evidence:
+    correctness: passed
+    eligible_scope: batch_size<=4
+    geometric_mean_speedup: 1.11
+    regressions: []
+  Decision:
+    accepted
+  StateDelta:
+    incumbent += candidate for batch_size<=4
+    open_questions -= narrowed scope verification
 ```
 
 ### 分析遷移
@@ -705,12 +768,12 @@ ActionResult:
     - benchmark breakdown
     - code inspection notes
 
-Finding:
-  fused path adds overhead when compute dominates
-
-StateDelta:
-  knowledge += avoid fused dispatch for compute-dominant large shapes
-  pruned_branches += branch_large_fused_dispatch
+DerivedRecords:
+  Finding:
+    fused path adds overhead when compute dominates
+  StateDelta:
+    knowledge += avoid fused dispatch for compute-dominant large shapes
+    pruned_branches += branch_large_fused_dispatch
 ```
 
 ### 範囲調整遷移
@@ -726,13 +789,13 @@ ActionResult:
   artifacts:
     - narrowed dispatch policy
 
-Evidence:
-  eligible_scope: batch_size<=4
-  regressions outside scope: excluded
-
-StateDelta:
-  artifacts += candidate with narrowed dispatch policy
-  knowledge += scope constraint
+DerivedRecords:
+  Evidence:
+    eligible_scope: batch_size<=4
+    regressions outside scope: excluded
+  StateDelta:
+    artifacts += candidate with narrowed dispatch policy
+    knowledge += scope constraint
 ```
 
 ## 状態更新の対象
@@ -784,14 +847,15 @@ StateDelta
 2. `ActionSpec` は実行後に変更しない。
 3. `ActionResult` は実行によって得た副産物を保存する。
 4. raw output は保存する。
-5. `Evidence` は `Observation` から導出する。
-6. `Decision` は `Evidence` と promotion policy から導出する。
-7. `Finding` は次の action 選択に使える形で保存する。
-8. `TransitionRecord` は append-only とする。
-9. promotion と learning は分ける。
-10. action 実行前に expected observation を持つ。
-11. action 実行後に prediction error を評価する。
-12. unsafe な試行は rejected ではなく `unsafe` として分ける。
+5. `Observation`、`Evidence`、`Decision`、`Finding` は derived record として扱う。
+6. derived record には generator を残す。
+7. `Finding` は次の action 選択に使える圧縮知識として保存する。
+8. `StateSnapshot` は source of truth ではなく working memory とする。
+9. `TransitionRecord` は append-only とする。
+10. promotion と learning は分ける。
+11. action 実行前に expected observation を持つ。
+12. action 実行後に prediction error を評価できるように raw fact を保存する。
+13. unsafe な試行は rejected ではなく `unsafe` として分ける。
 
 ## 保存形式
 
@@ -803,11 +867,16 @@ runs/<run_id>/
 ├── requirements.json
 ├── states.jsonl
 ├── transitions.jsonl
+├── derived_records.jsonl
 ├── findings.jsonl
 ├── artifacts/
 ├── raw/
 └── reports/
 ```
+
+`transitions.jsonl` には source of truth を置きます。
+`derived_records.jsonl` には、そこから作られた解釈や判断を置きます。
+`findings.jsonl` は、次の action 選択で検索しやすいように抜き出した finding index として扱います。
 
 既存実装では `attempts.jsonl` という名前を使っています。
 新しいモデルでは、意味としては `transitions.jsonl` に近いです。
@@ -831,7 +900,10 @@ ActionResult:
   action を実行して出てきた副産物。
 
 TransitionRecord:
-  矢印。ActionSpec、ActionResult、Evidence、Decision、Finding、StateDelta を束ねる。
+  矢印。ActionSpec、ActionResult、任意の DerivedRecord を束ねる。
+
+DerivedRecord:
+  ActionSpec と ActionResult から作る解釈、判断、学習、圧縮。
 
 PredictionTree:
   まだ実行していない future StateNode と PlannedTransition の tree。
@@ -841,4 +913,5 @@ EvidenceTree:
 ```
 
 この形にすると、`State -> Action -> Result -> State` の反復推論を保ちながら、
-実行前の予測、実行後の事実、証拠にもとづく判断、次に使う知識を一つの遷移として追跡できます。
+実行前の予測と実行後の事実を原本として保存し、証拠にもとづく判断や次に使う知識を
+derived record として積み上げられます。
