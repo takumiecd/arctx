@@ -24,7 +24,7 @@ class PredictionDAG:
     nodes: dict[str, StateNode] = field(default_factory=dict)
     node_depths: dict[str, int] = field(default_factory=dict)
     nodes_by_depth: dict[int, list[str]] = field(default_factory=dict)
-    plans: dict[str, PredictionPlan | ExecutionPlan] = field(default_factory=dict)
+    plans: dict[str, PredictionPlan] = field(default_factory=dict)
     transitions: dict[str, PredictedTransition] = field(default_factory=dict)
     plans_by_state: dict[str, list[str]] = field(default_factory=dict)
     transitions_by_plan: dict[str, list[str]] = field(default_factory=dict)
@@ -37,13 +37,9 @@ class PredictionDAG:
         self.node_depths[node.state_id] = depth
         self.nodes_by_depth.setdefault(depth, []).append(node.state_id)
 
-    def add_plan(self, plan: PredictionPlan | ExecutionPlan) -> None:
+    def add_plan(self, plan: PredictionPlan) -> None:
         self.plans[plan.plan_id] = plan
-        if isinstance(plan, PredictionPlan):
-            from_state_id = plan.from_predicted_state_id
-        else:
-            from_state_id = plan.from_observed_state_id
-        self.plans_by_state.setdefault(from_state_id, []).append(plan.plan_id)
+        self.plans_by_state.setdefault(plan.from_predicted_state_id, []).append(plan.plan_id)
 
     def add_transition(self, transition: PredictedTransition) -> None:
         self.transitions[transition.transition_id] = transition

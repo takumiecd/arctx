@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from optagent.core.run import list_runs
+from optagent.storage.jsonl import JsonlRunStore
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -31,7 +31,8 @@ def run_list_command(*, store_dir: str) -> dict:
     -------
     dict with ``runs`` key containing a list of run summary dicts.
     """
-    return {"runs": list_runs(store_dir)}
+    store = JsonlRunStore(store_dir)
+    return {"runs": store.list_runs()}
 
 
 def cli_list(args) -> int:

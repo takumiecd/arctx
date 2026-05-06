@@ -142,21 +142,9 @@ class JsonlRunStore:
             else:
                 raise ValueError(f"unknown state dag: {row['dag']}")
 
-        prediction_plan_ids = {
-            row["plan_id"] for row in self._read_jsonl(run_path / "prediction_plans.jsonl")
-        }
-        predicted_parent_plan_ids = {
-            row["parent_plan_id"]
-            for row in self._read_jsonl(run_path / "predicted_transitions.jsonl")
-        }
-
         for row in self._read_jsonl(run_path / "execution_plans.jsonl"):
             plan = _execution_plan_from_dict(row)
             trace_dag.add_execution_plan(plan)
-            if plan.plan_id in prediction_plan_ids:
-                continue
-            if plan.plan_id in predicted_parent_plan_ids:
-                prediction_dag.add_plan(plan)
 
         for row in self._read_jsonl(run_path / "prediction_plans.jsonl"):
             prediction_dag.add_plan(_prediction_plan_from_dict(row))

@@ -19,8 +19,6 @@ def predict_impl(
     """Expand the PredictionDAG with predicted outcomes for a plan."""
 
     plan = self._find_plan(plan_id)
-    if hasattr(plan, "plan_kind") and plan.plan_kind == "execution" and plan.plan_id not in self.prediction_dag.plans:
-        self.prediction_dag.add_plan(plan)
     count = max(1, max_outcomes or 1)
     transitions: list[PredictedTransition] = []
     for index in range(count):

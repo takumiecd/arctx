@@ -58,25 +58,11 @@ class TestCliRefreshCommand:
 
             result = run_refresh_command(
                 run_id=run_id,
-                mode="reset",
                 store_dir=str(store_dir),
             )
             assert result["prediction_dag"]["anchor_observed_state_id"] != old_anchor
             assert result["prediction_dag"]["root_predicted_state_id"] != old_root
             assert result["prediction_dag"]["anchor_observed_state_id"] == before.current_observed_state_id
-
-    def test_refresh_sets_stale_mode(self):
-        """refresh with --mode stale should mark old dag as stale."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            store_dir = Path(tmpdir) / "runs"
-            run_id = self._create_run_with_observation(store_dir)
-
-            result = run_refresh_command(
-                run_id=run_id,
-                mode="stale",
-                store_dir=str(store_dir),
-            )
-            assert result["prediction_dag"]["stale"] is False  # new dag is fresh
 
     def test_refresh_unknown_run_id(self):
         """refresh with unknown run_id should raise KeyError."""
@@ -85,7 +71,6 @@ class TestCliRefreshCommand:
             with pytest.raises(KeyError):
                 run_refresh_command(
                     run_id="nonexistent",
-                    mode="reset",
                     store_dir=str(store_dir),
                 )
 
@@ -94,16 +79,13 @@ class TestCliRefreshCommand:
         args = parse_args(["refresh", "my_run"])
         assert args.command == "refresh"
         assert args.run_id == "my_run"
-        assert args.mode == "reset"
 
-    def test_cli_parse_args_refresh_with_options(self):
-        """argparse should handle all refresh options."""
+    def test_cli_parse_args_refresh_with_store_dir(self):
+        """argparse should handle --store-dir for refresh."""
         args = parse_args([
             "refresh", "my_run",
-            "--mode", "stale",
             "--store-dir", "/tmp/runs",
         ])
-        assert args.mode == "stale"
         assert args.store_dir == "/tmp/runs"
 
     def test_main_refresh_command(self, capsys):
@@ -130,7 +112,6 @@ class TestCliRefreshCommand:
 
             result = run_refresh_command(
                 run_id=run_id,
-                mode="reset",
                 store_dir=str(store_dir),
             )
             json_str = json.dumps(result)

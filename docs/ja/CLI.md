@@ -403,10 +403,7 @@ optagent refresh <run_id> [options]
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| ``--mode`` | ``reset`` | ``reset`` または ``stale`` |
 | ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
-
-``--mode stale`` を指定すると、古い ``PredictionDAG`` を ``stale=True`` にしてから新しいDAGを作ります。
 
 ### 出力
 
