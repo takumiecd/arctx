@@ -7,24 +7,25 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
+from optagent.core.derived import DerivedRecord
+from optagent.core.plans import ExecutionPlan, PredictionPlan
+from optagent.core.requirements import Requirement
+from optagent.core.results import ActionResult
 from optagent.core.run import RunHandle
-from optagent.core.schema import (
-    ActionResult,
+from optagent.core.state import (
     ArtifactRef,
     Budget,
-    DerivedRecord,
-    ExecutionPlan,
     FindingRef,
-    ObservedTransition,
-    PredictionMatch,
-    PredictionPlan,
     PredictionRef,
-    PredictedTransition,
-    Requirement,
     StateNode,
     StateSnapshot,
 )
 from optagent.core.tree import PredictionDAG, TraceDAG
+from optagent.core.transitions import (
+    ObservedTransition,
+    PredictedTransition,
+    PredictionMatch,
+)
 
 
 class JsonlRunStore:

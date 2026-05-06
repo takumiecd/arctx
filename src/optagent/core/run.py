@@ -8,22 +8,19 @@ from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from optagent.core.ids import sequential_id, slugify, timestamp_id
-from optagent.core.schema import (
-    ActionResult,
-    DerivedRecord,
-    ExecutionPlan,
+from optagent.core.derived import DerivedRecord
+from optagent.core.plans import ExecutionPlan, PredictionPlan
+from optagent.core.requirements import Requirement
+from optagent.core.results import ActionResult
+from optagent.core.state import StateNode, StateSnapshot, TraceContext
+from optagent.core.tree import PredictionDAG, TraceDAG
+from optagent.core.transitions import (
     ObservedTransition,
     PredictionMatch,
     PredictionPath,
-    PredictionPlan,
     PredictionSelection,
     PredictedTransition,
-    Requirement,
-    StateNode,
-    StateSnapshot,
-    TraceContext,
 )
-from optagent.core.tree import PredictionDAG, TraceDAG
 
 
 def _snapshot_hash(snapshot: StateSnapshot) -> str:

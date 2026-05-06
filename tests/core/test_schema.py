@@ -1,4 +1,6 @@
 import pytest
+import optagent
+import optagent.core
 
 from optagent.core import (
     ActionResult,
@@ -69,6 +71,11 @@ def test_observed_transition_keeps_plan_and_result_separate():
     assert transition_data["to_observed_state_id"] == "s_obs_0001"
     assert transition_data["matched_predicted_transition_id"] is None
     assert transition_data["derived_records"] == []
+
+
+def test_prediction_and_execution_plans_are_not_collapsed_into_public_plan_alias():
+    assert not hasattr(optagent, "Plan")
+    assert not hasattr(optagent.core, "Plan")
 
 
 def test_observed_transition_stores_interpretations_as_derived_records():

@@ -4,13 +4,23 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from optagent.core.schema import ActionResult, Evidence, ExecutionPlan, Observation, Plan, StateNode
+from optagent.core.derived import Evidence, Observation
+from optagent.core.plans import ExecutionPlan, PredictionPlan
+from optagent.core.results import ActionResult
+from optagent.core.state import StateNode
 
 
-class SearchPolicy(Protocol):
-    """Proposes one or more plans from a state."""
+class ExecutionPlanner(Protocol):
+    """Proposes executable plans from an observed state."""
 
-    def propose(self, state: StateNode) -> list[Plan]:
+    def propose_execution(self, state: StateNode) -> list[ExecutionPlan]:
+        ...
+
+
+class PredictionPlanner(Protocol):
+    """Proposes prediction plans from a predicted state."""
+
+    def propose_prediction(self, state: StateNode) -> list[PredictionPlan]:
         ...
 
 
