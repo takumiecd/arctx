@@ -63,6 +63,9 @@ class RunHandle:
         *,
         planner: str | None = None,
         max_plans: int | None = None,
+        action_type: str = "analysis",
+        intent: str | None = None,
+        inputs: dict[str, JSONValue] | None = None,
     ) -> list[ExecutionPlan | PredictionPlan]:
         """Create executable or predictive plans from the given state."""
 
@@ -74,8 +77,9 @@ class RunHandle:
                     plan_id=self._next_id("p_exec"),
                     plan_kind="execution",
                     from_observed_state_id=state_id,
-                    action_type="analysis",
-                    intent="inspect current state and propose next useful action",
+                    action_type=action_type,
+                    intent=intent or "inspect current state and propose next useful action",
+                    inputs=dict(inputs or {}),
                     metadata={
                         "planner": planner or "default",
                         "ordinal": index,
@@ -87,8 +91,9 @@ class RunHandle:
                     plan_id=self._next_id("p_pred"),
                     plan_kind="prediction",
                     from_predicted_state_id=state_id,
-                    action_type="analysis",
-                    intent="inspect predicted state and extend the future scenario",
+                    action_type=action_type,
+                    intent=intent or "inspect predicted state and extend the future scenario",
+                    inputs=dict(inputs or {}),
                     metadata={
                         "planner": planner or "default",
                         "ordinal": index,
@@ -130,7 +135,7 @@ class RunHandle:
                     "status": "unknown",
                     "predictor": predictor or "default",
                 },
-                predicted_state_delta=dict(plan.expected_state_delta),
+                predicted_state_delta={},
                 to_predicted_state_id=predicted_state.state_id,
                 metadata={"ordinal": index},
             )
@@ -379,9 +384,6 @@ class RunHandle:
                 action_type=source_plan.action_type,
                 intent=source_plan.intent,
                 inputs=dict(source_plan.inputs),
-                expected_observation=dict(source_plan.expected_observation),
-                expected_state_delta=dict(source_plan.expected_state_delta),
-                estimated_cost=dict(source_plan.estimated_cost),
                 safety_policy=dict(source_plan.safety_policy),
                 assumptions=tuple(source_plan.assumptions),
                 metadata={

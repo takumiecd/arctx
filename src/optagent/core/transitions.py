@@ -35,10 +35,11 @@ class PredictedTransition:
     outcome_id: str
     outcome_label: str
     predicted_result: dict[str, JSONValue]
-    predicted_state_delta: dict[str, JSONValue]
     to_predicted_state_id: str
     confidence: float | None = None
     assumptions: tuple[str, ...] = ()
+    predicted_observation: dict[str, JSONValue] = field(default_factory=dict)
+    predicted_state_delta: dict[str, JSONValue] = field(default_factory=dict)
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, JSONValue]:

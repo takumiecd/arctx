@@ -157,3 +157,62 @@ class TestCliPlanCommand:
             json_str = json.dumps(result)
             parsed = json.loads(json_str)
             assert len(parsed["plans"]) == 2
+
+    def test_plan_with_action_type(self):
+        """--action-type should set the plan's action_type."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_dir = Path(tmpdir) / "runs"
+            run_id = self._create_run(store_dir)
+
+            result = run_plan_command(
+                run_id=run_id,
+                planner="default",
+                max_plans=1,
+                store_dir=str(store_dir),
+                action_type="edit",
+            )
+            assert result["plans"][0]["action_type"] == "edit"
+
+    def test_plan_with_intent(self):
+        """--intent should set the plan's intent."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_dir = Path(tmpdir) / "runs"
+            run_id = self._create_run(store_dir)
+
+            result = run_plan_command(
+                run_id=run_id,
+                planner="default",
+                max_plans=1,
+                store_dir=str(store_dir),
+                intent="vectorize inner loop",
+            )
+            assert result["plans"][0]["intent"] == "vectorize inner loop"
+
+    def test_plan_with_inputs(self):
+        """--input should populate the plan's inputs dict."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_dir = Path(tmpdir) / "runs"
+            run_id = self._create_run(store_dir)
+
+            result = run_plan_command(
+                run_id=run_id,
+                planner="default",
+                max_plans=1,
+                store_dir=str(store_dir),
+                inputs={"file": "src/kernel.py", "line_start": "42"},
+            )
+            assert result["plans"][0]["inputs"]["file"] == "src/kernel.py"
+            assert result["plans"][0]["inputs"]["line_start"] == "42"
+
+    def test_cli_parse_args_plan_with_content_options(self):
+        """argparse should handle action-type, intent, and input."""
+        args = parse_args([
+            "plan", "my_run",
+            "--action-type", "edit",
+            "--intent", "optimize loop",
+            "--input", "file=main.py",
+            "--input", "strategy=unroll",
+        ])
+        assert args.action_type == "edit"
+        assert args.intent == "optimize loop"
+        assert args.input == ["file=main.py", "strategy=unroll"]

@@ -18,9 +18,6 @@ class PredictionPlan:
     action_type: ActionType
     intent: str
     inputs: dict[str, JSONValue] = field(default_factory=dict)
-    expected_observation: dict[str, JSONValue] = field(default_factory=dict)
-    expected_state_delta: dict[str, JSONValue] = field(default_factory=dict)
-    estimated_cost: dict[str, JSONValue] = field(default_factory=dict)
     safety_policy: dict[str, JSONValue] = field(default_factory=dict)
     assumptions: tuple[str, ...] = ()
     confidence: float | None = None
@@ -41,9 +38,6 @@ class ExecutionPlan:
     action_type: ActionType
     intent: str
     inputs: dict[str, JSONValue] = field(default_factory=dict)
-    expected_observation: dict[str, JSONValue] = field(default_factory=dict)
-    expected_state_delta: dict[str, JSONValue] = field(default_factory=dict)
-    estimated_cost: dict[str, JSONValue] = field(default_factory=dict)
     safety_policy: dict[str, JSONValue] = field(default_factory=dict)
     assumptions: tuple[str, ...] = ()
     status: PlanStatus = "active"

@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
+import json
+
 from optagent.storage.jsonl import JsonlRunStore
+
+
+def _parse_inputs(input_list: list[str] | None) -> dict[str, str]:
+    """Parse --input key=value strings into a dict."""
+    inputs: dict[str, str] = {}
+    if input_list is None:
+        return inputs
+    for item in input_list:
+        if "=" not in item:
+            raise ValueError(f"--input must be key=value format: {item}")
+        key, value = item.split("=", 1)
+        inputs[key] = value
+    return inputs
 
 
 def run_plan_command(
@@ -11,6 +26,9 @@ def run_plan_command(
     planner: str,
     max_plans: int,
     store_dir: str,
+    action_type: str = "analysis",
+    intent: str | None = None,
+    inputs: dict[str, str] | None = None,
 ) -> dict:
     """Create plans from the current observed state of an existing run.
 
@@ -24,6 +42,12 @@ def run_plan_command(
         Maximum number of plans to create.
     store_dir:
         Directory where runs are stored.
+    action_type:
+        Category of action for the plan.
+    intent:
+        Human-readable description of what the plan does.
+    inputs:
+        Key-value parameters for the plan.
 
     Returns
     -------
@@ -44,6 +68,9 @@ def run_plan_command(
         state_id=handle.current_observed_state_id,
         planner=planner,
         max_plans=max_plans,
+        action_type=action_type,
+        intent=intent,
+        inputs=inputs,
     )
 
     store.save_run(handle)
@@ -55,13 +82,15 @@ def cli_plan(args) -> int:
 
     Prints the created plans as JSON to stdout.
     """
-    import json
-
+    inputs = _parse_inputs(getattr(args, "input", None))
     result = run_plan_command(
         run_id=args.run_id,
         planner=args.planner,
         max_plans=args.max_plans,
         store_dir=args.store_dir,
+        action_type=args.action_type,
+        intent=args.intent,
+        inputs=inputs,
     )
     print(json.dumps(result["plans"], ensure_ascii=False, indent=2))
     return 0

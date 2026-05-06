@@ -81,7 +81,12 @@ optagent plan <run_id> [options]
 |-----------|-----------|------|
 | ``--planner`` | ``default`` | 使用するplannerの名前 |
 | ``--max-plans`` | ``1`` | 作成するplanの最大数 |
+| ``--action-type`` | ``analysis`` | planのアクション種別 |
+| ``--intent`` | （自動） | planの目的の説明 |
+| ``--input`` | （なし） | planへの入力パラメータ（``key=value``、複数可） |
 | ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+
+plan は「何をするか」の宣言です。実行結果の予測は ``PredictedTransition`` が持ち、plan 自身は持ちません。
 
 ### 出力
 
@@ -95,7 +100,31 @@ $ optagent plan run_req_kernel_20260506_082356
     "plan_kind": "execution",
     "from_observed_state_id": "s_obs_0000",
     "action_type": "analysis",
-    "intent": "inspect current state and propose next useful action"
+    "intent": "inspect current state and propose next useful action",
+    "inputs": {}
+  }
+]
+```
+
+### 実用的な例
+
+```bash
+$ optagent plan my_run \
+    --action-type edit \
+    --intent "vectorize the inner loop" \
+    --input file=src/kernel.py \
+    --input line_start=42
+[
+  {
+    "plan_id": "p_exec_0001",
+    "plan_kind": "execution",
+    "from_observed_state_id": "s_obs_0000",
+    "action_type": "edit",
+    "intent": "vectorize the inner loop",
+    "inputs": {
+      "file": "src/kernel.py",
+      "line_start": "42"
+    }
   }
 ]
 ```

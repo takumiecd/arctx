@@ -44,7 +44,7 @@ def test_observed_transition_keeps_plan_and_result_separate():
         from_observed_state_id=source.state_id,
         action_type="implementation",
         intent="try scoped dispatch",
-        expected_observation={"small_shape": "faster"},
+        inputs={"small_shape": "faster"},
     )
     result = ActionResult(
         result_id="r_0001",
@@ -65,7 +65,7 @@ def test_observed_transition_keeps_plan_and_result_separate():
 
     plan_data = plan.to_dict()
     transition_data = transition.to_dict()
-    assert plan_data["expected_observation"]["small_shape"] == "faster"
+    assert plan_data["inputs"]["small_shape"] == "faster"
     assert transition_data["action_result"]["metrics"]["speedup"] == 1.12
     assert transition_data["from_observed_state_id"] == "s_obs_0000"
     assert transition_data["to_observed_state_id"] == "s_obs_0001"

@@ -55,6 +55,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Maximum number of plans to create (default: 1)",
     )
     plan_parser.add_argument(
+        "--action-type",
+        default="analysis",
+        help="Action category for the plan (default: analysis)",
+    )
+    plan_parser.add_argument(
+        "--intent",
+        default=None,
+        help="Description of what the plan does",
+    )
+    plan_parser.add_argument(
+        "--input",
+        action="append",
+        help="Plan input as key=value (can be given multiple times)",
+    )
+    plan_parser.add_argument(
         "--store-dir",
         default=".optagent/runs",
         help="Directory where runs are stored (default: .optagent/runs)",
