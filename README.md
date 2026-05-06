@@ -161,17 +161,16 @@ See `examples/basic_cli_loop.sh` for a complete working example.
 
 ```text
 src/optagent
-├── core/       # 現在の public model と in-memory run API
+├── cli/        # CLI commands
+├── core/       # public model と in-memory run API
 ├── workflows/  # workflow layer。まだ初期段階
 ├── domains/    # domain plugin。まだ初期段階
 ├── execution/  # executor / evaluator interface。まだ初期段階
 ├── search/     # search policy。まだ初期段階
-├── storage/    # run directory / JSONL storage
-└── legacy/     # 以前の実装。参考用
+└── storage/    # run directory / JSONL storage
 ```
 
-新しい public API は `optagent` と `optagent.core` にあります。
-古い実装は `optagent.legacy` 以下に残しています。
+public API は `optagent` と `optagent.core` にあります。
 
 ## 開発
 
