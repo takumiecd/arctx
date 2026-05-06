@@ -2,9 +2,48 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 
 from optagent.storage.jsonl import JsonlRunStore
+
+
+def add_parser(subparsers) -> argparse.ArgumentParser:
+    """Register the ``plan`` subcommand parser."""
+    parser = subparsers.add_parser("plan", help="Create plans from current state")
+    parser.add_argument("run_id", help="Run identifier")
+    parser.add_argument(
+        "--planner",
+        default="default",
+        help="Planner name (default: default)",
+    )
+    parser.add_argument(
+        "--max-plans",
+        type=int,
+        default=1,
+        help="Maximum number of plans to create (default: 1)",
+    )
+    parser.add_argument(
+        "--action-type",
+        default="analysis",
+        help="Action category for the plan (default: analysis)",
+    )
+    parser.add_argument(
+        "--intent",
+        default=None,
+        help="Description of what the plan does",
+    )
+    parser.add_argument(
+        "--input",
+        action="append",
+        help="Plan input as key=value (can be given multiple times)",
+    )
+    parser.add_argument(
+        "--store-dir",
+        default=".optagent/runs",
+        help="Directory where runs are stored (default: .optagent/runs)",
+    )
+    return parser
 
 
 def _parse_inputs(input_list: list[str] | None) -> dict[str, str]:

@@ -2,11 +2,39 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import optagent
 from optagent.core.requirements import Requirement
 from optagent.storage.jsonl import JsonlRunStore
+
+
+def add_parser(subparsers) -> argparse.ArgumentParser:
+    """Register the ``init`` subcommand parser."""
+    parser = subparsers.add_parser("init", help="Initialize a new run")
+    parser.add_argument("requirement_id", help="Requirement identifier")
+    parser.add_argument(
+        "--target-type",
+        default="code",
+        help="Target category (default: code)",
+    )
+    parser.add_argument(
+        "--target-id",
+        default=None,
+        help="Specific target identifier (default: requirement_id)",
+    )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Explicit run id (default: auto-generated)",
+    )
+    parser.add_argument(
+        "--store-dir",
+        default=".optagent/runs",
+        help="Directory to save runs (default: .optagent/runs)",
+    )
+    return parser
 
 
 def run_init_command(
