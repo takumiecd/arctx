@@ -179,7 +179,7 @@ baseline
 4. observation と expected observation の差分を保存する。
 5. failed attempt でも finding を残す。
 6. state は現在の信念と open questions を持つ。
-7. Evidence Graph は過去の immutable log として残す。
+7. EvidenceTree は過去の immutable log として残す。
 8. KnowledgeStore は findings を検索して次の action に使う。
 9. promotion と learning を分ける。
 

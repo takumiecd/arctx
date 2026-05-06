@@ -3,7 +3,7 @@
 optagent は、コード最適化・カーネル最適化の試行を **証拠として残しながら進める**
 ための最適化エージェント基盤です。
 
-中心に置くのは、LLM や探索アルゴリズムではなく Evidence Graph です。
+中心に置くのは、LLM や探索アルゴリズムではなく PredictionTree / EvidenceTree です。
 
 ```text
 Requirement

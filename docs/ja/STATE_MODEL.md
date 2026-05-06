@@ -10,22 +10,26 @@ optagent の状態モデルは、次の考え方を中心に置きます。
 エージェントが今何を知っていて、何を信じていて、何が未解決で、
 次に何を観測すべきかを表す必要があります。
 
-## State と Evidence Graph を分ける
+## State と Tree を分ける
 
-最初に重要なのは、`State` と `Evidence Graph` を分けることです。
+最初に重要なのは、`State` と tree を分けることです。
 
 ```text
 State
   現在の作業状態。
   次の action を選ぶために使う。
 
-Evidence Graph
-  過去の試行ログ。
+PredictionTree
+  まだ実行していない未来予測。
+
+EvidenceTree
+  実際に実行した試行ログ。
   append-only で保存する。
 ```
 
 `State` は現在の信念や候補を表すため、更新されます。
-一方で `Evidence Graph` は過去の事実を表すため、基本的に変更しません。
+`PredictionTree` は未来の仮説的な状態を表すため、prune や merge されます。
+`EvidenceTree` は過去の事実を表すため、基本的に変更せず append-only にします。
 
 ## State
 
@@ -119,9 +123,147 @@ prediction_error:
   candidate needs narrower scope
 ```
 
-## Evidence Graph
+## Tree / Depth / Node
 
-Evidence Graph は、run の履歴です。
+未来予測や実行履歴は、単なる node の集合ではなく、depth を持つ tree として扱います。
+
+```text
+Tree
+├── depth 0
+│   └── node: 現在状態
+├── depth 1
+│   ├── node: 次の action 候補 A
+│   ├── node: 次の action 候補 B
+│   └── node: 次の action 候補 C
+├── depth 2
+│   ├── node: A の後の候補 A1
+│   ├── node: A の後の候補 A2
+│   └── node: B の後の候補 B1
+└── depth 3
+    └── node: さらに先の候補
+```
+
+### なぜ depth を first-class にするか
+
+最適化の推論では、node 単体だけでなく「同じ深さにある候補群」を比較することが重要です。
+
+例えば depth 1 では、次に何を調べるか、何を実装するかを比較します。
+depth 2 では、それぞれの action が成功した後に何が開けるかを比較します。
+depth 3 では、複数の方針を組み合わせた未来を比較します。
+
+```text
+depth 0:
+  現在の状態
+
+depth 1:
+  次に取れる action と、その直後の予測
+
+depth 2:
+  その action が成功/失敗した後に取れる次の action
+
+depth 3:
+  さらに組み合わせた場合の未来
+```
+
+したがって、データ構造としては以下を持ちます。
+
+```text
+Tree
+├── depths: list[DepthLayer]
+└── edges: list[TransitionEdge]
+
+DepthLayer
+├── depth
+├── nodes
+├── layer_summary
+├── open_questions
+└── comparison
+
+Node
+├── node_id
+├── depth
+├── parent_node_ids
+├── branch_id
+├── state_snapshot
+├── state_delta
+├── action
+├── expected_observation
+├── confidence
+├── estimated_cost
+├── status
+└── linked_attempt_id
+```
+
+`DepthLayer` は、同じ階層の node を比較するための単位です。
+agent が「この階層ではどの方向が有望か」を考えるときは、node 単体ではなく layer 全体を見ます。
+
+### Node の中に State がある
+
+各 node は、単なる action ではありません。
+その node に到達したと仮定したときの state を持ちます。
+
+```text
+Node
+└── state_snapshot
+    ├── artifacts
+    ├── knowledge
+    ├── open_questions
+    ├── active_branches
+    └── predictions
+```
+
+これにより、同じ depth にある複数 node を「それぞれ別の未来状態」として比較できます。
+
+### 遷移は一対一とは限らない
+
+node 間の遷移は一対一である必要はありません。
+
+```text
+one-to-many:
+  一つの状態から複数の未来候補へ分岐する
+
+many-to-one:
+  複数の枝が同じ説明や candidate に合流する
+
+many-to-many:
+  複数の前提から複数の候補が生まれる
+```
+
+したがって、tree と呼びつつも、内部表現としては edge を持つ graph に近くなる場合があります。
+ただし、推論の主語はあくまで depth 付きの tree view です。
+
+## PredictionTree
+
+`PredictionTree` は、まだ実行していない未来予測です。
+
+```text
+PredictionTree
+├── depth 0: current state
+├── depth 1: next action candidates
+├── depth 2: expected follow-up states
+└── depth N: deeper forecast
+```
+
+PredictionTree の node は evidence ではありません。
+あくまで予測です。
+
+```text
+PredictedNode
+├── action
+├── expected_observation
+├── expected_state_delta
+├── assumptions
+├── confidence
+├── estimated_cost
+└── children
+```
+
+実際に action を実行したら、対応する predicted node は `Attempt` として
+`EvidenceTree` に記録されます。
+
+## EvidenceTree
+
+`EvidenceTree` は、実際に実行した attempt の履歴です。
 
 ```text
 Requirement
@@ -137,9 +279,13 @@ Requirement
 
 これは append-only の log として保存します。
 
+概念上は `EvidenceTree` と呼びます。
+ただし、枝の merge や shared parent を厳密に表現する場合、内部実装は graph になっても構いません。
+その場合でも、agent が読む view は depth を持つ EvidenceTree として提供します。
+
 ## Attempt
 
-`Attempt` は Evidence Graph の一つの node です。
+`Attempt` は EvidenceTree の一つの node です。
 
 ```text
 Attempt
@@ -592,14 +738,14 @@ State_t+1
     └── action cost を差し引く
 ```
 
-一方で、`Evidence Graph` には append-only で `Attempt` を追加します。
+一方で、`EvidenceTree` には append-only で `Attempt` を追加します。
 
 ```text
-EvidenceGraph_t+1 = EvidenceGraph_t + Attempt_t
+EvidenceTree_t+1 = EvidenceTree_t + Attempt_t
 ```
 
 つまり、`State` は現在の作業状態として更新され、
-`Evidence Graph` は過去の事実として追記されます。
+`EvidenceTree` は過去の事実として追記されます。
 
 ## 遷移の終了条件
 
@@ -657,7 +803,10 @@ DB はまだ不要です。
 State:
   現在の信念、候補、問い、予測
 
-Evidence Graph:
+PredictionTree:
+  まだ実行していない、depth 付きの未来予測
+
+EvidenceTree:
   過去の試行、観測、証拠、判断、学習
 
 Transition:

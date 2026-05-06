@@ -32,7 +32,10 @@ Requirement
 ## 中心に置くもの
 
 中心に置くのは LLM でも MCTS でも ManagerAgent でもありません。
-中心に置くのは **Evidence Graph** です。
+中心に置くのは **PredictionTree / EvidenceTree** です。
+
+`PredictionTree` は、まだ実行していない未来予測です。
+`EvidenceTree` は、実際に実行した試行と証拠の履歴です。
 
 LLM、探索アルゴリズム、planner、heuristic は差し替え可能です。
 しかし、証拠、判断、学習結果が残らない最適化は optagent の対象ではありません。
@@ -45,7 +48,7 @@ LLM、探索アルゴリズム、planner、heuristic は差し替え可能です
 optagent
 ├── core
 │   ├── canonical schema
-│   ├── Evidence Graph
+│   ├── PredictionTree / EvidenceTree
 │   ├── PromotionGate inputs/outputs
 │   └── StateStore
 ├── workflows
@@ -98,13 +101,13 @@ optagent は以下を目指しません。
 - narrowed scope
 - raw benchmark preservation
 
-これは optagent の Evidence Graph と PromotionGate が最も価値を出しやすい領域です。
+これは optagent の EvidenceTree と PromotionGate が最も価値を出しやすい領域です。
 
 ## 近い実装方針
 
 1. 日本語の `DIRECTION / STATE_MODEL / AGENT_LOOP` を正本として固める。
 2. `core` を canonical schema と storage layer にする。
-3. `State` と `Evidence Graph` の責務を明確に分ける。
+3. `State`、`PredictionTree`、`EvidenceTree` の責務を明確に分ける。
 4. `Action` を investigation / implementation / verification に分ける。
 5. `PromotionGate` を canonical `Decision` を返す形に寄せる。
 6. `Finding` を検索する `KnowledgeStore` を作る。
