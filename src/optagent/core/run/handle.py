@@ -7,8 +7,8 @@ import json
 from dataclasses import dataclass, field
 
 from optagent.core.ids import sequential_id, slugify, timestamp_id
-from optagent.core.requirements import Requirement
-from optagent.core.state import StateNode, StateSnapshot
+from optagent.core.schema.requirements import Requirement
+from optagent.core.schema.state import StateNode, StateSnapshot
 from optagent.core.tree import PredictionDAG, TraceDAG
 
 

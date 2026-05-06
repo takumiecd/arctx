@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from optagent.core.derived import DerivedRecord
-from optagent.core.results import ActionResult
+from optagent.core.schema.derived import DerivedRecord
+from optagent.core.schema.results import ActionResult
 from optagent.core.types import JSONValue, MatchStatus, PlanKind, to_jsonable
 
 

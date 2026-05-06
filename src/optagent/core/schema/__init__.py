@@ -1,8 +1,4 @@
-"""optagent.
-
-The public package is intentionally small while the project is being rebuilt
-around the state-transition model documented in ``docs/ja``.
-"""
+"""Schema package — all state-transition data models."""
 
 from optagent.core.schema.derived import (
     Decision,
@@ -15,7 +11,6 @@ from optagent.core.schema.derived import (
 from optagent.core.schema.plans import ExecutionPlan, PredictionPlan
 from optagent.core.schema.requirements import Requirement
 from optagent.core.schema.results import ActionResult
-from optagent.core.run import RunHandle, init
 from optagent.core.schema.state import (
     ArtifactRef,
     Budget,
@@ -35,37 +30,19 @@ from optagent.core.schema.transitions import (
     PredictionSelection,
     PredictionStepRef,
 )
-from optagent.core.types import (
-    ActionType,
-    DecisionStatus,
-    DerivedType,
-    MatchStatus,
-    PlanKind,
-    PlanStatus,
-    StateKind,
-    TransitionKind,
-)
-
-__version__ = "0.1.0"
 
 __all__ = [
     "ActionResult",
-    "ActionType",
     "ArtifactRef",
     "Budget",
     "Decision",
-    "DecisionStatus",
     "DerivedRecord",
-    "DerivedType",
     "Evidence",
     "ExecutionPlan",
     "Finding",
     "FindingRef",
-    "MatchStatus",
     "Observation",
     "ObservedTransition",
-    "PlanKind",
-    "PlanStatus",
     "PredictionError",
     "PredictionMatch",
     "PredictionPath",
@@ -75,13 +52,9 @@ __all__ = [
     "PredictionStepRef",
     "PredictedTransition",
     "Requirement",
-    "RunHandle",
     "StateContext",
     "StateDelta",
-    "StateKind",
     "StateNode",
     "StateSnapshot",
     "TraceContext",
-    "TransitionKind",
-    "init",
 ]

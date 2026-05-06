@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from optagent.core.state import StateNode
-from optagent.core.transitions import (
+from optagent.core.schema.state import StateNode
+from optagent.core.schema.transitions import (
     PredictionSelection,
     PredictedTransition,
 )

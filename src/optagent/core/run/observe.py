@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from optagent.core.derived import DerivedRecord
-from optagent.core.results import ActionResult
-from optagent.core.transitions import ObservedTransition
+from optagent.core.schema.derived import DerivedRecord
+from optagent.core.schema.results import ActionResult
+from optagent.core.schema.transitions import ObservedTransition
 
 
 def observe_impl(

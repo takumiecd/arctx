@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from optagent.core.plans import ExecutionPlan, PredictionPlan
-from optagent.core.state import StateNode
-from optagent.core.transitions import ObservedTransition, PredictedTransition
+from optagent.core.schema.plans import ExecutionPlan, PredictionPlan
+from optagent.core.schema.state import StateNode
+from optagent.core.schema.transitions import ObservedTransition, PredictedTransition
 
 
 @dataclass

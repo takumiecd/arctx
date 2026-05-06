@@ -1,36 +1,33 @@
 """Core state-transition model."""
 
-from optagent.core.derived import (
+from optagent.core.ids import sequential_id, slugify, timestamp_id
+from optagent.core.run import RunHandle, init
+from optagent.core.schema import (
+    ActionResult,
+    ArtifactRef,
+    Budget,
     Decision,
     DerivedRecord,
     Evidence,
+    ExecutionPlan,
     Finding,
-    Observation,
-    PredictionError,
-)
-from optagent.core.ids import sequential_id, slugify, timestamp_id
-from optagent.core.plans import ExecutionPlan, PredictionPlan
-from optagent.core.requirements import Requirement
-from optagent.core.results import ActionResult
-from optagent.core.run import RunHandle, init
-from optagent.core.state import (
-    ArtifactRef,
-    Budget,
     FindingRef,
+    Observation,
+    ObservedTransition,
+    PredictionError,
+    PredictionMatch,
+    PredictionPath,
+    PredictionPlan,
     PredictionRef,
+    PredictionSelection,
+    PredictionStepRef,
+    PredictedTransition,
+    Requirement,
     StateContext,
     StateDelta,
     StateNode,
     StateSnapshot,
     TraceContext,
-)
-from optagent.core.transitions import (
-    ObservedTransition,
-    PredictedTransition,
-    PredictionMatch,
-    PredictionPath,
-    PredictionSelection,
-    PredictionStepRef,
 )
 from optagent.core.tree import PredictionDAG, TraceDAG
 from optagent.core.types import (

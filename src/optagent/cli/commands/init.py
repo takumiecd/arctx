@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 import optagent
-from optagent.core.requirements import Requirement
+from optagent.core.schema.requirements import Requirement
 from optagent.storage.jsonl import JsonlRunStore
 
 

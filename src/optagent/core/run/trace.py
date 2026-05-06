@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from optagent.core.state import StateNode, TraceContext
+from optagent.core.schema.state import StateNode, TraceContext
 from optagent.core.tree import PredictionDAG
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from optagent.core.plans import ExecutionPlan, PredictionPlan
+from optagent.core.schema.plans import ExecutionPlan, PredictionPlan
 from optagent.core.types import JSONValue
 
 

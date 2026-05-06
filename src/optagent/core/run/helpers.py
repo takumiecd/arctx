@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from optagent.core.plans import ExecutionPlan, PredictionPlan
-from optagent.core.state import StateNode
+from optagent.core.schema.plans import ExecutionPlan, PredictionPlan
+from optagent.core.schema.state import StateNode
 
 
 def find_plan_impl(self, plan_id: str) -> ExecutionPlan | PredictionPlan:

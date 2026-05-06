@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Literal
 
-from optagent.core.derived import DerivedRecord
-from optagent.core.plans import ExecutionPlan, PredictionPlan
-from optagent.core.results import ActionResult
-from optagent.core.state import StateNode
-from optagent.core.transitions import (
+from optagent.core.schema.derived import DerivedRecord
+from optagent.core.schema.plans import ExecutionPlan, PredictionPlan
+from optagent.core.schema.results import ActionResult
+from optagent.core.schema.state import StateNode
+from optagent.core.schema.transitions import (
     ObservedTransition,
     PredictionMatch,
     PredictionPath,

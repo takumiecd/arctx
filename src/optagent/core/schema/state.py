@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from optagent.core.requirements import Requirement
+from optagent.core.schema.requirements import Requirement
 from optagent.core.types import JSONValue, NodeStatus, StateKind, to_jsonable
 
 
