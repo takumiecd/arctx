@@ -1,150 +1,112 @@
 # プロジェクトの方向性
 
-## 一言でいうと
+optagent は、問題解決や最適化の過程を構造化して保存するためのライブラリです。
 
-optagent は、問題解決や最適化の過程で出てくる **事実と構造化メモを整理し、
-人間・AI・自動化が同じ文脈を共有するための基盤** です。
+コード最適化、カーネル最適化、実験、調査では、単に「最終的なコード」だけでなく、
+途中で何を試し、何が起き、何を学んだかが重要になります。
+optagent は、その過程をあとから読み返せる形で残すことを目的にしています。
 
-目的は、汎用エージェントフレームワークを作ることではありません。
-コード最適化やカーネル最適化に限らず、調査、実験、実装、検証で得た事実を
-再解釈できる形で残し、次の行動に使える作業文脈として整理することです。
+## 目的
 
-```text
-Requirement
-  -> StateNode
-      -> Plan
-      -> ObservedTransition
-          -> ActionResult
-          -> DerivedRecords
-      -> StateNode
-```
+optagent が扱う中心情報は次の 4 つです。
 
-最適化試行が次の問いに答えられないなら、optagent としては不十分です。
+- plan: 何をするつもりだったか
+- prediction: 何が起きると考えていたか
+- result: 実際に何が起きたか
+- derived record: その結果から何を解釈したか
+
+この情報を残すことで、次の問いに答えられるようにします。
 
 - なぜその試行をしたのか
-- 何を実行したのか
+- 実行前に何を期待していたのか
 - 実行して何が出たのか
-- どの raw output / artifact / metric を残したのか
-- その事実からどのような解釈や判断を作ったのか
-- なぜ採用、拒否、範囲縮小、追加検証、危険判定になったのか
-- 次の試行に何を学習として残すのか
+- どの artifact、log、metric が根拠なのか
+- 予測と実測はどれくらい合っていたのか
+- 採用、拒否、追加調査の判断は何に基づくのか
+- 次の試行で何を避けるべきか
 
-ここでいう derived record は、事実に対する構造化メモです。
-人間が書く実験ノート、LLM が作る要約、evaluator が作る evidence、promotion gate が作る decision は、
-すべて同じ「事実から作ったメモ」として扱います。
-形式を揃えることで、人間も AI も同じ文脈を読み直せます。
+## 中心モデル
 
-## 中心に置くもの
-
-中心に置くのは LLM でも MCTS でも ManagerAgent でもありません。
-中心に置くのは **PredictionDAG / TraceDAG** です。
-
-`PredictionDAG` は、まだ実行していない未来予測です。
-`TraceDAG` は、実際に実行した遷移と source-of-truth facts の履歴です。
-
-`StateNode` は点です。
-`Plan` は実行前の計画です。
-`ObservedTransition` は実行後の矢印です。
-`ActionResult` は実行後に得られた artifact、log、metric、error などの結果です。
-
-optagent で最も重視するのは、再解釈できる事実をきれいに残すことです。
-`Plan` と `ActionResult` は source of truth として扱います。
-`Observation`、`Evidence`、`Decision`、`Finding`、`StateDelta` は、その事実から作る derived record です。
-
-derived record は重要ですが、事実そのものではありません。
-LLM、evaluator、promotion policy、人間の判断によって後から作り直せる解釈や圧縮です。
+optagent は、予測と実測を分けて保存します。
 
 ```text
-source of truth:
-  Plan + ActionResult
+PredictionDAG:
+  まだ実行していない未来の候補。
 
-derived interpretation:
-  Observation / Evidence / PredictionError / Decision / Finding / StateDelta
-
-working memory:
-  StateSnapshot
+TraceDAG:
+  実際に起きたことの履歴。
 ```
 
-この分解により、各試行について「何を期待していたか」「実際に何が起きたか」を残し、
-あとから別の evaluator や LLM で再評価できます。
-
-LLM、探索アルゴリズム、planner、heuristic は差し替え可能です。
-しかし、証拠、判断、学習結果が残らない最適化は optagent の対象ではありません。
-
-## 作るもの
-
-安定した構成は以下を目指します。
+基本的な流れは次の通りです。
 
 ```text
-optagent
-├── core
-│   ├── canonical schema
-│   ├── StateNode / Plan / ActionResult / Transition
-│   ├── PredictionDAG / TraceDAG
-│   ├── PromotionGate inputs/outputs
-│   └── StateStore
-├── workflows
-│   └── hypothesis-test workflow
-├── domains
-│   ├── kernel
-│   └── code
-├── execution
-│   ├── backend adapters
-│   ├── executors
-│   ├── evaluators
-│   └── sandbox/worktree policy
-├── storage
-│   ├── run directories
-│   ├── artifacts
-│   ├── raw outputs
-│   ├── derived records
-│   └── finding indexes
-└── legacy
-    ├── previous core
-    ├── v1
-    └── v2
+ObservedState
+  -> ExecutionPlan
+  -> PredictedTransition
+  -> ActionResult
+  -> ObservedTransition
+  -> ObservedState
 ```
 
-旧実装は `legacy` に退避します。
-`v1` や `v2` は参考実装として残しますが、今後の設計ではプロダクトの中心概念として扱いません。
+`PredictionDAG` では、1 つの plan から複数の未来 outcome を考えられます。
+`TraceDAG` では、実際に起きた outcome を source of truth として保存します。
 
-## 作らないもの
+## optagent がやること
 
-optagent は以下を目指しません。
+optagent は次の機能を提供します。
+
+- run を作る
+- observed state と predicted state を管理する
+- plan を作る
+- 未来 outcome を予測として保存する
+- 実行結果を trace に保存する
+- 予測と実測の対応を保存する
+- derived record を実行履歴に紐づける
+- 過去の履歴を辿れるようにする
+
+現在の core 実装は in-memory です。
+永続化、CLI、domain-specific workflow は今後追加します。
+
+## optagent がやらないこと
+
+optagent は、現時点では次のものではありません。
 
 - 汎用 chatbot framework
 - LangChain 的な general agent framework
 - benchmark 付き code generator
-- MCTS を主役にした研究デモ
-- 生成コードをデフォルトで元ファイルへ直接書き戻すツール
+- executor を内蔵した自動最適化ツール
+- 生成コードを自動で元ファイルに書き戻すツール
 
-自動 write-back は原則禁止です。
-候補は patch、artifact、candidate directory、worktree などに隔離し、
-明示的に promotion された後だけ適用を検討します。
+executor、planner、predictor、LLM、benchmark runner は外側から接続します。
+optagent の core は、それらが生み出す plan、prediction、result、derived record を保存する基盤です。
 
-## 最初に強くするドメイン
+## 最初に強くする領域
 
-最初に本気で強くするべきドメインは kernel optimization です。
+最初に強くする領域は、コード最適化とカーネル最適化です。
 
-理由は、kernel optimization では以下が自然に必要になるためです。
+特にカーネル最適化では、次の情報を残す必要があります。
 
-- dispatch key ごとの適用可否
 - shape family ごとの性能
 - dtype / device ごとの差
 - correctness
 - latency
 - regression
-- narrowed scope
-- raw benchmark preservation
+- 適用できる dispatch scope
+- raw benchmark output
 
-これは optagent の TraceDAG と structured derived records が最も価値を出しやすい領域です。
+これらは、optagent の `TraceDAG` と `DerivedRecord` が価値を出しやすい領域です。
 
-## 近い実装方針
+## 近い実装予定
 
-1. 日本語の `DIRECTION / STATE_MODEL / AGENT_LOOP` を正本として固める。
-2. `core` を canonical schema と storage layer にする。
-3. `PredictionDAG` と `TraceDAG` の責務を明確に分ける。
-4. `ActionSpec` を廃止し、`PredictionPlan` / `ExecutionPlan` に寄せる。
-5. `PredictedTransition` / `ObservedTransition` を schema に入れる。
-6. `DerivedRecord` を structured memo として保存する。
-7. kernel domain の最小 workflow を作る。
+1. in-memory API を安定させる
+2. JSONL / run directory storage を追加する
+3. CLI から run を作成、更新、参照できるようにする
+4. executor / evaluator の protocol を整える
+5. code optimization の小さな workflow を作る
+6. kernel optimization の workflow を作る
+
+## ドキュメント
+
+- [API](API.md): Python API の使い方
+- [状態モデル](STATE_MODEL.md): PredictionDAG / TraceDAG の考え方
+- [問題解決ループ](AGENT_LOOP.md): optagent を使った作業サイクル

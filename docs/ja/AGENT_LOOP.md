@@ -1,226 +1,222 @@
-# エージェントの思考ループ
+# 問題解決ループ
 
-## 現在の用語方針
+この文書は、optagent を使って問題解決や最適化のサイクルをどう回すかを説明します。
 
-API 仕様では、`ActionSpec` を独立 object として作らず、実行内容は `Plan` に持たせます。
-この文書で `ActionSpec` と書いている箇所は、API 上は `ExecutionPlan` または `PredictionPlan` と読み替えます。
-`EvidenceTree` は `TraceDAG`、`PredictionTree` は `PredictionDAG` と読み替えます。
+optagent は、AI agent そのものではありません。
+人間、AI、script、executor が同じ文脈を共有するために、計画、予測、実行結果、メモを構造化して保存する基盤です。
 
-API としての正本は [API 仕様ドラフト](API.md) です。
+## 基本サイクル
 
-## 基本思想
-
-最適化エージェントは、単にコードを書いて benchmark を回す存在ではありません。
-人間のエンジニアが行うように、調査し、原因を考え、仮説を立て、実装し、
-検証し、結果から学ぶ存在です。
-
-基本ループは次です。
+問題解決や最適化では、通常次の流れを繰り返します。
 
 ```text
-調査する
-  -> 説明する
+調べる
   -> 仮説を立てる
-  -> action を選ぶ
   -> 実行する
-  -> 観測する
-  -> 判断する
-  -> 学習する
+  -> 結果を見る
+  -> 理解を更新する
+  -> 次の行動を決める
 ```
 
-このモデルでは、**調査も action として扱います**。
-調査は前処理ではありません。
-
-例えば profile を取る、baseline matrix を回す、dispatch を trace する、
-failure log を読む、といった行動はすべて「この情報を取れば不確実性が減るはず」
-という予測を持った action です。
-
-## 状態遷移として見る
-
-エージェントは常に現在の状態を持ちます。
+optagent では、この流れを次の API 操作に対応させます。
 
 ```text
-StateNode_t
-  = requirement
-  + current artifacts
-  + compressed knowledge
-  + open questions
-  + predicted futures
+current observed state
+  -> plan
+  -> predict
+  -> execute outside optagent
+  -> observe / promote
+  -> trace
+  -> refresh
 ```
 
-この `StateNode_t` は source of truth ではなく、次の action を選ぶための working memory です。
-`requirement` は固定入力、`artifacts` は fact への参照、`compressed knowledge` や `predicted futures` は derived cache です。
+## 1. current observed state を読む
 
-action は、現在の状態をより良い次の状態に進めるために選ばれます。
-このとき、実行前の計画と実行後の結果を分けて記録します。
+run は常に current observed state を持ちます。
 
-`ActionSpec` は「これから何をするか」と「何が観測されるはずか」の仕様です。
-`ActionResult` は実行して出てきた artifact、log、metric、error などです。
-`TransitionRecord` は、それらの source of truth と任意の derived record を加えた矢印です。
+```python
+state_id = run.current_observed_state_id
+```
 
-この分け方により、agent は「予測通りだったか」「外れたなら何を学ぶべきか」を
-各試行ごとに追跡できます。
+この state は、実際に観測された現在地です。
+次の plan は、通常ここから作ります。
+
+## 2. plan を作る
+
+```python
+plans = run.plan(state_id=run.current_observed_state_id)
+```
+
+observed state から作った plan は `ExecutionPlan` です。
+これは executor に渡せる実行用の計画です。
+
+predicted state から作った plan は `PredictionPlan` です。
+これは未来予測を広げるための計画で、直接実行しません。
+
+## 3. 予測する
+
+```python
+predicted = run.predict(plan_id=plans[0].plan_id, max_outcomes=3)
+```
+
+`predict` は、plan を実行した場合に起きそうな outcome を作ります。
+
+1 つの plan に対して、複数の outcome を持てます。
 
 ```text
-StateNode_t
-  -> ActionSpec_t
-  -> ActionResult_t
-  -> DerivedRecords_t
-  -> StateNode_t+1
+Plan
+  ├── success
+  ├── partial improvement
+  └── regression
 ```
 
-図として見ると、点と矢印の関係は次です。
+これにより、実行前に「うまくいく場合」「悪化する場合」「追加調査が必要な場合」を分けて考えられます。
+
+## 4. 実行する
+
+optagent は、現在の core では executor を内蔵していません。
+実行は外部の script、test runner、benchmark runner、AI coding tool などが行います。
+
+実行後、得られた結果を `ActionResult` として渡します。
+
+```python
+result = ActionResult(
+    result_id="r_0001",
+    execution_plan_id=plans[0].plan_id,
+    status="completed",
+    raw_outputs=("raw/bench.txt",),
+    metrics={"latency_ms": 1.5},
+)
+```
+
+## 5. 結果を記録する
+
+予測と対応づけずに結果だけ記録する場合:
+
+```python
+observed = run.observe(
+    execution_plan_id=plans[0].plan_id,
+    action_result=result,
+)
+```
+
+予測 outcome と実測結果を対応づける場合:
+
+```python
+observed = run.promote(
+    mode="transition",
+    predicted_transition_id=predicted[0].transition_id,
+    execution_plan_id=plans[0].plan_id,
+    action_result=result,
+)
+```
+
+`observe` と `promote(mode="transition")` は、どちらも `TraceDAG` に `ObservedTransition` を追加します。
+違いは、予測との対応を保存するかどうかです。
+
+## 6. derived record を残す
+
+実行結果から作った解釈や判断は `DerivedRecord` として保存します。
+
+```python
+derived = DerivedRecord(
+    derived_id="d_0001",
+    source_transition_id="t_obs_0001",
+    derived_type="evidence",
+    payload={
+        "correctness": "passed",
+        "speedup": 1.12,
+    },
+    generator="benchmark_parser",
+)
+```
+
+derived record は、事実に対する構造化メモです。
+後から作り直せるため、実行結果そのものとは分けて扱います。
+
+## 7. 履歴を読む
+
+```python
+history = run.trace(depth=3)
+```
+
+`trace` は observed state から過去の実行履歴を辿ります。
+
+取得できるもの:
+
+- past state ids
+- observed transition ids
+- execution plan ids
+- action result ids
+- matched predicted transition ids
+- derived record ids
+- raw output / artifact / log refs
+
+この履歴を使って、次の plan を作ります。
+
+## 8. PredictionDAG を更新する
+
+実行結果を記録すると、current observed state が進みます。
+その時点で、古い未来予測は現在地とズレている可能性があります。
+
+```python
+run.refresh()
+```
+
+`refresh` は、current observed state に anchor された新しい `PredictionDAG` を作ります。
+
+## ループの使い分け
+
+### 調査フェーズ
+
+原因がまだ分からない段階では、調査 plan を作ります。
 
 ```text
-StateNode_t
-  ── TransitionRecord_t
-      ├── ActionSpec_t
-      ├── ActionResult_t
-      └── DerivedRecords_t
-  ──>
-StateNode_t+1
+profile
+inspect logs
+run small benchmark matrix
+compare baseline
 ```
 
-ここで「良い状態」とは、必ずしも速い candidate ができた状態だけではありません。
+この段階では、derived record として observation や summary が増えます。
 
-- 原因候補が絞れた
-- 悪い枝を切れた
-- 適用範囲を狭められた
-- failure の説明ができた
-- 次に取るべき action が明確になった
-- 再利用可能な finding が残った
+### 実装フェーズ
 
-これらも良い状態遷移です。
-
-## フェーズの変化
-
-最適化の進み方は、常に同じではありません。
-不確実性が減るにつれて、ループの形が変わります。
-
-### 1. 不確実性が高い段階
-
-最初は原因がわからないため、調査が多くなります。
+方向性が見えたら、実装 plan を作ります。
 
 ```text
-調査する
-  -> 説明候補を作る
-  -> 追加調査する
-  -> 方向を決める
+try scoped optimization
+generate candidate patch
+change dispatch rule
 ```
 
-この段階では、実装よりも観測の設計が重要です。
+実装後は correctness、latency、regression などを derived record として残します。
 
-例:
+### 検証フェーズ
 
-- まず baseline を shape ごとに測る
-- correctness failure の種類を分ける
-- dispatch が想定通りか確認する
-- bottleneck が launch overhead か memory access か調べる
-
-### 2. 方向が見えた段階
-
-ある程度説明が立つと、候補実装を試し始めます。
+採用前には、検証 plan を作ります。
 
 ```text
-仮説を立てる
-  -> 実装する
-  -> test / benchmark する
-  -> 判断する
-  -> 学習する
+run full tests
+run benchmark matrix
+check numerical error
+check regression by shape
 ```
 
-この段階で重要なのは、単に速いかどうかではありません。
+この段階では、decision や finding が重要になります。
 
-- どの scope で効くのか
-- どの shape で regression するのか
-- correctness risk は何か
-- promotion できる証拠が揃っているか
+## optagent が保存したいもの
 
-を確認します。
+optagent が重視するのは、コードそのものよりも、問題解決の過程です。
 
-### 3. 微調整段階
+保存したい問い:
 
-終盤では解の形が見えているため、調査は少なくなります。
+- なぜその plan を選んだのか
+- 何が起きると予測したのか
+- 実際に何が起きたのか
+- 予測と実測はどれくらい合っていたのか
+- どの artifact や raw output が根拠なのか
+- その結果から何を学んだのか
+- 次に避けるべきことは何か
 
-```text
-仮説を立てる
-  -> 実装する
-  -> 検証する
-```
-
-ただし、予測と違う結果が出た場合は、再び調査に戻ります。
-
-## 予測とズレ
-
-エージェントは、action を実行する前に期待する観測を持つべきです。
-
-例:
-
-```text
-仮説:
-  small batch は launch overhead が支配的である。
-
-予測:
-  fused dispatch を入れると small shape は速くなる。
-  large shape は大きく変わらない。
-
-観測:
-  small shape は速くなった。
-  large shape は遅くなった。
-
-更新:
-  candidate は small batch 用に scope を狭めるべき。
-```
-
-このズレは失敗ではなく、学習信号です。
-必要なら、このズレを `PredictionError` や `Finding` として derived record に残します。
-ただし source of truth は、実行前の `ActionSpec` と実行後の `ActionResult` です。
-
-## 枝分かれ、枝刈り、合流
-
-最適化は一本の直線ではありません。
-複数の原因仮説や実装候補が枝分かれします。
-
-```text
-baseline
-├── branch A: launch overhead hypothesis
-│   ├── candidate A1
-│   └── candidate A2
-├── branch B: memory layout hypothesis
-│   └── candidate B1
-└── branch C: dispatch bug hypothesis
-    └── investigation C1
-```
-
-証拠によって見込みのない枝は prune します。
-別々の枝が同じ原因を説明している場合や、安全に組み合わせられる場合は merge します。
-
-そのため、`TransitionRecord` には source of truth として以下が必要です。
-
-- from_state / to_state
-- action_spec
-- action_result
-- raw outputs / artifacts / metrics
-
-## 実装上の含意
-
-このモデルから、次の設計方針が出ます。
-
-1. investigation action を first-class にする。
-2. implementation action と verification action も同じ枠で扱う。
-3. `ActionSpec` には expected observation を持たせる。
-4. `ActionResult` には再評価できる raw fact を保存する。
-5. observation、evidence、decision、finding は derived record として追加できる。
-6. failed transition でも raw fact を残す。
-7. state は現在の compressed knowledge と open questions を持つ。
-8. EvidenceTree は過去の immutable fact log として残す。
-9. KnowledgeStore は findings を検索して次の action に使う。
-10. promotion と learning を分ける。
-
-## まとめ
-
-optagent のエージェント像は、次の一文にまとめられます。
-
-> 最適化を、予測を持った action による状態遷移として扱い、再解釈できる事実を残し、
-> 必要な解釈や知識を derived record として積み上げるエージェント。
-
-この考え方を、状態モデルと workflow の両方に反映する必要があります。
+この情報が残っていると、人間も AI も後から同じ文脈を読み直せます。

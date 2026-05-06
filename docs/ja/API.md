@@ -1,138 +1,130 @@
-# API 仕様ドラフト
+# API
 
-## 目的
+この文書は、optagent の現在の Python API を説明します。
 
-optagent の API は、問題解決や最適化の過程を **予測と実測を分けた状態遷移** として扱い、
-あとから再解釈できる形で保存するためのものです。
+optagent は、問題解決や最適化の過程を記録するためのライブラリです。
+中心になる操作は、次の 2 つです。
 
-中心にあるのは、次の 2 つの DAG です。
+- 未来を予測する: `PredictionDAG`
+- 実際に起きたことを記録する: `TraceDAG`
 
-```text
-PredictionDAG:
-  まだ実行していない未来予測。
+ユーザーは `RunHandle` を通して、計画を作り、予測し、実行結果を記録し、履歴を辿ります。
 
-TraceDAG:
-  実際に起きた実行履歴。
-  source-of-truth facts を保存する。
-```
-
-`PredictionDAG` は current observed state から見た未来展開です。
-`TraceDAG` は、実際に実行した plan と result の履歴です。
-
-## 基本方針
-
-### ActionSpec は作らない
-
-`ActionSpec` という独立 object は作りません。
-
-実行内容は plan の本体です。
-`Plan` と `ActionSpec` を分けると、どちらが action の意図、入力、期待観測を持つのかが重なりやすくなります。
-
-```text
-Plan:
-  どの state から、何を、どの意図で、どの入力で行うか。
-```
-
-したがって、`action_type`、`intent`、`inputs`、`expected_observation`、
-`estimated_cost`、`safety_policy` などは plan に直接持たせます。
-
-### Plan は 2 種類に分ける
-
-Plan は context を混ぜないために 2 種類に分けます。
-
-```text
-PredictionPlan:
-  PredictionDAG 内で作られる仮説上の plan。
-  そのまま実行しない。
-
-ExecutionPlan:
-  TraceDAG / current observed state に接地された実行用 plan。
-  executor に渡して ActionResult を受け取れる。
-```
-
-`PredictionPlan` を実行したい場合は、PredictionDAG の selected path / selected transition を明示して、
-`ExecutionPlan` に promote します。
-
-### Transition も 2 種類に分ける
-
-```text
-PredictedTransition:
-  Plan を実行した場合に起きるかもしれない outcome。
-  1 つの plan から複数作られてよい。
-
-ObservedTransition:
-  ExecutionPlan を実際に実行して得た result。
-  1 つの ExecutionPlan につき、原則 1 つだけ作る。
-```
-
-prediction 側では 1 plan から複数 outcome が出ます。
-trace 側では 1 execution plan の実行結果は 1 つです。
-
-```text
-Prediction:
-  Plan P
-    ├── PredictedTransition T_pred_a
-    ├── PredictedTransition T_pred_b
-    └── PredictedTransition T_pred_c
-
-Trace:
-  ExecutionPlan P_exec
-    └── ObservedTransition T_obs
-          matched_predicted_transition_id = T_pred_b
-```
-
-## 最小 API
-
-初期 API は以下です。
-
-```text
-init
-plan
-predict
-select_prediction
-promote
-observe/result
-refresh
-trace/history
-```
-
-補助 API として以下を持てます。
-
-```text
-prune
-select
-explain
-search_findings
-```
-
-## init
-
-新しい run を開始し、初期状態、TraceDAG、PredictionDAG を作ります。
+## 最小例
 
 ```python
-init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle
+import optagent
+from optagent import ActionResult, Requirement
+
+requirement = Requirement(
+    requirement_id="req_kernel",
+    target_type="kernel",
+    target_id="csc_linear",
+)
+
+run = optagent.init(requirement, run_id="demo")
+
+plans = run.plan(state_id=run.current_observed_state_id)
+predicted = run.predict(plan_id=plans[0].plan_id, max_outcomes=2)
+
+result = ActionResult(
+    result_id="r_0001",
+    execution_plan_id=plans[0].plan_id,
+    status="completed",
+    raw_outputs=("raw/profile.txt",),
+    metrics={"latency_ms": 1.5},
+)
+
+observed = run.promote(
+    mode="transition",
+    predicted_transition_id=predicted[0].transition_id,
+    execution_plan_id=plans[0].plan_id,
+    action_result=result,
+)
+
+history = run.trace()
 ```
 
-初期状態:
+この例では、実行前に予測を作り、実行後にその予測と実測結果を対応づけています。
+予測と対応づけずに結果だけ記録したい場合は `run.observe(...)` を使います。
 
-```text
-TraceDAG:
-  S_obs_0000
+## 用語
 
-PredictionDAG:
-  S_pred_root_0000
-    anchor_observed_state_id = S_obs_0000
-    snapshot_hash == S_obs_0000.snapshot_hash
+### Requirement
 
-current = S_obs_0000
-```
+run の目的です。
+何を解きたいのか、何を最適化したいのかを表します。
 
-## plan
+### ObservedState
 
-指定した state から plan を作ります。
+実際に観測された状態です。
+`TraceDAG` に保存されます。
+
+### PredictedState
+
+まだ実行していない未来の状態です。
+`PredictionDAG` に保存されます。
+
+### ExecutionPlan
+
+実行可能な計画です。
+observed state から作られ、executor に渡せます。
+
+### PredictionPlan
+
+予測上の計画です。
+predicted state から作られ、未来展開を考えるために使います。
+そのまま executor には渡しません。
+実行したい場合は `promote(mode="plan")` で `ExecutionPlan` に変換します。
+
+### PredictedTransition
+
+plan を実行した場合に起きそうな outcome です。
+1 つの plan から複数作れます。
+
+### ObservedTransition
+
+実際に実行して得た結果です。
+`ExecutionPlan` と `ActionResult` を結びます。
+1 つの `ExecutionPlan` につき、原則 1 つだけ作ります。
+
+### ActionResult
+
+実行後に得られた事実です。
+artifact、raw output、log、metric、error などを持ちます。
+
+### DerivedRecord
+
+事実から作った構造化メモです。
+evidence、decision、finding、summary などを保存できます。
+あとから作り直せる解釈なので、source of truth ではありません。
+
+## `optagent.init`
 
 ```python
-plan(
+optagent.init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle
+```
+
+新しい run を作ります。
+
+作られるもの:
+
+- `TraceDAG` の root observed state: `s_obs_0000`
+- `PredictionDAG` の root predicted state: `s_pred_0000`
+- current observed state: `s_obs_0000`
+
+`PredictionDAG` の root は current observed state に anchor されます。
+
+```python
+run = optagent.init(requirement, run_id="demo")
+
+assert run.current_observed_state_id == "s_obs_0000"
+```
+
+## `run.plan`
+
+```python
+run.plan(
     state_id: str,
     *,
     planner: str | None = None,
@@ -140,57 +132,29 @@ plan(
 ) -> list[ExecutionPlan | PredictionPlan]
 ```
 
-入力 state の種類によって生成される plan の種類が変わります。
+指定した state から plan を作ります。
 
-```text
-plan(ObservedState)  -> ExecutionPlan
-plan(PredictedState) -> PredictionPlan
-```
+返る plan は、入力 state の種類で変わります。
 
-`ExecutionPlan` は実行可能です。
-`PredictionPlan` は PredictionDAG 内でだけ有効です。
-
-```text
-ExecutionPlan
-├── plan_id
-├── plan_kind = execution
-├── from_observed_state_id
-├── action_type
-├── intent
-├── inputs
-├── expected_observation
-├── expected_state_delta
-├── estimated_cost
-├── safety_policy
-├── assumptions
-├── status
-└── metadata
-```
-
-```text
-PredictionPlan
-├── plan_id
-├── plan_kind = prediction
-├── from_predicted_state_id
-├── action_type
-├── intent
-├── inputs
-├── expected_observation
-├── expected_state_delta
-├── estimated_cost
-├── safety_policy
-├── assumptions
-├── confidence
-├── status
-└── metadata
-```
-
-## predict
-
-plan を実行した場合に何が起きそうかを予測し、PredictionDAG を展開します。
+- observed state から呼ぶと `ExecutionPlan`
+- predicted state から呼ぶと `PredictionPlan`
 
 ```python
-predict(
+plans = run.plan(state_id=run.current_observed_state_id)
+assert plans[0].plan_kind == "execution"
+
+root_id = run.prediction_dag.root_predicted_state_id
+future_plans = run.plan(state_id=root_id)
+assert future_plans[0].plan_kind == "prediction"
+```
+
+現在の実装では、planner はまだ最小の placeholder です。
+本格的な planner は domain や workflow 側で差し替える予定です。
+
+## `run.predict`
+
+```python
+run.predict(
     plan_id: str,
     *,
     predictor: str | None = None,
@@ -198,98 +162,76 @@ predict(
 ) -> list[PredictedTransition]
 ```
 
-`predict` は `ExecutionPlan` にも `PredictionPlan` にも使えます。
+plan を実行した場合に起きそうな outcome を作り、`PredictionDAG` を展開します。
 
-`ExecutionPlan` に対する predict は、current observed state から見た depth 1 の未来予測です。
-`PredictionPlan` に対する predict は、PredictionDAG 内のさらに先の未来予測です。
+`ExecutionPlan` に対して呼ぶと、現在の observed state から見た次の未来を予測します。
+`PredictionPlan` に対して呼ぶと、さらに先の未来を予測します。
 
-```text
-PredictedTransition
-├── transition_id
-├── parent_plan_id
-├── parent_plan_kind
-├── from_state_id
-├── outcome_id
-├── outcome_label
-├── predicted_result
-├── predicted_state_delta
-├── to_predicted_state_id
-├── confidence
-├── assumptions
-└── metadata
-```
-
-## select_prediction
-
-複数の predicted transitions の中から、現実に対応させる outcome を選びます。
+1 つの plan から複数の outcome を作れます。
 
 ```python
-select_prediction(
+predicted = run.predict(plans[0].plan_id, max_outcomes=3)
+assert len(predicted) == 3
+```
+
+## `run.select_prediction`
+
+```python
+run.select_prediction(
     *,
     predicted_transition_id: str | None = None,
     predicted_transition_ids: list[str] | None = None,
     to_predicted_state_id: str | None = None,
+    reason: str = "",
 ) -> PredictionSelection
 ```
 
-```text
-PredictionSelection
-├── selection_id
-├── selected_transition_ids
-├── selected_path_id | None
-├── reason
-└── metadata
-```
+複数の予測 outcome の中から、注目するものを選びます。
 
-単発なら `selected_transition_ids` は 1 つです。
-複数 step を promote する場合は、path として複数 transition を持ちます。
-
-## promote
-
-PredictionDAG の指定範囲を、TraceDAG 側に反映できる形にします。
-
-`promote` は prediction を無条件に事実扱いする操作ではありません。
-
-```text
-plan mode:
-  PredictionPlan / prediction path を ExecutionPlan として trace 側に接地する。
-
-transition mode:
-  selected PredictedTransition + ActionResult を ObservedTransition として trace に記録する。
-```
-
-### promote plan/range
-
-PredictionDAG 内の selected path / selected range に含まれる `PredictionPlan` を、
-current observed state 側に接地された `ExecutionPlan` として作り直します。
+この関数は実行履歴を変更しません。
+あとで `promote` するときに、どの予測を現実に対応させたのかを明示するために使います。
 
 ```python
-promote(
+selection = run.select_prediction(
+    predicted_transition_id=predicted[0].transition_id,
+    reason="small shape speedup is the most relevant outcome",
+)
+```
+
+## `run.promote(mode="plan")`
+
+```python
+run.promote(
     *,
-    mode: Literal["plan"],
+    mode="plan",
     prediction_plan_id: str | None = None,
     prediction_path: PredictionPath | None = None,
     observed_state_id: str | None = None,
 ) -> list[ExecutionPlan]
 ```
 
-```text
-PredictionPlan + compatible ObservedState
-  -> ExecutionPlan
-```
+`PredictionDAG` 内の plan を、実行可能な `ExecutionPlan` に変換します。
 
-複数 step の prediction path を指定した場合、path 上の `PredictionPlan` 群を
-`ExecutionPlan` 群に変換します。
-
-### promote transition
-
-selected `PredictedTransition` と実際の `ActionResult` を対応づけて、
-`ObservedTransition` を作ります。
+`PredictionPlan` は予測上の計画なので、そのまま executor に渡しません。
+実行したい場合は、現在または指定した observed state に接地して `ExecutionPlan` を作ります。
 
 ```python
-promote(
+promoted = run.promote(
+    mode="plan",
+    prediction_plan_id=future_plans[0].plan_id,
+)
+
+assert promoted[0].plan_kind == "execution"
+```
+
+複数 step の予測 path をまとめて実行計画にしたい場合は `PredictionPath` を渡します。
+
+## `run.promote(mode="transition")`
+
+```python
+run.promote(
     *,
-    mode: Literal["transition"],
+    mode="transition",
     predicted_transition_id: str,
     action_result: ActionResult,
     execution_plan_id: str | None = None,
@@ -297,21 +239,28 @@ promote(
 ) -> ObservedTransition
 ```
 
-```text
-PredictedTransition T_pred_b + ActionResult
-  -> ObservedTransition T_obs
-       matched_predicted_transition_id = T_pred_b
-```
+予測 outcome と実測結果を対応づけて、`TraceDAG` に `ObservedTransition` を追加します。
 
-`execution_plan_id` が指定されない場合は、元の prediction plan から compatible な
-`ExecutionPlan` を作ってから `ObservedTransition` を作ります。
+使う場面:
 
-## observe / result
-
-予測対応なしで、`ExecutionPlan` の実行結果を TraceDAG に記録します。
+- 実行前に `run.predict(...)` していた
+- 実行後に「どの予測 outcome に近かったか」を保存したい
 
 ```python
-observe(
+observed = run.promote(
+    mode="transition",
+    predicted_transition_id=predicted[0].transition_id,
+    execution_plan_id=plans[0].plan_id,
+    action_result=result,
+)
+```
+
+`execution_plan_id` を省略した場合、対象の prediction plan から `ExecutionPlan` を作ってから記録します。
+
+## `run.observe`
+
+```python
+run.observe(
     execution_plan_id: str,
     action_result: ActionResult,
     *,
@@ -319,49 +268,48 @@ observe(
 ) -> ObservedTransition
 ```
 
-`observe` は `ExecutionPlan` だけを受け付けます。
-`PredictionPlan` は observe できません。
+予測と対応づけずに、実行結果だけを `TraceDAG` に記録します。
 
-```text
-ExecutionPlan + ActionResult -> ObservedTransition
-```
+使う場面:
 
-prediction と対応づけたい場合は、`promote(mode="transition")` を使います。
-
-重要ルール:
-
-```text
-1 つの ExecutionPlan につき ObservedTransition は原則 1 つ。
-同じ操作を再実行したい場合は、新しい ExecutionPlan を作る。
-```
-
-## refresh
-
-PredictionDAG を current observed state から作り直します。
+- まず事実だけを保存したい
+- 実行前に予測を作っていない
+- 予測との対応は後で別の derived record として扱いたい
 
 ```python
-refresh(
+observed = run.observe(
+    execution_plan_id=plans[0].plan_id,
+    action_result=result,
+)
+```
+
+`run.result(...)` は `run.observe(...)` の alias です。
+
+## `run.refresh`
+
+```python
+run.refresh(
     *,
     from_state_id: str | None = None,
     mode: str = "reset",
 ) -> PredictionDAG
 ```
 
-refresh 後の PredictionDAG root は、必ず current observed state に anchor されます。
+`PredictionDAG` を observed state から作り直します。
 
-```text
-PredictionDAG.root.anchor_observed_state_id == current_observed_state_id
-PredictionDAG.root.snapshot_hash == current_observed_state.snapshot_hash
-```
-
-古い PredictionDAG は削除してもよいですが、保存する場合は `stale` と明示します。
-
-## trace / history
-
-現在または指定した observed state から、過去の observed transitions を辿ります。
+実行結果を記録すると current observed state が進みます。
+古い未来予測は現在の状態とズレるため、必要に応じて `refresh` します。
 
 ```python
-trace(
+run.refresh()
+
+assert run.prediction_dag.anchor_observed_state_id == run.current_observed_state_id
+```
+
+## `run.trace`
+
+```python
+run.trace(
     state_id: str | None = None,
     *,
     depth: int | None = None,
@@ -370,228 +318,59 @@ trace(
 ) -> TraceContext
 ```
 
-```text
-TraceContext
-├── current_state_id
-├── past_state_ids
-├── observed_transition_ids
-├── execution_plan_ids
-├── action_result_ids
-├── matched_predicted_transition_ids
-├── derived_record_ids
-├── artifact_refs
-└── metadata
-```
+observed state から過去の実行履歴を辿ります。
 
-## データモデル
+返るもの:
+
+- 過去の state id
+- observed transition id
+- execution plan id
+- action result id
+- 対応した predicted transition id
+- derived record id
+- artifact / raw output / log の参照
 
 ```python
-StateKind = Literal["observed", "predicted"]
-PlanKind = Literal["execution", "prediction"]
-TransitionKind = Literal["observed", "predicted"]
+history = run.trace(depth=3)
+
+print(history.observed_transition_ids)
+print(history.artifact_refs)
 ```
 
-### PredictionPlan
-
-```python
-@dataclass(frozen=True)
-class PredictionPlan:
-    plan_id: str
-    plan_kind: Literal["prediction"]
-    from_predicted_state_id: str
-    action_type: str
-    intent: str
-    inputs: dict[str, JSONValue]
-    expected_observation: dict[str, JSONValue] = field(default_factory=dict)
-    expected_state_delta: dict[str, JSONValue] = field(default_factory=dict)
-    estimated_cost: dict[str, JSONValue] = field(default_factory=dict)
-    safety_policy: dict[str, JSONValue] = field(default_factory=dict)
-    assumptions: tuple[str, ...] = ()
-    confidence: float | None = None
-    status: str = "active"
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-```
-
-### ExecutionPlan
-
-```python
-@dataclass(frozen=True)
-class ExecutionPlan:
-    plan_id: str
-    plan_kind: Literal["execution"]
-    from_observed_state_id: str
-    action_type: str
-    intent: str
-    inputs: dict[str, JSONValue]
-    expected_observation: dict[str, JSONValue] = field(default_factory=dict)
-    expected_state_delta: dict[str, JSONValue] = field(default_factory=dict)
-    estimated_cost: dict[str, JSONValue] = field(default_factory=dict)
-    safety_policy: dict[str, JSONValue] = field(default_factory=dict)
-    assumptions: tuple[str, ...] = ()
-    status: str = "active"
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-```
-
-### PredictedTransition
-
-```python
-@dataclass(frozen=True)
-class PredictedTransition:
-    transition_id: str
-    transition_kind: Literal["predicted"]
-    parent_plan_id: str
-    parent_plan_kind: PlanKind
-    from_state_id: str
-    outcome_id: str
-    outcome_label: str
-    predicted_result: dict[str, JSONValue]
-    predicted_state_delta: dict[str, JSONValue]
-    to_predicted_state_id: str
-    confidence: float | None = None
-    assumptions: tuple[str, ...] = ()
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-```
-
-### ObservedTransition
-
-```python
-@dataclass(frozen=True)
-class ObservedTransition:
-    transition_id: str
-    transition_kind: Literal["observed"]
-    execution_plan_id: str
-    from_observed_state_id: str
-    to_observed_state_id: str
-    action_result: ActionResult
-    matched_predicted_transition_id: str | None = None
-    prediction_match: PredictionMatch | None = None
-    derived_records: tuple[DerivedRecord, ...] = ()
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-```
-
-### PredictionPath / PredictionStepRef
-
-```python
-@dataclass(frozen=True)
-class PredictionPath:
-    path_id: str
-    anchor_observed_state_id: str
-    steps: tuple[PredictionStepRef, ...]
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class PredictionStepRef:
-    prediction_plan_id: str
-    selected_predicted_transition_id: str
-    from_predicted_state_id: str
-    to_predicted_state_id: str
-```
-
-### PredictionMatch
-
-```python
-@dataclass(frozen=True)
-class PredictionMatch:
-    matched_predicted_transition_id: str
-    match_status: Literal["exact", "compatible", "partial", "mismatch"]
-    prediction_error: dict[str, JSONValue] = field(default_factory=dict)
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-```
+`run.history(...)` は `run.trace(...)` の alias です。
 
 ## 不変条件
 
-### Plan
+optagent の API は、次のルールを守ります。
 
-```text
-1. ActionSpec は作らない。
-2. Plan 自体が action_type / intent / inputs を持つ。
-3. PredictionPlan は PredictedState からしか作らない。
-4. ExecutionPlan は ObservedState からしか作らない。
-5. PredictionPlan は直接 observe できない。
-6. PredictionPlan を実行したい場合は promote(mode="plan") で ExecutionPlan を作る。
-7. ExecutionPlan は ActionResult を持たない。
-8. observe には ExecutionPlan と ActionResult が必須である。
-```
+- `PredictionPlan` は直接実行しない
+- 実行する前に `ExecutionPlan` にする
+- `ExecutionPlan` は `ActionResult` を持たない
+- 実行結果は `ObservedTransition` に保存する
+- `PredictedTransition` は実測結果を持たない
+- 1 つの plan から複数の `PredictedTransition` を作れる
+- 1 つの `ExecutionPlan` につき `ObservedTransition` は原則 1 つ
+- `TraceDAG` は実際に起きたことの履歴として扱う
 
-### Transition
+## 現在の実装範囲
 
-```text
-1. PredictedTransition は ActionResult を持たない。
-2. PredictedTransition は 1 plan から複数作られてよい。
-3. ObservedTransition は ActionResult を必ず持つ。
-4. ObservedTransition は 1 ExecutionPlan につき原則 1 つ。
-5. PredictedTransition を ObservedTransition に対応づける場合は matched_predicted_transition_id を必ず保存する。
-6. どの predicted outcome を採用したかは selected_predicted_transition_id / matched_predicted_transition_id で明示する。
-```
+現在の API は in-memory 実装です。
 
-### promote
+実装済み:
 
-```text
-1. promote は PredictionDAG の指定範囲を TraceDAG に反映するための操作である。
-2. PredictionPlan を trace 側に移す場合は、新しい ExecutionPlan を作る。
-3. PredictedTransition を trace 側に移す場合は、必ず ActionResult が必要である。
-4. 1 plan に複数 predicted transitions がある場合、どれを採用するかを必ず selected_predicted_transition_id で指定する。
-5. path を promote する場合、各 step は prediction_plan_id と selected_predicted_transition_id のペアを持つ。
-```
+- run の作成
+- plan の作成
+- prediction の作成
+- prediction の選択
+- prediction plan の execution plan への変換
+- action result の記録
+- trace の取得
+- prediction DAG の refresh
 
-## 推奨 ID prefix
+未実装または今後追加するもの:
 
-```text
-ObservedState:       s_obs_0001
-PredictedState:      s_pred_0001
-ExecutionPlan:       p_exec_0001
-PredictionPlan:      p_pred_0001
-ObservedTransition:  t_obs_0001
-PredictedTransition: t_pred_0001
-PredictionPath:      path_pred_0001
-PredictionSelection: sel_pred_0001
-DerivedRecord:       d_0001
-Finding:             f_0001
-```
-
-## 基本ループ
-
-### 実測を伴う最小ループ
-
-```python
-run = optagent.init(requirement)
-
-plans = run.plan(state_id=run.current_observed_state_id)
-
-predicted = run.predict(plan_id=plans[0].plan_id)
-
-actual_result = executor.execute(plans[0])
-
-observed = run.promote(
-    mode="transition",
-    predicted_transition_id=predicted[0].transition_id,
-    action_result=actual_result,
-    execution_plan_id=plans[0].plan_id,
-)
-
-run.refresh()
-```
-
-### prediction path を promote する場合
-
-```python
-path = PredictionPath(
-    path_id="path_pred_0001",
-    anchor_observed_state_id=run.current_observed_state_id,
-    steps=(
-        PredictionStepRef(
-            prediction_plan_id="p_pred_0001",
-            selected_predicted_transition_id="t_pred_0001b",
-            from_predicted_state_id="s_pred_0001",
-            to_predicted_state_id="s_pred_0002",
-        ),
-    ),
-)
-
-execution_plans = run.promote(
-    mode="plan",
-    prediction_path=path,
-    observed_state_id=run.current_observed_state_id,
-)
-```
+- JSONL / run directory への永続化
+- 実用的な planner / predictor
+- executor との統合
+- domain-specific workflow
+- CLI command
