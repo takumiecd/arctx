@@ -43,6 +43,7 @@ TraceDAG:
 実装済み:
 
 - in-memory run API
+- CLI (`init`, `plan`, `predict`, `observe`, `promote`, `trace`, `refresh`, `show`, `list`)
 - `init`
 - `plan`
 - `predict`
@@ -55,7 +56,6 @@ TraceDAG:
 
 未実装:
 
-- CLI
 - 実用的な planner / predictor
 - executor / evaluator 連携
 - code / kernel optimization workflow
@@ -99,6 +99,40 @@ store = JsonlRunStore("runs")
 run.save(store)
 loaded = store.load_run("demo")
 ```
+
+### CLI Quick Start
+
+```bash
+export PYTHONPATH=src
+
+# 1. Initialize a run
+python3 -m optagent.cli.main init req_kernel --target-type kernel --target-id csc_linear --run-id demo
+
+# 2. Create a plan
+python3 -m optagent.cli.main plan demo --planner default --max-plans 1
+
+# 3. Predict outcomes
+python3 -m optagent.cli.main predict demo p_exec_0001 --max-outcomes 2
+
+# 4. Record observation
+python3 -m optagent.cli.main observe demo p_exec_0001 \
+  --result-id r_0001 --status completed \
+  --metric latency_ms=1.5
+
+# 5. Show details
+python3 -m optagent.cli.main show demo
+
+# 6. Trace history
+python3 -m optagent.cli.main trace demo
+
+# 7. Refresh prediction DAG
+python3 -m optagent.cli.main refresh demo
+
+# 8. List all runs
+python3 -m optagent.cli.main list
+```
+
+See `examples/basic_cli_loop.sh` for a complete working example.
 
 ## 主な用語
 
