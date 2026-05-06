@@ -4,39 +4,167 @@
 
 optagent の状態モデルは、次の考え方を中心に置きます。
 
-> 最適化は、不確実性のある状態から、予測を持った action によって次の状態へ進む過程である。
+> 最適化は、状態から action を選び、その実行結果を解釈して、次の状態を作る過程である。
 
-したがって、状態モデルは単なる履歴ではありません。
-エージェントが今何を知っていて、何を信じていて、何が未解決で、
-次に何を観測すべきかを表す必要があります。
+ここで重要なのは、`Action` に結果を書き込まないことです。
 
-## State と Tree を分ける
-
-最初に重要なのは、`State` と tree を分けることです。
+`Action` は「これから何をするか」という仕様です。
+実行して出てきた副産物は `ActionResult` に置きます。
+予測、観測、証拠、判断、状態差分をまとめたものを `TransitionRecord` として扱います。
 
 ```text
-State
-  現在の作業状態。
-  次の action を選ぶために使う。
-
-PredictionTree
-  まだ実行していない未来予測。
-
-EvidenceTree
-  実際に実行した試行ログ。
-  append-only で保存する。
+StateNode
+  ── TransitionRecord ──>
+StateNode
 ```
 
-`State` は現在の信念や候補を表すため、更新されます。
-`PredictionTree` は未来の仮説的な状態を表すため、prune や merge されます。
-`EvidenceTree` は過去の事実を表すため、基本的に変更せず append-only にします。
-
-## State
-
-`State` は、ある run の現在状態です。
+より分解すると、次の流れです。
 
 ```text
-State
+State_t
+  -> ActionSpec
+  -> ActionResult
+  -> Observation
+  -> Evidence
+  -> PredictionError
+  -> Decision
+  -> Finding
+  -> StateDelta
+  -> State_t+1
+```
+
+## 基本の切り分け
+
+```text
+StateNode:
+  点。
+  ある時点または未来予測上の状態。
+
+ActionSpec:
+  これから実行する action の仕様。
+  実行結果は持たない。
+
+ActionResult:
+  action を実行して出てきた副産物。
+  artifact, raw output, logs, metrics, errors など。
+
+TransitionRecord:
+  矢印。
+  StateNode から StateNode への遷移を、予測・結果・証拠・判断込みで記録する。
+```
+
+この分解により、`ActionSpec` は immutable にできます。
+実行後に action に結果を書き込む必要はありません。
+
+## State と Tree
+
+`State` と tree は分けます。
+
+```text
+State:
+  現在または予測上の状態。
+
+PredictionTree:
+  まだ実行していない未来予測。
+
+EvidenceTree:
+  実際に実行した遷移の履歴。
+```
+
+概念上は以下です。
+
+```text
+PredictionTree:
+  node = PredictedStateNode
+  edge = PlannedTransition
+
+EvidenceTree:
+  node = ObservedStateNode
+  edge = TransitionRecord
+```
+
+`PredictionTree` の edge は「こうすればこうなるはず」という予測です。
+`EvidenceTree` の edge は「実際にこうしたらこうなった」という記録です。
+
+## Tree / Depth / StateNode
+
+tree は depth を持ちます。
+agent は node 単体ではなく、depth ごとの layer を見て推論します。
+
+```text
+Tree
+├── depth 0
+│   └── S0: 現在状態
+├── depth 1
+│   ├── S1: Action A 後の予測状態
+│   ├── S2: Action B 後の予測状態
+│   └── S3: Action C 後の予測状態
+├── depth 2
+│   ├── S4: S1 からさらに進んだ予測状態
+│   ├── S5: S2 からさらに進んだ予測状態
+│   └── S6: S3 からさらに進んだ予測状態
+└── depth 3
+    └── S7: さらに先の予測状態
+```
+
+### depth を見る理由
+
+depth は「何手先の状態か」を表します。
+
+```text
+depth 0:
+  現在の状態
+
+depth 1:
+  次の action を取った直後の状態
+
+depth 2:
+  その action が成功または失敗した後に、さらに進んだ状態
+
+depth 3:
+  複数の方針を組み合わせた未来状態
+```
+
+同じ depth の state node を比較すると、次のような推論ができます。
+
+```text
+DepthLayer(depth=1)
+├── S1: 調査した後の状態
+├── S2: 実装した後の状態
+└── S3: benchmark を増やした後の状態
+
+comparison:
+├── uncertainty が一番減るのはどれか
+├── promotion に近づくのはどれか
+├── cost が低いのはどれか
+├── risk が高いのはどれか
+└── depth 2 以降の展開が良いのはどれか
+```
+
+## StateNode
+
+`StateNode` は tree の点です。
+中身は、その地点にいると仮定したときの状態です。
+
+```text
+StateNode
+├── state_id
+├── depth
+├── branch_id
+├── parent_state_ids
+├── state_snapshot
+├── assumptions
+├── confidence
+├── status
+└── linked_transition_id
+```
+
+### state_snapshot
+
+`state_snapshot` は、その node で agent が持っている状態です。
+
+```text
+state_snapshot
 ├── requirement
 ├── artifacts
 ├── knowledge
@@ -46,467 +174,48 @@ State
 └── budget
 ```
 
-### requirement
-
-最適化対象と制約です。
-run の途中で原則変更しません。
-
-例:
-
-```text
-target_type: kernel
-target_id: csc_linear_forward
-objective: minimize latency
-constraints: preserve correctness
-promotion_policy: min_speedup >= 1.05
-```
-
-### artifacts
-
-現在保持している候補です。
-
-候補は一つとは限りません。
-複数の candidate、incumbent、Pareto 的な候補集合を持つ可能性があります。
-
-### knowledge
-
-これまでに学んだことです。
-
-例:
-
-- small batch は launch overhead が支配的
-- large shape では candidate A が regression する
-- ある実装方針は numerical error を起こしやすい
-- benchmark X だけでは promotion には不十分
-
-### open_questions
-
-まだ答えが出ていない問いです。
-
-例:
-
-- bottleneck は memory access か launch overhead か
-- regression は shape-specific か
-- correctness failure は indexing bug か numerical error か
-- baseline は安定しているか
-
-### active_branches
-
-現在探索中の枝です。
-
-例:
-
-```text
-branch A: launch overhead hypothesis
-branch B: memory layout hypothesis
-branch C: dispatch mismatch hypothesis
-```
-
-枝は evidence によって伸びたり、prune されたり、merge されたりします。
-
-### predictions
-
-今後こうなるはず、という予測です。
-
-予測は action 実行前に作り、観測後にズレを評価します。
-
-```text
-expected:
-  small shape improves
-  large shape stays neutral
-
-observed:
-  small shape improves
-  large shape regresses
-
-prediction_error:
-  candidate needs narrower scope
-```
-
-## Tree / Depth / Node
-
-未来予測や実行履歴は、単なる node の集合ではなく、depth を持つ tree として扱います。
-
-```text
-Tree
-├── depth 0
-│   └── node: 現在状態
-├── depth 1
-│   ├── node: 次の action 候補 A
-│   ├── node: 次の action 候補 B
-│   └── node: 次の action 候補 C
-├── depth 2
-│   ├── node: A の後の候補 A1
-│   ├── node: A の後の候補 A2
-│   └── node: B の後の候補 B1
-└── depth 3
-    └── node: さらに先の候補
-```
-
-### なぜ depth を first-class にするか
-
-最適化の推論では、node 単体だけでなく「同じ深さにある候補群」を比較することが重要です。
-
-例えば depth 1 では、次に何を調べるか、何を実装するかを比較します。
-depth 2 では、それぞれの action が成功した後に何が開けるかを比較します。
-depth 3 では、複数の方針を組み合わせた未来を比較します。
-
-```text
-depth 0:
-  現在の状態
-
-depth 1:
-  次に取れる action と、その直後の予測
-
-depth 2:
-  その action が成功/失敗した後に取れる次の action
-
-depth 3:
-  さらに組み合わせた場合の未来
-```
-
-したがって、データ構造としては以下を持ちます。
-
-```text
-Tree
-├── depths: list[DepthLayer]
-└── edges: list[TransitionEdge]
-
-DepthLayer
-├── depth
-├── nodes
-├── layer_summary
-├── open_questions
-└── comparison
-
-Node
-├── node_id
-├── depth
-├── parent_node_ids
-├── branch_id
-├── state_snapshot
-├── state_delta
-├── action
-├── expected_observation
-├── confidence
-├── estimated_cost
-├── status
-└── linked_attempt_id
-```
-
-`DepthLayer` は、同じ階層の node を比較するための単位です。
-agent が「この階層ではどの方向が有望か」を考えるときは、node 単体ではなく layer 全体を見ます。
-
-### Tree を depth から見る
-
-agent は tree を上から順に node だけで見るのではなく、depth ごとの layer として見ます。
-
-```text
-PredictionTree
-
-depth 0   [N0: 現在 State]
-             |
-             | expand
-             v
-
-depth 1   [N1: 調査する]   [N2: 実装する]   [N3: 追加 benchmark]
-             |                 |                 |
-             |                 |                 |
-             v                 v                 v
-
-depth 2   [N4: 原因Aなら]  [N5: 成功時]     [N6: benchmark結果別]
-          [N7: 原因Bなら]  [N8: 失敗時]     [N9: scopeを狭める]
-
-depth 3   [N10: A実装]     [N11: promotion] [N12: prune]
-```
-
-この見方をすると、depth 1 では「次に何をするか」を比較し、
-depth 2 では「それをした後に何が開けるか」を比較できます。
-
-```text
-DepthLayer(depth=1)
-├── nodes:
-│   ├── N1: 調査 action
-│   ├── N2: 実装 action
-│   └── N3: benchmark action
-├── layer_summary:
-│   └── 次の一手の候補
-├── open_questions:
-│   └── どの action が一番 uncertainty を減らすか
-└── comparison:
-    ├── cost
-    ├── confidence
-    ├── expected_information_gain
-    └── risk
-```
-
-### Node の中に State がある
-
-各 node は、単なる action ではありません。
-その node に到達したと仮定したときの state を持ちます。
-
-```text
-Node
-├── identity
-│   ├── node_id
-│   ├── depth
-│   ├── branch_id
-│   └── parent_node_ids
-│
-├── state_snapshot
-│   ├── artifacts
-│   ├── knowledge
-│   ├── open_questions
-│   ├── active_branches
-│   └── predictions
-│
-├── action_plan
-│   ├── action
-│   ├── intent
-│   ├── expected_observation
-│   ├── expected_state_delta
-│   ├── estimated_cost
-│   └── safety_policy
-│
-├── forecast
-│   ├── assumptions
-│   ├── confidence
-│   ├── expected_value
-│   └── failure_modes
-│
-└── execution_link
-    ├── status
-    ├── linked_attempt_id
-    └── prediction_error
-```
-
-これにより、同じ depth にある複数 node を「それぞれ別の未来状態」として比較できます。
-
-もう少し具体的に書くと、node は次のような箱です。
+図にすると次のようになります。
 
 ```text
 ┌──────────────────────────────────────────────┐
-│ Node N2 depth=1 branch=launch_overhead       │
+│ StateNode S2 depth=1 branch=launch_overhead   │
 ├──────────────────────────────────────────────┤
-│ StateSnapshot                                │
-│  knowledge: small shape は launch-bound      │
+│ StateSnapshot                                 │
+│  requirement: csc_linear_forward latency      │
+│  artifacts: baseline only                     │
+│  knowledge: small shape は launch-bound       │
 │  open_questions: large shape は未説明         │
-│  artifacts: baseline only                    │
+│  predictions: fused dispatch may help small   │
 ├──────────────────────────────────────────────┤
-│ ActionPlan                                   │
-│  action: ImplementFusedDispatch              │
-│  intent: small shape の launch overhead 削減  │
-│  expected_observation:                       │
-│    - small latency improves                  │
-│    - large latency neutral                   │
-├──────────────────────────────────────────────┤
-│ Forecast                                     │
-│  confidence: 0.62                            │
-│  estimated_cost: medium                      │
-│  failure_modes: large regression, correctness│
-├──────────────────────────────────────────────┤
-│ ExecutionLink                                │
-│  status: predicted                           │
-│  linked_attempt_id: none                     │
+│ Node Metadata                                 │
+│  assumptions: launch overhead dominates       │
+│  confidence: 0.62                             │
+│  status: predicted                            │
+│  linked_transition_id: none                   │
 └──────────────────────────────────────────────┘
 ```
 
-この node を実行すると、`ExecutionLink` が更新され、`EvidenceTree` 側に attempt が作られます。
+ここに action の実行結果は入れません。
+実行結果は `ActionResult`、矢印全体は `TransitionRecord` に置きます。
 
-### 遷移は一対一とは限らない
+## ActionSpec
 
-node 間の遷移は一対一である必要はありません。
-
-```text
-one-to-many:
-  一つの状態から複数の未来候補へ分岐する
-
-many-to-one:
-  複数の枝が同じ説明や candidate に合流する
-
-many-to-many:
-  複数の前提から複数の候補が生まれる
-```
-
-したがって、tree と呼びつつも、内部表現としては edge を持つ graph に近くなる場合があります。
-ただし、推論の主語はあくまで depth 付きの tree view です。
-
-## PredictionTree
-
-`PredictionTree` は、まだ実行していない未来予測です。
+`ActionSpec` は、状態から選ばれる「これから何をするか」の仕様です。
 
 ```text
-PredictionTree
-├── depth 0: current state
-├── depth 1: next action candidates
-├── depth 2: expected follow-up states
-└── depth N: deeper forecast
-```
-
-PredictionTree の node は evidence ではありません。
-あくまで予測です。
-
-```text
-PredictedNode
-├── action
-├── expected_observation
-├── expected_state_delta
-├── assumptions
-├── confidence
-├── estimated_cost
-└── children
-```
-
-実際に action を実行したら、対応する predicted node は `Attempt` として
-`EvidenceTree` に記録されます。
-
-```text
-PredictionTree の node
-
-┌──────────────────────────────┐
-│ PredictedNode N2             │
-│ action: ImplementFusedPatch  │
-│ expected: small improves     │
-│ status: predicted            │
-└───────────────┬──────────────┘
-                │ execute
-                v
-EvidenceTree の attempt
-
-┌──────────────────────────────┐
-│ Attempt A7                   │
-│ action: ImplementFusedPatch  │
-│ observation: benchmark logs  │
-│ evidence: small +18%, large -8%│
-│ decision: needs_narrower_scope│
-│ finding: small only          │
-└──────────────────────────────┘
-
-PredictionTree の node は消す必要はありません。
-実行済みとして `linked_attempt_id=A7` を持ち、予測と現実のズレを記録します。
-```
-
-## EvidenceTree
-
-`EvidenceTree` は、実際に実行した attempt の履歴です。
-
-```text
-Requirement
-  -> Attempt
-      -> Hypothesis
-      -> Action
-      -> Artifact
-      -> Observation
-      -> Evidence
-      -> Decision
-      -> Finding
-```
-
-これは append-only の log として保存します。
-
-概念上は `EvidenceTree` と呼びます。
-ただし、枝の merge や shared parent を厳密に表現する場合、内部実装は graph になっても構いません。
-その場合でも、agent が読む view は depth を持つ EvidenceTree として提供します。
-
-## Attempt
-
-`Attempt` は EvidenceTree の一つの node です。
-
-```text
-Attempt
-├── attempt_id
-├── parent_attempt_id
-├── branch_id
-├── hypothesis
-├── action
-├── expected_observation
-├── artifact
-├── observation
-├── evidence
-├── decision
-└── finding
-```
-
-### parent_attempt_id
-
-どの試行から派生したかを示します。
-これにより、探索の枝分かれを表現します。
-
-### branch_id
-
-同じ方向性を持つ試行をまとめる ID です。
-
-例:
-
-- `branch_launch_overhead`
-- `branch_memory_layout`
-- `branch_dispatch_scope`
-
-### expected_observation
-
-action 実行前の予測です。
-
-これは非常に重要です。
-予測がなければ、観測結果が「思った通り」なのか「意外」なのか判断できません。
-
-### observation
-
-action の生の観測結果です。
-
-例:
-
-- benchmark output
-- test output
-- profiler output
-- trace log
-- code inspection result
-
-### evidence
-
-observation を判断可能な形に正規化したものです。
-
-例:
-
-- correctness: passed
-- speedup: 1.12
-- regressions: batch_size=64
-- eligible_scope: batch_size<=4
-
-### decision
-
-promotion や次の扱いに関する判断です。
-
-canonical status:
-
-- `accepted`
-- `rejected`
-- `needs_narrower_scope`
-- `needs_more_evidence`
-- `unsafe`
-
-### finding
-
-次の試行に使う知識です。
-
-`Decision` は「この候補をどう扱うか」です。
-`Finding` は「この試行から何を学んだか」です。
-
-この二つは分けます。
-
-## Action
-
-Action は状態を変えるための単位です。
-
-```text
-Action
+ActionSpec
 ├── action_id
 ├── action_type
 ├── intent
+├── inputs
 ├── expected_observation
+├── expected_state_delta
 ├── estimated_cost
-├── executor
 └── safety_policy
 ```
+
+`ActionSpec` は結果を持ちません。
+実行後に `ActionSpec` を変更しません。
 
 ### action_type
 
@@ -520,457 +229,482 @@ AnalysisAction
 ScopeRefinementAction
 ```
 
-### InvestigationAction
-
-不確実性を減らすための action です。
-
 例:
-
-- profile workload
-- run baseline matrix
-- inspect dispatch
-- read relevant code
-- inspect failure log
-
-### ImplementationAction
-
-artifact を作る action です。
-
-例:
-
-- generate patch
-- edit candidate kernel
-- change dispatch condition
-- create specialized implementation
-
-### VerificationAction
-
-正しさや性能を確認する action です。
-
-例:
-
-- run correctness tests
-- run benchmark matrix
-- compare numerical error
-- run regression suite
-
-### AnalysisAction
-
-観測結果を説明する action です。
-
-例:
-
-- explain benchmark regression
-- classify failure mode
-- compare against prior findings
-
-### ScopeRefinementAction
-
-適用範囲を狭める action です。
-
-例:
-
-- restrict dispatch to small batch
-- exclude dtype
-- require specific shape family
-
-## Transition
-
-状態遷移は、action の予測と観測を比較して state を更新することです。
 
 ```text
-Transition
-├── state_before
-├── action
-├── expected_observation
+InvestigationAction:
+  profile workload
+  run baseline matrix
+  inspect dispatch
+
+ImplementationAction:
+  generate patch
+  edit candidate kernel
+  change dispatch condition
+
+VerificationAction:
+  run correctness tests
+  run benchmark matrix
+
+AnalysisAction:
+  explain benchmark regression
+  classify failure mode
+
+ScopeRefinementAction:
+  restrict dispatch to small batch
+  exclude dtype
+```
+
+## ActionResult
+
+`ActionResult` は、`ActionSpec` を実行して出てきた副産物です。
+
+```text
+ActionResult
+├── action_id
+├── status
+├── artifacts
+├── raw_outputs
+├── logs
+├── metrics
+├── errors
+├── actual_cost
+└── metadata
+```
+
+例:
+
+```text
+ActionSpec:
+  action_type: ImplementationAction
+  intent: implement fused dispatch
+
+ActionResult:
+  status: completed
+  artifacts:
+    - artifacts/attempt_0007.patch
+  raw_outputs:
+    - raw/attempt_0007_tests.txt
+    - raw/attempt_0007_benchmark.txt
+  metrics:
+    small_latency_ms: 8.1
+    large_latency_ms: 220.0
+```
+
+## TransitionRecord
+
+`TransitionRecord` が矢印です。
+
+```text
+TransitionRecord
+├── transition_id
+├── from_state_id
+├── to_state_id
+├── action_spec
+├── action_result
 ├── observation
 ├── evidence
 ├── prediction_error
 ├── decision
 ├── finding
-└── state_after
+└── state_delta
 ```
 
-重要なのは `prediction_error` です。
-
-予測と観測がズレたとき、それは失敗ではなく学習信号です。
-
-## 遷移の全体像
-
-optagent の 1 step は、次の流れで表します。
+図にすると、次の関係です。
 
 ```text
-State_t
-  ├─ select action
-  │    └─ Action_t
-  │        ├─ intent
-  │        ├─ expected_observation
-  │        └─ estimated_state_delta
-  │
-  ├─ execute action
-  │    └─ Observation_t
-  │
-  ├─ evaluate observation
-  │    └─ Evidence_t
-  │
-  ├─ compare expected vs actual
-  │    └─ PredictionError_t
-  │
-  ├─ decide
-  │    └─ Decision_t
-  │
-  ├─ learn
-  │    └─ Finding_t
-  │
-  └─ update state
-       └─ State_t+1
+┌──────────────┐
+│ StateNode S0 │
+└──────┬───────┘
+       │
+       │ TransitionRecord T7
+       │  ├─ ActionSpec
+       │  ├─ ActionResult
+       │  ├─ Evidence
+       │  ├─ PredictionError
+       │  ├─ Decision
+       │  ├─ Finding
+       │  └─ StateDelta
+       v
+┌──────────────┐
+│ StateNode S7 │
+└──────────────┘
 ```
 
-数式的に書くと、以下です。
+`TransitionRecord` は、単なる action ではありません。
+action の仕様、実行結果、観測、判断、学習、状態差分をまとめたものです。
+
+## PredictionTree
+
+`PredictionTree` は、まだ実行していない未来予測です。
 
 ```text
-Action_t = policy(State_t)
-Observation_t = execute(Action_t)
-Evidence_t = evaluate(Observation_t, State_t.requirement)
-PredictionError_t = compare(Action_t.expected_observation, Observation_t)
-Decision_t = decide(Evidence_t, State_t.requirement.promotion_policy)
+PredictionTree
+
+depth 0   [S0: current state]
+             |
+             | PlannedTransition P1
+             | ActionSpec: profile workload
+             v
+depth 1   [S1: profile 後の予測状態]
+
+             |
+             | PlannedTransition P2
+             | ActionSpec: implement fused dispatch
+             v
+depth 2   [S2: candidate を持つ予測状態]
+```
+
+`PredictionTree` の edge は `PlannedTransition` です。
+
+```text
+PlannedTransition
+├── from_state_id
+├── to_predicted_state_id
+├── action_spec
+├── expected_observation
+├── expected_state_delta
+├── assumptions
+├── confidence
+└── estimated_cost
+```
+
+ここには `ActionResult` はありません。
+まだ実行していないからです。
+
+## EvidenceTree
+
+`EvidenceTree` は、実際に実行した遷移の履歴です。
+
+```text
+EvidenceTree
+
+depth 0   [S0: observed baseline state]
+             |
+             | TransitionRecord T1
+             | ActionSpec + ActionResult + Evidence
+             v
+depth 1   [S1: observed state after action]
+
+             |
+             | TransitionRecord T2
+             v
+depth 2   [S2: observed state after next action]
+```
+
+`EvidenceTree` は append-only です。
+過去に実行した遷移を書き換えません。
+
+ただし、枝の merge や shared parent を表現するために、内部実装は graph になっても構いません。
+その場合でも、agent が読む view は depth を持つ EvidenceTree として提供します。
+
+## PredictionTree から EvidenceTree への変換
+
+予測段階では、`PlannedTransition` だけがあります。
+
+```text
+PredictionTree
+
+S0
+ │
+ │ PlannedTransition P7
+ │  ActionSpec:
+ │    implement fused dispatch
+ │  expected:
+ │    small improves
+ │    large neutral
+ v
+S7_predicted
+```
+
+実行後は、`ActionResult` と `Evidence` が得られ、
+`TransitionRecord` として EvidenceTree に記録されます。
+
+```text
+EvidenceTree
+
+S0
+ │
+ │ TransitionRecord T7
+ │  ActionSpec:
+ │    implement fused dispatch
+ │  ActionResult:
+ │    patch, test logs, benchmark logs
+ │  Evidence:
+ │    small +18%, large -8%
+ │  PredictionError:
+ │    large was not neutral
+ │  Decision:
+ │    needs_narrower_scope
+ │  Finding:
+ │    useful only for small batch
+ v
+S7_observed
+```
+
+このとき、`ActionSpec` は変更しません。
+実行結果は `ActionResult` に置き、予測との差分は `PredictionError` に置きます。
+
+## 状態遷移の 1 step
+
+1 step は以下のように表します。
+
+```text
+StateNode S_t
+  -> choose ActionSpec
+  -> execute ActionSpec
+  -> produce ActionResult
+  -> derive Observation
+  -> normalize Evidence
+  -> compare expected vs actual
+  -> produce PredictionError
+  -> decide
+  -> learn Finding
+  -> compute StateDelta
+  -> create StateNode S_t+1
+  -> append TransitionRecord
+```
+
+数式的には以下です。
+
+```text
+ActionSpec_t = policy(StateNode_t)
+ActionResult_t = execute(ActionSpec_t)
+Observation_t = observe(ActionResult_t)
+Evidence_t = evaluate(Observation_t, requirement)
+PredictionError_t = compare(ActionSpec_t.expected_observation, Observation_t)
+Decision_t = decide(Evidence_t, promotion_policy)
 Finding_t = learn(Evidence_t, PredictionError_t, Decision_t)
-State_t+1 = update(State_t, Action_t, Evidence_t, Decision_t, Finding_t)
+StateDelta_t = reduce(ActionResult_t, Evidence_t, Finding_t)
+StateNode_t+1 = apply(StateNode_t, StateDelta_t)
+TransitionRecord_t = record(
+  StateNode_t,
+  ActionSpec_t,
+  ActionResult_t,
+  Evidence_t,
+  PredictionError_t,
+  Decision_t,
+  Finding_t,
+  StateDelta_t,
+  StateNode_t+1,
+)
 ```
-
-ここで重要なのは、`execute` 以外はすべて再実行可能であるべきという点です。
-raw observation が保存されていれば、後から evaluator や promotion policy を変えて
-再評価できます。
 
 ## 遷移の種類
 
-すべての action は状態遷移を起こしますが、遷移の意味は action type によって違います。
+遷移の種類は、`ActionSpec.action_type` によって決まります。
 
-### 1. 調査遷移
+### 調査遷移
 
-原因がわからないとき、不確実性を減らすための遷移です。
+不確実性を減らす遷移です。
 
 ```text
-State_t:
+S0:
   open_questions:
     - bottleneck は launch overhead か memory access か
 
-Action_t:
+ActionSpec:
   type: InvestigationAction
   intent: profile workload by shape
   expected_observation:
-    - small shape では launch overhead が支配的に見えるはず
+    - small shape では launch overhead が支配的に見える
 
-Observation_t:
-  profiler output
+ActionResult:
+  raw_outputs:
+    - profiler output
 
-Evidence_t:
+Evidence:
   small shape: launch overhead high
   large shape: memory bandwidth high
 
-Finding_t:
-  small と large で原因が違う可能性が高い
+StateDelta:
+  knowledge += small shape is launch-bound
+  open_questions += large shape の memory layout を調べる
+  active_branches += branch_launch_overhead_small
+  active_branches += branch_memory_layout_large
 
-State_t+1:
-  open_questions:
-    - large shape の memory layout を調べる
-  knowledge:
-    - small shape は launch-bound
-  active_branches:
-    - branch_launch_overhead_small
-    - branch_memory_layout_large
+S1:
+  原因候補が分岐した状態
 ```
 
-調査遷移では、candidate artifact が生まれないことがあります。
-それでも、問いが減ったり branch が分かれたりすれば有効な遷移です。
+### 実装遷移
 
-### 2. 実装遷移
-
-仮説に基づいて candidate artifact を作る遷移です。
+candidate artifact を作る遷移です。
 
 ```text
-State_t:
+S0:
   knowledge:
     - small shape は launch-bound
 
-Action_t:
+ActionSpec:
   type: ImplementationAction
   intent: implement fused dispatch for small shapes
   expected_observation:
-    - small shape latency improves
-    - large shape remains neutral
+    - small latency improves
+    - large latency neutral
 
-Artifact_t:
-  patch: artifacts/attempt_0007.patch
+ActionResult:
+  artifacts:
+    - artifacts/attempt_0007.patch
+  raw_outputs:
+    - tests.txt
+    - benchmark.txt
 
-Observation_t:
-  test output
-  benchmark matrix
-
-Evidence_t:
+Evidence:
   correctness: passed
-  speedup_small: 1.18
-  speedup_large: 0.92
-  regressions:
-    - batch_size=64
+  small speedup: 1.18
+  large speedup: 0.92
 
-Decision_t:
+PredictionError:
+  large latency was not neutral
+
+Decision:
   needs_narrower_scope
 
-Finding_t:
+Finding:
   fused dispatch is promising only for small batch
 
-State_t+1:
-  artifacts:
-    - candidate_0007 retained as scoped candidate
-  knowledge:
-    - do not promote this candidate for large batch
-  active_branches:
-    - branch_launch_overhead_small continues
-    - large batch path pruned for this candidate
+StateDelta:
+  artifacts += scoped candidate
+  knowledge += do not promote broadly for large batch
+  active_branches += small batch scope refinement
+  pruned_branches += large fused dispatch
+
+S1:
+  scoped candidate と新しい finding を持つ状態
 ```
 
-実装遷移では、artifact ができたこと自体よりも、
-その artifact がどの条件で使えるかを明らかにすることが重要です。
-
-実装遷移を tree 上で見ると、次のようになります。
-
-```text
-Before execution
-
-PredictionTree
-depth 0   [N0: current]
-             |
-depth 1      +-- [N2: ImplementFusedDispatch]
-                    expected:
-                      small improves
-                      large neutral
-                    status: predicted
-
-EvidenceTree
-depth 0   [A0: baseline measured]
-
-After execution
-
-PredictionTree
-depth 0   [N0: current]
-             |
-depth 1      +-- [N2: ImplementFusedDispatch]
-                    expected:
-                      small improves
-                      large neutral
-                    actual:
-                      small improves
-                      large regresses
-                    prediction_error:
-                      large was not neutral
-                    linked_attempt_id: A7
-                    status: executed
-
-EvidenceTree
-depth 0   [A0: baseline measured]
-             |
-depth 1      +-- [A7: ImplementFusedDispatch]
-                    evidence:
-                      correctness passed
-                      small speedup 1.18
-                      large speedup 0.92
-                    decision:
-                      needs_narrower_scope
-                    finding:
-                      useful only for small batch
-
-State update
-  knowledge += "large batch では fused dispatch を広く使わない"
-  active_branches += "small batch scope refinement"
-  active_branches prune "large fused dispatch"
-```
-
-### 3. 検証遷移
+### 検証遷移
 
 candidate を promotion できるか確認する遷移です。
 
 ```text
-State_t:
-  artifacts:
-    - candidate_0007
-  open_questions:
-    - batch_size<=4 なら regression はないか
-
-Action_t:
+ActionSpec:
   type: VerificationAction
   intent: run narrowed benchmark matrix
   expected_observation:
     - batch_size<=4 では correctness passed
     - batch_size<=4 では speedup >= 1.05
 
-Evidence_t:
+ActionResult:
+  raw_outputs:
+    - narrowed_benchmark.txt
+
+Evidence:
   correctness: passed
   eligible_scope: batch_size<=4
   geometric_mean_speedup: 1.11
   regressions: []
 
-Decision_t:
+Decision:
   accepted
 
-Finding_t:
-  candidate is promotable for small batch inference scope
-
-State_t+1:
-  artifacts:
-    - candidate_0007 becomes incumbent for batch_size<=4
-  open_questions:
-    - removed narrowed-scope verification question
+StateDelta:
+  incumbent += candidate for batch_size<=4
+  open_questions -= narrowed scope verification
 ```
 
-検証遷移は、新しい実装を作らないことがあります。
-既存 candidate の証拠を厚くするための遷移です。
+### 分析遷移
 
-### 4. 分析遷移
-
-予測と観測がズレたとき、その原因を説明するための遷移です。
+予測と観測がズレたとき、その原因を説明する遷移です。
 
 ```text
-State_t:
-  prediction_error:
-    - expected large neutral, observed large regression
-
-Action_t:
+ActionSpec:
   type: AnalysisAction
   intent: explain large-shape regression
-  expected_observation:
-    - regression is caused by dispatch overhead or memory layout mismatch
 
-Observation_t:
-  benchmark breakdown
-  code inspection notes
+ActionResult:
+  logs:
+    - benchmark breakdown
+    - code inspection notes
 
-Finding_t:
+Finding:
   fused path adds overhead when compute dominates
 
-State_t+1:
-  knowledge:
-    - avoid fused dispatch for compute-dominant large shapes
-  active_branches:
-    - branch_launch_overhead_small retained
-    - branch_large_fused_dispatch pruned
+StateDelta:
+  knowledge += avoid fused dispatch for compute-dominant large shapes
+  pruned_branches += branch_large_fused_dispatch
 ```
 
-分析遷移は、失敗を次の探索に使える知識へ変換するための遷移です。
-
-### 5. 範囲調整遷移
+### 範囲調整遷移
 
 candidate 自体は有望だが、適用範囲が広すぎるときの遷移です。
 
 ```text
-State_t:
-  decision:
-    - needs_narrower_scope
-
-Action_t:
+ActionSpec:
   type: ScopeRefinementAction
   intent: restrict dispatch scope to batch_size<=4
 
-Evidence_t:
+ActionResult:
+  artifacts:
+    - narrowed dispatch policy
+
+Evidence:
   eligible_scope: batch_size<=4
   regressions outside scope: excluded
 
-Decision_t:
-  accepted or needs_more_evidence
-
-State_t+1:
-  artifacts:
-    - candidate with narrowed dispatch policy
-  knowledge:
-    - scope constraint added
+StateDelta:
+  artifacts += candidate with narrowed dispatch policy
+  knowledge += scope constraint
 ```
-
-範囲調整遷移は、`rejected` と `accepted` の中間を扱うために重要です。
-最適化では「全部には効かないが、条件付きなら使える」候補が多いためです。
 
 ## 状態更新の対象
 
-`State_t+1` では、少なくとも以下が更新されます。
+`StateDelta` は、`StateNode` に適用される差分です。
 
 ```text
-                 ┌────────────────────┐
-                 │      State_t        │
-                 ├────────────────────┤
-                 │ artifacts           │
-                 │ knowledge           │
-                 │ open_questions      │
-                 │ active_branches     │
-                 │ predictions         │
-                 │ budget              │
-                 └─────────┬──────────┘
-                           │
-                           │ apply transition result
-                           v
-                 ┌────────────────────┐
-                 │     State_t+1       │
-                 ├────────────────────┤
-artifacts     -> │ + candidate         │
-                 │ + incumbent update  │
-                 │ + scoped candidate  │
-knowledge     -> │ + finding           │
-                 │ + ruled-out region  │
-                 │ + scope constraint  │
-questions     -> │ - resolved question │
-                 │ + new question      │
-branches      -> │ + extend branch     │
-                 │ + prune branch      │
-                 │ + merge branch      │
-predictions   -> │ + prediction_error  │
-                 │ + new prediction    │
-budget        -> │ - action cost       │
-                 └────────────────────┘
+StateDelta
+├── artifact_changes
+├── knowledge_changes
+├── open_question_changes
+├── branch_changes
+├── prediction_changes
+└── budget_changes
 ```
 
-一方で、`EvidenceTree` には append-only で `Attempt` を追加します。
+図にすると以下です。
 
 ```text
-EvidenceTree_t
-  └── depth d
-        └── parent attempt
-
-EvidenceTree_t+1
-  └── depth d
-        └── parent attempt
-              └── depth d+1
-                    └── Attempt_t
+┌────────────────────┐
+│ StateNode S_t       │
+├────────────────────┤
+│ artifacts           │
+│ knowledge           │
+│ open_questions      │
+│ active_branches     │
+│ predictions         │
+│ budget              │
+└─────────┬──────────┘
+          │ apply StateDelta
+          v
+┌────────────────────┐
+│ StateNode S_t+1     │
+├────────────────────┤
+│ artifacts updated   │
+│ knowledge updated   │
+│ questions updated   │
+│ branches updated    │
+│ predictions updated │
+│ budget updated      │
+└────────────────────┘
 ```
-
-つまり、`State` は現在の作業状態として更新され、
-`EvidenceTree` は過去の事実として追記されます。
-
-## 遷移の終了条件
-
-run は次のいずれかで終了します。
-
-- promotion 可能な candidate が見つかった
-- budget が尽きた
-- すべての有望 branch が prune された
-- 追加 evidence が必要だが、現在の環境では取れない
-- unsafe な兆候があり、人間の確認が必要になった
-- 人間が十分と判断した
-
-終了時にも `Finding` を残します。
-成功だけでなく、「なぜこれ以上進めないか」も次回の重要な知識です。
 
 ## 不変条件
 
 状態モデルには以下の不変条件を置きます。
 
 1. `Requirement` は run の中で原則固定する。
-2. `Attempt` は append-only とする。
-3. raw `Observation` は保存する。
-4. `Evidence` は `Observation` から導出する。
-5. `Decision` は `Evidence` と promotion policy から導出する。
-6. `Finding` は次の action 選択に使える形で保存する。
-7. promotion と learning は分ける。
-8. action 実行前に expected observation を持つ。
-9. action 実行後に prediction error を評価する。
-10. unsafe な試行は rejected ではなく `unsafe` として分ける。
+2. `ActionSpec` は実行後に変更しない。
+3. `ActionResult` は実行によって得た副産物を保存する。
+4. raw output は保存する。
+5. `Evidence` は `Observation` から導出する。
+6. `Decision` は `Evidence` と promotion policy から導出する。
+7. `Finding` は次の action 選択に使える形で保存する。
+8. `TransitionRecord` は append-only とする。
+9. promotion と learning は分ける。
+10. action 実行前に expected observation を持つ。
+11. action 実行後に prediction error を評価する。
+12. unsafe な試行は rejected ではなく `unsafe` として分ける。
 
 ## 保存形式
 
@@ -980,34 +714,44 @@ run は次のいずれかで終了します。
 runs/<run_id>/
 ├── run.json
 ├── requirements.json
-├── attempts.jsonl
-├── decisions.jsonl
+├── states.jsonl
+├── transitions.jsonl
 ├── findings.jsonl
 ├── artifacts/
 ├── raw/
 └── reports/
 ```
 
+既存実装では `attempts.jsonl` という名前を使っています。
+新しいモデルでは、意味としては `transitions.jsonl` に近いです。
+移行時は互換性を見ながら名前を決めます。
+
 DB はまだ不要です。
 まずは人間と agent が読める file contract を安定させます。
 
 ## まとめ
 
-この状態モデルで重要なのは、以下の切り分けです。
+この状態モデルの中心は以下です。
 
 ```text
-State:
-  現在の信念、候補、問い、予測
+StateNode:
+  点。現在または未来予測上の状態。
+
+ActionSpec:
+  これから行う action の仕様。結果は持たない。
+
+ActionResult:
+  action を実行して出てきた副産物。
+
+TransitionRecord:
+  矢印。ActionSpec、ActionResult、Evidence、Decision、Finding、StateDelta を束ねる。
 
 PredictionTree:
-  まだ実行していない、depth 付きの未来予測
+  まだ実行していない future StateNode と PlannedTransition の tree。
 
 EvidenceTree:
-  過去の試行、観測、証拠、判断、学習
-
-Transition:
-  予測を持った action によって state がどう変わったか
+  実行済み StateNode と TransitionRecord の tree。
 ```
 
-この三つを分けることで、単なる反復 workflow ではなく、
-未来を予測しながら調査、実装、検証、枝刈りを行う最適化エージェントを作れるようになります。
+この形にすると、`State -> Action -> Result -> State` の反復推論を保ちながら、
+action に実行結果を書き込む責務混在を避けられます。
