@@ -37,8 +37,10 @@ from optagent.core.schema import (
     StateKind,
     StateNode,
     StateSnapshot,
+    TraceContext,
     TransitionKind,
 )
+from optagent.core.run import RunHandle, init
 
 __version__ = "0.1.0"
 
@@ -70,10 +72,13 @@ __all__ = [
     "PredictionStepRef",
     "PredictedTransition",
     "Requirement",
+    "RunHandle",
     "StateContext",
     "StateDelta",
     "StateKind",
     "StateNode",
     "StateSnapshot",
+    "TraceContext",
     "TransitionKind",
+    "init",
 ]

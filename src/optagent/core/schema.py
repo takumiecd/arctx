@@ -201,6 +201,24 @@ class StateContext:
 
 
 @dataclass(frozen=True)
+class TraceContext:
+    """Materialized view of observed history around a state."""
+
+    current_state_id: str
+    past_state_ids: tuple[str, ...] = ()
+    observed_transition_ids: tuple[str, ...] = ()
+    execution_plan_ids: tuple[str, ...] = ()
+    action_result_ids: tuple[str, ...] = ()
+    matched_predicted_transition_ids: tuple[str, ...] = ()
+    derived_record_ids: tuple[str, ...] = ()
+    artifact_refs: tuple[str, ...] = ()
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return to_jsonable(self)  # type: ignore[return-value]
+
+
+@dataclass(frozen=True)
 class PredictionPlan:
     """Hypothetical plan that only exists inside a PredictionDAG."""
 

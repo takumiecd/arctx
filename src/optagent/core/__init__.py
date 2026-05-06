@@ -1,6 +1,7 @@
 """Core state-transition model."""
 
 from optagent.core.ids import sequential_id, slugify, timestamp_id
+from optagent.core.run import RunHandle, init
 from optagent.core.schema import (
     ActionResult,
     ActionType,
@@ -34,6 +35,7 @@ from optagent.core.schema import (
     StateKind,
     StateNode,
     StateSnapshot,
+    TraceContext,
     TransitionKind,
 )
 from optagent.core.tree import PredictionDAG, TraceDAG
@@ -67,13 +69,16 @@ __all__ = [
     "PredictionStepRef",
     "PredictedTransition",
     "Requirement",
+    "RunHandle",
     "StateContext",
     "StateDelta",
     "StateKind",
     "StateNode",
     "StateSnapshot",
+    "TraceContext",
     "TraceDAG",
     "TransitionKind",
+    "init",
     "sequential_id",
     "slugify",
     "timestamp_id",
