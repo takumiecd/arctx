@@ -106,6 +106,33 @@ derived record は便利ですが、事実そのものではありません。
 LLM や evaluator は確率的・設定依存に振る舞うため、同じ raw result から異なる解釈が出ることがあります。
 そのため derived record は、必要に応じて作り直せる cache として扱います。
 
+別の言い方をすると、`DerivedRecord` は構造化されたメモです。
+人間が書く実験ノート、LLM が作る要約、evaluator が作る evidence、promotion gate が作る decision を、
+同じ形式で扱うための入れ物です。
+
+```text
+TransitionRecord:
+  実験ログ。何をして、何が起きたか。
+
+DerivedRecord:
+  実験ノートのメモ。事実をどう読んだか。
+
+StateSnapshot:
+  今の作業机の上に置く要約。次に何をするかを決めるための作業メモ。
+```
+
+メモには自由度がありますが、最低限の形式を揃えます。
+
+```text
+DerivedRecord
+├── source_transition_id
+├── derived_type
+├── payload
+├── generator
+├── confidence
+└── metadata
+```
+
 ### working memory
 
 `StateSnapshot` は、次の action を選ぶための working memory です。
@@ -131,6 +158,10 @@ StateSnapshot
 `StateSnapshot` は source of truth ではありません。
 しかし、すべてが LLM の解釈でもありません。
 固定入力、fact への参照、実行管理状態、derived knowledge を、次の action 選択のためにまとめた working memory です。
+
+これも広い意味では構造化メモです。
+ただし `DerivedRecord` が一つの transition に対するメモであるのに対して、
+`StateSnapshot` は現在の作業文脈全体に対するメモです。
 
 ## State と Tree
 

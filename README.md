@@ -1,7 +1,11 @@
 # optagent
 
-optagent は、コード最適化・カーネル最適化の試行を **証拠として残しながら進める**
-ための最適化エージェント基盤です。
+optagent は、問題解決や最適化の過程で出てくる **事実と構造化メモを整理し、
+人間・AI・自動化が同じ文脈を共有するための基盤** です。
+
+中心にあるのは、AI エージェントそのものではありません。
+何を実行したのか、何が起きたのか、その事実から何をメモしたのかを、
+あとから読み返せる形で残すことです。
 
 中心に置くのは、LLM や探索アルゴリズムではなく PredictionTree / EvidenceTree です。
 
@@ -14,6 +18,10 @@ Requirement
           -> DerivedRecords
       -> StateNode
 ```
+
+`ActionSpec` と `ActionResult` は事実の原本です。
+`DerivedRecord` は、その事実に対する構造化メモです。
+`StateSnapshot` は、次の action を選ぶための作業メモです。
 
 ## 現在の正本ドキュメント
 
