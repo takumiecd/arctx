@@ -25,6 +25,7 @@ from optagent.core.schema.transitions import (
     ObservedTransition,
     PredictedTransition,
     PredictionMatch,
+    TraceCut,
 )
 
 
@@ -112,6 +113,10 @@ class JsonlRunStore:
             (transition.to_dict() for transition in run.trace_dag.transitions.values()),
         )
         self._write_jsonl(run_path / "derived_records.jsonl", self._derived_rows(run))
+        self._write_jsonl(
+            run_path / "trace_cuts.jsonl",
+            (run.trace_dag.cuts[cid].to_dict() for cid in run.trace_dag.cut_order),
+        )
         return run_path
 
     def load_run(self, run_id: str) -> RunHandle:
@@ -150,6 +155,9 @@ class JsonlRunStore:
 
         for row in self._read_jsonl(run_path / "observed_transitions.jsonl"):
             trace_dag.append_transition(_observed_transition_from_dict(row))
+
+        for row in self._read_jsonl(run_path / "trace_cuts.jsonl"):
+            trace_dag.add_cut(_trace_cut_from_dict(row))
 
         return RunHandle(
             run_id=manifest["run_id"],
@@ -319,6 +327,15 @@ def _derived_record_from_dict(data: dict[str, Any]) -> DerivedRecord:
     return DerivedRecord(
         **{
             **_pick_fields(DerivedRecord, data),
+            "metadata": dict(data.get("metadata", {})),
+        }
+    )
+
+
+def _trace_cut_from_dict(data: dict[str, Any]) -> TraceCut:
+    return TraceCut(
+        **{
+            **_pick_fields(TraceCut, data),
             "metadata": dict(data.get("metadata", {})),
         }
     )

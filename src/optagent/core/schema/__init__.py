@@ -29,6 +29,7 @@ from optagent.core.schema.transitions import (
     PredictionPath,
     PredictionSelection,
     PredictionStepRef,
+    TraceCut,
 )
 
 __all__ = [
@@ -57,4 +58,5 @@ __all__ = [
     "StateNode",
     "StateSnapshot",
     "TraceContext",
+    "TraceCut",
 ]

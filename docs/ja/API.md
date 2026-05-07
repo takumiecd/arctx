@@ -303,7 +303,9 @@ run.rewind(
 
 `current_observed_state_id` を、その祖先 observed state に戻します。`to_state_id` か `steps` のいずれか一方を指定します。
 
-`rewind` は **DAG を変更しません**。state / transition / plan / result はすべて TraceDAG に残り、ポインタだけが祖先に移動します。巻き戻し後の最初の `observe` / `promote` は、その祖先から新しい兄弟枝として伸びていきます（DAG 上で並列に枝が増える形）。
+`rewind` は **既存レコードを変更しません**。state / transition / plan / result はすべて TraceDAG に残り、ポインタが祖先に移動するのと同時に、TraceDAG に **1本の `TraceCut` レコードが append** されます。`TraceCut` は「祖先のどの outgoing transition より先を捨てたか」だけを名指す最小レコードで、下流の cut 集合は read-time に `trace_dag.cut_state_ids()` / `cut_transition_ids()` で導出します。この append-only な記録によって、巻き戻されたとは知らない読み手にも「この枝は cut 済み」が見えるようになります。
+
+巻き戻し後の最初の `observe` / `promote` は、その祖先から新しい兄弟枝として伸びていきます（DAG 上で並列に枝が増える形）。新しい transition は別 ID なので cut されません。
 
 祖先判定は depth ではなく `trace_dag.is_ancestor` による incoming edge の辿りで行います。current から到達できない別枝の state を渡すと `ValueError` になります（兄弟枝への移動は将来 Cursor の `switch` / `move` で扱います）。
 

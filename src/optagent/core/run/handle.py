@@ -81,6 +81,7 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
             "sel_pred": 0,
             "promotion": 0,
             "prediction_dag": 0,
+            "cut": 0,
         },
     )
 

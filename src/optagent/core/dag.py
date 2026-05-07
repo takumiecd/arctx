@@ -13,7 +13,11 @@ from dataclasses import dataclass, field
 
 from optagent.core.schema.plans import ExecutionPlan, PredictionPlan
 from optagent.core.schema.state import StateNode
-from optagent.core.schema.transitions import ObservedTransition, PredictedTransition
+from optagent.core.schema.transitions import (
+    ObservedTransition,
+    PredictedTransition,
+    TraceCut,
+)
 from optagent.core.types import to_jsonable
 
 
@@ -95,11 +99,59 @@ class TraceDAG:
     transition_by_execution_plan: dict[str, str] = field(default_factory=dict)
     outgoing_index: dict[str, list[str]] = field(default_factory=dict)
     incoming_index: dict[str, list[str]] = field(default_factory=dict)
+    cuts: dict[str, TraceCut] = field(default_factory=dict)
+    cut_order: list[str] = field(default_factory=list)
 
     def add_node(self, node: StateNode, depth: int) -> None:
         self.nodes[node.state_id] = node
         self.node_depths[node.state_id] = depth
         self.nodes_by_depth.setdefault(depth, []).append(node.state_id)
+
+    def add_cut(self, cut: TraceCut) -> None:
+        """Append a ``TraceCut`` record. Append-only — never replaces an existing cut."""
+        if cut.cut_id in self.cuts:
+            raise ValueError(f"duplicate cut_id: {cut.cut_id}")
+        if cut.cut_transition_id not in self.transitions:
+            raise KeyError(f"unknown cut_transition_id: {cut.cut_transition_id}")
+        self.cuts[cut.cut_id] = cut
+        self.cut_order.append(cut.cut_id)
+
+    def cut_transition_ids(self) -> set[str]:
+        """Set of observed transitions that have been cut (latest event wins).
+
+        With only ``TraceCut`` events today, the result is the union of
+        ``cut.cut_transition_id`` across all recorded cuts. A future
+        ``TraceRestore`` event would remove its target from the set
+        when it is the latest event for that transition.
+        """
+        return {self.cuts[cid].cut_transition_id for cid in self.cut_order}
+
+    def is_cut_transition(self, transition_id: str) -> bool:
+        """True iff *transition_id* is a directly-cut edge (not just downstream)."""
+        return transition_id in self.cut_transition_ids()
+
+    def cut_state_ids(self) -> set[str]:
+        """All observed state_ids reachable forward from any cut transition.
+
+        These are the states whose only path from the trace root passes
+        through a cut edge — i.e. they are no longer on any active branch.
+        """
+        cut_tids = self.cut_transition_ids()
+        if not cut_tids:
+            return set()
+        cut_states: set[str] = set()
+        frontier = [self.transitions[tid].to_observed_state_id for tid in cut_tids]
+        while frontier:
+            sid = frontier.pop()
+            if sid in cut_states:
+                continue
+            cut_states.add(sid)
+            for tid in self.outgoing_index.get(sid, ()):
+                frontier.append(self.transitions[tid].to_observed_state_id)
+        return cut_states
+
+    def is_cut_state(self, state_id: str) -> bool:
+        return state_id in self.cut_state_ids()
 
     def add_execution_plan(self, plan: ExecutionPlan) -> None:
         self.execution_plans[plan.plan_id] = plan

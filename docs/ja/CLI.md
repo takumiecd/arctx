@@ -612,11 +612,32 @@ $ optagent derive t_obs_0001 --type finding \
 
 ## ``optagent rewind``
 
-current observed state を、その祖先 observed state に巻き戻します。**TraceDAG の state / transition / plan / result はひとつも消えません**。動くのはポインタ（``current_observed_state_id``）だけで、巻き戻し後の最初の ``observe`` / ``promote`` は祖先から新しい兄弟枝として枝分かれします。
+current observed state を、その祖先 observed state に巻き戻します。**TraceDAG の state / transition / plan / result はひとつも消えません**。動くのはポインタ（``current_observed_state_id``）と、TraceDAG に append される **1本の ``TraceCut`` レコード** だけです。
 
-`git revert` のような「履歴の打ち消し」ではなく、DAG 上の現在位置を遡るだけの操作です。別枝（兄弟）への移動は将来の `switch` / `move`（Cursor 導入時）で扱う予定で、``rewind`` は active path 上の祖先のみ受け付けます。祖先判定は depth ではなく incoming edge を辿って行います。
+巻き戻し後の最初の ``observe`` / ``promote`` は、祖先から新しい兄弟枝として枝分かれします。
 
-巻き戻し後、PredictionDAG は新しい current observed state を anchor として自動で refresh されます。
+### 「切る」ことの append-only 表現
+
+rewind が append する ``TraceCut`` は次の最小情報を持ちます。
+
+| フィールド | 内容 |
+|---|---|
+| ``cut_id`` | ``cut_0001`` のような連番 ID |
+| ``cut_at`` | UTC タイムスタンプ |
+| ``rewound_to_state_id`` | 残す側の境界（active な祖先） |
+| ``cut_transition_id`` | 祖先から伸びていた observed transition のうち、cut された 1 本 |
+| ``reason`` | 任意のメモ |
+| ``actor_id`` | 将来の Cursor/Actor 用（現状 ``None``） |
+
+cut された transition の **下流**（子孫の states / transitions / derived records）は、レコードとしてはすべて DAG に残り、active かどうかは ``trace_dag.cut_state_ids()`` / ``cut_transition_ids()`` の **read-time replay** で判定されます。これにより:
+
+- 既存レコードは1ビットも書き換わらない（append-only 不変）
+- 同じ祖先から再 ``observe`` した場合、新しい transition は別 ID なので自動で active
+- 将来 ``TraceRestore`` イベントを足せば、最後のイベント勝ちで cut を取り消せる
+
+`git revert` のような「履歴の打ち消し」ではなく、**「ここから先は捨てた」という事実を1本のレコードで記録する** 操作です。別枝（兄弟）への移動は将来の `switch` / `move`（Cursor 導入時）で扱う予定で、``rewind`` は active path 上の祖先のみ受け付けます。祖先判定は depth ではなく incoming edge を辿って行います。
+
+巻き戻し後、PredictionDAG は新しい current observed state を anchor として自動で refresh されます（current 自身に rewind した場合は no-op で、cut も書きません）。
 
 ```bash
 optagent rewind --to-state <observed_state_id> [options]

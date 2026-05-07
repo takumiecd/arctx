@@ -126,6 +126,105 @@ class TestRunHandleRewind:
             run.rewind(to_state_id=run.prediction_dag.root_predicted_state_id)
 
 
+class TestRewindAppendsTraceCut:
+    """Rewind records the cut as an append-only TraceCut on the TraceDAG."""
+
+    def test_rewind_appends_one_cut_per_call(self):
+        run = _new_run()
+        s1 = _advance(run, "first", "r_0001")
+        s2 = _advance(run, "second", "r_0002")
+
+        assert len(run.trace_dag.cuts) == 0
+        run.rewind(to_state_id=s1, reason="bad observe")
+        assert len(run.trace_dag.cuts) == 1
+        cut = next(iter(run.trace_dag.cuts.values()))
+        assert cut.rewound_to_state_id == s1
+        # The cut transition must originate at the rewind target.
+        cut_t = run.trace_dag.transitions[cut.cut_transition_id]
+        assert cut_t.from_observed_state_id == s1
+        assert cut_t.to_observed_state_id == s2
+        assert cut.reason == "bad observe"
+
+    def test_rewind_to_deeper_ancestor_cuts_only_one_edge(self):
+        """Cutting a far-back ancestor still records only the immediate edge.
+
+        Downstream states are derived as cut by walking forward from that
+        edge — no need to enumerate every descendant in the record.
+        """
+        run = _new_run()
+        s0 = run.current_observed_state_id
+        s1 = _advance(run, "a", "r_0001")
+        s2 = _advance(run, "b", "r_0002")
+        s3 = _advance(run, "c", "r_0003")
+
+        run.rewind(to_state_id=s0)
+
+        assert len(run.trace_dag.cuts) == 1
+        cut_tid = next(iter(run.trace_dag.cuts.values())).cut_transition_id
+        cut_t = run.trace_dag.transitions[cut_tid]
+        assert cut_t.from_observed_state_id == s0
+        assert cut_t.to_observed_state_id == s1
+        # Downstream states are derived as cut.
+        assert run.trace_dag.cut_state_ids() == {s1, s2, s3}
+
+    def test_self_rewind_records_no_cut(self):
+        run = _new_run()
+        run.rewind(to_state_id=run.current_observed_state_id)
+        assert run.trace_dag.cuts == {}
+
+    def test_cut_transitions_persist_across_storage_roundtrip(self):
+        from optagent.storage.jsonl import JsonlRunStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = JsonlRunStore(Path(tmpdir))
+            run = _new_run("persist_run")
+            s0 = run.current_observed_state_id
+            _advance(run, "a", "r_0001")
+            run.rewind(to_state_id=s0, reason="undo")
+            store.save_run(run)
+
+            loaded = store.load_run("persist_run")
+            assert len(loaded.trace_dag.cuts) == 1
+            cut = next(iter(loaded.trace_dag.cuts.values()))
+            assert cut.rewound_to_state_id == s0
+            assert cut.reason == "undo"
+
+    def test_repeated_rewinds_accumulate_cuts(self):
+        run = _new_run()
+        s0 = run.current_observed_state_id
+        _advance(run, "first", "r_0001")
+        run.rewind(to_state_id=s0)
+        _advance(run, "second", "r_0002")
+        run.rewind(to_state_id=s0)
+
+        assert len(run.trace_dag.cuts) == 2
+        # Both branches off s0 should be cut.
+        cut_tids = run.trace_dag.cut_transition_ids()
+        assert all(
+            run.trace_dag.transitions[tid].from_observed_state_id == s0
+            for tid in cut_tids
+        )
+
+    def test_cut_does_not_modify_existing_records(self):
+        """Cut must not mutate any state, transition, plan, or result row."""
+        run = _new_run()
+        s0 = run.current_observed_state_id
+        _advance(run, "first", "r_0001")
+
+        snap_before = {sid: run.trace_dag.nodes[sid] for sid in run.trace_dag.nodes}
+        trans_before = dict(run.trace_dag.transitions)
+        plans_before = dict(run.trace_dag.execution_plans)
+
+        run.rewind(to_state_id=s0)
+
+        for sid, node in snap_before.items():
+            assert run.trace_dag.nodes[sid] is node
+        for tid, t in trans_before.items():
+            assert run.trace_dag.transitions[tid] is t
+        for pid, p in plans_before.items():
+            assert run.trace_dag.execution_plans[pid] is p
+
+
 class TestCliRewind:
     """CLI surface for rewind."""
 

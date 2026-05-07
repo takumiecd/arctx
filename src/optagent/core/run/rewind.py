@@ -1,10 +1,16 @@
 """RunHandle.rewind implementation.
 
 Rewind moves the current observed-state pointer back to one of its
-ancestors and re-anchors the PredictionDAG there. The TraceDAG itself
-is append-only and is never modified by rewind: states, transitions,
-plans, and results all remain in place. The new active path simply
-diverges from the chosen ancestor on the next observe/promote.
+ancestors and re-anchors the PredictionDAG there. It also appends a
+``TraceCut`` record to the TraceDAG marking the outgoing transition
+from the ancestor that led to the now-abandoned subtree.
+
+The TraceDAG records themselves (states, transitions, plans, results,
+derived records) are never modified or deleted. The cut log is the
+only piece of state that grows, and it is append-only. Active vs cut
+membership is derived at read time from the cut log; this lets the DAG
+remain a faithful audit of what was tried while consumers can filter
+to the live subset.
 
 Ancestor checks use incoming-edge traversal, not depth comparison, so
 sibling branches at the same depth cannot be confused with the active
@@ -13,7 +19,10 @@ path.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from optagent.core.schema.state import StateNode
+from optagent.core.schema.transitions import TraceCut
 
 
 def rewind_impl(
@@ -22,6 +31,7 @@ def rewind_impl(
     *,
     steps: int | None = None,
     reason: str | None = None,
+    actor_id: str | None = None,
 ) -> StateNode:
     """Move ``current_observed_state_id`` back to an ancestor.
 
@@ -36,9 +46,11 @@ def rewind_impl(
         Walk *steps* incoming transitions from the current state and
         rewind to the resulting ancestor.
     reason:
-        Optional human-readable note. Returned in the result for the
-        caller to log; not persisted in this step. Cursor events will
-        capture this in a later iteration.
+        Optional human-readable note. Persisted on the resulting
+        :class:`TraceCut` for audit.
+    actor_id:
+        Optional actor that triggered the rewind. Forward-compat slot
+        for the cursor/actor model; persisted on the cut record.
 
     Returns
     -------
@@ -52,6 +64,13 @@ def rewind_impl(
         *to_state_id* is not an ancestor of the current state.
     KeyError
         If *to_state_id* does not exist or is not an observed state.
+
+    Side effects
+    ------------
+    - Appends one ``TraceCut`` to ``trace_dag.cuts`` (skipped when
+      target equals current — a self-rewind has no edge to cut).
+    - Replaces ``prediction_dag`` with a fresh DAG anchored at the new
+      current state (skipped on self-rewind).
     """
     if (to_state_id is None) == (steps is None):
         raise ValueError("rewind requires exactly one of to_state_id or steps")
@@ -85,8 +104,47 @@ def rewind_impl(
             "operation to move to a sibling branch."
         )
 
-    moved = to_state_id != current
+    if to_state_id == current:
+        return target
+
+    cut_transition_id = _find_cut_edge(self, target_id=to_state_id, current_id=current)
+    cut = TraceCut(
+        cut_id=self._next_id("cut"),
+        cut_at=datetime.now(timezone.utc).isoformat(),
+        rewound_to_state_id=to_state_id,
+        cut_transition_id=cut_transition_id,
+        reason=reason,
+        actor_id=actor_id,
+    )
+    self.trace_dag.add_cut(cut)
+
     self.current_observed_state_id = to_state_id
-    if moved:
-        self.refresh(from_state_id=to_state_id)
+    self.refresh(from_state_id=to_state_id)
     return target
+
+
+def _find_cut_edge(self, *, target_id: str, current_id: str) -> str:
+    """Walk backwards from ``current_id`` until landing on ``target_id``.
+
+    The transition whose ``from_observed_state_id`` is *target_id* is
+    the immediate downstream edge from the rewind target — that's what
+    gets recorded as cut. Cuts to ancestors further back simply name
+    the corresponding edge for that hop; downstream states are still
+    derived as cut because they sit forward of this edge.
+    """
+    cursor = current_id
+    last_transition_id: str | None = None
+    while cursor != target_id:
+        incoming = self.trace_dag.past_transition_ids(cursor)
+        if not incoming:
+            raise ValueError(
+                f"{target_id} not reachable from {current_id} via incoming edges"
+            )
+        transition = self.trace_dag.transitions[incoming[-1]]
+        last_transition_id = transition.transition_id
+        cursor = transition.from_observed_state_id
+    if last_transition_id is None:
+        raise ValueError(
+            f"no edge to cut between {target_id} and {current_id}"
+        )
+    return last_transition_id

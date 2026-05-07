@@ -66,6 +66,34 @@ class ObservedTransition:
 
 
 @dataclass(frozen=True)
+class TraceCut:
+    """Append-only record that marks a TraceDAG branch as cut.
+
+    A rewind operation appends one ``TraceCut`` to the TraceDAG. The
+    cut transition itself, every observed state reachable forward from
+    it, every transition rooted in those states, and every derived
+    record on those transitions are considered inactive after the cut.
+
+    The DAG records (states, transitions, plans, results, derived
+    records) themselves are never modified or deleted; cut/active
+    membership is derived at read time by replaying the cut log.
+    Adding a ``TraceCut`` therefore preserves source-of-truth history
+    while letting consumers filter to the live subset.
+    """
+
+    cut_id: str
+    cut_at: str
+    rewound_to_state_id: str
+    cut_transition_id: str
+    reason: str | None = None
+    actor_id: str | None = None
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return to_jsonable(self)  # type: ignore[return-value]
+
+
+@dataclass(frozen=True)
 class PredictionStepRef:
     """Selected prediction step inside a PredictionPath."""
 
