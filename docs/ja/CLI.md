@@ -2,20 +2,59 @@
 
 この文書は、optagent のコマンドラインインターフェース（CLI）を説明します。
 
-optagent CLI は、ライブラリAPIをコマンドラインから使うための薄いラッパーです。
-各コマンドは ``JsonlRunStore`` を通じてrunをディスクに保存します。
+optagent CLI は、ライブラリAPIをコマンドラインから使うための薄いラッパーです。各コマンドは ``JsonlRunStore`` を通じて run をディスクに保存します。
 
-## 共通オプション
+## コマンド一覧
 
-各サブコマンドで使える共通のオプションです。
+| カテゴリ | コマンド | 用途 |
+|---------|----------|------|
+| run 管理 | [``init``](#optagent-init) | 新しい run を作成する |
+|          | [``use``](#optagent-use) | current run を切り替える |
+|          | [``current``](#optagent-current) | current run を表示する |
+|          | [``list``](#optagent-list) | 保存済み run 一覧を表示する |
+|          | [``show``](#optagent-show) | run の詳細・特定エンティティを表示する |
+| 計画と予測 | [``plan``](#optagent-plan) | current observed state から plan を作る |
+|          | [``predict``](#optagent-predict) | plan に予測 outcome を付ける |
+| 観測 | [``observe``](#optagent-observe) | plan の実行結果を記録する |
+|     | [``promote``](#optagent-promote) | 予測と実測を対応づけて trace へ昇格する |
+|     | [``derive``](#optagent-derive) | observed transition に派生レコードを付ける |
+| DAG 操作 | [``refresh``](#optagent-refresh) | PredictionDAG を current state に再アンカーする |
+|          | [``trace``](#optagent-trace) | observed の過去履歴を辿る |
+| 状態 | [``state``](#optagent-state) | current state snapshot を表示・更新する |
+|     | [``snapshot``](#optagent-snapshot) | snapshot を表示・trace から再構築する |
+
+## 共通仕様
+
+### 共通オプション
+
+すべてのサブコマンドで使えるオプションです。
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| ``--store-dir`` | ``.optagent/runs`` | runを保存するディレクトリ |
+| ``--store-dir`` | ``.optagent/runs`` | run を保存するディレクトリ |
+
+### run_id の解決
+
+``init`` / ``use`` 以外で run を対象に取るコマンドは、以下の順序で run_id を解決します。
+
+1. positional 引数 ``run_id``（``init`` / ``use`` を除く）
+2. ``--run`` フラグ
+3. 環境変数 ``OPTAGENT_RUN_ID``
+4. current run マーカー（``<store-dir>/../current.json``）
+
+どれにも該当しない場合は ``RuntimeError`` を返します。
+
+current run は ``optagent init`` の成功時に自動でその run に切り替わり、``optagent use`` で明示的に変更できます。マーカーは ``--store-dir`` に対応する位置（デフォルトで ``.optagent/current.json``）に保存されます。
+
+### 出力
+
+エンティティを返すコマンドは整形された JSON を標準出力に出します。それ以外の状態確認系（``init`` / ``use`` / ``current`` / ``list``）はテキストや JSON 配列を返します。
+
+---
 
 ## ``optagent init``
 
-新しいrunを作成します。
+新しい run を作成し、その run を current run に設定します。
 
 ```bash
 optagent init <requirement_id> [options]
@@ -25,7 +64,7 @@ optagent init <requirement_id> [options]
 
 | 引数 | 必須 | 説明 |
 |-----|------|------|
-| ``requirement_id`` | ○ | runの目的を表す識別子 |
+| ``requirement_id`` | ○ | run の目的を表す識別子 |
 
 ### オプション
 
@@ -33,7 +72,7 @@ optagent init <requirement_id> [options]
 |-----------|-----------|------|
 | ``--target-type`` | ``code`` | 対象のカテゴリ（例: ``code``, ``kernel``） |
 | ``--target-id`` | ``requirement_id`` | 具体的な対象の識別子 |
-| ``--run-id`` | 自動生成 | runの識別子（省略時は ``run_<requirement_id>_<timestamp>``） |
+| ``--run-id`` | 自動生成 | run の識別子（省略時は ``run_<requirement_id>_<timestamp>``） |
 | ``--store-dir`` | ``.optagent/runs`` | 保存先ディレクトリ |
 
 ### 出力
@@ -45,52 +84,231 @@ $ optagent init req_kernel --target-type kernel --target-id csc_linear
 run_req_kernel_20260506_082356
 ```
 
+### 副作用
+
+- ``<store-dir>/<run_id>/`` を新規作成。
+- ``<store-dir>/../current.json`` を更新（以後 ``run_id`` を省略可）。
+
 ### 保存されるもの
 
 ``<store-dir>/<run_id>/`` 以下に以下のファイルが作成されます。
 
-- ``run.json`` — runのメタデータとrequirement
+- ``run.json`` — run のメタデータと requirement
 - ``states.jsonl`` — observed state と predicted state
-- ``execution_plans.jsonl`` — 実行可能なplan（init時は空）
-- ``prediction_plans.jsonl`` — 予測用plan（init時は空）
-- ``predicted_transitions.jsonl`` — 予測outcome（init時は空）
-- ``observed_transitions.jsonl`` — 実行結果（init時は空）
-- ``derived_records.jsonl`` — 派生メモ（init時は空）
+- ``execution_plans.jsonl`` — 実行可能な plan（init 時は空）
+- ``prediction_plans.jsonl`` — 予測用 plan（init 時は空）
+- ``predicted_transitions.jsonl`` — 予測 outcome（init 時は空）
+- ``observed_transitions.jsonl`` — 実行結果（init 時は空）
+- ``derived_records.jsonl`` — 派生メモ（init 時は空）
 
 ### エラー
 
 - ``FileExistsError`` — 同じ ``run_id`` のディレクトリが既に存在する場合
 
-## ``optagent plan``
+---
 
-指定したrunのcurrent observed stateからplanを作成します。
+## ``optagent use``
+
+current run を切り替えます。以後 ``run_id`` を省略したコマンドはこの run を対象にします。
 
 ```bash
-optagent plan <run_id> [options]
+optagent use <run_id> [options]
 ```
 
 ### 引数
 
 | 引数 | 必須 | 説明 |
 |-----|------|------|
-| ``run_id`` | ○ | 対象のrun識別子 |
+| ``run_id`` | ○ | current にする run の識別子 |
 
 ### オプション
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| ``--planner`` | ``default`` | 使用するplannerの名前 |
-| ``--max-plans`` | ``1`` | 作成するplanの最大数 |
-| ``--action-type`` | ``analysis`` | planのアクション種別 |
-| ``--intent`` | （自動） | planの目的の説明 |
-| ``--input`` | （なし） | planへの入力パラメータ（``key=value``、複数可） |
-| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
+
+### 出力
+
+成功時、設定した ``run_id`` を1行で出力します。
+
+```bash
+$ optagent use run_req_kernel_20260506_082356
+run_req_kernel_20260506_082356
+```
+
+### エラー
+
+- ``KeyError`` — 指定した ``run_id`` が ``--store-dir`` 配下に存在しない場合
+
+---
+
+## ``optagent current``
+
+current run を表示します。
+
+```bash
+optagent current [options]
+```
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--json`` | （オフ） | JSON 形式で出力する |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
+
+### 出力
+
+デフォルトでは ``run_id`` のみを1行で出力します。``--json`` を付けると ``run_id`` と ``store_dir`` を含むオブジェクトを出力します。
+
+```bash
+$ optagent current
+run_req_kernel_20260506_082356
+
+$ optagent current --json
+{
+  "run_id": "run_req_kernel_20260506_082356",
+  "store_dir": ".optagent/runs"
+}
+```
+
+### エラー
+
+- ``RuntimeError`` — current run が未設定の場合
+
+---
+
+## ``optagent list``
+
+保存済みの run 一覧を表示します。
+
+```bash
+optagent list [options]
+```
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
+
+### 出力
+
+成功時、run の一覧を JSON 配列で標準出力に出力します。
+
+```bash
+$ optagent list
+[
+  {
+    "run_id": "run_a",
+    "requirement_id": "req_kernel",
+    "target_type": "kernel",
+    "target_id": "csc_linear",
+    "current_observed_state_id": "s_obs_0000"
+  },
+  {
+    "run_id": "run_b",
+    "requirement_id": "req_code",
+    "target_type": "code",
+    "target_id": "module_b",
+    "current_observed_state_id": "s_obs_0000"
+  }
+]
+```
+
+store が空の場合、空の配列 ``[]`` を出力します。
+
+---
+
+## ``optagent show``
+
+run の詳細、または run 内の特定エンティティを表示します。
+
+```bash
+optagent show [<run_id>] [options]
+```
+
+### 引数
+
+| 引数 | 必須 | 説明 |
+|-----|------|------|
+| ``run_id`` | △ | 対象の run 識別子（省略時は ``--run`` または current） |
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--run`` | （なし） | run 識別子（positional の代替） |
+| ``--state <state_id>`` | （なし） | 特定の state を表示 |
+| ``--plan <plan_id>`` | （なし） | 特定の plan を表示 |
+| ``--transition <transition_id>`` | （なし） | 特定の transition を表示 |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
+
+``--state`` / ``--plan`` / ``--transition`` のいずれも指定しない場合、run 全体（``trace_dag`` と ``prediction_dag`` を含む）を返します。``--state`` などは TraceDAG・PredictionDAG の両方を横断検索します。
+
+### 出力
+
+成功時、結果を JSON で標準出力に出力します。
+
+```bash
+$ optagent show
+{
+  "run_id": "run_001",
+  "requirement_id": "req_kernel",
+  "current_observed_state_id": "s_obs_0001",
+  "trace_dag": { ... },
+  "prediction_dag": { ... }
+}
+
+$ optagent show --state s_obs_0001
+{
+  "state": {
+    "state_id": "s_obs_0001",
+    "state_kind": "observed",
+    "snapshot": { ... },
+    "snapshot_hash": "..."
+  }
+}
+```
+
+### エラー
+
+- ``KeyError`` — ``run_id`` または指定した ``state_id`` / ``plan_id`` / ``transition_id`` が存在しない場合
+- ``RuntimeError`` — run_id が解決できない場合
+
+---
+
+## ``optagent plan``
+
+current observed state から plan を作成します。
+
+```bash
+optagent plan [<run_id>] [options]
+```
+
+### 引数
+
+| 引数 | 必須 | 説明 |
+|-----|------|------|
+| ``run_id`` | △ | 対象の run 識別子（省略時は ``--run`` または current） |
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--run`` | （なし） | run 識別子（positional の代替） |
+| ``--planner`` | ``default`` | 使用する planner の名前 |
+| ``--max-plans`` | ``1`` | 作成する plan の最大数 |
+| ``--action-type`` | ``analysis`` | plan のアクション種別 |
+| ``--intent`` | （自動） | plan の目的の説明 |
+| ``--input`` | （なし） | plan への入力パラメータ（``key=value``、複数可） |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
 
 plan は「何をするか」の宣言です。実行結果の予測は ``PredictedTransition`` が持ち、plan 自身は持ちません。
 
 ### 出力
 
-成功時、作成されたplanの一覧をJSON配列で標準出力に出力します。
+成功時、作成された plan の一覧を JSON 配列で標準出力に出力します。
 
 ```bash
 $ optagent plan run_req_kernel_20260506_082356
@@ -109,7 +327,7 @@ $ optagent plan run_req_kernel_20260506_082356
 ### 実用的な例
 
 ```bash
-$ optagent plan my_run \
+$ optagent plan \
     --action-type edit \
     --intent "vectorize the inner loop" \
     --input file=src/kernel.py \
@@ -131,37 +349,39 @@ $ optagent plan my_run \
 
 ### エラー
 
-- ``KeyError`` — 指定した ``run_id`` が存在しない場合
+- ``KeyError`` — ``run_id`` が存在しない場合
+
+---
 
 ## ``optagent predict``
 
-指定したplanから予測outcome（PredictedTransition）を作成します。
+指定した plan から予測 outcome（``PredictedTransition``）を作成します。
 
 ```bash
-optagent predict <run_id> <plan_id> [options]
+optagent predict <plan_id> [options]
 ```
 
 ### 引数
 
 | 引数 | 必須 | 説明 |
 |-----|------|------|
-| ``run_id`` | ○ | 対象のrun識別子 |
-| ``plan_id`` | ○ | 予測するplanの識別子 |
+| ``plan_id`` | ○ | 予測する plan の識別子 |
 
 ### オプション
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| ``--predictor`` | ``default`` | 使用するpredictorの名前 |
-| ``--max-outcomes`` | ``1`` | 作成する予測outcomeの最大数 |
-| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+| ``--run`` | （なし） | run 識別子（省略時は current） |
+| ``--predictor`` | ``default`` | 使用する predictor の名前 |
+| ``--max-outcomes`` | ``1`` | 作成する予測 outcome の最大数 |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
 
 ### 出力
 
-成功時、作成された予測outcomeの一覧をJSON配列で標準出力に出力します。
+成功時、作成された予測 outcome の一覧を JSON 配列で標準出力に出力します。
 
 ```bash
-$ optagent predict run_req_kernel_20260506_082356 p_exec_0001 --max-outcomes 2
+$ optagent predict p_exec_0001 --max-outcomes 2
 [
   {
     "transition_id": "t_pred_0001",
@@ -192,27 +412,29 @@ $ optagent predict run_req_kernel_20260506_082356 p_exec_0001 --max-outcomes 2
 
 ### エラー
 
-- ``KeyError`` — 指定した ``run_id`` または ``plan_id`` が存在しない場合
+- ``KeyError`` — ``run_id`` または ``plan_id`` が存在しない場合
+
+---
 
 ## ``optagent observe``
 
-planの実行結果を記録します。予測と対応づけず、事実だけを保存します。
+plan の実行結果を記録します。予測と対応づけず、事実だけを保存します。予測と対応づける場合は ``promote`` を使います。
 
 ```bash
-optagent observe <run_id> <plan_id> --result-id <result_id> [options]
+optagent observe <plan_id> --result-id <result_id> [options]
 ```
 
 ### 引数
 
 | 引数 | 必須 | 説明 |
 |-----|------|------|
-| ``run_id`` | ○ | 対象のrun識別子 |
-| ``plan_id`` | ○ | 実行したplanの識別子 |
+| ``plan_id`` | ○ | 実行した plan の識別子 |
 
 ### オプション
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
+| ``--run`` | （なし） | run 識別子（省略時は current） |
 | ``--result-id`` | （必須） | 結果の識別子 |
 | ``--status`` | ``completed`` | 実行ステータス |
 | ``--artifact`` | （なし） | アーティファクトパス（複数可） |
@@ -220,14 +442,14 @@ optagent observe <run_id> <plan_id> --result-id <result_id> [options]
 | ``--log`` | （なし） | ログパス（複数可） |
 | ``--metric`` | （なし） | メトリクス（``key=value``、複数可） |
 | ``--error`` | （なし） | エラーメッセージ（複数可） |
-| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
 
 ### 出力
 
-成功時、作成された ``ObservedTransition`` をJSONで標準出力に出力します。
+成功時、作成された ``ObservedTransition`` を JSON で標準出力に出力します。
 
 ```bash
-$ optagent observe run_001 p_exec_0001 --result-id r_0001 --status completed \
+$ optagent observe p_exec_0001 --result-id r_0001 --status completed \
     --artifact patch.diff --metric speedup=1.15
 {
   "transition_id": "t_obs_0001",
@@ -246,14 +468,16 @@ $ optagent observe run_001 p_exec_0001 --result-id r_0001 --status completed \
 
 ### エラー
 
-- ``KeyError`` — 指定した ``run_id`` または ``plan_id`` が存在しない場合
+- ``KeyError`` — ``run_id`` または ``plan_id`` が存在しない場合
+
+---
 
 ## ``optagent promote``
 
-予測outcome（PredictedTransition）と実測結果を対応づけ、``TraceDAG`` に記録します。
+予測 outcome（``PredictedTransition``）と実測結果を対応づけ、``TraceDAG`` に記録します。
 
 ```bash
-optagent promote <run_id> \
+optagent promote [<run_id>] \
     --predicted-transition-id <predicted_id> \
     --result-id <result_id> [options]
 ```
@@ -262,25 +486,26 @@ optagent promote <run_id> \
 
 | 引数 | 必須 | 説明 |
 |-----|------|------|
-| ``run_id`` | ○ | 対象のrun識別子 |
+| ``run_id`` | △ | 対象の run 識別子（省略時は ``--run`` または current） |
 
 ### オプション
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| ``--predicted-transition-id`` | （必須） | 対応づける予測outcomeの識別子 |
+| ``--run`` | （なし） | run 識別子（positional の代替） |
+| ``--predicted-transition-id`` | （必須） | 対応づける予測 outcome の識別子 |
 | ``--result-id`` | （必須） | 結果の識別子 |
 | ``--status`` | ``completed`` | 実行ステータス |
-| ``--execution-plan-id`` | （推論） | 実行planの識別子 |
+| ``--execution-plan-id`` | （推論） | 実行 plan の識別子 |
 | ``--metric`` | （なし） | メトリクス（``key=value``、複数可） |
-| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
 
 ### 出力
 
-成功時、作成された ``ObservedTransition`` をJSONで標準出力に出力します。
+成功時、作成された ``ObservedTransition`` を JSON で標準出力に出力します。
 
 ```bash
-$ optagent promote run_001 \
+$ optagent promote \
     --predicted-transition-id t_pred_0001 \
     --result-id r_0001 \
     --execution-plan-id p_exec_0001
@@ -298,35 +523,134 @@ $ optagent promote run_001 \
 
 ### エラー
 
-- ``KeyError`` — 指定した ``run_id`` または ``predicted_transition_id`` が存在しない場合
+- ``KeyError`` — ``run_id`` または ``predicted_transition_id`` が存在しない場合
 
-## ``optagent trace``
+---
 
-現在のobserved stateから過去の実行履歴を辿ります。
+## ``optagent derive``
+
+observed transition に派生レコード（``DerivedRecord``）を付与します。実行結果から得られた所見・要約・証拠・判断などを残すために使います。
 
 ```bash
-optagent trace <run_id> [options]
+optagent derive <transition_id> [options]
 ```
 
 ### 引数
 
 | 引数 | 必須 | 説明 |
 |-----|------|------|
-| ``run_id`` | ○ | 対象のrun識別子 |
+| ``transition_id`` | ○ | 対象の observed transition 識別子 |
 
 ### オプション
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| ``--depth`` | （制限なし） | 辿る遷移数の上限 |
-| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+| ``--run`` | （なし） | run 識別子（省略時は current） |
+| ``--type`` | ``finding`` | 派生レコードの種別（``finding`` / ``summary`` / ``evidence`` / ``decision`` 等） |
+| ``--id`` | 自動生成 | 明示的なレコード ID |
+| ``--text`` | （なし） | 短文の本文（``payload.text`` に保存） |
+| ``--confidence`` | （なし） | 信頼度（``0.0``〜``1.0``） |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
+
+``generator`` は CLI 経由の場合 ``"cli"`` 固定です。
 
 ### 出力
 
-成功時、``TraceContext`` をJSONで標準出力に出力します。
+成功時、作成された派生レコードを JSON で標準出力に出力します。
 
 ```bash
-$ optagent trace run_001 --depth 3
+$ optagent derive t_obs_0001 --type finding \
+    --text "speedup is bottlenecked by memory bandwidth" \
+    --confidence 0.7
+{
+  "derived_id": "d_0001",
+  "derived_type": "finding",
+  "transition_id": "t_obs_0001",
+  "payload": {
+    "text": "speedup is bottlenecked by memory bandwidth"
+  },
+  "generator": "cli",
+  "confidence": 0.7
+}
+```
+
+### エラー
+
+- ``KeyError`` — ``run_id`` または ``transition_id`` が存在しない場合
+
+---
+
+## ``optagent refresh``
+
+current observed state に ``PredictionDAG`` を作り直してアンカーします。
+
+実行結果を記録すると current observed state が進み、古い未来予測は現在の状態とズレるため、必要に応じて ``refresh`` します。
+
+```bash
+optagent refresh [<run_id>] [options]
+```
+
+### 引数
+
+| 引数 | 必須 | 説明 |
+|-----|------|------|
+| ``run_id`` | △ | 対象の run 識別子（省略時は ``--run`` または current） |
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--run`` | （なし） | run 識別子（positional の代替） |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
+
+### 出力
+
+成功時、新しい ``PredictionDAG`` を JSON で標準出力に出力します。
+
+```bash
+$ optagent refresh
+{
+  "dag_id": "prediction_dag_0002",
+  "anchor_observed_state_id": "s_obs_0001",
+  "root_predicted_state_id": "s_pred_0003",
+  "stale": false
+}
+```
+
+### エラー
+
+- ``KeyError`` — ``run_id`` が存在しない場合
+
+---
+
+## ``optagent trace``
+
+current observed state から過去の実行履歴を辿ります。
+
+```bash
+optagent trace [<run_id>] [options]
+```
+
+### 引数
+
+| 引数 | 必須 | 説明 |
+|-----|------|------|
+| ``run_id`` | △ | 対象の run 識別子（省略時は ``--run`` または current） |
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--run`` | （なし） | run 識別子（positional の代替） |
+| ``--depth`` | （制限なし） | 辿る遷移数の上限 |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
+
+### 出力
+
+成功時、``TraceContext`` を JSON で標準出力に出力します。
+
+```bash
+$ optagent trace --depth 3
 {
   "current_state_id": "s_obs_0002",
   "past_state_ids": ["s_obs_0001", "s_obs_0000"],
@@ -341,84 +665,119 @@ $ optagent trace run_001 --depth 3
 
 ### エラー
 
-- ``KeyError`` — 指定した ``run_id`` が存在しない場合
+- ``KeyError`` — ``run_id`` が存在しない場合
 
-## ``optagent list``
+---
 
-保存済みのrun一覧を表示します。
+## ``optagent state``
 
-```bash
-optagent list [options]
-```
-
-### オプション
-
-| オプション | デフォルト | 説明 |
-|-----------|-----------|------|
-| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
-
-### 出力
-
-成功時、runの一覧をJSON配列で標準出力に出力します。
+current state snapshot を表示・更新します。``--add-*`` オプションを1つでも与えると更新モードになり、何も与えなければ参照のみです。
 
 ```bash
-$ optagent list
-[
-  {
-    "run_id": "run_a",
-    "requirement_id": "req_kernel",
-    "target_type": "kernel",
-    "target_id": "csc_linear",
-    "current_observed_state_id": "s_obs_0000"
-  },
-  {
-    "run_id": "run_b",
-    "requirement_id": "req_code",
-    "target_type": "code",
-    "target_id": "module_b",
-    "current_observed_state_id": "s_obs_0000"
-  }
-]
-```
-
-storeが空の場合、空の配列 ``[]`` を出力します。
-
-## ``optagent refresh``
-
-現在の observed state に ``PredictionDAG`` を作り直してアンカーします。
-
-実行結果を記録すると current observed state が進み、古い未来予測は現在の状態とズレるため、必要に応じて ``refresh`` します。
-
-```bash
-optagent refresh <run_id> [options]
+optagent state [<run_id>] [options]
 ```
 
 ### 引数
 
 | 引数 | 必須 | 説明 |
 |-----|------|------|
-| ``run_id`` | ○ | 対象のrun識別子 |
+| ``run_id`` | △ | 対象の run 識別子（省略時は ``--run`` または current） |
 
 ### オプション
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| ``--store-dir`` | ``.optagent/runs`` | runの保存先ディレクトリ |
+| ``--run`` | （なし） | run 識別子（positional の代替） |
+| ``--add-knowledge`` | （なし） | 知見の要約を追加（複数可） |
+| ``--add-open-question`` | （なし） | 未解決の問いを追加（複数可） |
+| ``--add-artifact`` | （なし） | アーティファクトを追加（``id:type:path``、``path`` は省略可、複数可） |
+| ``--add-prediction`` | （なし） | 予測を追加（``id:summary``、複数可） |
+| ``--add-branch`` | （なし） | アクティブなブランチ ID を追加（複数可） |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
 
 ### 出力
 
-成功時、新しい ``PredictionDAG`` をJSONで標準出力に出力します。
+成功時、（更新後の）current observed state ノードを JSON で標準出力に出力します。
 
 ```bash
-$ optagent refresh run_001
+$ optagent state \
+    --add-knowledge "loop is memory-bound" \
+    --add-open-question "is prefetch helping?" \
+    --add-artifact patch1:patch:patches/p1.diff
 {
-  "dag_id": "prediction_dag_0002",
-  "anchor_observed_state_id": "s_obs_0001",
-  "root_predicted_state_id": "s_pred_0003",
-  "stale": false
+  "state_id": "s_obs_0001",
+  "state_kind": "observed",
+  "snapshot": {
+    "knowledge": [{"finding_id": "...", "summary": "loop is memory-bound", ...}],
+    "open_questions": ["is prefetch helping?"],
+    "artifacts": [{"artifact_id": "patch1", "artifact_type": "patch", "path": "patches/p1.diff"}],
+    ...
+  },
+  "snapshot_hash": "..."
+}
+```
+
+### 注意
+
+- ``--add-artifact`` の値は ``:`` 区切りで最大3要素（``id:type:path``）です。``path`` を空にする場合は末尾の ``:`` も省略できます（例: ``a1:patch``）。
+- ``--add-prediction`` の値は ``id:summary`` の2要素必須です。
+- ``state update`` は snapshot を再生成し、``snapshot_hash`` も再計算されます。
+
+### エラー
+
+- ``KeyError`` — ``run_id`` が存在しない場合
+- ``ValueError`` — ``--add-artifact`` / ``--add-prediction`` の書式が不正な場合
+
+---
+
+## ``optagent snapshot``
+
+current observed state の ``StateSnapshot`` を表示、または trace 履歴から再構築します。
+
+``StateSnapshot`` は計画用のワーキングメモリで、source of truth は ``TraceDAG`` 側の ``ActionResult`` と ``DerivedRecord`` です。``--rebuild`` を付けると、対象 state までの observed transition を遡り、artifact / raw_output / log / derived_record から snapshot の ``artifacts`` と ``knowledge`` を作り直します。``snapshot_hash`` も再計算されます。
+
+```bash
+optagent snapshot [<run_id>] [options]
+```
+
+### 引数
+
+| 引数 | 必須 | 説明 |
+|-----|------|------|
+| ``run_id`` | △ | 対象の run 識別子（省略時は ``--run`` または current） |
+
+### オプション
+
+| オプション | デフォルト | 説明 |
+|-----------|-----------|------|
+| ``--run`` | （なし） | run 識別子（positional の代替） |
+| ``--state-id`` | current observed | 対象の observed state ID |
+| ``--rebuild`` | （オフ） | trace 履歴から snapshot を再構築する |
+| ``--store-dir`` | ``.optagent/runs`` | run の保存先ディレクトリ |
+
+### 出力
+
+成功時、（再構築後の）state ノードを JSON で標準出力に出力します。
+
+```bash
+$ optagent snapshot --rebuild
+{
+  "state_id": "s_obs_0002",
+  "state_kind": "observed",
+  "snapshot": {
+    "artifacts": [
+      {"artifact_id": "patch.diff", "artifact_type": "artifact", "path": "patch.diff"},
+      {"artifact_id": "raw/run.log", "artifact_type": "raw_output", "path": "raw/run.log"}
+    ],
+    "knowledge": [
+      {"finding_id": "d_0001", "summary": "speedup ...", "scope": "finding", ...}
+    ],
+    ...
+  },
+  "snapshot_hash": "..."
 }
 ```
 
 ### エラー
 
-- ``KeyError`` — 指定した ``run_id`` が存在しない場合
+- ``KeyError`` — ``run_id`` または ``state_id`` が存在しない、あるいは observed state でない場合
