@@ -1,4 +1,11 @@
-"""Depth-oriented PredictionDAG and TraceDAG indexes."""
+"""PredictionDAG and TraceDAG indexes.
+
+``node_depths`` / ``nodes_by_depth`` are kept for storage and display
+compatibility but are *not* the source of truth for correctness checks
+(rewind, ancestor relationships, plan creation). Treat them as derived
+indexes scheduled for deprecation; new logic must use the incoming-edge
+walks instead.
+"""
 
 from __future__ import annotations
 
@@ -125,6 +132,35 @@ class TraceDAG:
 
     def next_transition_ids(self, state_id: str) -> list[str]:
         return list(self.outgoing_index.get(state_id, ()))
+
+    def ancestors_of(self, state_id: str) -> tuple[str, ...]:
+        """Return observed state_ids reachable backwards via incoming edges.
+
+        Order is BFS from *state_id* (closest ancestor first). The starting
+        state itself is not included.
+        """
+        seen: set[str] = set()
+        order: list[str] = []
+        frontier: list[str] = [state_id]
+        while frontier:
+            current = frontier.pop(0)
+            for tid in self.incoming_index.get(current, ()):
+                parent = self.transitions[tid].from_observed_state_id
+                if parent in seen:
+                    continue
+                seen.add(parent)
+                order.append(parent)
+                frontier.append(parent)
+        return tuple(order)
+
+    def is_ancestor(self, ancestor_id: str, descendant_id: str) -> bool:
+        """Return True iff *ancestor_id* lies on a backwards path from *descendant_id*.
+
+        A state is treated as an ancestor of itself.
+        """
+        if ancestor_id == descendant_id:
+            return True
+        return ancestor_id in self.ancestors_of(descendant_id)
 
     def plan_ids_from_state(self, state_id: str) -> list[str]:
         return list(self.plans_by_state.get(state_id, ()))

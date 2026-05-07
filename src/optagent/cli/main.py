@@ -15,6 +15,7 @@ from optagent.cli.commands.promote import add_parser as add_promote_parser, cli_
 from optagent.cli.commands.derive import add_parser as add_derive_parser, cli_derive
 from optagent.cli.commands.extend import add_parser as add_extend_parser, cli_extend
 from optagent.cli.commands.refresh import add_parser as add_refresh_parser, cli_refresh
+from optagent.cli.commands.rewind import add_parser as add_rewind_parser, cli_rewind
 from optagent.cli.commands.snapshot import add_parser as add_snapshot_parser, cli_snapshot
 from optagent.cli.commands.state import add_parser as add_state_parser, cli_state
 from optagent.cli.commands.show import add_parser as add_show_parser, cli_show
@@ -39,6 +40,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_derive_parser(subparsers)
     add_extend_parser(subparsers)
     add_refresh_parser(subparsers)
+    add_rewind_parser(subparsers)
     add_show_parser(subparsers)
     add_snapshot_parser(subparsers)
     add_state_parser(subparsers)
@@ -78,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_extend(args)
     if args.command == "refresh":
         return cli_refresh(args)
+    if args.command == "rewind":
+        return cli_rewind(args)
     if args.command == "show":
         return cli_show(args)
     if args.command == "snapshot":

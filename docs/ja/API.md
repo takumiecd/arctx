@@ -290,6 +290,36 @@ observed = run.observe(
 
 `run.result(...)` は `run.observe(...)` の alias です。
 
+## `run.rewind`
+
+```python
+run.rewind(
+    to_state_id: str | None = None,
+    *,
+    steps: int | None = None,
+    reason: str | None = None,
+) -> StateNode
+```
+
+`current_observed_state_id` を、その祖先 observed state に戻します。`to_state_id` か `steps` のいずれか一方を指定します。
+
+`rewind` は **DAG を変更しません**。state / transition / plan / result はすべて TraceDAG に残り、ポインタだけが祖先に移動します。巻き戻し後の最初の `observe` / `promote` は、その祖先から新しい兄弟枝として伸びていきます（DAG 上で並列に枝が増える形）。
+
+祖先判定は depth ではなく `trace_dag.is_ancestor` による incoming edge の辿りで行います。current から到達できない別枝の state を渡すと `ValueError` になります（兄弟枝への移動は将来 Cursor の `switch` / `move` で扱います）。
+
+巻き戻し後、PredictionDAG は新しい current observed state を anchor として自動で refresh されます（current 自身に rewind した場合は no-op）。
+
+```python
+s0 = run.current_observed_state_id
+plan = run.plan()[0]
+# observe ...
+
+run.rewind(steps=1)
+assert run.current_observed_state_id == s0
+# trace_dag は何も消えていない
+assert len(run.trace_dag.transitions) >= 1
+```
+
 ## `run.refresh`
 
 ```python
