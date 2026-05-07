@@ -175,6 +175,69 @@ class TestRunHandleRewind:
             assert run.trace_dag.execution_plans[pid] is p
 
 
+class TestCutBranchIsInactive:
+    """A cut branch must not accept new plans, observations, or promotions."""
+
+    def test_cannot_plan_from_cut_state(self):
+        run = _new_run()
+        s1, t1 = _advance(run, "a", "r_0001")
+        run.rewind(t1)
+
+        with pytest.raises(ValueError, match="cut branch"):
+            run.plan(state_id=s1, intent="should not continue cut branch")
+
+    def test_cannot_observe_plan_created_before_rewind(self):
+        """A plan created off a state that later gets cut must not produce a new transition."""
+        run = _new_run()
+        s1, t1 = _advance(run, "a", "r_0001")
+        old_plan = run.plan(state_id=s1, intent="old future plan")[0]
+        run.rewind(t1)
+
+        with pytest.raises(ValueError, match="cut branch"):
+            run.observe(
+                old_plan.plan_id,
+                ActionResult(
+                    result_id="r_bad",
+                    execution_plan_id=old_plan.plan_id,
+                    status="completed",
+                ),
+            )
+
+    def test_cannot_promote_plan_into_cut_state(self):
+        run = _new_run()
+        s1, t1 = _advance(run, "a", "r_0001")
+        # Build a prediction plan available on the prediction DAG
+        # before the rewind so we have something to promote.
+        pred_plan = run.extend(
+            state_id=run.prediction_dag.root_predicted_state_id,
+            intent="hypothetical",
+        )[0]
+        run.rewind(t1)
+
+        with pytest.raises(ValueError, match="cut branch"):
+            run.promote(
+                mode="plan",
+                prediction_plan_id=pred_plan.plan_id,
+                observed_state_id=s1,
+            )
+
+    def test_inactive_transition_ids_include_downstream(self):
+        run = _new_run()
+        s1, t1 = _advance(run, "a", "r_0001")
+        s2, t2 = _advance(run, "b", "r_0002")
+        s3, t3 = _advance(run, "c", "r_0003")
+
+        run.rewind(t1)
+
+        # Direct cut names only the boundary edge.
+        assert run.trace_dag.cut_transition_ids() == {t1}
+        # Inactive set extends downstream — every transition rooted in
+        # the cut subtree is inactive too.
+        assert run.trace_dag.inactive_transition_ids() == {t1, t2, t3}
+        # Cut state set already covered the downstream states.
+        assert run.trace_dag.cut_state_ids() == {s1, s2, s3}
+
+
 class TestStorageRoundtrip:
     def test_cut_persists(self):
         with tempfile.TemporaryDirectory() as tmpdir:

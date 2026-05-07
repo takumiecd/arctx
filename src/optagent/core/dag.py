@@ -153,6 +153,27 @@ class TraceDAG:
     def is_cut_state(self, state_id: str) -> bool:
         return state_id in self.cut_state_ids()
 
+    def inactive_transition_ids(self) -> set[str]:
+        """Every observed transition that is no longer on an active branch.
+
+        This is the union of:
+          - transitions directly named by a ``TraceCut`` (``cut_transition_ids``)
+          - transitions that originate from a state inside a cut subtree
+            (their ``from_observed_state_id`` is in ``cut_state_ids``)
+
+        Use this when filtering for live records (UI, replay, planning).
+        ``cut_transition_ids()`` alone names only the cut boundary, not
+        the downstream edges that became inactive as a result.
+        """
+        inactive = set(self.cut_transition_ids())
+        cut_states = self.cut_state_ids()
+        for sid in cut_states:
+            inactive.update(self.outgoing_index.get(sid, ()))
+        return inactive
+
+    def is_inactive_transition(self, transition_id: str) -> bool:
+        return transition_id in self.inactive_transition_ids()
+
     def add_execution_plan(self, plan: ExecutionPlan) -> None:
         self.execution_plans[plan.plan_id] = plan
         self.plans_by_state.setdefault(plan.from_observed_state_id, []).append(

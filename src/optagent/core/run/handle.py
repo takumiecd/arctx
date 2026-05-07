@@ -42,6 +42,21 @@ class RunHandle:
     def current_observed_state(self) -> StateNode:
         return self.trace_dag.nodes[self.current_observed_state_id]
 
+    def _ensure_active_observed_state(self, state_id: str) -> None:
+        """Reject state IDs that are unknown or sit inside a cut subtree.
+
+        Writers (plan, promote, observe) must call this on whichever
+        observed state they are about to grow from. Reading APIs that
+        only inspect history do not need to call it.
+        """
+        if state_id not in self.trace_dag.nodes:
+            raise KeyError(f"unknown observed state_id: {state_id}")
+        if self.trace_dag.is_cut_state(state_id):
+            raise ValueError(
+                f"state is in a cut branch: {state_id}; "
+                "rewind cut this subtree, so no new plans/observations can extend it"
+            )
+
     def _set_current_observed(self, state_id: str) -> None:
         """Move the run's observed pointer and keep the main cursor in sync.
 

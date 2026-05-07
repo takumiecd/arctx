@@ -55,8 +55,7 @@ def _promote_plan(
     observed_state_id: str | None,
 ) -> list[ExecutionPlan]:
     target_observed_state_id = observed_state_id or self.current_observed_state_id
-    if target_observed_state_id not in self.trace_dag.nodes:
-        raise KeyError(f"unknown observed_state_id: {target_observed_state_id}")
+    self._ensure_active_observed_state(target_observed_state_id)
 
     plan_ids: list[str] = []
     selected_by_plan: dict[str, str] = {}
@@ -160,6 +159,10 @@ def _append_observed_transition(
     prediction_match: PredictionMatch | None,
     derived_records: list[DerivedRecord],
 ) -> ObservedTransition:
+    # Reject any plan whose source state has been cut. Plans created
+    # before a rewind can still be looked up by id, but the branch
+    # they belong to is no longer active.
+    self._ensure_active_observed_state(plan.from_observed_state_id)
     next_state = StateNode(
         state_id=self._next_id("s_obs"),
         state_kind="observed",

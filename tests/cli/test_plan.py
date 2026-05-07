@@ -238,7 +238,7 @@ class TestCliPlanCommand:
             store_dir = Path(tmpdir) / "runs"
             run_id = self._create_run(store_dir)
 
-            with pytest.raises(KeyError, match="not an observed state"):
+            with pytest.raises(KeyError, match="unknown observed state"):
                 run_plan_command(
                     run_id=run_id,
                     planner="default",

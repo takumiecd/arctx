@@ -647,11 +647,19 @@ rewind が append する ``TraceCut`` は次の最小情報を持ちます。
 | ``reason`` | ``--reason`` の文字列 |
 | ``actor_id`` | 将来の Cursor/Actor 用（現状 ``None``） |
 
-cut された transition の **下流**（子孫の states / transitions / derived records）は、レコードとしてはすべて DAG に残り、active かどうかは ``trace_dag.cut_state_ids()`` / ``cut_transition_ids()`` の **read-time replay** で判定されます。これにより:
+cut された transition の **下流**（子孫の states / transitions / derived records）は、レコードとしてはすべて DAG に残り、active かどうかは ``trace_dag.cut_state_ids()`` / ``cut_transition_ids()`` / ``inactive_transition_ids()`` の **read-time replay** で判定されます。これにより:
 
 - 既存レコードは1ビットも書き換わらない（append-only 不変）
 - 同じ親から再 ``observe`` した場合、新しい transition は別 ID なので自動で active
 - 将来 ``TraceRestore`` イベントを足せば、最後のイベント勝ちで cut を取り消せる
+
+cut された subtree に対する書き込みは **すべて拒否** されます（``ValueError("... cut branch ...")``）：
+
+- ``plan(state_id=cut_state)``
+- ``promote(mode="plan", observed_state_id=cut_state)``
+- cut subtree 内の plan を起点にした ``observe`` / ``promote(mode="transition")``
+
+これは「append-only で記録しつつ、active 集合を確実に守る」ための validation 層です。
 
 `git revert` のような「履歴の打ち消し」ではなく、**「この edge から先は捨てた」という事実を1本のレコードで記録する** 操作です。別枝（兄弟）への移動は将来の `switch` / `move`（Cursor 導入時）で扱う予定で、``rewind`` は active path 上の transition のみ受け付けます。祖先判定は depth ではなく incoming edge を辿って行います。
 

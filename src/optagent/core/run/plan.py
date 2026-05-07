@@ -30,8 +30,7 @@ def plan_impl(
     """
 
     target = state_id or self.current_observed_state_id
-    if target not in self.trace_dag.nodes:
-        raise KeyError(f"not an observed state: {target}")
+    self._ensure_active_observed_state(target)
 
     count = max(1, max_plans or 1)
     resolved_intent = intent or "inspect current state and propose next useful action"
