@@ -32,6 +32,7 @@ class TestCliPredictCommand:
             planner="default",
             max_plans=1,
             store_dir=str(store_dir),
+            from_state_id="s_obs_0000",
         )
         return run_id, plan_result["plans"][0]["plan_id"]
 

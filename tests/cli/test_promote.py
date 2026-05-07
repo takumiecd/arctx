@@ -33,6 +33,7 @@ class TestCliPromoteCommand:
             planner="default",
             max_plans=1,
             store_dir=str(store_dir),
+            from_state_id="s_obs_0000",
         )
         plan_id = plan_result["plans"][0]["plan_id"]
         predict_result = run_predict_command(
@@ -64,15 +65,15 @@ class TestCliPromoteCommand:
             assert result["transition"]["matched_predicted_transition_id"] == predicted_id
             assert result["transition"]["action_result"]["result_id"] == "r_0001"
 
-    def test_promote_advances_current_state(self):
-        """promote should advance current_observed_state_id."""
+    def test_promote_appends_observed_state(self):
+        """promote should append an observed state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id, plan_id, predicted_id = self._create_run_with_prediction(store_dir)
 
             from optagent.storage.jsonl import JsonlRunStore
             store = JsonlRunStore(store_dir)
-            before = store.load_run(run_id).current_observed_state_id
+            before = set(store.load_run(run_id).trace_dag.nodes)
 
             run_promote_command(
                 run_id=run_id,
@@ -84,7 +85,7 @@ class TestCliPromoteCommand:
                 store_dir=str(store_dir),
             )
 
-            after = store.load_run(run_id).current_observed_state_id
+            after = set(store.load_run(run_id).trace_dag.nodes)
             assert after != before
 
     def test_promote_unknown_run_id(self):
@@ -130,6 +131,7 @@ class TestCliPromoteCommand:
         args = parse_args([
             "promote", "--run", "my_run",
             "--predicted-transition-id", "t_pred_0001",
+            "--execution-plan-id", "p_exec_0001",
             "--result-id", "r_0001",
         ])
         assert args.command == "promote"

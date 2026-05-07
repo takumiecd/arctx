@@ -16,6 +16,7 @@ def derive_impl(
     derived_id: str | None = None,
     generator: str = "cli",
     confidence: float | None = None,
+    user_id: str | None = None,
 ) -> DerivedRecord:
     """Attach a derived record to an observed transition.
 
@@ -56,6 +57,7 @@ def derive_impl(
         payload=payload,
         generator=generator,
         confidence=confidence,
+        metadata={"user_id": user_id} if user_id is not None else {},
     )
 
     old = self.trace_dag.transitions[transition_id]

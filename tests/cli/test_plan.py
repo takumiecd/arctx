@@ -25,6 +25,7 @@ class TestCliPlanCommand:
             target_id="module_a",
             run_id=run_id,
             store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
         )
         return result["run_id"]
 
@@ -39,6 +40,7 @@ class TestCliPlanCommand:
                 planner="default",
                 max_plans=1,
                 store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
             )
             assert len(result["plans"]) == 1
             assert result["plans"][0]["plan_kind"] == "execution"
@@ -55,6 +57,7 @@ class TestCliPlanCommand:
                 planner="default",
                 max_plans=1,
                 store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
             )
 
             store = JsonlRunStore(store_dir)
@@ -72,6 +75,7 @@ class TestCliPlanCommand:
                 planner="default",
                 max_plans=3,
                 store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
             )
             assert len(result["plans"]) == 3
             plan_ids = {p["plan_id"] for p in result["plans"]}
@@ -88,6 +92,7 @@ class TestCliPlanCommand:
                 planner="custom_planner",
                 max_plans=1,
                 store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
             )
             assert result["plans"][0]["metadata"]["planner"] == "custom_planner"
 
@@ -101,11 +106,12 @@ class TestCliPlanCommand:
                     planner="default",
                     max_plans=1,
                     store_dir=str(store_dir),
+                    from_state_id="s_obs_0000",
                 )
 
     def test_cli_parse_args_plan(self):
         """argparse should correctly parse plan subcommand."""
-        args = parse_args(["plan", "--run", "my_run"])
+        args = parse_args(["plan", "--run", "my_run", "--from-state", "s_obs_0000"])
         assert args.command == "plan"
         assert args.run == "my_run"
         assert args.planner == "default"
@@ -114,7 +120,7 @@ class TestCliPlanCommand:
     def test_cli_parse_args_plan_with_options(self):
         """argparse should handle all plan options."""
         args = parse_args([
-            "plan", "--run", "my_run",
+            "plan", "--run", "my_run", "--from-state", "s_obs_0000",
             "--planner", "custom",
             "--max-plans", "5",
             "--store-dir", "/tmp/runs",
@@ -133,6 +139,7 @@ class TestCliPlanCommand:
 
             exit_code = main([
                 "plan", "--run", run_id,
+                "--from-state", "s_obs_0000",
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0
@@ -152,6 +159,7 @@ class TestCliPlanCommand:
                 planner="default",
                 max_plans=2,
                 store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
             )
             # Should not raise
             json_str = json.dumps(result)
@@ -169,6 +177,7 @@ class TestCliPlanCommand:
                 planner="default",
                 max_plans=1,
                 store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
                 action_type="edit",
             )
             assert result["plans"][0]["action_type"] == "edit"
@@ -184,6 +193,7 @@ class TestCliPlanCommand:
                 planner="default",
                 max_plans=1,
                 store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
                 intent="vectorize inner loop",
             )
             assert result["plans"][0]["intent"] == "vectorize inner loop"
@@ -199,6 +209,7 @@ class TestCliPlanCommand:
                 planner="default",
                 max_plans=1,
                 store_dir=str(store_dir),
+                from_state_id="s_obs_0000",
                 inputs={"file": "src/kernel.py", "line_start": "42"},
             )
             assert result["plans"][0]["inputs"]["file"] == "src/kernel.py"
@@ -207,7 +218,7 @@ class TestCliPlanCommand:
     def test_cli_parse_args_plan_with_content_options(self):
         """argparse should handle action-type, intent, and input."""
         args = parse_args([
-            "plan", "--run", "my_run",
+            "plan", "--run", "my_run", "--from-state", "s_obs_0000",
             "--action-type", "edit",
             "--intent", "optimize loop",
             "--input", "file=main.py",
@@ -217,8 +228,8 @@ class TestCliPlanCommand:
         assert args.intent == "optimize loop"
         assert args.input == ["file=main.py", "strategy=unroll"]
 
-    def test_plan_explicit_state_id(self):
-        """--state-id should let plan target a non-current observed state."""
+    def test_plan_explicit_from_state(self):
+        """--from-state should let plan target a non-current observed state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id = self._create_run(store_dir)
@@ -228,12 +239,12 @@ class TestCliPlanCommand:
                 planner="default",
                 max_plans=1,
                 store_dir=str(store_dir),
-                state_id="s_obs_0000",
+                from_state_id="s_obs_0000",
             )
             assert result["plans"][0]["from_observed_state_id"] == "s_obs_0000"
 
     def test_plan_rejects_predicted_state(self):
-        """plan should refuse a predicted state_id (use 'extend' instead)."""
+        """plan should refuse a predicted from_state_id (use 'extend' instead)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id = self._create_run(store_dir)
@@ -244,5 +255,5 @@ class TestCliPlanCommand:
                     planner="default",
                     max_plans=1,
                     store_dir=str(store_dir),
-                    state_id="s_pred_0000",
+                    from_state_id="s_pred_0000",
                 )

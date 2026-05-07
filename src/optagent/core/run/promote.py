@@ -13,7 +13,6 @@ from optagent.core.schema.transitions import (
     ObservedTransition,
     PredictionMatch,
     PredictionPath,
-    PredictedTransition,
 )
 
 
@@ -23,16 +22,25 @@ def promote_impl(
     mode: Literal["plan", "transition"],
     prediction_plan_id: str | None = None,
     prediction_path: PredictionPath | None = None,
-    observed_state_id: str | None = None,
+    to_observed_state_id: str | None = None,
     predicted_transition_id: str | None = None,
     action_result: ActionResult | None = None,
     execution_plan_id: str | None = None,
     derived_records: list[DerivedRecord] | None = None,
+    user_id: str | None = None,
 ) -> list[ExecutionPlan] | ObservedTransition:
     """Promote prediction-side records into trace-side grounded records."""
 
     if mode == "plan":
-        return _promote_plan(self, prediction_plan_id, prediction_path, observed_state_id)
+        if to_observed_state_id is None:
+            raise ValueError("promote(mode='plan') requires to_observed_state_id")
+        return _promote_plan(
+            self,
+            prediction_plan_id,
+            prediction_path,
+            to_observed_state_id,
+            user_id=user_id,
+        )
     if mode == "transition":
         if predicted_transition_id is None or action_result is None:
             raise ValueError(
@@ -44,6 +52,7 @@ def promote_impl(
             action_result=action_result,
             execution_plan_id=execution_plan_id,
             derived_records=derived_records or [],
+            user_id=user_id,
         )
     raise ValueError(f"unsupported promote mode: {mode}")
 
@@ -52,10 +61,11 @@ def _promote_plan(
     self,
     prediction_plan_id: str | None,
     prediction_path: PredictionPath | None,
-    observed_state_id: str | None,
+    to_observed_state_id: str,
+    *,
+    user_id: str | None = None,
 ) -> list[ExecutionPlan]:
-    target_observed_state_id = observed_state_id or self.current_observed_state_id
-    self._ensure_active_observed_state(target_observed_state_id)
+    self._ensure_active_observed_state(to_observed_state_id)
 
     plan_ids: list[str] = []
     selected_by_plan: dict[str, str] = {}
@@ -78,7 +88,7 @@ def _promote_plan(
         execution_plan = ExecutionPlan(
             plan_id=self._next_id("p_exec"),
             plan_kind="execution",
-            from_observed_state_id=target_observed_state_id,
+            from_observed_state_id=to_observed_state_id,
             action_type=source_plan.action_type,
             intent=source_plan.intent,
             inputs=dict(source_plan.inputs),
@@ -90,6 +100,7 @@ def _promote_plan(
                 "source_prediction_path_id": source_path_id,
                 "selected_predicted_transition_id": selected_by_plan.get(plan_id),
                 "promotion_id": self._next_id("promotion"),
+                **({"user_id": user_id} if user_id is not None else {}),
             },
         )
         self.trace_dag.add_execution_plan(execution_plan)
@@ -104,12 +115,13 @@ def _promote_transition(
     action_result: ActionResult,
     execution_plan_id: str | None,
     derived_records: list[DerivedRecord],
+    user_id: str | None,
 ) -> ObservedTransition:
     predicted_transition = self.prediction_dag.transitions.get(predicted_transition_id)
     if predicted_transition is None:
         raise KeyError(f"unknown predicted_transition_id: {predicted_transition_id}")
     if execution_plan_id is None:
-        execution_plan = _execution_plan_for_predicted_transition(self, predicted_transition)
+        raise ValueError("promote(mode='transition') requires execution_plan_id")
         action_result = replace(
             action_result,
             execution_plan_id=execution_plan.plan_id,
@@ -131,23 +143,8 @@ def _promote_transition(
             prediction_error={},
         ),
         derived_records=derived_records,
+        user_id=user_id,
     )
-
-
-def _execution_plan_for_predicted_transition(
-    self,
-    predicted_transition: PredictedTransition,
-) -> ExecutionPlan:
-    parent_plan = self._find_plan(predicted_transition.parent_plan_id)
-    if hasattr(parent_plan, "plan_kind") and parent_plan.plan_kind == "execution":
-        return parent_plan
-    promoted = _promote_plan(
-        self,
-        prediction_plan_id=parent_plan.plan_id,
-        prediction_path=None,
-        observed_state_id=self.current_observed_state_id,
-    )
-    return promoted[0]
 
 
 def _append_observed_transition(
@@ -158,6 +155,7 @@ def _append_observed_transition(
     matched_predicted_transition_id: str | None,
     prediction_match: PredictionMatch | None,
     derived_records: list[DerivedRecord],
+    user_id: str | None = None,
 ) -> ObservedTransition:
     # Reject any plan whose source state has been cut. Plans created
     # before a rewind can still be looked up by id, but the branch
@@ -181,7 +179,7 @@ def _append_observed_transition(
         matched_predicted_transition_id=matched_predicted_transition_id,
         prediction_match=prediction_match,
         derived_records=tuple(derived_records),
+        metadata={"user_id": user_id} if user_id is not None else {},
     )
     self.trace_dag.append_transition(transition)
-    self.current_observed_state_id = next_state.state_id
     return transition

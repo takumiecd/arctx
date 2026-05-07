@@ -23,7 +23,6 @@ class RunHandle:
     requirement: Requirement
     trace_dag: TraceDAG
     prediction_dag: PredictionDAG
-    current_observed_state_id: str
     _counters: dict[str, int] = field(default_factory=dict)
 
     def _next_id(self, prefix: str) -> str:
@@ -31,8 +30,12 @@ class RunHandle:
         return sequential_id(prefix, self._counters[prefix])
 
     @property
-    def current_observed_state(self) -> StateNode:
-        return self.trace_dag.nodes[self.current_observed_state_id]
+    def root_observed_state_id(self) -> str:
+        for state_id, depth in self.trace_dag.node_depths.items():
+            node = self.trace_dag.nodes[state_id]
+            if depth == 0 and node.state_kind == "observed":
+                return state_id
+        raise KeyError("run has no root observed state")
 
     def _ensure_active_observed_state(self, state_id: str) -> None:
         """Reject state IDs that are unknown or sit inside a cut subtree.
@@ -85,7 +88,6 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
         requirement=requirement,
         trace_dag=trace_dag,
         prediction_dag=prediction_dag,
-        current_observed_state_id=observed.state_id,
         _counters={
             "s_obs": 0,
             "s_pred": 0,

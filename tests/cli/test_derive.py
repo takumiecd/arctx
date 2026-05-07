@@ -33,6 +33,7 @@ class TestCliDeriveCommand:
             planner="default",
             max_plans=1,
             store_dir=str(store_dir),
+            from_state_id="s_obs_0000",
         )
         observe_result = run_observe_command(
             run_id=run_id,

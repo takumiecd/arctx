@@ -86,6 +86,7 @@ class TraceCut:
     rewound_to_state_id: str
     cut_transition_id: str
     reason: str | None = None
+    user_id: str | None = None
     actor_id: str | None = None
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 

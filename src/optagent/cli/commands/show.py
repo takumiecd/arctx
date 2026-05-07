@@ -98,7 +98,7 @@ def run_show_command(
     return {
         "run_id": handle.run_id,
         "requirement_id": handle.requirement.requirement_id,
-        "current_observed_state_id": handle.current_observed_state_id,
+        "root_observed_state_id": handle.root_observed_state_id,
         "trace_dag": handle.trace_dag.to_dict(),
         "prediction_dag": handle.prediction_dag.to_dict(),
     }

@@ -26,9 +26,29 @@ def _new_run(run_id: str = "r"):
     )
 
 
-def _advance(handle, plan_intent: str, result_id: str) -> tuple[str, str]:
+def _active_leaf_state_id(handle) -> str:
+    inactive = handle.trace_dag.inactive_transition_ids()
+    candidates = []
+    for state_id, node in handle.trace_dag.nodes.items():
+        if node.state_kind != "observed" or handle.trace_dag.is_cut_state(state_id):
+            continue
+        active_outgoing = [
+            tid for tid in handle.trace_dag.next_transition_ids(state_id) if tid not in inactive
+        ]
+        if not active_outgoing:
+            candidates.append((handle.trace_dag.node_depths[state_id], state_id))
+    return sorted(candidates)[-1][1]
+
+
+def _advance(
+    handle,
+    plan_intent: str,
+    result_id: str,
+    from_state_id: str | None = None,
+) -> tuple[str, str]:
     """Helper: plan + observe → returns (new_state_id, observed_transition_id)."""
-    plan = handle.plan(intent=plan_intent)[0]
+    source = from_state_id or _active_leaf_state_id(handle)
+    plan = handle.plan(from_state_id=source, intent=plan_intent)[0]
     observed = handle.observe(
         plan.plan_id,
         ActionResult(
@@ -37,7 +57,7 @@ def _advance(handle, plan_intent: str, result_id: str) -> tuple[str, str]:
             status="completed",
         ),
     )
-    return handle.current_observed_state_id, observed.transition_id
+    return observed.to_observed_state_id, observed.transition_id
 
 
 class TestRunHandleRewind:
@@ -45,21 +65,20 @@ class TestRunHandleRewind:
 
     def test_rewind_cuts_transition_and_moves_current(self):
         run = _new_run()
-        s0 = run.current_observed_state_id
+        s0 = run.root_observed_state_id
         _, t1 = _advance(run, "first", "r_0001")
 
-        cut = run.rewind(t1, reason="bad observe")
+        cut = run.rewind(t1, from_state_id=_active_leaf_state_id(run), reason="bad observe")
 
         assert cut.cut_transition_id == t1
         assert cut.rewound_to_state_id == s0
         assert cut.reason == "bad observe"
-        assert run.current_observed_state_id == s0
         assert t1 in run.trace_dag.cut_transition_ids()
 
     def test_rewind_appends_one_cut(self):
         run = _new_run()
         _, t1 = _advance(run, "first", "r_0001")
-        run.rewind(t1, reason="undo")
+        run.rewind(t1, from_state_id=_active_leaf_state_id(run), reason="undo")
 
         assert len(run.trace_dag.cuts) == 1
         cut = next(iter(run.trace_dag.cuts.values()))
@@ -69,18 +88,17 @@ class TestRunHandleRewind:
     def test_rewind_far_back_cuts_only_target_transition(self):
         """Cutting a transition near the root records only that one edge."""
         run = _new_run()
-        s0 = run.current_observed_state_id
+        s0 = run.root_observed_state_id
         s1, t1 = _advance(run, "a", "r_0001")
         s2, _ = _advance(run, "b", "r_0002")
         s3, _ = _advance(run, "c", "r_0003")
 
-        run.rewind(t1)
+        run.rewind(t1, from_state_id=s3)
 
         assert len(run.trace_dag.cuts) == 1
         assert run.trace_dag.cut_transition_ids() == {t1}
         # Downstream states are derived as cut.
         assert run.trace_dag.cut_state_ids() == {s1, s2, s3}
-        assert run.current_observed_state_id == s0
 
     def test_rewind_does_not_delete_history(self):
         run = _new_run()
@@ -90,26 +108,25 @@ class TestRunHandleRewind:
         plans_before = set(run.trace_dag.execution_plans)
         transitions_before = set(run.trace_dag.transitions)
 
-        run.rewind(t2)
+        run.rewind(t2, from_state_id=_active_leaf_state_id(run))
 
         assert set(run.trace_dag.nodes) == nodes_before
         assert set(run.trace_dag.execution_plans) == plans_before
         assert set(run.trace_dag.transitions) == transitions_before
 
-    def test_rewind_refreshes_prediction_dag(self):
+    def test_rewind_does_not_refresh_prediction_dag(self):
         run = _new_run()
         _, t1 = _advance(run, "first", "r_0001")
         old_dag_id = run.prediction_dag.dag_id
 
-        run.rewind(t1)
+        run.rewind(t1, from_state_id=_active_leaf_state_id(run))
 
-        assert run.prediction_dag.anchor_observed_state_id == run.current_observed_state_id
-        assert run.prediction_dag.dag_id != old_dag_id
+        assert run.prediction_dag.dag_id == old_dag_id
 
     def test_rewind_unknown_transition_raises(self):
         run = _new_run()
         with pytest.raises(KeyError):
-            run.rewind("t_obs_9999")
+            run.rewind("t_obs_9999", from_state_id=run.root_observed_state_id)
 
     def test_rewind_off_active_path_raises(self):
         """A transition on a sibling branch is not 'on the active path back'.
@@ -118,10 +135,10 @@ class TestRunHandleRewind:
         The first transition is alive but unreachable from current.
         """
         run = _new_run()
-        s0 = run.current_observed_state_id
+        s0 = run.root_observed_state_id
         _, t1 = _advance(run, "branch a", "r_0001")
         # Plan again from s0 directly (not from current), then observe.
-        plan_b = run.plan(state_id=s0, intent="branch b")[0]
+        plan_b = run.plan(from_state_id=s0, intent="branch b")[0]
         run.observe(
             plan_b.plan_id,
             ActionResult(
@@ -133,29 +150,28 @@ class TestRunHandleRewind:
         # current is now on branch B; t1 is alive but on branch A.
         assert t1 not in run.trace_dag.cut_transition_ids()
         with pytest.raises(ValueError, match="not on the active path"):
-            run.rewind(t1)
+            run.rewind(t1, from_state_id=plan_b.from_observed_state_id)
 
     def test_rewind_already_cut_transition_raises(self):
         run = _new_run()
         _, t1 = _advance(run, "first", "r_0001")
-        run.rewind(t1)
+        run.rewind(t1, from_state_id=_active_leaf_state_id(run))
         # Try to cut the same transition again from a different branch.
         _advance(run, "alt", "r_0002")
         with pytest.raises(ValueError, match="already cut"):
-            run.rewind(t1)
+            run.rewind(t1, from_state_id=_active_leaf_state_id(run))
 
     def test_repeated_rewinds_accumulate_cuts(self):
         run = _new_run()
-        s0 = run.current_observed_state_id
+        s0 = run.root_observed_state_id
         _, t1 = _advance(run, "first", "r_0001")
-        run.rewind(t1)
+        run.rewind(t1, from_state_id=_active_leaf_state_id(run))
         _, t2 = _advance(run, "second", "r_0002")
-        run.rewind(t2)
+        run.rewind(t2, from_state_id=_active_leaf_state_id(run))
 
         assert len(run.trace_dag.cuts) == 2
         cut_tids = run.trace_dag.cut_transition_ids()
         assert cut_tids == {t1, t2}
-        assert run.current_observed_state_id == s0
 
     def test_cut_does_not_modify_existing_records(self):
         run = _new_run()
@@ -165,7 +181,7 @@ class TestRunHandleRewind:
         trans_before = dict(run.trace_dag.transitions)
         plans_before = dict(run.trace_dag.execution_plans)
 
-        run.rewind(t1)
+        run.rewind(t1, from_state_id=_active_leaf_state_id(run))
 
         for sid, node in nodes_before.items():
             assert run.trace_dag.nodes[sid] is node
@@ -181,17 +197,17 @@ class TestCutBranchIsInactive:
     def test_cannot_plan_from_cut_state(self):
         run = _new_run()
         s1, t1 = _advance(run, "a", "r_0001")
-        run.rewind(t1)
+        run.rewind(t1, from_state_id=s1)
 
         with pytest.raises(ValueError, match="cut branch"):
-            run.plan(state_id=s1, intent="should not continue cut branch")
+            run.plan(from_state_id=s1, intent="should not continue cut branch")
 
     def test_cannot_observe_plan_created_before_rewind(self):
         """A plan created off a state that later gets cut must not produce a new transition."""
         run = _new_run()
         s1, t1 = _advance(run, "a", "r_0001")
-        old_plan = run.plan(state_id=s1, intent="old future plan")[0]
-        run.rewind(t1)
+        old_plan = run.plan(from_state_id=s1, intent="old future plan")[0]
+        run.rewind(t1, from_state_id=s1)
 
         with pytest.raises(ValueError, match="cut branch"):
             run.observe(
@@ -212,13 +228,13 @@ class TestCutBranchIsInactive:
             state_id=run.prediction_dag.root_predicted_state_id,
             intent="hypothetical",
         )[0]
-        run.rewind(t1)
+        run.rewind(t1, from_state_id=s1)
 
         with pytest.raises(ValueError, match="cut branch"):
             run.promote(
                 mode="plan",
                 prediction_plan_id=pred_plan.plan_id,
-                observed_state_id=s1,
+                to_observed_state_id=s1,
             )
 
     def test_inactive_transition_ids_include_downstream(self):
@@ -227,7 +243,7 @@ class TestCutBranchIsInactive:
         s2, t2 = _advance(run, "b", "r_0002")
         s3, t3 = _advance(run, "c", "r_0003")
 
-        run.rewind(t1)
+        run.rewind(t1, from_state_id=s3)
 
         # Direct cut names only the boundary edge.
         assert run.trace_dag.cut_transition_ids() == {t1}
@@ -244,7 +260,7 @@ class TestStorageRoundtrip:
             store = JsonlRunStore(Path(tmpdir))
             run = _new_run("persist_run")
             _, t1 = _advance(run, "a", "r_0001")
-            run.rewind(t1, reason="undo")
+            run.rewind(t1, from_state_id=_active_leaf_state_id(run), reason="undo")
             store.save_run(run)
 
             loaded = store.load_run("persist_run")
@@ -268,7 +284,11 @@ class TestCliRewind:
         )
         run_id = result["run_id"]
         plan = run_plan_command(
-            run_id=run_id, planner="default", max_plans=1, store_dir=str(store_dir),
+            run_id=run_id,
+            planner="default",
+            max_plans=1,
+            from_state_id="s_obs_0000",
+            store_dir=str(store_dir),
         )["plans"][0]
         observed = run_observe_command(
             run_id=run_id,
@@ -288,6 +308,7 @@ class TestCliRewind:
             result = run_rewind_command(
                 run_id=run_id,
                 transition_id=t1,
+                from_state_id=observed["transition"]["to_observed_state_id"],
                 reason="undo bad observe",
                 store_dir=str(store_dir),
             )
@@ -297,13 +318,18 @@ class TestCliRewind:
 
             # Storage retained the cut.
             loaded = JsonlRunStore(store_dir).load_run(run_id)
-            assert loaded.current_observed_state_id == source
             assert t1 in loaded.trace_dag.cut_transition_ids()
 
     def test_cli_parse_args_rewind(self):
-        args = parse_args(["rewind", "t_obs_0001", "--reason", "oops"])
+        args = parse_args([
+            "rewind",
+            "--transition", "t_obs_0001",
+            "--from-state", "s_obs_0001",
+            "--reason", "oops",
+        ])
         assert args.command == "rewind"
         assert args.transition_id == "t_obs_0001"
+        assert args.from_state == "s_obs_0001"
         assert args.reason == "oops"
 
     def test_cli_parse_args_rewind_requires_transition(self):
@@ -316,7 +342,9 @@ class TestCliRewind:
             run_id, source, t1 = self._setup(store_dir)
 
             exit_code = main([
-                "rewind", t1,
+                "rewind",
+                "--transition", t1,
+                "--from-state", "s_obs_0001",
                 "--run", run_id,
                 "--store-dir", str(store_dir),
             ])

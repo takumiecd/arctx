@@ -33,6 +33,7 @@ class TestCliShowCommand:
             planner="default",
             max_plans=1,
             store_dir=str(store_dir),
+            from_state_id="s_obs_0000",
         )
         run_observe_command(
             run_id=run_id,
@@ -63,7 +64,7 @@ class TestCliShowCommand:
             )
             assert result["run_id"] == run_id
             assert result["requirement_id"] == "req_test"
-            assert result["current_observed_state_id"].startswith("s_obs_")
+            assert result["root_observed_state_id"] == "s_obs_0000"
             assert "trace_dag" in result
             assert "prediction_dag" in result
 

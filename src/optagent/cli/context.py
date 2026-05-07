@@ -71,3 +71,24 @@ def resolve_run_id_from_args(args) -> str:
     current.json marker.
     """
     return resolve_run_id(getattr(args, "run", None), args.store_dir)
+
+
+def resolve_user_id(user_id: str | None, store_dir: str) -> str:
+    """Resolve user attribution for mutating commands."""
+    if user_id:
+        return user_id
+    env = os.environ.get("OPTAGENT_USER_ID")
+    if env:
+        return env
+    config_path = Path(store_dir).parent / "config.json"
+    if config_path.exists():
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        configured = data.get("user", {}).get("id")
+        if configured:
+            return str(configured)
+    return "user"
+
+
+def resolve_user_id_from_args(args) -> str:
+    """Resolve user attribution from parsed CLI args."""
+    return resolve_user_id(getattr(args, "user", None), args.store_dir)

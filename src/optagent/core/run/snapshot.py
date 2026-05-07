@@ -12,7 +12,7 @@ from optagent.core.schema.state import (
 
 def snapshot_rebuild_impl(
     self,
-    state_id: str | None = None,
+    state_id: str,
 ) -> StateNode:
     """Rebuild the StateSnapshot for an observed state from its history.
 
@@ -23,7 +23,7 @@ def snapshot_rebuild_impl(
     Parameters
     ----------
     state_id:
-        Target observed state.  Defaults to ``current_observed_state_id``.
+        Target observed state.
 
     Returns
     -------
@@ -34,18 +34,18 @@ def snapshot_rebuild_impl(
     KeyError
         If the state_id does not exist or is not an observed state.
     """
-    target_id = state_id or self.current_observed_state_id
-    if target_id not in self.trace_dag.nodes:
-        raise KeyError(f"unknown state_id: {target_id}")
+    if state_id not in self.trace_dag.nodes:
+        raise KeyError(f"unknown state_id: {state_id}")
 
-    target = self.trace_dag.nodes[target_id]
+    target = self.trace_dag.nodes[state_id]
     if target.state_kind != "observed":
-        raise KeyError(f"state_id is not observed: {target_id}")
+        raise KeyError(f"state_id is not observed: {state_id}")
+    self._ensure_active_observed_state(state_id)
 
     artifacts: list[ArtifactRef] = []
     knowledge: list[FindingRef] = []
 
-    cursor = target_id
+    cursor = state_id
     while True:
         incoming = self.trace_dag.past_transition_ids(cursor)
         if not incoming:
@@ -116,5 +116,5 @@ def snapshot_rebuild_impl(
         status=target.status,
         metadata=target.metadata,
     )
-    self.trace_dag.nodes[target_id] = new_node
+    self.trace_dag.nodes[state_id] = new_node
     return new_node

@@ -75,7 +75,7 @@ requirement = Requirement(
 
 run = optagent.init(requirement, run_id="demo")
 
-plans = run.plan(state_id=run.current_observed_state_id)
+plans = run.plan(from_state_id="s_obs_0000")
 predicted = run.predict(plan_id=plans[0].plan_id, max_outcomes=2)
 
 result = ActionResult(
@@ -93,7 +93,7 @@ observed = run.promote(
     action_result=result,
 )
 
-history = run.trace()
+history = run.trace(state_id=observed.to_observed_state_id)
 
 store = JsonlRunStore("runs")
 run.save(store)
@@ -109,24 +109,24 @@ export PYTHONPATH=src
 python3 -m optagent.cli.main init req_kernel --target-type kernel --target-id csc_linear --run-id demo
 
 # 2. Create a plan
-python3 -m optagent.cli.main plan demo --planner default --max-plans 1
+python3 -m optagent.cli.main plan --run demo --from-state s_obs_0000 --planner default --max-plans 1
 
 # 3. Predict outcomes
-python3 -m optagent.cli.main predict demo p_exec_0001 --max-outcomes 2
+python3 -m optagent.cli.main predict --run demo p_exec_0001 --max-outcomes 2
 
 # 4. Record observation
-python3 -m optagent.cli.main observe demo p_exec_0001 \
+python3 -m optagent.cli.main observe --run demo --plan p_exec_0001 \
   --result-id r_0001 --status completed \
   --metric latency_ms=1.5
 
 # 5. Show details
-python3 -m optagent.cli.main show demo
+python3 -m optagent.cli.main show --run demo
 
 # 6. Trace history
-python3 -m optagent.cli.main trace demo
+python3 -m optagent.cli.main trace --run demo --from-state s_obs_0001
 
 # 7. Refresh prediction DAG
-python3 -m optagent.cli.main refresh demo
+python3 -m optagent.cli.main refresh --run demo --from-state s_obs_0001
 
 # 8. List all runs
 python3 -m optagent.cli.main list

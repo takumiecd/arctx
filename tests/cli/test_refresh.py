@@ -33,6 +33,7 @@ class TestCliRefreshCommand:
             planner="default",
             max_plans=1,
             store_dir=str(store_dir),
+            from_state_id="s_obs_0000",
         )
         run_observe_command(
             run_id=run_id,
@@ -45,7 +46,7 @@ class TestCliRefreshCommand:
         return run_id
 
     def test_refresh_reanchors_prediction_dag(self):
-        """refresh should re-anchor PredictionDAG to current observed state."""
+        """refresh should re-anchor PredictionDAG to an explicit observed state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id = self._create_run_with_observation(store_dir)
@@ -58,11 +59,12 @@ class TestCliRefreshCommand:
 
             result = run_refresh_command(
                 run_id=run_id,
+                from_state_id="s_obs_0001",
                 store_dir=str(store_dir),
             )
             assert result["prediction_dag"]["anchor_observed_state_id"] != old_anchor
             assert result["prediction_dag"]["root_predicted_state_id"] != old_root
-            assert result["prediction_dag"]["anchor_observed_state_id"] == before.current_observed_state_id
+            assert result["prediction_dag"]["anchor_observed_state_id"] == "s_obs_0001"
 
     def test_refresh_unknown_run_id(self):
         """refresh with unknown run_id should raise KeyError."""
@@ -71,12 +73,13 @@ class TestCliRefreshCommand:
             with pytest.raises(KeyError):
                 run_refresh_command(
                     run_id="nonexistent",
+                    from_state_id="s_obs_0000",
                     store_dir=str(store_dir),
                 )
 
     def test_cli_parse_args_refresh(self):
         """argparse should correctly parse refresh subcommand."""
-        args = parse_args(["refresh", "--run", "my_run"])
+        args = parse_args(["refresh", "--run", "my_run", "--from-state", "s_obs_0001"])
         assert args.command == "refresh"
         assert args.run == "my_run"
 
@@ -84,6 +87,7 @@ class TestCliRefreshCommand:
         """argparse should handle --store-dir for refresh."""
         args = parse_args([
             "refresh", "--run", "my_run",
+            "--from-state", "s_obs_0001",
             "--store-dir", "/tmp/runs",
         ])
         assert args.store_dir == "/tmp/runs"
@@ -96,6 +100,7 @@ class TestCliRefreshCommand:
 
             exit_code = main([
                 "refresh", "--run", run_id,
+                "--from-state", "s_obs_0001",
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0
@@ -112,6 +117,7 @@ class TestCliRefreshCommand:
 
             result = run_refresh_command(
                 run_id=run_id,
+                from_state_id="s_obs_0001",
                 store_dir=str(store_dir),
             )
             json_str = json.dumps(result)

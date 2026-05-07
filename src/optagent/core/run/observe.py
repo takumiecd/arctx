@@ -13,6 +13,7 @@ def observe_impl(
     action_result: ActionResult,
     *,
     derived_records: list[DerivedRecord] | None = None,
+    user_id: str | None = None,
 ) -> ObservedTransition:
     """Record an execution result without matching it to a prediction."""
 
@@ -27,4 +28,5 @@ def observe_impl(
         matched_predicted_transition_id=None,
         prediction_match=None,
         derived_records=derived_records or [],
+        user_id=user_id,
     )

@@ -1,15 +1,4 @@
-"""RunHandle.rewind implementation.
-
-Rewind cuts a specific observed transition. The TraceDAG is left
-otherwise untouched: states, transitions, plans, results, and derived
-records all stay where they are. A single ``TraceCut`` record is
-appended to mark the cut, and the current observed-state pointer
-moves to the source of the cut transition.
-
-Active vs cut membership is derived at read time from the cut log.
-This is the only piece of state that grows; existing records are
-never modified.
-"""
+"""RunHandle.rewind implementation."""
 
 from __future__ import annotations
 
@@ -22,43 +11,15 @@ def rewind_impl(
     self,
     transition_id: str,
     *,
+    from_state_id: str,
     reason: str | None = None,
+    user_id: str | None = None,
 ) -> TraceCut:
-    """Cut the observed transition *transition_id* and rewind to its source.
+    """Append a cut event for an observed transition.
 
-    The transition must be on the active path walking backward from
-    the current observed state. After the call, ``current_observed_state_id``
-    is set to ``transition.from_observed_state_id`` and the
-    PredictionDAG is re-anchored there.
-
-    Parameters
-    ----------
-    transition_id:
-        Observed transition to cut.
-    reason:
-        Optional human-readable note. Persisted on the resulting
-        :class:`TraceCut`.
-
-    Returns
-    -------
-    The :class:`TraceCut` record that was appended to the TraceDAG.
-    The new current observed state ID is available as
-    ``cut.rewound_to_state_id``.
-
-    Raises
-    ------
-    KeyError
-        If the transition does not exist or is not an observed transition.
-    ValueError
-        If the transition is not on the active path from the current
-        observed state, or if it has already been cut.
-
-    Side effects
-    ------------
-    - Appends one ``TraceCut`` to ``trace_dag.cuts``.
-    - Moves ``current_observed_state_id`` to the source of the cut.
-    - Replaces ``prediction_dag`` with a fresh DAG anchored at the new
-      current state.
+    ``from_state_id`` is the explicit validation point. The target
+    transition must be reachable by walking backward from it along
+    active incoming edges.
     """
     transition = self.trace_dag.transitions.get(transition_id)
     if transition is None:
@@ -67,11 +28,13 @@ def rewind_impl(
     if transition_id in self.trace_dag.cut_transition_ids():
         raise ValueError(f"transition already cut: {transition_id}")
 
-    current = self.current_observed_state_id
-    if not _is_on_active_path_back(self, transition_id=transition_id, from_state_id=current):
+    self._ensure_active_observed_state(from_state_id)
+    if not _is_on_active_path_back(
+        self, transition_id=transition_id, from_state_id=from_state_id
+    ):
         raise ValueError(
-            f"{transition_id} is not on the active path from {current}; "
-            "rewind only cuts transitions reachable backwards from the current state."
+            f"{transition_id} is not on the active path from {from_state_id}; "
+            "rewind only cuts transitions reachable backwards from from_state_id."
         )
 
     cut = TraceCut(
@@ -80,11 +43,9 @@ def rewind_impl(
         rewound_to_state_id=transition.from_observed_state_id,
         cut_transition_id=transition_id,
         reason=reason,
+        user_id=user_id,
     )
     self.trace_dag.add_cut(cut)
-
-    self.current_observed_state_id = transition.from_observed_state_id
-    self.refresh(from_state_id=transition.from_observed_state_id)
     return cut
 
 

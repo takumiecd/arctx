@@ -8,29 +8,29 @@ from optagent.core.types import JSONValue
 
 def plan_impl(
     self,
-    state_id: str | None = None,
+    from_state_id: str,
     *,
     planner: str | None = None,
     max_plans: int | None = None,
     action_type: str = "analysis",
     intent: str | None = None,
     inputs: dict[str, JSONValue] | None = None,
+    user_id: str | None = None,
 ) -> list[ExecutionPlan]:
     """Create one or more ``ExecutionPlan``s from an observed state.
 
     Parameters
     ----------
-    state_id:
-        Source observed state. Defaults to the current observed state.
+    from_state_id:
+        Source observed state.
 
     Raises
     ------
     KeyError
-        If *state_id* is not an observed state in this run.
+        If *from_state_id* is not an observed state in this run.
     """
 
-    target = state_id or self.current_observed_state_id
-    self._ensure_active_observed_state(target)
+    self._ensure_active_observed_state(from_state_id)
 
     count = max(1, max_plans or 1)
     resolved_intent = intent or "inspect current state and propose next useful action"
@@ -40,11 +40,15 @@ def plan_impl(
         plan = ExecutionPlan(
             plan_id=self._next_id("p_exec"),
             plan_kind="execution",
-            from_observed_state_id=target,
+            from_observed_state_id=from_state_id,
             action_type=action_type,
             intent=resolved_intent,
             inputs=dict(inputs or {}),
-            metadata={"planner": resolved_planner, "ordinal": index},
+            metadata={
+                "planner": resolved_planner,
+                "ordinal": index,
+                **({"user_id": user_id} if user_id is not None else {}),
+            },
         )
         self.trace_dag.add_execution_plan(plan)
         plans.append(plan)

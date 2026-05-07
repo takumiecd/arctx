@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from optagent.cli.context import resolve_run_id_from_args
+from optagent.cli.context import resolve_run_id_from_args, resolve_user_id_from_args
 from optagent.storage.jsonl import JsonlRunStore
 
 
@@ -16,9 +16,9 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     )
     parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
     parser.add_argument(
-        "--state-id",
-        default=None,
-        help="Source observed state (default: current observed state)",
+        "--from-state",
+        required=True,
+        help="Source observed state",
     )
     parser.add_argument(
         "--planner",
@@ -51,6 +51,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         default=".optagent/runs",
         help="Directory where runs are stored (default: .optagent/runs)",
     )
+    parser.add_argument("--user", default=None, help="User attribution id")
     return parser
 
 
@@ -73,10 +74,11 @@ def run_plan_command(
     planner: str,
     max_plans: int,
     store_dir: str,
-    state_id: str | None = None,
+    from_state_id: str,
     action_type: str = "analysis",
     intent: str | None = None,
     inputs: dict[str, str] | None = None,
+    user_id: str | None = None,
 ) -> dict:
     """Create one or more ``ExecutionPlan``s from an observed state.
 
@@ -90,8 +92,8 @@ def run_plan_command(
         Maximum number of plans to create.
     store_dir:
         Directory where runs are stored.
-    state_id:
-        Observed state to plan from (default: current observed state).
+    from_state_id:
+        Observed state to plan from.
     action_type:
         Category of action for the plan.
     intent:
@@ -116,12 +118,13 @@ def run_plan_command(
     handle = store.load_run(run_id)
 
     plans = handle.plan(
-        state_id=state_id,
+        from_state_id=from_state_id,
         planner=planner,
         max_plans=max_plans,
         action_type=action_type,
         intent=intent,
         inputs=inputs,
+        user_id=user_id,
     )
 
     store.save_run(handle)
@@ -139,10 +142,11 @@ def cli_plan(args) -> int:
         planner=args.planner,
         max_plans=args.max_plans,
         store_dir=args.store_dir,
-        state_id=args.state_id,
+        from_state_id=args.from_state,
         action_type=args.action_type,
         intent=args.intent,
         inputs=inputs,
+        user_id=resolve_user_id_from_args(args),
     )
     print(json.dumps(result["plans"], ensure_ascii=False, indent=2))
     return 0

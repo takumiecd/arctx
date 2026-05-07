@@ -12,13 +12,13 @@ from optagent.storage.jsonl import JsonlRunStore
 def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``snapshot`` subcommand parser."""
     parser = subparsers.add_parser(
-        "snapshot", help="Show or rebuild the current state snapshot"
+        "snapshot", help="Show or rebuild an observed state snapshot"
     )
     parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
     parser.add_argument(
         "--state-id",
-        default=None,
-        help="Target observed state (default: current observed state)",
+        required=True,
+        help="Target observed state",
     )
     parser.add_argument(
         "--rebuild",
@@ -36,7 +36,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 def run_snapshot_command(
     *,
     run_id: str,
-    state_id: str | None,
+    state_id: str,
     rebuild: bool,
     store_dir: str,
 ) -> dict:
@@ -73,9 +73,7 @@ def run_snapshot_command(
         state = handle.snapshot_rebuild(state_id=state_id)
         store.save_run(handle)
     else:
-        state = handle.trace_dag.nodes[handle.current_observed_state_id]
-        if state_id is not None:
-            state = handle.trace_dag.nodes[state_id]
+        state = handle.trace_dag.nodes[state_id]
 
     return state.to_dict()
 

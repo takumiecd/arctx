@@ -70,7 +70,7 @@ class TestCliListCommand:
             assert entry["requirement_id"] == "req_kernel"
             assert entry["target_type"] == "kernel"
             assert entry["target_id"] == "csc_linear"
-            assert "current_observed_state_id" in entry
+            assert "current_observed_state_id" not in entry
 
     def test_list_ignores_non_run_directories(self):
         """list should ignore directories without run.json."""

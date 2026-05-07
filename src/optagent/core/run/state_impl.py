@@ -11,21 +11,25 @@ from optagent.core.schema.state import (
 )
 
 
-def state_show_impl(self) -> StateNode:
-    """Return the current observed state node."""
-    return self.trace_dag.nodes[self.current_observed_state_id]
+def state_show_impl(self, state_id: str) -> StateNode:
+    """Return an observed state node."""
+    state = self.trace_dag.nodes.get(state_id)
+    if state is None or state.state_kind != "observed":
+        raise KeyError(f"unknown observed state_id: {state_id}")
+    return state
 
 
 def state_update_impl(
     self,
     *,
+    state_id: str,
     add_knowledge: list[str] | None = None,
     add_open_question: list[str] | None = None,
     add_artifact: list[tuple[str, str, str | None]] | None = None,
     add_prediction: list[tuple[str, str]] | None = None,
     add_branch: list[str] | None = None,
 ) -> StateNode:
-    """Update the current observed state's snapshot in place.
+    """Update an observed state's snapshot in place.
 
     Because :class:`StateNode` is immutable, this creates a replacement
     node with the same ``state_id`` but an updated :class:`StateSnapshot`
@@ -48,7 +52,8 @@ def state_update_impl(
     -------
     The updated :class:`StateNode`.
     """
-    old = self.trace_dag.nodes[self.current_observed_state_id]
+    self._ensure_active_observed_state(state_id)
+    old = self.trace_dag.nodes[state_id]
     old_snap = old.snapshot
 
     new_knowledge = list(old_snap.knowledge)

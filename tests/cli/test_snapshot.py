@@ -34,6 +34,7 @@ class TestCliSnapshotCommand:
             planner="default",
             max_plans=1,
             store_dir=str(store_dir),
+            from_state_id="s_obs_0000",
         )
         observe_result = run_observe_command(
             run_id=run_id,
@@ -68,7 +69,7 @@ class TestCliSnapshotCommand:
 
             result = run_snapshot_command(
                 run_id=run_id,
-                state_id=None,
+                state_id="s_obs_0001",
                 rebuild=False,
                 store_dir=str(store_dir),
             )
@@ -83,7 +84,7 @@ class TestCliSnapshotCommand:
 
             result = run_snapshot_command(
                 run_id=run_id,
-                state_id=None,
+                state_id="s_obs_0001",
                 rebuild=True,
                 store_dir=str(store_dir),
             )
@@ -103,7 +104,7 @@ class TestCliSnapshotCommand:
 
             run_snapshot_command(
                 run_id=run_id,
-                state_id=None,
+                state_id="s_obs_0001",
                 rebuild=True,
                 store_dir=str(store_dir),
             )
@@ -111,7 +112,7 @@ class TestCliSnapshotCommand:
             from optagent.storage.jsonl import JsonlRunStore
             store = JsonlRunStore(store_dir)
             loaded = store.load_run(run_id)
-            state = loaded.trace_dag.nodes[loaded.current_observed_state_id]
+            state = loaded.trace_dag.nodes["s_obs_0001"]
             assert len(state.snapshot.knowledge) >= 1
             assert state.snapshot.knowledge[0].summary == "latency improved"
 
@@ -122,7 +123,7 @@ class TestCliSnapshotCommand:
             with pytest.raises(KeyError):
                 run_snapshot_command(
                     run_id="nonexistent",
-                    state_id=None,
+                    state_id="s_obs_0001",
                     rebuild=False,
                     store_dir=str(store_dir),
                 )
@@ -171,7 +172,7 @@ class TestCliSnapshotCommand:
 
             result = run_snapshot_command(
                 run_id=run_id,
-                state_id=None,
+                state_id="s_obs_0001",
                 rebuild=True,
                 store_dir=str(store_dir),
             )

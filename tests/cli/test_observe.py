@@ -32,6 +32,7 @@ class TestCliObserveCommand:
             planner="default",
             max_plans=1,
             store_dir=str(store_dir),
+            from_state_id="s_obs_0000",
         )
         return run_id, plan_result["plans"][0]["plan_id"]
 
@@ -58,8 +59,8 @@ class TestCliObserveCommand:
             assert result["transition"]["action_result"]["result_id"] == "r_0001"
             assert result["transition"]["action_result"]["status"] == "completed"
 
-    def test_observe_advances_current_state(self):
-        """observe should advance current_observed_state_id."""
+    def test_observe_appends_new_state(self):
+        """observe should append a new observed state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id, plan_id = self._create_run_with_plan(store_dir)
@@ -67,7 +68,7 @@ class TestCliObserveCommand:
             from optagent.storage.jsonl import JsonlRunStore
             store = JsonlRunStore(store_dir)
             before = store.load_run(run_id)
-            before_state = before.current_observed_state_id
+            before_states = set(before.trace_dag.nodes)
 
             run_observe_command(
                 run_id=run_id,
@@ -83,7 +84,7 @@ class TestCliObserveCommand:
             )
 
             after = store.load_run(run_id)
-            assert after.current_observed_state_id != before_state
+            assert set(after.trace_dag.nodes) != before_states
 
     def test_observe_saves_metrics(self):
         """--metric should populate ActionResult.metrics."""
@@ -153,7 +154,9 @@ class TestCliObserveCommand:
 
     def test_cli_parse_args_observe(self):
         """argparse should correctly parse observe subcommand."""
-        args = parse_args(["observe", "p_exec_0001", "--run", "my_run", "--result-id", "r_0001"])
+        args = parse_args([
+            "observe", "--plan", "p_exec_0001", "--run", "my_run", "--result-id", "r_0001"
+        ])
         assert args.command == "observe"
         assert args.run == "my_run"
         assert args.plan_id == "p_exec_0001"
@@ -163,7 +166,7 @@ class TestCliObserveCommand:
     def test_cli_parse_args_observe_with_options(self):
         """argparse should handle all observe options."""
         args = parse_args([
-            "observe", "p_exec_0001", "--run", "my_run",
+            "observe", "--plan", "p_exec_0001", "--run", "my_run",
             "--result-id", "r_0001",
             "--status", "failed",
             "--artifact", "patch.diff",
@@ -189,7 +192,7 @@ class TestCliObserveCommand:
             run_id, plan_id = self._create_run_with_plan(store_dir)
 
             exit_code = main([
-                "observe", plan_id, "--run", run_id,
+                "observe", "--plan", plan_id, "--run", run_id,
                 "--result-id", "r_0001",
                 "--store-dir", str(store_dir),
             ])

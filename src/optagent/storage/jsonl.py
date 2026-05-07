@@ -41,8 +41,8 @@ class JsonlRunStore:
     def list_runs(self) -> list[dict]:
         """Return a list of run summaries from the store root.
 
-        Each summary contains run_id, requirement fields, and
-        current_observed_state_id. Invalid run directories are skipped.
+        Each summary contains run_id and requirement fields. Invalid run
+        directories are skipped.
         """
         if not self.root.exists():
             return []
@@ -62,9 +62,6 @@ class JsonlRunStore:
                         "requirement_id": data["requirement"]["requirement_id"],
                         "target_type": data["requirement"]["target_type"],
                         "target_id": data["requirement"]["target_id"],
-                        "current_observed_state_id": data.get(
-                            "current_observed_state_id", ""
-                        ),
                     }
                 )
             except (KeyError, json.JSONDecodeError):
@@ -82,7 +79,6 @@ class JsonlRunStore:
             {
                 "run_id": run.run_id,
                 "requirement": run.requirement.to_dict(),
-                "current_observed_state_id": run.current_observed_state_id,
                 "counters": dict(run._counters),
                 "trace_dag": {
                     "dag_id": run.trace_dag.dag_id,
@@ -164,7 +160,6 @@ class JsonlRunStore:
             requirement=requirement,
             trace_dag=trace_dag,
             prediction_dag=prediction_dag,
-            current_observed_state_id=manifest["current_observed_state_id"],
             _counters={str(k): int(v) for k, v in manifest.get("counters", {}).items()},
         )
 

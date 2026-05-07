@@ -33,6 +33,7 @@ class TestCliStateCommand:
             planner="default",
             max_plans=1,
             store_dir=str(store_dir),
+            from_state_id="s_obs_0000",
         )
         run_observe_command(
             run_id=run_id,
@@ -57,6 +58,7 @@ class TestCliStateCommand:
             result = run_state_command(
                 run_id=run_id,
                 store_dir=str(store_dir),
+                state_id="s_obs_0001",
                 add_knowledge=None,
                 add_open_question=None,
                 add_artifact=None,
@@ -77,6 +79,7 @@ class TestCliStateCommand:
             result = run_state_command(
                 run_id=run_id,
                 store_dir=str(store_dir),
+                state_id="s_obs_0001",
                 add_knowledge=["tile size 32 improves latency"],
                 add_open_question=None,
                 add_artifact=None,
@@ -96,6 +99,7 @@ class TestCliStateCommand:
             result = run_state_command(
                 run_id=run_id,
                 store_dir=str(store_dir),
+                state_id="s_obs_0001",
                 add_knowledge=None,
                 add_open_question=["memory bandwidth bottleneck?"],
                 add_artifact=None,
@@ -115,6 +119,7 @@ class TestCliStateCommand:
             result = run_state_command(
                 run_id=run_id,
                 store_dir=str(store_dir),
+                state_id="s_obs_0001",
                 add_knowledge=None,
                 add_open_question=None,
                 add_artifact=["profile:raw:raw/profile.txt"],
@@ -136,6 +141,7 @@ class TestCliStateCommand:
             run_state_command(
                 run_id=run_id,
                 store_dir=str(store_dir),
+                state_id="s_obs_0001",
                 add_knowledge=["speedup achieved"],
                 add_open_question=None,
                 add_artifact=None,
@@ -146,7 +152,7 @@ class TestCliStateCommand:
             from optagent.storage.jsonl import JsonlRunStore
             store = JsonlRunStore(store_dir)
             loaded = store.load_run(run_id)
-            state = loaded.trace_dag.nodes[loaded.current_observed_state_id]
+            state = loaded.trace_dag.nodes["s_obs_0001"]
             assert len(state.snapshot.knowledge) == 1
             assert state.snapshot.knowledge[0].summary == "speedup achieved"
 
@@ -158,6 +164,7 @@ class TestCliStateCommand:
                 run_state_command(
                     run_id="nonexistent",
                     store_dir=str(store_dir),
+                    state_id="s_obs_0001",
                     add_knowledge=None,
                     add_open_question=None,
                     add_artifact=None,
@@ -214,6 +221,7 @@ class TestCliStateCommand:
             result = run_state_command(
                 run_id=run_id,
                 store_dir=str(store_dir),
+                state_id="s_obs_0001",
                 add_knowledge=None,
                 add_open_question=None,
                 add_artifact=None,

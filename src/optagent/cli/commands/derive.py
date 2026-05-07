@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from optagent.cli.context import resolve_run_id_from_args
+from optagent.cli.context import resolve_run_id_from_args, resolve_user_id_from_args
 from optagent.storage.jsonl import JsonlRunStore
 
 
@@ -44,6 +44,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         default=".optagent/runs",
         help="Directory where runs are stored (default: .optagent/runs)",
     )
+    parser.add_argument("--user", default=None, help="User attribution id")
     return parser
 
 
@@ -57,6 +58,7 @@ def run_derive_command(
     generator: str,
     confidence: float | None,
     store_dir: str,
+    user_id: str | None = None,
 ) -> dict:
     """Attach a derived record to an observed transition.
 
@@ -101,6 +103,7 @@ def run_derive_command(
         derived_id=derived_id,
         generator=generator,
         confidence=confidence,
+        user_id=user_id,
     )
 
     store.save_run(handle)
@@ -125,6 +128,7 @@ def cli_derive(args) -> int:
         generator="cli",
         confidence=args.confidence,
         store_dir=args.store_dir,
+        user_id=resolve_user_id_from_args(args),
     )
     print(json.dumps(result["record"], ensure_ascii=False, indent=2))
     return 0

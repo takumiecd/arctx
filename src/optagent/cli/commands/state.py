@@ -11,8 +11,9 @@ from optagent.storage.jsonl import JsonlRunStore
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``state`` subcommand parser."""
-    parser = subparsers.add_parser("state", help="Show or update the current state snapshot")
+    parser = subparsers.add_parser("state", help="Show or update an observed state snapshot")
     parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
+    parser.add_argument("--state-id", required=True, help="Observed state identifier")
     parser.add_argument(
         "--add-knowledge",
         action="append",
@@ -67,13 +68,14 @@ def run_state_command(
     *,
     run_id: str,
     store_dir: str,
+    state_id: str,
     add_knowledge: list[str] | None,
     add_open_question: list[str] | None,
     add_artifact: list[str] | None,
     add_prediction: list[str] | None,
     add_branch: list[str] | None,
 ) -> dict:
-    """Show or update the current state snapshot for a run.
+    """Show or update an observed state snapshot for a run.
 
     If any ``--add-*`` option is given, the state is updated and saved.
     Otherwise the current state is returned read-only.
@@ -118,6 +120,7 @@ def run_state_command(
         artifacts = [_parse_artifact(v) for v in add_artifact or []]
         predictions = [_parse_prediction(v) for v in add_prediction or []]
         state = handle.state_update(
+            state_id=state_id,
             add_knowledge=add_knowledge,
             add_open_question=add_open_question,
             add_artifact=artifacts or None,
@@ -126,7 +129,7 @@ def run_state_command(
         )
         store.save_run(handle)
     else:
-        state = handle.state_show()
+        state = handle.state_show(state_id)
 
     return {"state": state.to_dict()}
 
@@ -139,6 +142,7 @@ def cli_state(args) -> int:
     result = run_state_command(
         run_id=resolve_run_id_from_args(args),
         store_dir=args.store_dir,
+        state_id=args.state_id,
         add_knowledge=getattr(args, "add_knowledge", None),
         add_open_question=getattr(args, "add_open_question", None),
         add_artifact=getattr(args, "add_artifact", None),

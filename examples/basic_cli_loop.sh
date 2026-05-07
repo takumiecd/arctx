@@ -29,6 +29,7 @@ python3 -m optagent.cli.main init \
 echo ""
 echo "=== 2. plan ==="
 PLAN_RESULT=$(python3 -m optagent.cli.main plan \
+  --from-state s_obs_0000 \
   --planner default \
   --max-plans 1 \
   --store-dir "$STORE_DIR")
@@ -47,7 +48,7 @@ PRED_ID=$(echo "$PRED_RESULT" | python3 -c "import sys, json; print(json.load(sy
 echo ""
 echo "=== 4. observe ==="
 python3 -m optagent.cli.main observe \
-  "$PLAN_ID" \
+  --plan "$PLAN_ID" \
   --result-id "r_0001" \
   --status completed \
   --artifact "build.log" \
@@ -64,11 +65,13 @@ python3 -m optagent.cli.main show \
 echo ""
 echo "=== 6. trace ==="
 python3 -m optagent.cli.main trace \
+  --from-state s_obs_0001 \
   --store-dir "$STORE_DIR"
 
 echo ""
 echo "=== 7. refresh ==="
 python3 -m optagent.cli.main refresh \
+  --from-state s_obs_0001 \
   --store-dir "$STORE_DIR"
 
 echo ""

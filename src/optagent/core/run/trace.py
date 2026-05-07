@@ -8,7 +8,7 @@ from optagent.core.dag import PredictionDAG
 
 def trace_impl(
     self,
-    state_id: str | None = None,
+    state_id: str,
     *,
     depth: int | None = None,
     include_derived: bool = True,
@@ -16,12 +16,11 @@ def trace_impl(
 ) -> TraceContext:
     """Walk observed history backwards from a state."""
 
-    current_id = state_id or self.current_observed_state_id
-    if current_id not in self.trace_dag.nodes:
-        raise KeyError(f"unknown observed state_id: {current_id}")
+    if state_id not in self.trace_dag.nodes:
+        raise KeyError(f"unknown observed state_id: {state_id}")
 
     remaining = depth
-    cursor = current_id
+    cursor = state_id
     past_state_ids: list[str] = []
     transition_ids: list[str] = []
     execution_plan_ids: list[str] = []
@@ -52,7 +51,7 @@ def trace_impl(
             remaining -= 1
 
     return TraceContext(
-        current_state_id=current_id,
+        current_state_id=state_id,
         past_state_ids=tuple(past_state_ids),
         observed_transition_ids=tuple(transition_ids),
         execution_plan_ids=tuple(execution_plan_ids),
@@ -66,14 +65,14 @@ def trace_impl(
 def refresh_impl(
     self,
     *,
-    from_state_id: str | None = None,
+    from_state_id: str,
 ) -> PredictionDAG:
     """Re-anchor the PredictionDAG to an observed state."""
 
-    observed_state_id = from_state_id or self.current_observed_state_id
-    observed_state = self.trace_dag.nodes.get(observed_state_id)
+    observed_state = self.trace_dag.nodes.get(from_state_id)
     if observed_state is None or observed_state.state_kind != "observed":
-        raise KeyError(f"unknown observed state_id: {observed_state_id}")
+        raise KeyError(f"unknown observed state_id: {from_state_id}")
+    self._ensure_active_observed_state(from_state_id)
     self.prediction_dag = _new_prediction_dag(self, observed_state)
     return self.prediction_dag
 

@@ -15,7 +15,7 @@ def _requirement() -> Requirement:
 
 def _run_with_history():
     run = optagent.init(_requirement(), run_id="run_test")
-    plan = run.plan(state_id=run.current_observed_state_id)[0]
+    plan = run.plan(from_state_id="s_obs_0000")[0]
     predicted = run.predict(plan.plan_id, max_outcomes=2)
     result = ActionResult(
         result_id="r_0001",
@@ -69,7 +69,7 @@ def test_jsonl_store_writes_human_readable_records(tmp_path):
 
     manifest = json.loads((run_path / "run.json").read_text())
     assert manifest["run_id"] == "run_test"
-    assert manifest["current_observed_state_id"] == run.current_observed_state_id
+    assert "current_observed_state_id" not in manifest
     assert manifest["requirement"]["requirement_id"] == "req_kernel"
 
     states = _read_jsonl(run_path / "states.jsonl")
@@ -94,15 +94,19 @@ def test_jsonl_store_loads_run_and_can_continue_ids(tmp_path):
     loaded = store.load_run("run_test")
 
     assert loaded.run_id == run.run_id
-    assert loaded.current_observed_state_id == run.current_observed_state_id
-    assert loaded.trace().observed_transition_ids == ("t_obs_0001",)
-    assert loaded.trace().derived_record_ids == ("d_0001",)
+    transition = loaded.trace_dag.transitions["t_obs_0001"]
+    assert loaded.trace(state_id=transition.to_observed_state_id).observed_transition_ids == (
+        "t_obs_0001",
+    )
+    assert loaded.trace(state_id=transition.to_observed_state_id).derived_record_ids == (
+        "d_0001",
+    )
     assert loaded.prediction_dag.predicted_transition_ids_for_plan("p_exec_0001") == [
         "t_pred_0001",
         "t_pred_0002",
     ]
 
-    next_plan = loaded.plan(state_id=loaded.current_observed_state_id)[0]
+    next_plan = loaded.plan(from_state_id=transition.to_observed_state_id)[0]
     assert next_plan.plan_id == "p_exec_0002"
 
 
@@ -133,7 +137,7 @@ def test_jsonl_store_list_runs_returns_summaries(tmp_path):
     by_id = {s["run_id"]: s for s in summaries}
     assert by_id["run_a"]["requirement_id"] == "req_a"
     assert by_id["run_a"]["target_type"] == "code"
-    assert by_id["run_a"]["current_observed_state_id"] == "s_obs_0000"
+    assert "current_observed_state_id" not in by_id["run_a"]
 
 
 def test_jsonl_store_list_runs_empty(tmp_path):

@@ -11,8 +11,9 @@ from optagent.storage.jsonl import JsonlRunStore
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``trace`` subcommand parser."""
-    parser = subparsers.add_parser("trace", help="Trace observed history from current state")
+    parser = subparsers.add_parser("trace", help="Trace observed history from a state")
     parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
+    parser.add_argument("--from-state", required=True, help="Observed state to trace backwards from")
     parser.add_argument(
         "--depth",
         type=int,
@@ -30,6 +31,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 def run_trace_command(
     *,
     run_id: str,
+    from_state_id: str,
     depth: int | None,
     store_dir: str,
 ) -> dict:
@@ -59,7 +61,7 @@ def run_trace_command(
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
 
-    history = handle.trace(depth=depth)
+    history = handle.trace(state_id=from_state_id, depth=depth)
     return {"history": history.to_dict()}
 
 
@@ -70,6 +72,7 @@ def cli_trace(args) -> int:
     """
     result = run_trace_command(
         run_id=resolve_run_id_from_args(args),
+        from_state_id=args.from_state,
         depth=args.depth,
         store_dir=args.store_dir,
     )
