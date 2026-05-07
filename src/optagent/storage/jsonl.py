@@ -7,6 +7,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
+from optagent.core.schema.cursor import Actor, Cursor
 from optagent.core.schema.derived import DerivedRecord
 from optagent.core.schema.plans import ExecutionPlan, PredictionPlan
 from optagent.core.schema.requirements import Requirement
@@ -117,6 +118,14 @@ class JsonlRunStore:
             run_path / "trace_cuts.jsonl",
             (run.trace_dag.cuts[cid].to_dict() for cid in run.trace_dag.cut_order),
         )
+        self._write_jsonl(
+            run_path / "actors.jsonl",
+            (actor.to_dict() for actor in run.actors.values()),
+        )
+        self._write_jsonl(
+            run_path / "cursors.jsonl",
+            (cursor.to_dict() for cursor in run.cursors.values()),
+        )
         return run_path
 
     def load_run(self, run_id: str) -> RunHandle:
@@ -159,12 +168,19 @@ class JsonlRunStore:
         for row in self._read_jsonl(run_path / "trace_cuts.jsonl"):
             trace_dag.add_cut(_trace_cut_from_dict(row))
 
+        actors = {row["actor_id"]: _actor_from_dict(row)
+                  for row in self._read_jsonl(run_path / "actors.jsonl")}
+        cursors = {row["cursor_id"]: _cursor_from_dict(row)
+                   for row in self._read_jsonl(run_path / "cursors.jsonl")}
+
         return RunHandle(
             run_id=manifest["run_id"],
             requirement=requirement,
             trace_dag=trace_dag,
             prediction_dag=prediction_dag,
             current_observed_state_id=manifest["current_observed_state_id"],
+            actors=actors,
+            cursors=cursors,
             _counters={str(k): int(v) for k, v in manifest.get("counters", {}).items()},
         )
 
@@ -327,6 +343,24 @@ def _derived_record_from_dict(data: dict[str, Any]) -> DerivedRecord:
     return DerivedRecord(
         **{
             **_pick_fields(DerivedRecord, data),
+            "metadata": dict(data.get("metadata", {})),
+        }
+    )
+
+
+def _actor_from_dict(data: dict[str, Any]) -> Actor:
+    return Actor(
+        **{
+            **_pick_fields(Actor, data),
+            "metadata": dict(data.get("metadata", {})),
+        }
+    )
+
+
+def _cursor_from_dict(data: dict[str, Any]) -> Cursor:
+    return Cursor(
+        **{
+            **_pick_fields(Cursor, data),
             "metadata": dict(data.get("metadata", {})),
         }
     )

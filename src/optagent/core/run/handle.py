@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from optagent.core.ids import sequential_id, slugify, timestamp_id
+from optagent.core.schema.cursor import (
+    DEFAULT_ACTOR_ID,
+    DEFAULT_CURSOR_ID,
+    Actor,
+    Cursor,
+)
 from optagent.core.schema.requirements import Requirement
 from optagent.core.schema.state import StateNode, StateSnapshot
 from optagent.core.dag import PredictionDAG, TraceDAG
@@ -24,6 +30,8 @@ class RunHandle:
     trace_dag: TraceDAG
     prediction_dag: PredictionDAG
     current_observed_state_id: str
+    actors: dict[str, Actor] = field(default_factory=dict)
+    cursors: dict[str, Cursor] = field(default_factory=dict)
     _counters: dict[str, int] = field(default_factory=dict)
 
     def _next_id(self, prefix: str) -> str:
@@ -33,6 +41,19 @@ class RunHandle:
     @property
     def current_observed_state(self) -> StateNode:
         return self.trace_dag.nodes[self.current_observed_state_id]
+
+    def _set_current_observed(self, state_id: str) -> None:
+        """Move the run's observed pointer and keep the main cursor in sync.
+
+        ``current_observed_state_id`` is the legacy single-cursor pointer
+        and remains the source of truth for now. The main cursor is the
+        forward-compat surface that callers will read against once the
+        cursor model fully takes over; until then we mirror the value.
+        """
+        self.current_observed_state_id = state_id
+        main = self.cursors.get(DEFAULT_CURSOR_ID)
+        if main is not None and main.state_kind == "observed":
+            main.current_state_id = state_id
 
     def save(self, store) -> object:
         """Save this run through a storage adapter."""
@@ -65,12 +86,27 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
         root_predicted_state_id=predicted_root.state_id,
     )
     prediction_dag.add_node(predicted_root, depth=0)
+    default_actor = Actor(
+        actor_id=DEFAULT_ACTOR_ID,
+        actor_type="human",
+        name="default user",
+    )
+    main_cursor = Cursor(
+        cursor_id=DEFAULT_CURSOR_ID,
+        owner_actor_id=DEFAULT_ACTOR_ID,
+        current_state_id=observed.state_id,
+        state_kind="observed",
+        name="main",
+        purpose="default cursor for the human user",
+    )
     return RunHandle(
         run_id=rid,
         requirement=requirement,
         trace_dag=trace_dag,
         prediction_dag=prediction_dag,
         current_observed_state_id=observed.state_id,
+        actors={default_actor.actor_id: default_actor},
+        cursors={main_cursor.cursor_id: main_cursor},
         _counters={
             "s_obs": 0,
             "s_pred": 0,

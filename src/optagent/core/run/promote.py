@@ -180,5 +180,5 @@ def _append_observed_transition(
         derived_records=tuple(derived_records),
     )
     self.trace_dag.append_transition(transition)
-    self.current_observed_state_id = next_state.state_id
+    self._set_current_observed(next_state.state_id)
     return transition
