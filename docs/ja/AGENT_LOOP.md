@@ -44,13 +44,12 @@ state_id = run.current_observed_state_id
 ## 2. plan を作る
 
 ```python
-plans = run.plan(state_id=run.current_observed_state_id)
+plans = run.plan()  # 省略時は current observed state が起点
 ```
 
-observed state から作った plan は `ExecutionPlan` です。
-これは executor に渡せる実行用の計画です。
+observed state から作った plan は `ExecutionPlan` で、executor に渡せる実行用の計画です。
 
-predicted state から作った plan は `PredictionPlan` です。
+predicted state から先のシナリオを延長したい場合は、`run.extend(state_id=...)` を使います。こちらは `PredictionPlan` を返します。
 これは未来予測を広げるための計画で、直接実行しません。
 
 ## 3. 予測する

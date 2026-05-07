@@ -115,12 +115,8 @@ def run_plan_command(
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
 
-    target_state_id = state_id or handle.current_observed_state_id
-    if target_state_id not in handle.trace_dag.nodes:
-        raise KeyError(f"not an observed state: {target_state_id}")
-
     plans = handle.plan(
-        state_id=target_state_id,
+        state_id=state_id,
         planner=planner,
         max_plans=max_plans,
         action_type=action_type,

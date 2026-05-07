@@ -116,10 +116,7 @@ def run_extend_command(
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
 
-    if state_id not in handle.prediction_dag.nodes:
-        raise KeyError(f"not a predicted state: {state_id}")
-
-    plans = handle.plan(
+    plans = handle.extend(
         state_id=state_id,
         planner=planner,
         max_plans=max_plans,

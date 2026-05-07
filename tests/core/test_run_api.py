@@ -88,7 +88,7 @@ def test_prediction_plan_path_promotes_to_execution_plan():
     run = optagent.init(_requirement(), run_id="run_test")
     root_id = run.prediction_dag.root_predicted_state_id
 
-    prediction_plan = run.plan(state_id=root_id)[0]
+    prediction_plan = run.extend(state_id=root_id)[0]
     predicted = run.predict(prediction_plan.plan_id)[0]
     path = PredictionPath(
         path_id="path_pred_0001",
@@ -131,7 +131,7 @@ def test_observe_records_result_without_prediction_match():
 
 def test_promote_transition_can_create_execution_plan_from_prediction_plan():
     run = optagent.init(_requirement(), run_id="run_test")
-    prediction_plan = run.plan(state_id=run.prediction_dag.root_predicted_state_id)[0]
+    prediction_plan = run.extend(state_id=run.prediction_dag.root_predicted_state_id)[0]
     predicted = run.predict(prediction_plan.plan_id)[0]
     result = ActionResult(
         result_id="r_0001",

@@ -24,7 +24,7 @@ requirement = Requirement(
 
 run = optagent.init(requirement, run_id="demo")
 
-plans = run.plan(state_id=run.current_observed_state_id)
+plans = run.plan()
 predicted = run.predict(plan_id=plans[0].plan_id, max_outcomes=2)
 
 result = ActionResult(
@@ -121,30 +121,35 @@ run = optagent.init(requirement, run_id="demo")
 assert run.current_observed_state_id == "s_obs_0000"
 ```
 
-## `run.plan`
+## `run.plan` / `run.extend`
+
+plan は observed state、extend は predicted state を起点にした計画を作る、対になったメソッドです。動詞で対象の state kind を区別する設計で、戻り値の型もそれぞれ単一です。
 
 ```python
 run.plan(
+    state_id: str | None = None,
+    *,
+    planner: str | None = None,
+    max_plans: int | None = None,
+) -> list[ExecutionPlan]
+
+run.extend(
     state_id: str,
     *,
     planner: str | None = None,
     max_plans: int | None = None,
-) -> list[ExecutionPlan | PredictionPlan]
+) -> list[PredictionPlan]
 ```
 
-指定した state から plan を作ります。
-
-返る plan は、入力 state の種類で変わります。
-
-- observed state から呼ぶと `ExecutionPlan`
-- predicted state から呼ぶと `PredictionPlan`
+- `run.plan` は observed state から `ExecutionPlan` を作ります。`state_id` を省略すると current observed state を使います。observed でない state を渡すと `KeyError` になります。
+- `run.extend` は predicted state から `PredictionPlan` を作ります。predicted には current の概念がないため `state_id` は必須で、predicted でない state を渡すと `KeyError` になります。
 
 ```python
-plans = run.plan(state_id=run.current_observed_state_id)
+plans = run.plan()  # current observed が暗黙の起点
 assert plans[0].plan_kind == "execution"
 
 root_id = run.prediction_dag.root_predicted_state_id
-future_plans = run.plan(state_id=root_id)
+future_plans = run.extend(state_id=root_id)
 assert future_plans[0].plan_kind == "prediction"
 ```
 
