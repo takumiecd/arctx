@@ -76,14 +76,14 @@ class TestCliRefreshCommand:
 
     def test_cli_parse_args_refresh(self):
         """argparse should correctly parse refresh subcommand."""
-        args = parse_args(["refresh", "my_run"])
+        args = parse_args(["refresh", "--run", "my_run"])
         assert args.command == "refresh"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
 
     def test_cli_parse_args_refresh_with_store_dir(self):
         """argparse should handle --store-dir for refresh."""
         args = parse_args([
-            "refresh", "my_run",
+            "refresh", "--run", "my_run",
             "--store-dir", "/tmp/runs",
         ])
         assert args.store_dir == "/tmp/runs"
@@ -95,7 +95,7 @@ class TestCliRefreshCommand:
             run_id = self._create_run_with_observation(store_dir)
 
             exit_code = main([
-                "refresh", run_id,
+                "refresh", "--run", run_id,
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0

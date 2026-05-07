@@ -154,9 +154,9 @@ class TestCliShowCommand:
 
     def test_cli_parse_args_show(self):
         """argparse should correctly parse show subcommand."""
-        args = parse_args(["show", "my_run"])
+        args = parse_args(["show", "--run", "my_run"])
         assert args.command == "show"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
         assert args.state_id is None
         assert args.plan_id is None
         assert args.transition_id is None
@@ -164,7 +164,7 @@ class TestCliShowCommand:
     def test_cli_parse_args_show_with_options(self):
         """argparse should handle all show options."""
         args = parse_args([
-            "show", "my_run",
+            "show", "--run", "my_run",
             "--state", "s_obs_0000",
             "--store-dir", "/tmp/runs",
         ])
@@ -178,7 +178,7 @@ class TestCliShowCommand:
             run_id = self._create_run_with_history(store_dir)
 
             exit_code = main([
-                "show", run_id,
+                "show", "--run", run_id,
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0

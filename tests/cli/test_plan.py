@@ -105,22 +105,22 @@ class TestCliPlanCommand:
 
     def test_cli_parse_args_plan(self):
         """argparse should correctly parse plan subcommand."""
-        args = parse_args(["plan", "my_run"])
+        args = parse_args(["plan", "--run", "my_run"])
         assert args.command == "plan"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
         assert args.planner == "default"
         assert args.max_plans == 1
 
     def test_cli_parse_args_plan_with_options(self):
         """argparse should handle all plan options."""
         args = parse_args([
-            "plan", "my_run",
+            "plan", "--run", "my_run",
             "--planner", "custom",
             "--max-plans", "5",
             "--store-dir", "/tmp/runs",
         ])
         assert args.command == "plan"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
         assert args.planner == "custom"
         assert args.max_plans == 5
         assert args.store_dir == "/tmp/runs"
@@ -132,7 +132,7 @@ class TestCliPlanCommand:
             run_id = self._create_run(store_dir)
 
             exit_code = main([
-                "plan", run_id,
+                "plan", "--run", run_id,
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0
@@ -207,7 +207,7 @@ class TestCliPlanCommand:
     def test_cli_parse_args_plan_with_content_options(self):
         """argparse should handle action-type, intent, and input."""
         args = parse_args([
-            "plan", "my_run",
+            "plan", "--run", "my_run",
             "--action-type", "edit",
             "--intent", "optimize loop",
             "--input", "file=main.py",

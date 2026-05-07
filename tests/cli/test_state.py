@@ -167,14 +167,14 @@ class TestCliStateCommand:
 
     def test_cli_parse_args_state(self):
         """argparse should correctly parse state subcommand."""
-        args = parse_args(["state", "my_run"])
+        args = parse_args(["state", "--run", "my_run"])
         assert args.command == "state"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
 
     def test_cli_parse_args_state_with_options(self):
         """argparse should handle all state options."""
         args = parse_args([
-            "state", "my_run",
+            "state", "--run", "my_run",
             "--add-knowledge", "k1",
             "--add-open-question", "q1",
             "--add-artifact", "a1:t1:p1",
@@ -196,7 +196,7 @@ class TestCliStateCommand:
             run_id = self._create_run_with_observation(store_dir)
 
             exit_code = main([
-                "state", run_id,
+                "state", "--run", run_id,
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0

@@ -12,8 +12,7 @@ from optagent.storage.jsonl import JsonlRunStore
 def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``show`` subcommand parser."""
     parser = subparsers.add_parser("show", help="Show run details")
-    parser.add_argument("run_id", nargs="?", default=None, help="Run identifier (optional if --run or current context is set)")
-    parser.add_argument("--run", default=None, help="Run identifier")
+    parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
     parser.add_argument(
         "--state",
         dest="state_id",

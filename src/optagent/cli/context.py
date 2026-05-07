@@ -67,8 +67,7 @@ def resolve_run_id(
 def resolve_run_id_from_args(args) -> str:
     """Resolve a run_id from a parsed argparse namespace.
 
-    Combines the ``--run`` flag and the optional positional ``run_id``
-    before falling back to env/current.json.
+    Reads the ``--run`` flag and falls back to the env var and
+    current.json marker.
     """
-    explicit = getattr(args, "run", None) or getattr(args, "run_id", None)
-    return resolve_run_id(explicit, args.store_dir)
+    return resolve_run_id(getattr(args, "run", None), args.store_dir)

@@ -15,7 +15,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         "derive", help="Attach a derived record to an observed transition"
     )
     parser.add_argument("transition_id", help="Observed transition identifier")
-    parser.add_argument("--run", default=None, help="Run identifier")
+    parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
     parser.add_argument(
         "--type",
         dest="derived_type",

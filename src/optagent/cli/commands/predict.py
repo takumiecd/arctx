@@ -13,7 +13,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``predict`` subcommand parser."""
     parser = subparsers.add_parser("predict", help="Predict outcomes for a plan")
     parser.add_argument("plan_id", help="Plan identifier")
-    parser.add_argument("--run", default=None, help="Run identifier")
+    parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
     parser.add_argument(
         "--predictor",
         default="default",

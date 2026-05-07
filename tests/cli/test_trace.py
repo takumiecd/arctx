@@ -113,15 +113,15 @@ class TestCliTraceCommand:
 
     def test_cli_parse_args_trace(self):
         """argparse should correctly parse trace subcommand."""
-        args = parse_args(["trace", "my_run"])
+        args = parse_args(["trace", "--run", "my_run"])
         assert args.command == "trace"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
         assert args.depth is None
 
     def test_cli_parse_args_trace_with_options(self):
         """argparse should handle all trace options."""
         args = parse_args([
-            "trace", "my_run",
+            "trace", "--run", "my_run",
             "--depth", "5",
             "--store-dir", "/tmp/runs",
         ])
@@ -135,7 +135,7 @@ class TestCliTraceCommand:
             run_id = self._create_run_with_observations(store_dir)
 
             exit_code = main([
-                "trace", run_id,
+                "trace", "--run", run_id,
                 "--depth", "3",
                 "--store-dir", str(store_dir),
             ])

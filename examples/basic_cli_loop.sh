@@ -18,6 +18,7 @@ RUN_ID="demo_loop"
 STORE_DIR=".optagent/runs"
 
 echo "=== 1. init ==="
+# init seeds the current run, so subsequent commands can omit --run.
 python3 -m optagent.cli.main init \
   "req_optimize_kernel" \
   --target-type "code" \
@@ -28,7 +29,6 @@ python3 -m optagent.cli.main init \
 echo ""
 echo "=== 2. plan ==="
 PLAN_RESULT=$(python3 -m optagent.cli.main plan \
-  "$RUN_ID" \
   --planner default \
   --max-plans 1 \
   --store-dir "$STORE_DIR")
@@ -38,7 +38,6 @@ PLAN_ID=$(echo "$PLAN_RESULT" | python3 -c "import sys, json; print(json.load(sy
 echo ""
 echo "=== 3. predict ==="
 PRED_RESULT=$(python3 -m optagent.cli.main predict \
-  "$RUN_ID" \
   "$PLAN_ID" \
   --max-outcomes 1 \
   --store-dir "$STORE_DIR")
@@ -48,7 +47,6 @@ PRED_ID=$(echo "$PRED_RESULT" | python3 -c "import sys, json; print(json.load(sy
 echo ""
 echo "=== 4. observe ==="
 python3 -m optagent.cli.main observe \
-  "$RUN_ID" \
   "$PLAN_ID" \
   --result-id "r_0001" \
   --status completed \
@@ -61,19 +59,16 @@ python3 -m optagent.cli.main observe \
 echo ""
 echo "=== 5. show (run summary) ==="
 python3 -m optagent.cli.main show \
-  "$RUN_ID" \
   --store-dir "$STORE_DIR"
 
 echo ""
 echo "=== 6. trace ==="
 python3 -m optagent.cli.main trace \
-  "$RUN_ID" \
   --store-dir "$STORE_DIR"
 
 echo ""
 echo "=== 7. refresh ==="
 python3 -m optagent.cli.main refresh \
-  "$RUN_ID" \
   --store-dir "$STORE_DIR"
 
 echo ""

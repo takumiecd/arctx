@@ -31,7 +31,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         "observe", help="Record an execution result without prediction match"
     )
     parser.add_argument("plan_id", help="Execution plan identifier")
-    parser.add_argument("--run", default=None, help="Run identifier")
+    parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
     parser.add_argument("--result-id", required=True, help="Result identifier")
     parser.add_argument(
         "--status",

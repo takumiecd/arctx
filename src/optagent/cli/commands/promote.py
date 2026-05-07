@@ -14,8 +14,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "promote", help="Promote a predicted transition to an observed transition"
     )
-    parser.add_argument("run_id", nargs="?", default=None, help="Run identifier (optional if --run or current context is set)")
-    parser.add_argument("--run", default=None, help="Run identifier")
+    parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
     parser.add_argument(
         "--predicted-transition-id",
         required=True,

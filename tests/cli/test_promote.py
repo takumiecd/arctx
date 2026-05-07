@@ -128,12 +128,12 @@ class TestCliPromoteCommand:
     def test_cli_parse_args_promote(self):
         """argparse should correctly parse promote subcommand."""
         args = parse_args([
-            "promote", "my_run",
+            "promote", "--run", "my_run",
             "--predicted-transition-id", "t_pred_0001",
             "--result-id", "r_0001",
         ])
         assert args.command == "promote"
-        assert args.run_id == "my_run"
+        assert args.run == "my_run"
         assert args.predicted_transition_id == "t_pred_0001"
         assert args.result_id == "r_0001"
         assert args.status == "completed"
@@ -141,7 +141,7 @@ class TestCliPromoteCommand:
     def test_cli_parse_args_promote_with_options(self):
         """argparse should handle all promote options."""
         args = parse_args([
-            "promote", "my_run",
+            "promote", "--run", "my_run",
             "--predicted-transition-id", "t_pred_0001",
             "--result-id", "r_0001",
             "--status", "failed",
@@ -161,7 +161,7 @@ class TestCliPromoteCommand:
             run_id, plan_id, predicted_id = self._create_run_with_prediction(store_dir)
 
             exit_code = main([
-                "promote", run_id,
+                "promote", "--run", run_id,
                 "--predicted-transition-id", predicted_id,
                 "--result-id", "r_0001",
                 "--execution-plan-id", plan_id,
