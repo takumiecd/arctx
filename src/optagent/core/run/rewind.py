@@ -83,7 +83,7 @@ def rewind_impl(
     )
     self.trace_dag.add_cut(cut)
 
-    self._set_current_observed(transition.from_observed_state_id)
+    self.current_observed_state_id = transition.from_observed_state_id
     self.refresh(from_state_id=transition.from_observed_state_id)
     return cut
 

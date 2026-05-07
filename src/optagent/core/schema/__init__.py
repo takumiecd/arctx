@@ -1,6 +1,5 @@
 """Schema package — all state-transition data models."""
 
-from optagent.core.schema.cursor import Actor, Cursor
 from optagent.core.schema.derived import (
     Decision,
     DerivedRecord,
@@ -35,9 +34,7 @@ from optagent.core.schema.transitions import (
 
 __all__ = [
     "ActionResult",
-    "Actor",
     "ArtifactRef",
-    "Cursor",
     "Budget",
     "Decision",
     "DerivedRecord",

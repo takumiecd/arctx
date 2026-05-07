@@ -112,8 +112,6 @@ optagent.init(requirement: Requirement, *, run_id: str | None = None) -> RunHand
 - `TraceDAG` の root observed state: `s_obs_0000`
 - `PredictionDAG` の root predicted state: `s_pred_0000`
 - current observed state: `s_obs_0000`
-- default human `Actor`(`actor_id="human"`)
-- default `Cursor`(`cursor_id="main"`、main cursor と呼ぶ)。owner は default actor で `current_state_id` は root observed state を指す
 
 `PredictionDAG` の root は current observed state に anchor されます。
 
@@ -121,37 +119,7 @@ optagent.init(requirement: Requirement, *, run_id: str | None = None) -> RunHand
 run = optagent.init(requirement, run_id="demo")
 
 assert run.current_observed_state_id == "s_obs_0000"
-assert run.cursors["main"].current_state_id == "s_obs_0000"
-assert run.actors["human"].actor_type == "human"
 ```
-
-## Actor / Cursor
-
-Multi-actor cursor model の最小要素として、run はいくつでも `Actor` と `Cursor` を持てます。Step 1 では default の human Actor と main Cursor が自動で1つずつ作られ、main Cursor の `current_state_id` は `current_observed_state_id` と常に同期します（`observe` / `promote` / `rewind` のいずれでも）。
-
-```python
-@dataclass(frozen=True)
-class Actor:
-    actor_id: str
-    actor_type: Literal["human", "agent"]
-    name: str
-    status: Literal["active", "paused", "done", "abandoned"] = "active"
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-
-@dataclass  # mutable: cursor は動くもの
-class Cursor:
-    cursor_id: str
-    owner_actor_id: str
-    current_state_id: str
-    state_kind: Literal["observed", "predicted"]
-    name: str
-    purpose: str | None = None
-    status: Literal["active", "paused", "done", "abandoned"] = "active"
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-```
-
-`Actor` は frozen（identity の固定）、`Cursor` は mutable（位置は動く）です。今は default の actor / cursor を作るだけで、追加の cursor を作る公開 API はありません。`current_observed_state_id` は当面 source of truth として残し、main cursor の値はこれをミラーします。`create_cursor` / `move_cursor` / `optagent cursor` CLI などはこの後の Step で導入します。
 
 ## `run.plan` / `run.extend`
 
