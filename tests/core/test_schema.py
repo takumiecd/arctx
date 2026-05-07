@@ -139,16 +139,13 @@ def test_state_context_points_to_dag_views_not_state_content():
         current_state_id="s_obs_0001",
         trace_dag_id="trace_run_001",
         prediction_dag_id="prediction_run_001",
-        current_depth=1,
-        past_depth=2,
-        future_depth=3,
         focus_transition_ids=("t_obs_0001", "t_pred_0002"),
     )
 
     data = context.to_dict()
     assert data["current_state_id"] == "s_obs_0001"
-    assert data["past_depth"] == 2
-    assert data["future_depth"] == 3
+    assert data["trace_dag_id"] == "trace_run_001"
+    assert data["prediction_dag_id"] == "prediction_run_001"
     assert data["focus_transition_ids"] == ["t_obs_0001", "t_pred_0002"]
 
 

@@ -110,11 +110,8 @@ class StateContext:
     current_state_id: str
     trace_dag_id: str | None = None
     prediction_dag_id: str | None = None
-    current_depth: int | None = None
     active_branch_ids: tuple[str, ...] = ()
     focus_transition_ids: tuple[str, ...] = ()
-    past_depth: int | None = None
-    future_depth: int | None = None
     include_pruned: bool = False
     include_unsafe: bool = True
     metadata: dict[str, JSONValue] = field(default_factory=dict)
