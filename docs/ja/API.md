@@ -294,32 +294,32 @@ observed = run.observe(
 
 ```python
 run.rewind(
-    to_state_id: str | None = None,
+    transition_id: str,
     *,
-    steps: int | None = None,
     reason: str | None = None,
 ) -> StateNode
 ```
 
-`current_observed_state_id` を、その祖先 observed state に戻します。`to_state_id` か `steps` のいずれか一方を指定します。
+指定した observed transition を cut します。`current_observed_state_id` は cut された transition の `from_observed_state_id`（cut の起点）に移動します。
 
-`rewind` は **既存レコードを変更しません**。state / transition / plan / result はすべて TraceDAG に残り、ポインタが祖先に移動するのと同時に、TraceDAG に **1本の `TraceCut` レコードが append** されます。`TraceCut` は「祖先のどの outgoing transition より先を捨てたか」だけを名指す最小レコードで、下流の cut 集合は read-time に `trace_dag.cut_state_ids()` / `cut_transition_ids()` で導出します。この append-only な記録によって、巻き戻されたとは知らない読み手にも「この枝は cut 済み」が見えるようになります。
+`rewind` は **既存レコードを変更しません**。state / transition / plan / result はすべて TraceDAG に残り、TraceDAG に **1本の `TraceCut` レコードが append** されるだけです。`TraceCut` は「どの transition を cut したか」を名指す最小レコードで、下流の cut 集合は read-time に `trace_dag.cut_state_ids()` / `cut_transition_ids()` で導出します。この append-only な記録によって、cut されたことを知らない読み手にも「この枝は cut 済み」が見えるようになります。
 
-巻き戻し後の最初の `observe` / `promote` は、その祖先から新しい兄弟枝として伸びていきます（DAG 上で並列に枝が増える形）。新しい transition は別 ID なので cut されません。
+cut 後の最初の `observe` / `promote` は、cut の起点から新しい兄弟枝として伸びていきます（DAG 上で並列に枝が増える形）。新しい transition は別 ID なので自動で active です。
 
-祖先判定は depth ではなく `trace_dag.is_ancestor` による incoming edge の辿りで行います。current から到達できない別枝の state を渡すと `ValueError` になります（兄弟枝への移動は将来 Cursor の `switch` / `move` で扱います）。
+`transition_id` は current から `incoming_index` を辿って到達できる必要があります（active path 上のみ）。それ以外は `ValueError`、既に cut 済みの transition も `ValueError` です。
 
-巻き戻し後、PredictionDAG は新しい current observed state を anchor として自動で refresh されます（current 自身に rewind した場合は no-op）。
+cut 後、PredictionDAG は新しい current observed state を anchor として自動で refresh されます。
 
 ```python
 s0 = run.current_observed_state_id
 plan = run.plan()[0]
-# observe ...
+observed = run.observe(plan.plan_id, ActionResult(...))
 
-run.rewind(steps=1)
+run.rewind(observed.transition_id, reason="wrong observe")
 assert run.current_observed_state_id == s0
 # trace_dag は何も消えていない
-assert len(run.trace_dag.transitions) >= 1
+assert observed.transition_id in run.trace_dag.transitions
+assert observed.transition_id in run.trace_dag.cut_transition_ids()
 ```
 
 ## `run.refresh`

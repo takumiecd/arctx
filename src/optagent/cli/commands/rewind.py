@@ -13,22 +13,13 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``rewind`` subcommand parser."""
     parser = subparsers.add_parser(
         "rewind",
-        help="Move the current observed state back to an ancestor (does not delete history)",
+        help="Cut an observed transition and move current to its source (does not delete history)",
+    )
+    parser.add_argument(
+        "transition_id",
+        help="Observed transition to cut (must be on the active path from current state)",
     )
     parser.add_argument("--run", default=None, help="Run identifier (optional if current run is set)")
-    target = parser.add_mutually_exclusive_group(required=True)
-    target.add_argument(
-        "--to-state",
-        dest="to_state",
-        default=None,
-        help="Target observed state ID (must be an ancestor of the current state)",
-    )
-    target.add_argument(
-        "--steps",
-        type=int,
-        default=None,
-        help="Walk this many incoming transitions from the current state",
-    )
     parser.add_argument(
         "--reason",
         default=None,
@@ -45,30 +36,28 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 def run_rewind_command(
     *,
     run_id: str,
-    to_state: str | None,
-    steps: int | None,
+    transition_id: str,
     reason: str | None,
     store_dir: str,
 ) -> dict:
-    """Rewind the current observed state of *run_id* to an ancestor.
+    """Cut *transition_id* in *run_id* and rewind current to its source.
 
-    Either *to_state* or *steps* must be given. The TraceDAG is left
-    untouched; only ``current_observed_state_id`` moves and the
-    PredictionDAG is re-anchored.
+    The TraceDAG is left untouched; only ``current_observed_state_id``
+    moves and a single ``TraceCut`` is appended.
 
     Returns
     -------
-    dict with the new ``state`` (post-rewind StateNode) and the new
-    ``prediction_dag`` summary.
+    dict with the new ``state`` (post-rewind StateNode), the new
+    ``prediction_dag`` summary, and the ``cut`` record that was appended.
 
     Raises
     ------
     KeyError
-        If *run_id* does not exist or *to_state* is not an observed state.
+        If *run_id* does not exist or *transition_id* is not an observed
+        transition.
     ValueError
-        If neither or both of *to_state*/*steps* are given, *steps* is
-        non-positive or walks past the root, or *to_state* is not an
-        ancestor of the current state.
+        If *transition_id* is not on the active path from current, or
+        has already been cut.
     """
     store = JsonlRunStore(store_dir)
     run_path = store.run_path(run_id)
@@ -76,13 +65,14 @@ def run_rewind_command(
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
 
-    state = handle.rewind(to_state_id=to_state, steps=steps, reason=reason)
+    state = handle.rewind(transition_id, reason=reason)
+    cut = handle.trace_dag.cuts[handle.trace_dag.cut_order[-1]]
     store.save_run(handle)
 
     return {
         "state": state.to_dict(),
         "prediction_dag": handle.prediction_dag.to_dict(),
-        "reason": reason,
+        "cut": cut.to_dict(),
     }
 
 
@@ -93,8 +83,7 @@ def cli_rewind(args) -> int:
     """
     result = run_rewind_command(
         run_id=resolve_run_id_from_args(args),
-        to_state=args.to_state,
-        steps=args.steps,
+        transition_id=args.transition_id,
         reason=args.reason,
         store_dir=args.store_dir,
     )
