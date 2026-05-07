@@ -132,12 +132,13 @@ class TestRunHandleRewind:
         """A transition on a sibling branch is not 'on the active path back'.
 
         Build two parallel branches off s0 by planning twice from it.
-        The first transition is alive but unreachable from current.
+        The first transition is alive but unreachable from the chosen
+        validation state.
         """
         run = _new_run()
         s0 = run.root_observed_state_id
         _, t1 = _advance(run, "branch a", "r_0001")
-        # Plan again from s0 directly (not from current), then observe.
+        # Plan again from s0 directly, then observe.
         plan_b = run.plan(from_state_id=s0, intent="branch b")[0]
         run.observe(
             plan_b.plan_id,
@@ -147,7 +148,7 @@ class TestRunHandleRewind:
                 status="completed",
             ),
         )
-        # current is now on branch B; t1 is alive but on branch A.
+        # t1 is alive but not reachable by walking backwards from branch B.
         assert t1 not in run.trace_dag.cut_transition_ids()
         with pytest.raises(ValueError, match="not on the active path"):
             run.rewind(t1, from_state_id=plan_b.from_observed_state_id)
