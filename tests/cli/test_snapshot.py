@@ -130,11 +130,11 @@ class TestCliSnapshotCommand:
 
     def test_cli_parse_args_snapshot(self):
         """argparse should correctly parse snapshot subcommand."""
-        args = parse_args(["snapshot", "--run", "my_run"])
+        args = parse_args(["snapshot", "--run", "my_run", "--state-id", "s_obs_0001"])
         assert args.command == "snapshot"
         assert args.run == "my_run"
         assert args.rebuild is False
-        assert args.state_id is None
+        assert args.state_id == "s_obs_0001"
 
     def test_cli_parse_args_snapshot_rebuild(self):
         """argparse should handle --rebuild and --state-id."""
@@ -156,6 +156,7 @@ class TestCliSnapshotCommand:
 
             exit_code = main([
                 "snapshot", "--run", run_id,
+                "--state-id", "s_obs_0001",
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0

@@ -174,14 +174,16 @@ class TestCliStateCommand:
 
     def test_cli_parse_args_state(self):
         """argparse should correctly parse state subcommand."""
-        args = parse_args(["state", "--run", "my_run"])
+        args = parse_args(["state", "--run", "my_run", "--state-id", "s_obs_0001"])
         assert args.command == "state"
         assert args.run == "my_run"
+        assert args.state_id == "s_obs_0001"
 
     def test_cli_parse_args_state_with_options(self):
         """argparse should handle all state options."""
         args = parse_args([
             "state", "--run", "my_run",
+            "--state-id", "s_obs_0001",
             "--add-knowledge", "k1",
             "--add-open-question", "q1",
             "--add-artifact", "a1:t1:p1",
@@ -204,6 +206,7 @@ class TestCliStateCommand:
 
             exit_code = main([
                 "state", "--run", run_id,
+                "--state-id", "s_obs_0001",
                 "--store-dir", str(store_dir),
             ])
             assert exit_code == 0
