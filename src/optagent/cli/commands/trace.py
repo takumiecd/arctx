@@ -35,7 +35,7 @@ def run_trace_command(
     depth: int | None,
     store_dir: str,
 ) -> dict:
-    """Trace observed history backwards from the current state.
+    """Trace observed history backwards from an explicit state.
 
     Parameters
     ----------

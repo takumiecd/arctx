@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Literal
 
 from optagent.core.schema.derived import DerivedRecord
@@ -122,14 +121,9 @@ def _promote_transition(
         raise KeyError(f"unknown predicted_transition_id: {predicted_transition_id}")
     if execution_plan_id is None:
         raise ValueError("promote(mode='transition') requires execution_plan_id")
-        action_result = replace(
-            action_result,
-            execution_plan_id=execution_plan.plan_id,
-        )
-    else:
-        execution_plan = self.trace_dag.execution_plans.get(execution_plan_id)
-        if execution_plan is None:
-            raise KeyError(f"unknown execution_plan_id: {execution_plan_id}")
+    execution_plan = self.trace_dag.execution_plans.get(execution_plan_id)
+    if execution_plan is None:
+        raise KeyError(f"unknown execution_plan_id: {execution_plan_id}")
     if action_result.execution_plan_id != execution_plan.plan_id:
         raise ValueError("ActionResult.execution_plan_id must match the ExecutionPlan")
     return _append_observed_transition(

@@ -87,7 +87,6 @@ class TraceCut:
     cut_transition_id: str
     reason: str | None = None
     user_id: str | None = None
-    actor_id: str | None = None
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, JSONValue]:

@@ -61,8 +61,8 @@ class TestCliSnapshotCommand:
         )
         return run_id, transition_id
 
-    def test_snapshot_show_current(self):
-        """snapshot should return the current state snapshot."""
+    def test_snapshot_show_state(self):
+        """snapshot should return the requested state snapshot."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id, _ = self._create_run_with_history(store_dir)

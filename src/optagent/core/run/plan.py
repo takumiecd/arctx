@@ -33,7 +33,7 @@ def plan_impl(
     self._ensure_active_observed_state(from_state_id)
 
     count = max(1, max_plans or 1)
-    resolved_intent = intent or "inspect current state and propose next useful action"
+    resolved_intent = intent or "inspect selected state and propose next useful action"
     resolved_planner = planner or "default"
     plans: list[ExecutionPlan] = []
     for index in range(count):

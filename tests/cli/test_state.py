@@ -49,8 +49,8 @@ class TestCliStateCommand:
         )
         return run_id
 
-    def test_state_show_current_snapshot(self):
-        """state should return the current observed state."""
+    def test_state_show_snapshot(self):
+        """state should return the requested observed state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id = self._create_run_with_observation(store_dir)

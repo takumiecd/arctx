@@ -61,9 +61,9 @@ def _advance(
 
 
 class TestRunHandleRewind:
-    """Core API: RunHandle.rewind cuts a transition and moves current to its source."""
+    """Core API: RunHandle.rewind appends a cut event."""
 
-    def test_rewind_cuts_transition_and_moves_current(self):
+    def test_rewind_cuts_transition(self):
         run = _new_run()
         s0 = run.root_observed_state_id
         _, t1 = _advance(run, "first", "r_0001")
@@ -273,8 +273,8 @@ class TestStorageRoundtrip:
 class TestCliRewind:
     """CLI surface for rewind."""
 
-    def _setup(self, store_dir: Path) -> tuple[str, str, str]:
-        """Returns (run_id, source_state_id, observed_transition_id)."""
+    def _setup(self, store_dir: Path) -> tuple[str, str, str, str]:
+        """Returns (run_id, source_state_id, transition_id, leaf_state_id)."""
         result = run_init_command(
             requirement_id="req_test",
             target_type="code",
@@ -298,17 +298,22 @@ class TestCliRewind:
             artifacts=[], raw_outputs=[], logs=[], metrics={}, errors=[],
             store_dir=str(store_dir),
         )
-        return run_id, plan["from_observed_state_id"], observed["transition"]["transition_id"]
+        return (
+            run_id,
+            plan["from_observed_state_id"],
+            observed["transition"]["transition_id"],
+            observed["transition"]["to_observed_state_id"],
+        )
 
     def test_run_rewind_command(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
-            run_id, source, t1 = self._setup(store_dir)
+            run_id, source, t1, leaf = self._setup(store_dir)
 
             result = run_rewind_command(
                 run_id=run_id,
                 transition_id=t1,
-                from_state_id=observed["transition"]["to_observed_state_id"],
+                from_state_id=leaf,
                 reason="undo bad observe",
                 store_dir=str(store_dir),
             )
@@ -339,12 +344,12 @@ class TestCliRewind:
     def test_main_rewind_prints_cut_json(self, capsys):
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
-            run_id, source, t1 = self._setup(store_dir)
+            run_id, source, t1, leaf = self._setup(store_dir)
 
             exit_code = main([
                 "rewind",
                 "--transition", t1,
-                "--from-state", "s_obs_0001",
+                "--from-state", leaf,
                 "--run", run_id,
                 "--store-dir", str(store_dir),
             ])

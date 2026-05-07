@@ -25,12 +25,11 @@ class TestCliPlanCommand:
             target_id="module_a",
             run_id=run_id,
             store_dir=str(store_dir),
-                from_state_id="s_obs_0000",
         )
         return result["run_id"]
 
     def test_plan_creates_execution_plan(self):
-        """plan should create an ExecutionPlan from current observed state."""
+        """plan should create an ExecutionPlan from an explicit observed state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id = self._create_run(store_dir)
@@ -229,7 +228,7 @@ class TestCliPlanCommand:
         assert args.input == ["file=main.py", "strategy=unroll"]
 
     def test_plan_explicit_from_state(self):
-        """--from-state should let plan target a non-current observed state."""
+        """--from-state should let plan target an observed state explicitly."""
         with tempfile.TemporaryDirectory() as tmpdir:
             store_dir = Path(tmpdir) / "runs"
             run_id = self._create_run(store_dir)

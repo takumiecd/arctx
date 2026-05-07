@@ -78,7 +78,7 @@ def run_state_command(
     """Show or update an observed state snapshot for a run.
 
     If any ``--add-*`` option is given, the state is updated and saved.
-    Otherwise the current state is returned read-only.
+    Otherwise the requested state is returned read-only.
 
     Parameters
     ----------

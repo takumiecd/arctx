@@ -56,8 +56,8 @@ def run_rewind_command(
 
     Returns
     -------
-    dict with the appended ``cut`` record. The new current observed
-    state ID is available as ``cut["rewound_to_state_id"]``.
+    dict with the appended ``cut`` record. The cut source state ID is
+    available as ``cut["rewound_to_state_id"]``.
 
     Raises
     ------
@@ -65,7 +65,7 @@ def run_rewind_command(
         If *run_id* does not exist or *transition_id* is not an observed
         transition.
     ValueError
-        If *transition_id* is not on the active path from current, or
+        If *transition_id* is not on the active path from *from_state_id*, or
         has already been cut.
     """
     store = JsonlRunStore(store_dir)

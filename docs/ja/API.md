@@ -24,7 +24,7 @@ requirement = Requirement(
 
 run = optagent.init(requirement, run_id="demo")
 
-plans = run.plan()
+plans = run.plan(from_state_id="s_obs_0000")
 predicted = run.predict(plan_id=plans[0].plan_id, max_outcomes=2)
 
 result = ActionResult(
@@ -111,14 +111,13 @@ optagent.init(requirement: Requirement, *, run_id: str | None = None) -> RunHand
 
 - `TraceDAG` の root observed state: `s_obs_0000`
 - `PredictionDAG` の root predicted state: `s_pred_0000`
-- current observed state: `s_obs_0000`
 
-`PredictionDAG` の root は current observed state に anchor されます。
+`PredictionDAG` の root は root observed state に anchor されます。core は current observed state を持ちません。
 
 ```python
 run = optagent.init(requirement, run_id="demo")
 
-assert run.current_observed_state_id == "s_obs_0000"
+assert run.root_observed_state_id == "s_obs_0000"
 ```
 
 ## `run.plan` / `run.extend`
@@ -127,7 +126,7 @@ plan は observed state、extend は predicted state を起点にした計画を
 
 ```python
 run.plan(
-    state_id: str | None = None,
+    from_state_id: str,
     *,
     planner: str | None = None,
     max_plans: int | None = None,
@@ -141,11 +140,11 @@ run.extend(
 ) -> list[PredictionPlan]
 ```
 
-- `run.plan` は observed state から `ExecutionPlan` を作ります。`state_id` を省略すると current observed state を使います。observed でない state を渡すと `KeyError` になります。
+- `run.plan` は observed state から `ExecutionPlan` を作ります。`from_state_id` は必須です。observed でない state を渡すと `KeyError` になります。
 - `run.extend` は predicted state から `PredictionPlan` を作ります。predicted には current の概念がないため `state_id` は必須で、predicted でない state を渡すと `KeyError` になります。
 
 ```python
-plans = run.plan()  # current observed が暗黙の起点
+plans = run.plan(from_state_id="s_obs_0000")
 assert plans[0].plan_kind == "execution"
 
 root_id = run.prediction_dag.root_predicted_state_id
@@ -211,19 +210,20 @@ run.promote(
     mode="plan",
     prediction_plan_id: str | None = None,
     prediction_path: PredictionPath | None = None,
-    observed_state_id: str | None = None,
+    to_observed_state_id: str,
 ) -> list[ExecutionPlan]
 ```
 
 `PredictionDAG` 内の plan を、実行可能な `ExecutionPlan` に変換します。
 
 `PredictionPlan` は予測上の計画なので、そのまま executor に渡しません。
-実行したい場合は、現在または指定した observed state に接地して `ExecutionPlan` を作ります。
+実行したい場合は、明示した observed state に接地して `ExecutionPlan` を作ります。
 
 ```python
 promoted = run.promote(
     mode="plan",
     prediction_plan_id=future_plans[0].plan_id,
+    to_observed_state_id="s_obs_0000",
 )
 
 assert promoted[0].plan_kind == "execution"
@@ -239,7 +239,7 @@ run.promote(
     mode="transition",
     predicted_transition_id: str,
     action_result: ActionResult,
-    execution_plan_id: str | None = None,
+    execution_plan_id: str,
     derived_records: list[DerivedRecord] | None = None,
 ) -> ObservedTransition
 ```
@@ -260,7 +260,7 @@ observed = run.promote(
 )
 ```
 
-`execution_plan_id` を省略した場合、対象の prediction plan から `ExecutionPlan` を作ってから記録します。
+`execution_plan_id` は必須です。どの実行計画と対応づけるかを current から推論しません。
 
 ## `run.observe`
 
@@ -296,29 +296,33 @@ observed = run.observe(
 run.rewind(
     transition_id: str,
     *,
+    from_state_id: str,
     reason: str | None = None,
 ) -> TraceCut
 ```
 
-指定した observed transition を cut します。戻り値は append された `TraceCut` レコードで、新 current の state ID は `cut.rewound_to_state_id` で取れます。`current_observed_state_id` は cut された transition の `from_observed_state_id`（cut の起点）に移動します。
+指定した observed transition を cut します。戻り値は append された `TraceCut` レコードで、cut の起点は `cut.rewound_to_state_id` で取れます。core に current observed state はないため、rewind は pointer を移動しません。
 
 `rewind` は **既存レコードを変更しません**。state / transition / plan / result はすべて TraceDAG に残り、TraceDAG に **1本の `TraceCut` レコードが append** されるだけです。`TraceCut` は「どの transition を cut したか」を名指す最小レコードで、下流の cut 集合は read-time に `trace_dag.cut_state_ids()` / `cut_transition_ids()` で導出します。この append-only な記録によって、cut されたことを知らない読み手にも「この枝は cut 済み」が見えるようになります。
 
-cut 後の最初の `observe` / `promote` は、cut の起点から新しい兄弟枝として伸びていきます（DAG 上で並列に枝が増える形）。新しい transition は別 ID なので自動で active です。
+cut 後に別枝を伸ばす場合は、caller が active な observed state を明示して `plan(from_state_id=...)` や `promote(..., to_observed_state_id=...)` を呼びます。新しい transition は別 ID なので自動で active です。
 
-`transition_id` は current から `incoming_index` を辿って到達できる必要があります（active path 上のみ）。それ以外は `ValueError`、既に cut 済みの transition も `ValueError` です。
+`transition_id` は `from_state_id` から `incoming_index` を後ろ向きに辿って到達できる必要があります（active path 上のみ）。それ以外は `ValueError`、既に cut 済みの transition も `ValueError` です。
 
-cut 後、PredictionDAG は新しい current observed state を anchor として自動で refresh されます。
+cut 後、PredictionDAG は自動 refresh されません。必要なら caller が `run.refresh(from_state_id=cut.rewound_to_state_id)` を明示的に呼びます。
 
 ```python
-s0 = run.current_observed_state_id
-plan = run.plan()[0]
+s0 = run.root_observed_state_id
+plan = run.plan(from_state_id=s0)[0]
 observed = run.observe(plan.plan_id, ActionResult(...))
 
-cut = run.rewind(observed.transition_id, reason="wrong observe")
+cut = run.rewind(
+    observed.transition_id,
+    from_state_id=observed.to_observed_state_id,
+    reason="wrong observe",
+)
 assert cut.cut_transition_id == observed.transition_id
 assert cut.rewound_to_state_id == s0
-assert run.current_observed_state_id == s0
 # trace_dag は何も消えていない
 assert observed.transition_id in run.trace_dag.transitions
 assert observed.transition_id in run.trace_dag.cut_transition_ids()
@@ -329,27 +333,25 @@ assert observed.transition_id in run.trace_dag.cut_transition_ids()
 ```python
 run.refresh(
     *,
-    from_state_id: str | None = None,
-    mode: str = "reset",
+    from_state_id: str,
 ) -> PredictionDAG
 ```
 
 `PredictionDAG` を observed state から作り直します。
 
-実行結果を記録すると current observed state が進みます。
-古い未来予測は現在の状態とズレるため、必要に応じて `refresh` します。
+実行結果を記録したあと、別の observed state を anchor にしたい場合は、必要に応じて `refresh` を明示的に呼びます。
 
 ```python
-run.refresh()
+run.refresh(from_state_id=observed.to_observed_state_id)
 
-assert run.prediction_dag.anchor_observed_state_id == run.current_observed_state_id
+assert run.prediction_dag.anchor_observed_state_id == observed.to_observed_state_id
 ```
 
 ## `run.trace`
 
 ```python
 run.trace(
-    state_id: str | None = None,
+    state_id: str,
     *,
     depth: int | None = None,
     include_derived: bool = True,
@@ -370,7 +372,7 @@ observed state から過去の実行履歴を辿ります。
 - artifact / raw output / log の参照
 
 ```python
-history = run.trace(depth=3)
+history = run.trace(state_id=observed.to_observed_state_id, depth=3)
 
 print(history.observed_transition_ids)
 print(history.artifact_refs)
