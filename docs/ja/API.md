@@ -139,7 +139,7 @@ run.observe(
 
 予測と実測の対応は `ResultPayload.matched_prediction_output_id` で表します。
 
-1 つの input transition から prediction output は複数作れます。observed output は原則 1 つだけです。同じ操作を再実行する場合は新しい input transition を作ります。
+1 つの input transition から prediction output は複数作れますし、observed output も複数作れます。確率的に結果が変わる操作では同じ input transition の下に複数 observed output を並べて記録できます。
 
 `run.result(...)` は `run.observe(...)` の alias です。
 

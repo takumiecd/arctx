@@ -124,7 +124,7 @@ output の意味は attach された payload で決まります。
 - `PredictionPayload`: 実行前の予測 outcome
 - `ResultPayload`: 実際に起きた outcome
 
-1 つの `InputTransition` から prediction output は複数作れます。observed output は原則 1 つです。この cardinality は `RunGraph` の低レベル操作ではなく `RunHandle` の writer が守ります。
+1 つの `InputTransition` から prediction output も observed output も複数作れます。確率的に結果が変動する操作では同じ plan の下に複数 observed output を並べます。
 
 ## Payload
 
