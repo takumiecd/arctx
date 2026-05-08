@@ -18,13 +18,6 @@ ActionType = Literal[
 ]
 
 MatchStatus = Literal["exact", "compatible", "partial", "mismatch"]
-DecisionStatus = Literal[
-    "accepted",
-    "rejected",
-    "needs_narrower_scope",
-    "needs_more_evidence",
-    "unsafe",
-]
 
 PlanStatus = Literal["active", "promoted", "executed", "stale", "pruned", "cancelled"]
 NodeStatus = Literal["active", "stale", "pruned", "merged"]

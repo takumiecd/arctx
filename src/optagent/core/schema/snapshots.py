@@ -1,8 +1,4 @@
-"""Snapshot records and view contexts.
-
-These are the contents of a SnapshotPayload (working memory) and
-auxiliary view types (StateContext, TraceContext, StateDelta).
-"""
+"""Snapshot records and view contexts."""
 
 from __future__ import annotations
 
@@ -81,23 +77,6 @@ class StateSnapshot:
 
 
 @dataclass(frozen=True)
-class StateContext:
-    """View of a node inside past evidence and predicted futures."""
-
-    current_node_id: str
-    observed_dag_id: str | None = None
-    predicted_dag_id: str | None = None
-    active_branch_ids: tuple[str, ...] = ()
-    focus_transition_ids: tuple[str, ...] = ()
-    include_pruned: bool = False
-    include_unsafe: bool = True
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, JSONValue]:
-        return to_jsonable(self)  # type: ignore[return-value]
-
-
-@dataclass(frozen=True)
 class TraceContext:
     """Materialized view of observed history around a node."""
 
@@ -110,21 +89,6 @@ class TraceContext:
     derived_payload_ids: tuple[str, ...] = ()
     artifact_refs: tuple[str, ...] = ()
     metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, JSONValue]:
-        return to_jsonable(self)  # type: ignore[return-value]
-
-
-@dataclass(frozen=True)
-class StateDelta:
-    """Diff between two SnapshotPayloads."""
-
-    artifact_changes: dict[str, JSONValue] = field(default_factory=dict)
-    knowledge_changes: dict[str, JSONValue] = field(default_factory=dict)
-    open_question_changes: dict[str, JSONValue] = field(default_factory=dict)
-    branch_changes: dict[str, JSONValue] = field(default_factory=dict)
-    prediction_changes: dict[str, JSONValue] = field(default_factory=dict)
-    budget_changes: dict[str, JSONValue] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
