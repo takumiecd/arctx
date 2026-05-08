@@ -76,9 +76,9 @@ n_0000, n_0003
 
 parent Dag / child Dag がそれぞれ `nodes` や `transitions` を持つと、別 Dag 間で同じ ID が使われたときに意味が壊れます。さらに、親の transition が子の node を指すような横断参照は index や storage を曖昧にします。
 
-そのため、record の実体は `RunGraph` に集約します。実験 / 仮説展開は、record をコピーせず `GraphView` の membership で表します。
+そのため、record の実体は `RunGraph` に集約します。実験 / 仮説展開は、record をコピーせず、`root_node_id` から `reachable_from` で部分集合を見ます。
 
-同じ node は複数の view に所属できます。merge は record のコピーではなく、選択した node / input transition / output transition / payload の ID を別 view の membership に追加する操作です。
+同じ node は複数の view から `reachable_from` で見えうる。view の統合は通常の `plan` / `observe` で graph 上に edge を足すだけで、専用の merge 操作は無い。
 
 ## Pure Graph Records
 
@@ -123,6 +123,8 @@ output の意味は attach された payload で決まります。
 
 - `PredictionPayload`: 実行前の予測 outcome
 - `ResultPayload`: 実際に起きた outcome
+
+同一 `OutputTransition` に `PredictionPayload` と `ResultPayload` を共存させることはできません（`attach_payload` 時に拒否されます）。
 
 1 つの `InputTransition` から prediction output も observed output も複数作れます。確率的に結果が変動する操作では同じ plan の下に複数 observed output を並べます。
 
@@ -191,9 +193,12 @@ prediction output に attach される予測 outcome です。
 - predicted artifacts
 - predicted metrics
 - rationale
-- confidence
+- probability: この outcome が起きる推定確率（0〜1 / None）
+- confidence: その確率推定にどれくらい自信があるか（None 可）
 - predictor
 - metadata
+
+`probability` は outcome の起こりやすさ、`confidence` はその予測の信頼度で、両者は別物です。
 
 ### ResultPayload
 
@@ -237,6 +242,8 @@ exp-a
 ```
 
 「view を統合する」場合は、main 内の任意ノードから `exp-a` の `root_node_id` への OutputTransition を 1 本足すだけです。通常の `plan` / `observe` で完結し、`view_merge` は不要です。
+
+`GraphView` 自体は prediction と observed を区別しません。両者は同じ `RunGraph` 上の record で、payload type で見分けます。observed のみ辿りたい場合は `run.trace`、prediction を含む outcome 一覧を見たい場合は `run.outcomes` を使います。
 
 ## Trace
 

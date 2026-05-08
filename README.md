@@ -21,11 +21,7 @@ RunGraph
 
 GraphView
   ├── view_id
-  ├── root_node_ids
-  ├── node_ids
-  ├── input_transition_ids
-  ├── output_transition_ids
-  └── payload_ids
+  └── root_node_id
 ```
 
 `InputTransition` は複数 input node を受け取る入力側 transition です。`PlanPayload` はここに attach します。`OutputTransition` は 1 つの output node に到達する出力側 transition です。`PredictionPayload` / `ResultPayload` はここに attach します。
@@ -79,7 +75,7 @@ run.save(store)
 loaded = store.load_run("demo")
 ```
 
-隔離した探索をしたい場合は `GraphView` を作ります。`GraphView` は global records をコピーせず、`RunGraph` の record membership だけを持ちます。
+隔離した探索をしたい場合は `GraphView` を作ります。`GraphView` は `root_node_id` だけを持ち、内容は read-time に `RunGraph.reachable_from(root_node_id)` で算出します。
 
 ## CLI Quick Start
 

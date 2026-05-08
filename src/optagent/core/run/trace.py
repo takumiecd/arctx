@@ -13,7 +13,6 @@ def trace_impl(
     self,
     node_id: str,
     *,
-    view: str = "main",
     depth: int | None = None,
     include_predictions: bool = False,
     include_raw_refs: bool = True,

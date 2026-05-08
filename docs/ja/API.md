@@ -124,7 +124,7 @@ run.predict(
 
 prediction output の `OutputTransition` を作ります。各 output transition には `PredictionPayload` が attach されます。
 
-inactive な input transition（直接 cut 済み、または input node が inactive）に対しては `ValueError` を送出します。
+inactive な input transition（直接 cut 済み、または input node が inactive）に対しては `ValueError` を送出します。同一 OT に既に `ResultPayload` が付いている場合、`PredictionPayload` の attach は `ValueError` です。
 
 ## `run.observe`
 
@@ -137,7 +137,7 @@ run.observe(
 ) -> OutputTransition
 ```
 
-実行結果を observed output の `OutputTransition` として記録します。新しい output transition に `ResultPayload` を attach します。
+実行結果を observed output の `OutputTransition` として記録します。新しい output transition に `ResultPayload` を attach します。同一 OT に既に `PredictionPayload` が付いている場合、`ResultPayload` の attach は `ValueError` です。
 
 予測と実測の対応は `ResultPayload.matched_prediction_output_id` で表します。`matched_prediction_output_id` を指定する場合、その OT は同じ input_transition から出た active な prediction でなければなりません。条件を満たさない場合は `KeyError` または `ValueError` を送出します:
 
