@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
-from optagent.core.dag import Dag
+from optagent.core.graph_view import GraphView
 from optagent.core.run import RunHandle
-from optagent.core.schema.graph import Node, Transition
+from optagent.core.run.handle import init as _init_handle
+from optagent.core.run_graph import RunGraph
+from optagent.core.schema.graph import InputTransition, Node, OutputTransition
 from optagent.core.schema.payloads import payload_from_dict
-from optagent.core.schema.plans import Plan
 from optagent.core.schema.requirements import Requirement
-from optagent.core.schema.selections import PredictionSelection
 
 
 class JsonlRunStore:
@@ -59,57 +58,31 @@ class JsonlRunStore:
                 "run_id": run.run_id,
                 "requirement": run.requirement.to_dict(),
                 "counters": dict(run._counters),
-                "observed_dag_id": run.observed_dag.dag_id,
-                "predicted_dag_id": run.predicted_dag.dag_id,
             },
         )
-        all_dags = list(_walk_dags(run.observed_dag))
-        self._write_jsonl(
-            run_path / "dags.jsonl",
-            (
-                {
-                    "dag_id": dag.dag_id,
-                    "parent_dag_id": parent_id,
-                    "metadata": dict(dag.metadata),
-                }
-                for dag, parent_id in all_dags
-            ),
+        self._write_json(
+            run_path / "graph.json",
+            {"metadata": dict(run.run_graph.metadata)},
         )
         self._write_jsonl(
             run_path / "nodes.jsonl",
-            (
-                {"dag_id": dag.dag_id, "record": node.to_dict()}
-                for dag, _ in all_dags
-                for node in dag.nodes.values()
-            ),
+            (node.to_dict() for node in run.run_graph.nodes.values()),
         )
         self._write_jsonl(
-            run_path / "plans.jsonl",
-            (
-                {"dag_id": dag.dag_id, "record": plan.to_dict()}
-                for dag, _ in all_dags
-                for plan in dag.plans.values()
-            ),
+            run_path / "input_transitions.jsonl",
+            (it.to_dict() for it in run.run_graph.input_transitions.values()),
         )
         self._write_jsonl(
-            run_path / "transitions.jsonl",
-            (
-                {"dag_id": dag.dag_id, "record": tr.to_dict()}
-                for dag, _ in all_dags
-                for tr in dag.transitions.values()
-            ),
+            run_path / "output_transitions.jsonl",
+            (ot.to_dict() for ot in run.run_graph.output_transitions.values()),
         )
         self._write_jsonl(
             run_path / "payloads.jsonl",
-            (
-                {"dag_id": dag.dag_id, "record": payload.to_dict()}
-                for dag, _ in all_dags
-                for payload in dag.payloads.values()
-            ),
+            (payload.to_dict() for payload in run.run_graph.payloads.values()),
         )
         self._write_jsonl(
-            run_path / "selections.jsonl",
-            (sel.to_dict() for sel in run.selections.values()),
+            run_path / "views.jsonl",
+            (v.to_dict() for v in run.views.values()),
         )
         return run_path
 
@@ -118,69 +91,89 @@ class JsonlRunStore:
         manifest = self._read_json(run_path / "run.json")
         requirement = _requirement_from_dict(manifest["requirement"])
 
-        # Build all Dags first.
-        dags: dict[str, Dag] = {}
-        parent_of: dict[str, str | None] = {}
-        for row in self._read_jsonl(run_path / "dags.jsonl"):
-            dag = Dag(dag_id=row["dag_id"], metadata=dict(row.get("metadata") or {}))
-            dags[dag.dag_id] = dag
-            parent_of[dag.dag_id] = row.get("parent_dag_id")
+        graph = RunGraph()
+        if (run_path / "graph.json").exists():
+            gdata = self._read_json(run_path / "graph.json")
+            graph.metadata = dict(gdata.get("metadata") or {})
 
-        # Wire child relationships.
-        for dag_id, parent_id in parent_of.items():
-            if parent_id is not None and parent_id in dags:
-                dags[parent_id].child_dags[dag_id] = dags[dag_id]
-
-        # Nodes.
         for row in self._read_jsonl(run_path / "nodes.jsonl"):
-            node = _node_from_dict(row["record"])
-            dags[row["dag_id"]].add_node(node)
+            graph.nodes[row["node_id"]] = Node(
+                node_id=row["node_id"],
+                metadata=dict(row.get("metadata") or {}),
+            )
 
-        # Plans (need nodes).
-        for row in self._read_jsonl(run_path / "plans.jsonl"):
-            plan = _plan_from_dict(row["record"])
-            dags[row["dag_id"]].add_plan(plan)
+        for row in self._read_jsonl(run_path / "input_transitions.jsonl"):
+            it = InputTransition(
+                input_transition_id=row["input_transition_id"],
+                input_node_ids=tuple(row.get("input_node_ids") or []),
+                metadata=dict(row.get("metadata") or {}),
+            )
+            graph.input_transitions[it.input_transition_id] = it
+            for nid in it.input_node_ids:
+                graph.input_transitions_from_node.setdefault(nid, []).append(
+                    it.input_transition_id
+                )
 
-        # Transitions (need nodes + plans). Use raw add (skip cardinality
-        # checks that the writer would otherwise enforce — load is replay).
-        for row in self._read_jsonl(run_path / "transitions.jsonl"):
-            tr = _transition_from_dict(row["record"])
-            dag = dags[row["dag_id"]]
-            dag.transitions[tr.transition_id] = tr
-            dag.transitions_by_plan.setdefault(tr.parent_plan_id, []).append(tr.transition_id)
-            dag.outgoing_index.setdefault(tr.from_node_id, []).append(tr.transition_id)
-            dag.incoming_index.setdefault(tr.to_node_id, []).append(tr.transition_id)
+        for row in self._read_jsonl(run_path / "output_transitions.jsonl"):
+            ot = OutputTransition(
+                output_transition_id=row["output_transition_id"],
+                input_transition_id=row["input_transition_id"],
+                to_node_id=row["to_node_id"],
+                metadata=dict(row.get("metadata") or {}),
+            )
+            graph.output_transitions[ot.output_transition_id] = ot
+            graph.output_transitions_from_it.setdefault(ot.input_transition_id, []).append(
+                ot.output_transition_id
+            )
+            graph.output_transitions_to_node.setdefault(ot.to_node_id, []).append(
+                ot.output_transition_id
+            )
 
-        # Payloads.
         for row in self._read_jsonl(run_path / "payloads.jsonl"):
-            payload = payload_from_dict(row["record"])
-            dag = dags[row["dag_id"]]
-            dag.payloads[payload.payload_id] = payload
+            payload = payload_from_dict(row)
+            graph.payloads[payload.payload_id] = payload
             if payload.target_kind == "node":
-                dag.payloads_by_node.setdefault(payload.target_id, []).append(
+                graph.payloads_by_node.setdefault(payload.target_id, []).append(
                     payload.payload_id
                 )
-            elif payload.target_kind == "transition":
-                dag.payloads_by_transition.setdefault(payload.target_id, []).append(
+            elif payload.target_kind == "input_transition":
+                graph.payloads_by_input_transition.setdefault(payload.target_id, []).append(
                     payload.payload_id
                 )
-            else:
-                raise ValueError(f"unknown target_kind: {payload.target_kind!r}")
+            elif payload.target_kind == "output_transition":
+                graph.payloads_by_output_transition.setdefault(payload.target_id, []).append(
+                    payload.payload_id
+                )
 
-        # Selections.
-        selections: dict[str, PredictionSelection] = {}
-        for row in self._read_jsonl(run_path / "selections.jsonl"):
-            sel = _selection_from_dict(row)
-            selections[sel.selection_id] = sel
+        views: dict[str, GraphView] = {}
+        for row in self._read_jsonl(run_path / "views.jsonl"):
+            v = GraphView(
+                view_id=str(row["view_id"]),
+                name=str(row["name"]),
+                root_node_ids=tuple(row.get("root_node_ids") or []),
+                node_ids=set(row.get("node_ids") or []),
+                input_transition_ids=set(row.get("input_transition_ids") or []),
+                output_transition_ids=set(row.get("output_transition_ids") or []),
+                payload_ids=set(row.get("payload_ids") or []),
+                metadata=dict(row.get("metadata") or {}),
+            )
+            views[v.name] = v
 
-        observed_dag = dags[manifest["observed_dag_id"]]
-        predicted_dag = dags[manifest["predicted_dag_id"]]
+        if not views:
+            from optagent.core.graph_view import GraphView as GV
+            main = GV(
+                view_id="view_main",
+                name="main",
+                root_node_ids=("n_0000",),
+                node_ids={"n_0000"},
+            )
+            views["main"] = main
+
         return RunHandle(
             run_id=manifest["run_id"],
             requirement=requirement,
-            observed_dag=observed_dag,
-            predicted_dag=predicted_dag,
-            selections=selections,
+            run_graph=graph,
+            views=views,
             _counters={str(k): int(v) for k, v in manifest.get("counters", {}).items()},
         )
 
@@ -205,28 +198,11 @@ class JsonlRunStore:
     def _read_jsonl(path: Path) -> list[dict[str, Any]]:
         if not path.exists():
             return []
-        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
-def _walk_dags(dag: Dag, parent_id: str | None = None):
-    yield dag, parent_id
-    for child in dag.child_dags.values():
-        yield from _walk_dags(child, dag.dag_id)
-
-
-def _pick_fields(cls, data: dict[str, Any]) -> dict[str, Any]:
-    names = {field.name for field in fields(cls) if field.init}
-    return {name: data[name] for name in names if name in data}
-
-
-def _tuple(value: Any) -> tuple:
-    if value is None:
-        return ()
-    if isinstance(value, tuple):
-        return value
-    if isinstance(value, list):
-        return tuple(value)
-    return (value,)
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
 
 
 def _requirement_from_dict(data: dict[str, Any]) -> Requirement:
@@ -236,47 +212,5 @@ def _requirement_from_dict(data: dict[str, Any]) -> Requirement:
         target_id=data["target_id"],
         objective=dict(data.get("objective") or {}),
         constraints=dict(data.get("constraints") or {}),
-        metadata=dict(data.get("metadata") or {}),
-    )
-
-
-def _node_from_dict(data: dict[str, Any]) -> Node:
-    return Node(
-        node_id=data["node_id"],
-        metadata=dict(data.get("metadata") or {}),
-    )
-
-
-def _transition_from_dict(data: dict[str, Any]) -> Transition:
-    return Transition(
-        transition_id=data["transition_id"],
-        parent_plan_id=data["parent_plan_id"],
-        from_node_id=data["from_node_id"],
-        to_node_id=data["to_node_id"],
-        metadata=dict(data.get("metadata") or {}),
-    )
-
-
-def _plan_from_dict(data: dict[str, Any]) -> Plan:
-    return Plan(
-        plan_id=data["plan_id"],
-        grounded_node_id=data["grounded_node_id"],
-        action_type=data["action_type"],
-        intent=data["intent"],
-        inputs=dict(data.get("inputs") or {}),
-        safety_policy=dict(data.get("safety_policy") or {}),
-        assumptions=_tuple(data.get("assumptions")),
-        confidence=data.get("confidence"),
-        status=data.get("status", "active"),
-        metadata=dict(data.get("metadata") or {}),
-    )
-
-
-def _selection_from_dict(data: dict[str, Any]) -> PredictionSelection:
-    return PredictionSelection(
-        selection_id=data["selection_id"],
-        selected_transition_ids=_tuple(data.get("selected_transition_ids")),
-        selected_path_id=data.get("selected_path_id"),
-        reason=data.get("reason", ""),
         metadata=dict(data.get("metadata") or {}),
     )

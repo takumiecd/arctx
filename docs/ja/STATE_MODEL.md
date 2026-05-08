@@ -45,8 +45,8 @@ GraphView
 
 - plan は `InputTransition` と `PlanPayload` を追加する
 - node のメモは `NotePayload` を追加する
-- 予測は `OutputTransition(kind="prediction")` と `PredictionPayload` を追加する
-- 実行結果は `OutputTransition(kind="observed")` と `ResultPayload` を追加する
+- 予測は `OutputTransition` と `PredictionPayload` を追加する
+- 実行結果は `OutputTransition` と `ResultPayload` を追加する
 - plan の無効化は `InputTransition` に `CutPayload` を追加する
 - prediction / result の無効化は `OutputTransition` に `CutPayload` を追加する
 - view merge は record をコピーまたは削除せず、`GraphView` の membership を追加する
@@ -119,14 +119,13 @@ OutputTransition(
     output_transition_id="ot_0001",
     input_transition_id="it_0001",
     to_node_id="n_0004",
-    kind="prediction",
 )
 ```
 
-`kind` は output の意味を表します。
+output の意味は attach された payload で決まります。
 
-- `prediction`: 実行前の予測 outcome
-- `observed`: 実際に起きた outcome
+- `PredictionPayload`: 実行前の予測 outcome
+- `ResultPayload`: 実際に起きた outcome
 
 1 つの `InputTransition` から prediction output は複数作れます。observed output は原則 1 つです。この cardinality は `RunGraph` の低レベル操作ではなく `RunHandle` の writer が守ります。
 
@@ -188,7 +187,7 @@ PlanPayload(
 
 ### PredictionPayload
 
-`OutputTransition(kind="prediction")` に attach される予測 outcome です。
+prediction output に attach される予測 outcome です。
 
 含めるもの:
 
@@ -201,7 +200,7 @@ PlanPayload(
 
 ### ResultPayload
 
-`OutputTransition(kind="observed")` に attach される実行結果です。
+observed output に attach される実行結果です。
 
 含めるもの:
 

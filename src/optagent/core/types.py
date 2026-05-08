@@ -17,31 +17,15 @@ ActionType = Literal[
     "scope_refinement",
 ]
 
-MatchStatus = Literal["exact", "compatible", "partial", "mismatch"]
-
-PlanStatus = Literal["active", "promoted", "executed", "stale", "pruned", "cancelled"]
-NodeStatus = Literal["active", "stale", "pruned", "merged"]
 ResultStatus = Literal["completed", "failed", "timeout", "skipped"]
-DerivedType = Literal[
-    "observation",
-    "evidence",
-    "prediction_error",
-    "decision",
-    "finding",
-    "summary",
-]
 
-TargetKind = Literal["node", "transition"]
-PayloadType = Literal["snapshot", "result", "derived", "match", "cut"]
-DagRole = Literal["observed", "predicted", "branch"]
+TargetKind = Literal["node", "input_transition", "output_transition"]
+PayloadType = Literal["note", "plan_payload", "prediction", "result", "cut"]
 
 NODE_PREFIX = "n"
-TRANSITION_PREFIX = "t"
-PLAN_PREFIX = "plan"
-DAG_PREFIX = "dag"
+INPUT_TRANSITION_PREFIX = "it"
+OUTPUT_TRANSITION_PREFIX = "ot"
 PAYLOAD_PREFIX = "pl"
-SELECTION_PREFIX = "sel"
-PROMOTION_PREFIX = "promotion"
 
 
 def to_jsonable(value: Any) -> JSONValue:

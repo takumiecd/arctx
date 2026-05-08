@@ -1,40 +1,26 @@
-"""optagent.
+"""optagent: records the process of optimization and problem-solving."""
 
-The public package is intentionally small while the project is being rebuilt
-around the state-transition model documented in ``docs/ja``.
-"""
-
-from optagent.core.dag import Dag
+from optagent.core.graph_view import GraphView
 from optagent.core.run import RunHandle, init
+from optagent.core.run_graph import RunGraph
 from optagent.core.schema import (
-    ArtifactRef,
-    Budget,
     CutPayload,
-    DerivedPayload,
-    FindingRef,
-    MatchPayload,
+    InputTransition,
+    NotePayload,
     Node,
+    OutputTransition,
     Payload,
     PayloadBase,
-    Plan,
-    PredictionPath,
-    PredictionRef,
-    PredictionSelection,
-    PredictionStepRef,
+    PlanPayload,
+    PredictionPayload,
     Requirement,
     ResultPayload,
-    SnapshotPayload,
-    StateSnapshot,
     TraceContext,
-    Transition,
 )
 from optagent.core.types import (
     ActionType,
-    DagRole,
-    DerivedType,
-    MatchStatus,
     PayloadType,
-    PlanStatus,
+    ResultStatus,
     TargetKind,
 )
 
@@ -42,33 +28,23 @@ __version__ = "0.1.0"
 
 __all__ = [
     "ActionType",
-    "ArtifactRef",
-    "Budget",
     "CutPayload",
-    "Dag",
-    "DagRole",
-    "DerivedPayload",
-    "DerivedType",
-    "FindingRef",
-    "MatchPayload",
-    "MatchStatus",
+    "GraphView",
+    "InputTransition",
+    "NotePayload",
     "Node",
+    "OutputTransition",
     "Payload",
     "PayloadBase",
     "PayloadType",
-    "Plan",
-    "PlanStatus",
-    "PredictionPath",
-    "PredictionRef",
-    "PredictionSelection",
-    "PredictionStepRef",
+    "PlanPayload",
+    "PredictionPayload",
     "Requirement",
     "ResultPayload",
+    "ResultStatus",
+    "RunGraph",
     "RunHandle",
-    "SnapshotPayload",
-    "StateSnapshot",
     "TargetKind",
     "TraceContext",
-    "Transition",
     "init",
 ]

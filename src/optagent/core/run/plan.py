@@ -1,76 +1,48 @@
-"""RunHandle.plan and RunHandle.extend implementations."""
+"""RunHandle.plan implementation."""
 
 from __future__ import annotations
 
-from optagent.core.schema.plans import Plan
-from optagent.core.types import JSONValue
+from optagent.core.schema.graph import InputTransition
+from optagent.core.schema.payloads import PlanPayload
 
 
 def plan_impl(
     self,
-    from_node_id: str,
+    input_node_ids: list[str] | tuple[str, ...],
+    payload: PlanPayload,
     *,
-    planner: str | None = None,
-    max_plans: int | None = None,
-    action_type: str = "analysis",
-    intent: str | None = None,
-    inputs: dict[str, JSONValue] | None = None,
+    view: str = "main",
     user_id: str | None = None,
-) -> list[Plan]:
-    """Create one or more Plans grounded on an observed node."""
+) -> InputTransition:
+    """Create an InputTransition from one or more input nodes with a PlanPayload.
 
-    self._ensure_active_observed_node(from_node_id)
+    All input_node_ids must be active (not in a cut subtree).
+    """
+    for nid in input_node_ids:
+        self._ensure_active_node(nid)
 
-    count = max(1, max_plans or 1)
-    resolved_intent = intent or "inspect selected state and propose next useful action"
-    resolved_planner = planner or "default"
-    plans: list[Plan] = []
-    for index in range(count):
-        plan = Plan(
-            plan_id=self._next_id("plan"),
-            grounded_node_id=from_node_id,
-            action_type=action_type,  # type: ignore[arg-type]
-            intent=resolved_intent,
-            inputs=dict(inputs or {}),
-            metadata={
-                "planner": resolved_planner,
-                "ordinal": index,
-                **({"user_id": user_id} if user_id is not None else {}),
-            },
-        )
-        self.observed_dag.add_plan(plan)
-        plans.append(plan)
-    return plans
+    it_id = self._next_id("it")
+    it = InputTransition(
+        input_transition_id=it_id,
+        input_node_ids=tuple(input_node_ids),
+        metadata={**({"user_id": user_id} if user_id is not None else {})},
+    )
+    self.run_graph.add_input_transition(it)
 
+    plan_payload = PlanPayload(
+        payload_id=self._next_id("pl"),
+        target_id=it_id,
+        intent=payload.intent,
+        action_type=payload.action_type,
+        inputs=dict(payload.inputs),
+        constraints=dict(payload.constraints),
+        assumptions=tuple(payload.assumptions),
+        safety_policy=dict(payload.safety_policy),
+        metadata=dict(payload.metadata),
+    )
+    self.run_graph.attach_payload(plan_payload)
 
-def extend_impl(
-    self,
-    node_id: str,
-    *,
-    planner: str | None = None,
-    max_plans: int | None = None,
-    action_type: str = "analysis",
-    intent: str | None = None,
-    inputs: dict[str, JSONValue] | None = None,
-) -> list[Plan]:
-    """Create Plans grounded on a node in the predicted Dag."""
-
-    if node_id not in self.predicted_dag.nodes:
-        raise KeyError(f"not a predicted node: {node_id}")
-
-    count = max(1, max_plans or 1)
-    resolved_intent = intent or "inspect predicted state and extend the future scenario"
-    resolved_planner = planner or "default"
-    plans: list[Plan] = []
-    for index in range(count):
-        plan = Plan(
-            plan_id=self._next_id("plan"),
-            grounded_node_id=node_id,
-            action_type=action_type,  # type: ignore[arg-type]
-            intent=resolved_intent,
-            inputs=dict(inputs or {}),
-            metadata={"planner": resolved_planner, "ordinal": index},
-        )
-        self.predicted_dag.add_plan(plan)
-        plans.append(plan)
-    return plans
+    v = self._get_view(view)
+    v.input_transition_ids.add(it_id)
+    v.payload_ids.add(plan_payload.payload_id)
+    return it

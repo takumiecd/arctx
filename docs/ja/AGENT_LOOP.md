@@ -8,9 +8,9 @@ optagent は agent そのものではありません。人間、AI、script、ex
 input node を選ぶ
   -> 必要なら NotePayload を node に残す
   -> InputTransition + PlanPayload を作る
-  -> 必要なら OutputTransition + PredictionPayload を作る
+  -> 必要なら prediction output と PredictionPayload を作る
   -> optagent の外で実行する
-  -> OutputTransition + ResultPayload で結果を保存する
+  -> observed output と ResultPayload で結果を保存する
   -> trace で履歴を読む
   -> 必要なら GraphView を作って隔離した探索をする
 ```
@@ -46,7 +46,7 @@ run.note(run.root_node_id, "baseline context looks clean", tags=["context"])
 
 ## 3. 予測する
 
-予測は `OutputTransition(kind="prediction")` と `PredictionPayload` として記録します。
+予測は `OutputTransition` と `PredictionPayload` として記録します。
 
 ```python
 predicted = run.predict(input_transition.input_transition_id, max_outcomes=3)
@@ -77,7 +77,7 @@ result = ResultPayload(
 observed = run.observe(input_transition.input_transition_id, result)
 ```
 
-`observe` は `OutputTransition(kind="observed")` を追加し、そこに `ResultPayload` を attach します。
+`observe` は observed output の `OutputTransition` を追加し、そこに `ResultPayload` を attach します。
 
 ## 6. 履歴を読む
 

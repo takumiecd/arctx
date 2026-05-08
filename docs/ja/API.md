@@ -125,7 +125,7 @@ run.predict(
 ) -> list[OutputTransition]
 ```
 
-`kind="prediction"` の `OutputTransition` を作ります。各 output transition には `PredictionPayload` が attach されます。
+prediction output の `OutputTransition` を作ります。各 output transition には `PredictionPayload` が attach されます。
 
 ## `run.observe`
 
@@ -139,7 +139,7 @@ run.observe(
 ) -> OutputTransition
 ```
 
-実行結果を `kind="observed"` の `OutputTransition` として記録します。新しい output transition に `ResultPayload` を attach します。
+実行結果を observed output の `OutputTransition` として記録します。新しい output transition に `ResultPayload` を attach します。
 
 予測と実測の対応は `ResultPayload.matched_prediction_output_id` で表します。
 

@@ -1,15 +1,8 @@
-"""RunHandle.trace and refresh implementations."""
+"""RunHandle.trace implementation."""
 
 from __future__ import annotations
 
-from optagent.core.dag import Dag
-from optagent.core.schema.graph import Node
-from optagent.core.schema.payloads import (
-    DerivedPayload,
-    MatchPayload,
-    ResultPayload,
-    SnapshotPayload,
-)
+from optagent.core.schema.payloads import NotePayload, ResultPayload, PredictionPayload
 from optagent.core.schema.snapshots import TraceContext
 
 
@@ -17,35 +10,54 @@ def trace_impl(
     self,
     node_id: str,
     *,
+    view: str = "main",
     depth: int | None = None,
-    include_derived: bool = True,
+    include_predictions: bool = False,
     include_raw_refs: bool = True,
 ) -> TraceContext:
-    """Walk observed history backwards from a node."""
+    """Walk observed history backwards from a node.
 
-    if node_id not in self.observed_dag.nodes:
-        raise KeyError(f"unknown observed node_id: {node_id}")
+    Traverses: node → incoming OT(s) → their IT → IT's input nodes → repeat.
+    Only follows OutputTransitions that carry a ResultPayload (observed).
+    """
+    if node_id not in self.run_graph.nodes:
+        raise KeyError(f"unknown node_id: {node_id}")
 
     remaining = depth
     cursor = node_id
     past_node_ids: list[str] = []
-    transition_ids: list[str] = []
-    plan_ids: list[str] = []
+    output_transition_ids: list[str] = []
+    input_transition_ids: list[str] = []
     result_payload_ids: list[str] = []
-    matched_transition_ids: list[str] = []
-    derived_payload_ids: list[str] = []
+    prediction_ot_ids: list[str] = []
+    note_payload_ids: list[str] = []
     artifact_refs: list[str] = []
 
+    # Collect notes on start node
+    for payload in self.run_graph.payloads_for_node(cursor):
+        if isinstance(payload, NotePayload):
+            note_payload_ids.append(payload.payload_id)
+
     while remaining is None or remaining > 0:
-        incoming = self.observed_dag.incoming_transition_ids(cursor)
-        if not incoming:
+        incoming_ots = self.run_graph.output_transitions_to_node.get(cursor, [])
+        # Find the observed OT (ResultPayload) among incoming ones
+        observed_ot = None
+        for ot_id in reversed(incoming_ots):
+            ot = self.run_graph.output_transitions[ot_id]
+            ot_payloads = self.run_graph.payloads_for_output_transition(ot_id)
+            has_result = any(isinstance(p, ResultPayload) for p in ot_payloads)
+            if has_result:
+                observed_ot = ot
+                break
+
+        if observed_ot is None:
             break
-        transition = self.observed_dag.transitions[incoming[-1]]
-        transition_ids.append(transition.transition_id)
-        plan_ids.append(transition.parent_plan_id)
-        past_node_ids.append(transition.from_node_id)
-        for payload in self.observed_dag.payloads_for_transition(
-            transition.transition_id
+
+        output_transition_ids.append(observed_ot.output_transition_id)
+
+        # Collect result payload info
+        for payload in self.run_graph.payloads_for_output_transition(
+            observed_ot.output_transition_id
         ):
             if isinstance(payload, ResultPayload):
                 result_payload_ids.append(payload.payload_id)
@@ -53,60 +65,41 @@ def trace_impl(
                     artifact_refs.extend(payload.artifacts)
                     artifact_refs.extend(payload.raw_outputs)
                     artifact_refs.extend(payload.logs)
-            elif isinstance(payload, MatchPayload):
-                matched_transition_ids.append(payload.matched_transition_id)
-            elif isinstance(payload, DerivedPayload):
-                if include_derived:
-                    derived_payload_ids.append(payload.payload_id)
-        cursor = transition.from_node_id
+
+        # Go to the IT
+        it = self.run_graph.input_transitions[observed_ot.input_transition_id]
+        input_transition_ids.append(it.input_transition_id)
+
+        if include_predictions:
+            for ot_id in self.run_graph.output_transitions_from_it.get(
+                it.input_transition_id, ()
+            ):
+                ot_payloads = self.run_graph.payloads_for_output_transition(ot_id)
+                if any(isinstance(p, PredictionPayload) for p in ot_payloads):
+                    prediction_ot_ids.append(ot_id)
+
+        # Walk to input nodes (take the first one as the "parent")
+        if not it.input_node_ids:
+            break
+        parent_node_id = it.input_node_ids[0]
+        past_node_ids.append(parent_node_id)
+
+        # Collect notes on the parent node
+        for payload in self.run_graph.payloads_for_node(parent_node_id):
+            if isinstance(payload, NotePayload):
+                note_payload_ids.append(payload.payload_id)
+
+        cursor = parent_node_id
         if remaining is not None:
             remaining -= 1
 
     return TraceContext(
         current_node_id=node_id,
         past_node_ids=tuple(past_node_ids),
-        transition_ids=tuple(transition_ids),
-        plan_ids=tuple(plan_ids),
+        output_transition_ids=tuple(output_transition_ids),
+        input_transition_ids=tuple(input_transition_ids),
         result_payload_ids=tuple(result_payload_ids),
-        matched_transition_ids=tuple(matched_transition_ids),
-        derived_payload_ids=tuple(derived_payload_ids),
+        prediction_output_transition_ids=tuple(prediction_ot_ids),
+        note_payload_ids=tuple(note_payload_ids),
         artifact_refs=tuple(artifact_refs),
     )
-
-
-def refresh_impl(self, *, from_node_id: str) -> Dag:
-    """Re-anchor the predicted Dag to an observed node.
-
-    Replaces ``self.predicted_dag`` (and its registration in
-    ``self.observed_dag.child_dags``) with a fresh predicted Dag whose
-    only node is a new root snapshot taken from *from_node_id*.
-    """
-    if from_node_id not in self.observed_dag.nodes:
-        raise KeyError(f"unknown observed node_id: {from_node_id}")
-    self._ensure_active_observed_node(from_node_id)
-
-    old_pred = self.predicted_dag
-    if old_pred.dag_id in self.observed_dag.child_dags:
-        del self.observed_dag.child_dags[old_pred.dag_id]
-
-    snap_payload = self._get_node_snapshot_payload(self.observed_dag, from_node_id)
-    self._counters["dag"] = self._counters.get("dag", 0) + 1
-    new_pred = Dag(
-        dag_id=f"{self.run_id}_predicted_{self._counters['dag']}",
-        metadata={"role": "predicted", "anchor_node_id": from_node_id},
-    )
-    root = Node(node_id=self._next_id("n"))
-    new_pred.add_node(root)
-    new_pred.attach_payload(
-        SnapshotPayload(
-            payload_id=self._next_id("pl"),
-            target_id=root.node_id,
-            snapshot=snap_payload.snapshot,
-            snapshot_hash=snap_payload.snapshot_hash,
-            metadata={"anchor_node_id": from_node_id},
-        )
-    )
-    new_pred.metadata["root_node_id"] = root.node_id
-    self.observed_dag.add_child_dag(new_pred)
-    self.predicted_dag = new_pred
-    return new_pred

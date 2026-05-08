@@ -1,7 +1,6 @@
-"""Pure DAG graph elements: Node and Transition.
+"""Pure graph elements: Node, InputTransition, OutputTransition.
 
-Domain data (snapshots, results, derived records, etc.) is stored in
-attached payloads, not on these records.
+Domain data is stored in attached payloads, not on these records.
 """
 
 from __future__ import annotations
@@ -23,12 +22,30 @@ class Node:
 
 
 @dataclass(frozen=True)
-class Transition:
-    """A pure graph edge between two nodes, grounded on a Plan."""
+class InputTransition:
+    """Entry point of an operation from one or more input nodes.
 
-    transition_id: str
-    parent_plan_id: str
-    from_node_id: str
+    Carries no domain data itself; domain intent is attached via PlanPayload.
+    """
+
+    input_transition_id: str
+    input_node_ids: tuple[str, ...]
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return to_jsonable(self)  # type: ignore[return-value]
+
+
+@dataclass(frozen=True)
+class OutputTransition:
+    """Result edge from an InputTransition to a single output node.
+
+    The type of result (prediction vs observed) is determined by the
+    payload attached to this record (PredictionPayload vs ResultPayload).
+    """
+
+    output_transition_id: str
+    input_transition_id: str
     to_node_id: str
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 

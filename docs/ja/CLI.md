@@ -53,7 +53,7 @@ optagent plan --input-node n_0000 [--input-node n_0003] [--view main] [--action-
 optagent predict <input_transition_id> [--view main] [--predictor default] [--max-outcomes 1]
 ```
 
-同じ `RunGraph` に `kind="prediction"` の `OutputTransition` を作ります。各 output transition には `PredictionPayload` が attach されます。
+同じ `RunGraph` に prediction output の `OutputTransition` を作ります。各 output transition には `PredictionPayload` が attach されます。
 
 ### `observe`
 
@@ -61,7 +61,7 @@ optagent predict <input_transition_id> [--view main] [--predictor default] [--ma
 optagent observe <input_transition_id> [--view main] [--matched-prediction <output_transition_id>] [--status completed] [--artifact PATH] [--raw-output PATH] [--log PATH] [--metric k=v] [--error MSG]
 ```
 
-実行結果を `kind="observed"` の `OutputTransition` として記録します。新しい output transition に `ResultPayload` が attach されます。
+実行結果を observed output の `OutputTransition` として記録します。新しい output transition に `ResultPayload` が attach されます。
 
 `--matched-prediction` を指定すると、`ResultPayload.matched_prediction_output_id` に prediction output id を保存します。
 

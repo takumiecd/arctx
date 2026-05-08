@@ -5,11 +5,13 @@ from __future__ import annotations
 import tempfile
 
 from optagent import init
-from optagent.core.schema.graph import Node, Transition
-from optagent.core.schema.payloads import ResultPayload, SnapshotPayload
-from optagent.core.schema.plans import Plan
+from optagent.core.schema.payloads import (
+    NotePayload,
+    PlanPayload,
+    PredictionPayload,
+    ResultPayload,
+)
 from optagent.core.schema.requirements import Requirement
-from optagent.core.schema.snapshots import StateSnapshot
 from optagent.storage.jsonl import JsonlRunStore
 
 
@@ -17,11 +19,15 @@ def _req() -> Requirement:
     return Requirement(requirement_id="r", target_type="task", target_id="t")
 
 
+def _plan_payload(intent: str = "x") -> PlanPayload:
+    return PlanPayload(payload_id="pending", target_id="pending", intent=intent)
+
+
 def test_round_trip_basic():
     run = init(_req(), run_id="rt_basic")
-    plan = run.plan(run.root_observed_node_id, intent="x")[0]
+    it = run.plan([run.root_node_id], _plan_payload())
     result = ResultPayload(payload_id="x", target_id="x", status="completed", metrics={"a": 1.0})
-    run.observe(plan.plan_id, result)
+    run.observe(it.input_transition_id, result)
 
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
@@ -29,80 +35,59 @@ def test_round_trip_basic():
         loaded = store.load_run("rt_basic")
 
     assert loaded.run_id == run.run_id
-    assert loaded.observed_dag.dag_id == run.observed_dag.dag_id
-    assert loaded.predicted_dag.dag_id == run.predicted_dag.dag_id
-    assert len(loaded.observed_dag.nodes) == len(run.observed_dag.nodes)
-    assert len(loaded.observed_dag.transitions) == len(run.observed_dag.transitions)
-    assert len(loaded.observed_dag.payloads) == len(run.observed_dag.payloads)
+    assert len(loaded.run_graph.nodes) == len(run.run_graph.nodes)
+    assert len(loaded.run_graph.input_transitions) == len(run.run_graph.input_transitions)
+    assert len(loaded.run_graph.output_transitions) == len(run.run_graph.output_transitions)
+    assert len(loaded.run_graph.payloads) == len(run.run_graph.payloads)
 
 
-def test_round_trip_with_full_flow():
-    run = init(_req(), run_id="rt_full")
-    plan = run.plan(run.root_observed_node_id)[0]
-    result = ResultPayload(payload_id="x", target_id="x", status="completed")
-    tr = run.observe(plan.plan_id, result)
-    run.derive(tr.transition_id, "finding", {"text": "x"})
-
-    pred_root = run.predicted_dag.metadata["root_node_id"]
-    pplans = run.extend(pred_root)
-    pred_trs = run.predict(pplans[0].plan_id, max_outcomes=2)
-    run.select_prediction(predicted_transition_ids=[t.transition_id for t in pred_trs])
+def test_round_trip_with_predictions():
+    run = init(_req(), run_id="rt_pred")
+    run.note(run.root_node_id, "start note", tags=["setup"])
+    it = run.plan([run.root_node_id], _plan_payload())
+    run.predict(it.input_transition_id, max_outcomes=3)
+    run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
 
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
-        loaded = store.load_run("rt_full")
+        loaded = store.load_run("rt_pred")
 
-    assert len(loaded.predicted_dag.transitions) == 2
-    assert len(loaded.selections) == 1
-    assert any(p.payload_type == "derived" for p in loaded.observed_dag.payloads.values())
+    # 1 observed OT + 3 predicted OTs = 4
+    assert len(loaded.run_graph.output_transitions) == 4
+    # NotePayload + PlanPayload + 3 PredictionPayloads + 1 ResultPayload = 6
+    assert len(loaded.run_graph.payloads) == 6
 
 
-def test_round_trip_preserves_separate_payload_indexes_for_colliding_target_ids():
-    run = init(_req(), run_id="rt_payload_indexes")
-    run.observed_dag.add_node(Node(node_id="same"))
-    run.observed_dag.attach_payload(
-        SnapshotPayload(
-            payload_id="pl_same_node",
-            target_id="same",
-            snapshot=StateSnapshot(requirement=_req()),
-        )
-    )
-    run.observed_dag.add_plan(
-        Plan(
-            plan_id="plan_same",
-            grounded_node_id="n_0000",
-            action_type="analysis",
-            intent="x",
-        )
-    )
-    run.observed_dag.add_transition(
-        Transition(
-            transition_id="same",
-            parent_plan_id="plan_same",
-            from_node_id="n_0000",
-            to_node_id="same",
-        )
-    )
-    run.observed_dag.attach_payload(
-        ResultPayload(
-            payload_id="pl_same_transition",
-            target_id="same",
-            status="completed",
-        )
-    )
+def test_round_trip_preserves_views():
+    run = init(_req(), run_id="rt_views")
+    it = run.plan([run.root_node_id], _plan_payload())
+    ot = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
+    run.view_create("exp-a", root_node_ids=[ot.to_node_id])
 
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
-        loaded = store.load_run("rt_payload_indexes")
+        loaded = store.load_run("rt_views")
 
-    assert [
-        p.payload_id for p in loaded.observed_dag.payloads_for_node("same")
-    ] == ["pl_same_node"]
-    assert [
-        p.payload_id for p in loaded.observed_dag.payloads_for_transition("same")
-    ] == ["pl_same_transition"]
+    assert "main" in loaded.views
+    assert "exp-a" in loaded.views
+    assert loaded.views["main"].payload_ids == run.views["main"].payload_ids
+
+
+def test_round_trip_cut_payload():
+    run = init(_req(), run_id="rt_cut")
+    it = run.plan([run.root_node_id], _plan_payload())
+    ot = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
+    run.rewind(ot.output_transition_id, target_kind="output_transition", reason="undo")
+
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(run)
+        loaded = store.load_run("rt_cut")
+
+    from optagent.core.cuts import is_inactive_output_transition
+    assert is_inactive_output_transition(loaded.run_graph, ot.output_transition_id)
 
 
 def test_list_runs_returns_summaries():

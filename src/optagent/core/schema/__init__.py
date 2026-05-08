@@ -1,52 +1,31 @@
-"""Schema package — pure DAG primitives and attached payloads."""
+"""Schema package — pure graph primitives and attached payloads."""
 
-from optagent.core.schema.graph import Node, Transition
+from optagent.core.schema.graph import InputTransition, Node, OutputTransition
 from optagent.core.schema.payloads import (
     CutPayload,
-    DerivedPayload,
-    MatchPayload,
+    NotePayload,
     Payload,
     PayloadBase,
+    PlanPayload,
+    PredictionPayload,
     ResultPayload,
-    SnapshotPayload,
     payload_from_dict,
 )
-from optagent.core.schema.plans import Plan
 from optagent.core.schema.requirements import Requirement
-from optagent.core.schema.selections import (
-    PredictionPath,
-    PredictionSelection,
-    PredictionStepRef,
-)
-from optagent.core.schema.snapshots import (
-    ArtifactRef,
-    Budget,
-    FindingRef,
-    PredictionRef,
-    StateSnapshot,
-    TraceContext,
-)
+from optagent.core.schema.snapshots import TraceContext
 
 __all__ = [
-    "ArtifactRef",
-    "Budget",
     "CutPayload",
-    "DerivedPayload",
-    "FindingRef",
-    "MatchPayload",
+    "InputTransition",
+    "NotePayload",
     "Node",
+    "OutputTransition",
     "Payload",
     "PayloadBase",
-    "Plan",
-    "PredictionPath",
-    "PredictionRef",
-    "PredictionSelection",
-    "PredictionStepRef",
+    "PlanPayload",
+    "PredictionPayload",
     "Requirement",
     "ResultPayload",
-    "SnapshotPayload",
-    "StateSnapshot",
     "TraceContext",
-    "Transition",
     "payload_from_dict",
 ]
