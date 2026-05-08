@@ -8,6 +8,7 @@ from optagent.core.schema.payloads import (
     DerivedPayload,
     MatchPayload,
     ResultPayload,
+    PayloadBase,
     SnapshotPayload,
     payload_from_dict,
 )
@@ -52,6 +53,7 @@ def test_plan_no_kind():
 def test_snapshot_payload_target_kind():
     snap = StateSnapshot(requirement=_req())
     sp = SnapshotPayload(payload_id="pl_1", target_id="n_a", snapshot=snap)
+    assert isinstance(sp, PayloadBase)
     assert sp.target_kind == "node"
     assert sp.payload_type == "snapshot"
     d = sp.to_dict()

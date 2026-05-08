@@ -7,6 +7,7 @@ encodes rewinds without ever deleting graph records.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Union
 
@@ -16,13 +17,28 @@ from optagent.core.types import (
     JSONValue,
     MatchStatus,
     NodeStatus,
+    PayloadType,
     ResultStatus,
+    TargetKind,
     to_jsonable,
 )
 
 
+class PayloadBase(ABC):
+    """Common contract for payload records attached to graph targets."""
+
+    payload_id: str
+    target_id: str
+    target_kind: TargetKind
+    payload_type: PayloadType
+
+    @abstractmethod
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return a JSON-serializable representation."""
+
+
 @dataclass(frozen=True)
-class SnapshotPayload:
+class SnapshotPayload(PayloadBase):
     """Working memory snapshot attached to a node."""
 
     payload_id: str
@@ -34,15 +50,15 @@ class SnapshotPayload:
     status: NodeStatus = "active"
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: str = field(default="node", init=False)
-    payload_type: str = field(default="snapshot", init=False)
+    target_kind: TargetKind = field(default="node", init=False)
+    payload_type: PayloadType = field(default="snapshot", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
-class ResultPayload:
+class ResultPayload(PayloadBase):
     """Action result attached to a transition.
 
     Same shape for predicted (forecasted) and observed (actual) results.
@@ -60,15 +76,15 @@ class ResultPayload:
     actual_cost: dict[str, JSONValue] = field(default_factory=dict)
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: str = field(default="transition", init=False)
-    payload_type: str = field(default="result", init=False)
+    target_kind: TargetKind = field(default="transition", init=False)
+    payload_type: PayloadType = field(default="result", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
-class DerivedPayload:
+class DerivedPayload(PayloadBase):
     """Interpretation derived from a transition's facts."""
 
     payload_id: str
@@ -79,15 +95,15 @@ class DerivedPayload:
     confidence: float | None = None
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: str = field(default="transition", init=False)
-    payload_type: str = field(default="derived", init=False)
+    target_kind: TargetKind = field(default="transition", init=False)
+    payload_type: PayloadType = field(default="derived", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
-class MatchPayload:
+class MatchPayload(PayloadBase):
     """Link from an observed transition to a predicted transition it realized."""
 
     payload_id: str
@@ -97,15 +113,15 @@ class MatchPayload:
     prediction_error: dict[str, JSONValue] = field(default_factory=dict)
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: str = field(default="transition", init=False)
-    payload_type: str = field(default="match", init=False)
+    target_kind: TargetKind = field(default="transition", init=False)
+    payload_type: PayloadType = field(default="match", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
-class CutPayload:
+class CutPayload(PayloadBase):
     """Append-only cut marker on a transition.
 
     Anything reachable forward from the cut transition is treated as
@@ -120,8 +136,8 @@ class CutPayload:
     user_id: str | None = None
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: str = field(default="transition", init=False)
-    payload_type: str = field(default="cut", init=False)
+    target_kind: TargetKind = field(default="transition", init=False)
+    payload_type: PayloadType = field(default="cut", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
