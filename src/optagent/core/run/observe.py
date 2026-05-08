@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from optagent.core.cuts import is_inactive_input_transition
+from optagent.core.cuts import is_inactive_input_transition, is_inactive_output_transition
 from optagent.core.schema.graph import Node, OutputTransition
-from optagent.core.schema.payloads import ResultPayload
+from optagent.core.schema.payloads import PredictionPayload, ResultPayload
 
 
 def observe_impl(
@@ -25,6 +25,23 @@ def observe_impl(
         raise ValueError(
             f"input_transition is inactive (cut or in cut subtree): {input_transition_id}"
         )
+
+    if result.matched_prediction_output_id is not None:
+        mpid = result.matched_prediction_output_id
+        if mpid not in self.run_graph.output_transitions:
+            raise KeyError(f"unknown matched_prediction_output_id: {mpid}")
+        pred_payloads = self.run_graph.payloads_for_output_transition(mpid)
+        if not any(isinstance(p, PredictionPayload) for p in pred_payloads):
+            raise ValueError(
+                f"matched_prediction_output_id does not point to a prediction: {mpid}"
+            )
+        matched_ot = self.run_graph.output_transitions[mpid]
+        if matched_ot.input_transition_id != input_transition_id:
+            raise ValueError(
+                f"matched_prediction_output_id belongs to a different input_transition: {mpid}"
+            )
+        if is_inactive_output_transition(self.run_graph, mpid):
+            raise ValueError(f"matched_prediction_output_id is inactive: {mpid}")
 
     new_node = Node(node_id=self._next_id("n"))
     self.run_graph.add_node(new_node)

@@ -238,6 +238,16 @@ exp-a
 
 「view を統合する」場合は、main 内の任意ノードから `exp-a` の `root_node_id` への OutputTransition を 1 本足すだけです。通常の `plan` / `observe` で完結し、`view_merge` は不要です。
 
+## Trace
+
+`run.trace(node_id, ...)` は、指定ノードから過去の observed history を backward BFS で辿ります。
+
+- 各ノードに incoming する OT のうち active かつ `ResultPayload` を持つものを全収集します。inactive OT（rewind 済み）は辿りません。
+- 各 observed OT からその `InputTransition` に移り、`input_node_ids` に列挙された**全ノード**をキューに積みます。multi-input IT（merge node）でも全祖先が正しく収集されます。
+- 既訪問ノードは重複なくスキップします。
+- `depth` は backward の段数（`None` で全祖先）。
+- `TraceContext` の集合フィールドは昇順 sorted tuple で返します。`artifact_refs` は出現順を保ちつつ重複除去した tuple です。
+
 ## Rewind
 
 `rewind` は `CutPayload` を append します。

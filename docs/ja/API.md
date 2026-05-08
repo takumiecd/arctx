@@ -139,7 +139,12 @@ run.observe(
 
 実行結果を observed output の `OutputTransition` として記録します。新しい output transition に `ResultPayload` を attach します。
 
-予測と実測の対応は `ResultPayload.matched_prediction_output_id` で表します。
+予測と実測の対応は `ResultPayload.matched_prediction_output_id` で表します。`matched_prediction_output_id` を指定する場合、その OT は同じ input_transition から出た active な prediction でなければなりません。条件を満たさない場合は `KeyError` または `ValueError` を送出します:
+
+- 存在しない OT ID → `KeyError`
+- PredictionPayload を持たない OT → `ValueError("matched_prediction_output_id does not point to a prediction: ...")`
+- 別の input_transition に属する OT → `ValueError("matched_prediction_output_id belongs to a different input_transition: ...")`
+- inactive な prediction OT → `ValueError("matched_prediction_output_id is inactive: ...")`
 
 1 つの input transition から prediction output は複数作れますし、observed output も複数作れます。確率的に結果が変わる操作では同じ input transition の下に複数 observed output を並べて記録できます。
 
@@ -197,7 +202,13 @@ run.trace(
 ) -> TraceContext
 ```
 
-node から過去の output transition、input transition、input node を辿ります。`include_predictions=False` の場合は observed output を中心に履歴を作ります。`run.history(...)` は alias です。
+node から過去の observed history を backward BFS で辿ります。
+
+- multi-input IT の `input_node_ids` をすべてキューに積むため、複数親を持つ merge node からも全祖先を正しく収集します。
+- inactive な observed OT（rewind 済み）は辿りません。
+- 返り値 `TraceContext` の各コレクションフィールド（`past_node_ids`、`output_transition_ids`、`input_transition_ids`、`result_payload_ids`、`prediction_output_transition_ids`、`note_payload_ids`）は決定的順序の昇順 sorted tuple です。`artifact_refs` は出現順を保ちつつ重複除去した tuple です。
+- `depth` は backward の段数。0 段目は `node_id` 自体、`depth=1` でその直接親まで。`None` で全祖先。
+- `include_predictions=False` の場合は observed OT のみ収集します。`run.history(...)` は alias です。
 
 ## GraphView API
 

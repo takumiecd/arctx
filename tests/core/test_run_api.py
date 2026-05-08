@@ -261,3 +261,138 @@ def test_outcomes_marks_inactive_observation():
     assert ot1.output_transition_id in out["inactive_observations"]
     assert ot1.output_transition_id not in out["active_observations"]
     assert ot2.output_transition_id in out["active_observations"]
+
+
+# ---------------------------------------------------------------------------
+# trace DAG tests
+# ---------------------------------------------------------------------------
+
+def test_trace_collects_all_input_nodes_of_multi_input_it():
+    """multi-input IT の全 input_node_ids が past_node_ids に含まれること。"""
+    run = init(_req(), run_id="t_trace_multi_input")
+    # Create two separate nodes by making two observations from root
+    it_a = run.plan([run.root_node_id], _plan_payload("branch_a"))
+    ot_a = run.observe(it_a.input_transition_id, ResultPayload(payload_id="ra", target_id="ra", status="completed"))
+    it_b = run.plan([run.root_node_id], _plan_payload("branch_b"))
+    ot_b = run.observe(it_b.input_transition_id, ResultPayload(payload_id="rb", target_id="rb", status="completed"))
+
+    # Merge: IT with both nodes as inputs
+    it_merge = run.plan([ot_a.to_node_id, ot_b.to_node_id], _plan_payload("merge"))
+    ot_merge = run.observe(it_merge.input_transition_id, ResultPayload(payload_id="rm", target_id="rm", status="completed"))
+
+    ctx = run.trace(ot_merge.to_node_id)
+    assert ot_a.to_node_id in ctx.past_node_ids
+    assert ot_b.to_node_id in ctx.past_node_ids
+    assert run.root_node_id in ctx.past_node_ids
+
+
+def test_trace_skips_inactive_observed_ots():
+    """observe → rewind した OT は trace に出てこないこと。"""
+    run = init(_req(), run_id="t_trace_inactive")
+    it = run.plan([run.root_node_id], _plan_payload())
+    ot = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
+    run.rewind(ot.output_transition_id, target_kind="output_transition")
+
+    ctx = run.trace(ot.to_node_id)
+    assert ot.output_transition_id not in ctx.output_transition_ids
+    assert it.input_transition_id not in ctx.input_transition_ids
+    assert run.root_node_id not in ctx.past_node_ids
+
+
+def test_trace_dedupes_revisited_nodes():
+    """同じノードが複数経路から到達されても past_node_ids に重複しない。"""
+    run = init(_req(), run_id="t_trace_dedup")
+    # Two branches from root that both converge to the same merge node
+    it_a = run.plan([run.root_node_id], _plan_payload("a"))
+    ot_a = run.observe(it_a.input_transition_id, ResultPayload(payload_id="ra", target_id="ra", status="completed"))
+    it_b = run.plan([run.root_node_id], _plan_payload("b"))
+    ot_b = run.observe(it_b.input_transition_id, ResultPayload(payload_id="rb", target_id="rb", status="completed"))
+
+    it_merge = run.plan([ot_a.to_node_id, ot_b.to_node_id], _plan_payload("merge"))
+    ot_merge = run.observe(it_merge.input_transition_id, ResultPayload(payload_id="rm", target_id="rm", status="completed"))
+
+    ctx = run.trace(ot_merge.to_node_id)
+    # root_node_id appears via both branches but must appear only once
+    assert ctx.past_node_ids.count(run.root_node_id) == 1
+
+
+# ---------------------------------------------------------------------------
+# observe matched_prediction_output_id validation tests
+# ---------------------------------------------------------------------------
+
+def test_observe_matched_prediction_unknown_id_raises():
+    run = init(_req(), run_id="t_mpid_unknown")
+    it = run.plan([run.root_node_id], _plan_payload())
+    result = ResultPayload(
+        payload_id="x", target_id="x", status="completed",
+        matched_prediction_output_id="nonexistent_ot",
+    )
+    with pytest.raises(KeyError, match="nonexistent_ot"):
+        run.observe(it.input_transition_id, result)
+
+
+def test_observe_matched_prediction_not_a_prediction_raises():
+    """ResultPayload のみ持つ OT を matched に指定 → ValueError。"""
+    run = init(_req(), run_id="t_mpid_not_pred")
+    it = run.plan([run.root_node_id], _plan_payload())
+    # Create an observed OT (has ResultPayload, not PredictionPayload)
+    obs_ot = run.observe(it.input_transition_id, ResultPayload(payload_id="r1", target_id="r1", status="completed"))
+
+    # Now create another IT and try to observe with matched pointing to the non-prediction OT
+    it2 = run.plan([obs_ot.to_node_id], _plan_payload("step2"))
+    result = ResultPayload(
+        payload_id="r2", target_id="r2", status="completed",
+        matched_prediction_output_id=obs_ot.output_transition_id,
+    )
+    with pytest.raises(ValueError, match="does not point to a prediction"):
+        run.observe(it2.input_transition_id, result)
+
+
+def test_observe_matched_prediction_different_it_raises():
+    """別 IT から出た prediction を matched に指定 → ValueError。"""
+    run = init(_req(), run_id="t_mpid_diff_it")
+    it1 = run.plan([run.root_node_id], _plan_payload("step1"))
+    pred_ots = run.predict(it1.input_transition_id, max_outcomes=1)
+    pred_ot = pred_ots[0]
+
+    # A second IT from root
+    it2 = run.plan([run.root_node_id], _plan_payload("step2"))
+    result = ResultPayload(
+        payload_id="r2", target_id="r2", status="completed",
+        matched_prediction_output_id=pred_ot.output_transition_id,
+    )
+    with pytest.raises(ValueError, match="belongs to a different input_transition"):
+        run.observe(it2.input_transition_id, result)
+
+
+def test_observe_matched_prediction_inactive_raises():
+    """prediction OT を rewind した後 matched に指定 → ValueError。"""
+    run = init(_req(), run_id="t_mpid_inactive")
+    it = run.plan([run.root_node_id], _plan_payload())
+    pred_ots = run.predict(it.input_transition_id, max_outcomes=1)
+    pred_ot = pred_ots[0]
+    run.rewind(pred_ot.output_transition_id, target_kind="output_transition")
+
+    result = ResultPayload(
+        payload_id="r1", target_id="r1", status="completed",
+        matched_prediction_output_id=pred_ot.output_transition_id,
+    )
+    with pytest.raises(ValueError, match="is inactive"):
+        run.observe(it.input_transition_id, result)
+
+
+def test_observe_matched_prediction_valid_passes():
+    """同じ IT 配下、active な prediction を matched に → 成功。"""
+    run = init(_req(), run_id="t_mpid_valid")
+    it = run.plan([run.root_node_id], _plan_payload())
+    pred_ots = run.predict(it.input_transition_id, max_outcomes=2)
+    pred_ot = pred_ots[0]
+
+    result = ResultPayload(
+        payload_id="r1", target_id="r1", status="completed",
+        matched_prediction_output_id=pred_ot.output_transition_id,
+    )
+    obs_ot = run.observe(it.input_transition_id, result)
+    payloads = run.run_graph.payloads_for_output_transition(obs_ot.output_transition_id)
+    rp = next(p for p in payloads if isinstance(p, ResultPayload))
+    assert rp.matched_prediction_output_id == pred_ot.output_transition_id
