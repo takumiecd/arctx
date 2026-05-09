@@ -5,6 +5,7 @@ from __future__ import annotations
 from optagent.core.cuts import is_inactive_input_transition
 from optagent.core.schema.graph import Node, OutputTransition
 from optagent.core.schema.payloads import PredictionPayload
+from optagent.core.types import JSONValue
 
 
 def predict_impl(
@@ -35,7 +36,7 @@ def predict_impl(
         new_node = Node(node_id=self._next_id("n"))
         self.run_graph.add_node(new_node)
 
-        ot_meta: dict[str, object] = {"ordinal": index}
+        ot_meta: dict[str, JSONValue] = {"ordinal": index}
         if user_id is not None:
             ot_meta["user_id"] = user_id
         ot = OutputTransition(
