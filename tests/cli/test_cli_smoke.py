@@ -70,6 +70,7 @@ def test_full_observed_flow():
         node_view = run_show_command(
             run_id=rid, node_id="n_0000",
             input_transition_id=None, output_transition_id=None, payload_id=None,
+            with_payloads=False, outputs=False,
             store_dir=td,
         )
         assert node_view["node"]["node_id"] == "n_0000"

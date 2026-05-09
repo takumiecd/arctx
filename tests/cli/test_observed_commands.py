@@ -98,6 +98,7 @@ def test_observe_attaches_result_and_show_can_fetch_payload(tmp_path):
         input_transition_id=None,
         output_transition_id=None,
         payload_id=rp.payload_id,
+        with_payloads=False, outputs=False,
         store_dir=store_dir,
     )["payload"]
 
