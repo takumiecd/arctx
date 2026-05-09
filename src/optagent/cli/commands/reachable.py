@@ -30,6 +30,11 @@ def run_reachable_command(
     include_records: bool,
     store_dir: str,
 ) -> dict:
+    if from_node is None and view_name is None:
+        raise ValueError("either from_node or view_name is required")
+    if from_node is not None and view_name is not None:
+        raise ValueError("from_node and view_name are mutually exclusive")
+
     store = JsonlRunStore(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")

@@ -50,7 +50,7 @@ optagent plan --input-node n_0000 [--input-node n_0003] [--action-type analysis]
 ### `predict`
 
 ```bash
-optagent predict <input_transition_id> [--predictor default] [--max-outcomes 1]
+optagent predict <input_transition_id> [--max-outcomes 1]
 ```
 
 同じ `RunGraph` に prediction output の `OutputTransition` を作ります。各 output transition には `PredictionPayload` が attach されます。
