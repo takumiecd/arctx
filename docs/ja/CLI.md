@@ -27,7 +27,7 @@ mutating command の user attribution は次の順に解決します。
 3. `<store-dir>/../config.json` の `user.id`
 4. `"user"`
 
-`RunGraph` は run 全体の DAG です。`GraphView` はその部分集合です。通常の command は `main` view を対象にします。view を明示できる command は `--view` を受け取ります。
+`RunGraph` は run 全体の DAG です。`GraphView` は `root_node_id` だけを持ち、read-time の reachability で内容が決まります。view からの読み取りには `reachable --view` を使います。
 
 ## Commands
 
@@ -90,13 +90,34 @@ optagent trace --from-node <node_id> [--depth N] [--include-predictions]
 
 node から過去の履歴を辿ります。デフォルトでは observed output を中心に読みます。prediction output も含めたい場合は `--include-predictions` を使います。
 
+### `outcomes`
+
+```bash
+optagent outcomes <input_transition_id> [--include-payloads]
+```
+
+1つの `InputTransition` に対して、予測 (prediction) / 観測 (observation) / active observation / inactive observation の output transition を分類一覧します。`--include-payloads` を付けると各 output transition の payload も展開します。
+
+### `reachable`
+
+```bash
+optagent reachable --from-node <node_id> [--include-records]
+optagent reachable --view <view_name> [--include-records]
+```
+
+指定 node または view の root node から forward reachable な active subgraph を表示します。`--from-node` と `--view` は排他でどちらか必須です。`--include-records` で node / transition / payload の実体も返します。
+
 ### `show`
 
 ```bash
 optagent show [--node ID | --input-transition ID | --output-transition ID | --payload ID]
+              [--with-payloads] [--outputs]
 ```
 
-引数なしなら run 全体を表示します。出力は `views` の一覧を含みます。個別 ID 指定時は `RunGraph` の global records から探します。
+引数なしなら run 全体を表示します。個別 ID 指定時は `RunGraph` の global records から探します。
+
+- `--with-payloads`: target record に attach された全 payload を同時表示します。`--payload` とは併用不可です。
+- `--outputs`: `--input-transition` 指定時の付加オプションです。全 output transition を kind (prediction/result/unknown) 付きで列挙します。`--with-payloads` と組み合わせると各 output の payload も展開します。`--input-transition` なしではエラーになります。
 
 ### `view create`
 

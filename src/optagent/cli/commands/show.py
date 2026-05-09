@@ -34,6 +34,11 @@ def run_show_command(
     outputs: bool,
     store_dir: str,
 ) -> dict:
+    if outputs and input_transition_id is None:
+        raise ValueError("--outputs can only be used with --input-transition")
+    if with_payloads and payload_id is not None:
+        raise ValueError("--with-payloads cannot be used with --payload")
+
     store = JsonlRunStore(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")

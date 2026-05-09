@@ -14,8 +14,9 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         "reachable", help="Show active subgraph forward-reachable from a node or view"
     )
     parser.add_argument("--run", default=None)
-    parser.add_argument("--from-node", dest="from_node", default=None)
-    parser.add_argument("--view", dest="view_name", default=None)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--from-node", dest="from_node", default=None)
+    group.add_argument("--view", dest="view_name", default=None)
     parser.add_argument("--include-records", action="store_true")
     parser.add_argument("--store-dir", default=".optagent/runs")
     return parser
@@ -29,9 +30,6 @@ def run_reachable_command(
     include_records: bool,
     store_dir: str,
 ) -> dict:
-    if from_node is None and view_name is None:
-        raise ValueError("either --from-node or --view is required")
-
     store = JsonlRunStore(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
