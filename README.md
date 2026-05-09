@@ -87,27 +87,43 @@ loaded = store.load_run("demo")
 
 隔離した探索をしたい場合は `GraphView` を作ります。`GraphView` は `root_node_id` だけを持ち、内容は read-time に `RunGraph.reachable_from(root_node_id)` で算出します。
 
+## Install
+
+Python 3.10 以上が必要です。
+
+開発中の checkout から使う場合は、repo root で editable install します。
+
+```bash
+python3 -m pip install -e .
+```
+
+開発用 dependency も入れる場合は次を使います。
+
+```bash
+python3 -m pip install -e ".[dev]"
+```
+
+インストールせずに試す場合は、repo root で `PYTHONPATH=src python3 -m optagent.cli.main ...` として実行できます。
+
 ## CLI Quick Start
 
 ```bash
-export PYTHONPATH=src
-
-python3 -m optagent.cli.main init req_kernel \
+optagent init req_kernel \
   --target-type kernel \
   --target-id csc_linear \
   --run-id demo
 
-python3 -m optagent.cli.main plan \
+optagent plan \
   --run demo \
   --input-node n_0000 \
   --intent "run baseline benchmark"
 
-python3 -m optagent.cli.main predict \
+optagent predict \
   --run demo \
   it_0001 \
   --max-outcomes 1
 
-python3 -m optagent.cli.main observe \
+optagent observe \
   --run demo \
   it_0001 \
   --matched-prediction ot_0001 \
@@ -115,9 +131,11 @@ python3 -m optagent.cli.main observe \
   --raw-output raw/profile.txt \
   --metric latency_ms=1.5
 
-python3 -m optagent.cli.main trace --run demo --from-node n_0002
-python3 -m optagent.cli.main show --run demo
+optagent trace --run demo --from-node n_0002
+optagent show --run demo
 ```
+
+未インストールで同じ操作をする場合は、各 command を `PYTHONPATH=src python3 -m optagent.cli.main ...` に置き換えます。
 
 ## 主な用語
 

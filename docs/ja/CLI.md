@@ -2,13 +2,63 @@
 
 optagent CLI は Python API の薄いラッパーです。各 command は `JsonlRunStore` を通じて run をディスクに保存します。
 
-実行例:
+## Install
+
+Python 3.10 以上が必要です。
+
+repo root で editable install すると、`optagent` command が使えるようになります。
+
+```bash
+python3 -m pip install -e .
+```
+
+開発用 dependency も入れる場合は次を使います。
+
+```bash
+python3 -m pip install -e ".[dev]"
+```
+
+インストールせずに試す場合は、repo root で module として実行します。
 
 ```bash
 PYTHONPATH=src python3 -m optagent.cli.main <subcommand> ...
 ```
 
-editable install 後は `optagent <subcommand>` でも実行できます。
+editable install 後は次の形式を使います。
+
+```bash
+optagent <subcommand> ...
+```
+
+## Quick Start
+
+```bash
+optagent init req_kernel \
+  --target-type kernel \
+  --target-id csc_linear \
+  --run-id demo
+
+optagent plan \
+  --run demo \
+  --input-node n_0000 \
+  --intent "run baseline benchmark"
+
+optagent predict \
+  --run demo \
+  it_0001 \
+  --max-outcomes 1
+
+optagent observe \
+  --run demo \
+  it_0001 \
+  --matched-prediction ot_0001 \
+  --status completed \
+  --raw-output raw/profile.txt \
+  --metric latency_ms=1.5
+
+optagent trace --run demo --from-node n_0002
+optagent show --run demo
+```
 
 ## 共通仕様
 
