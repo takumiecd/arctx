@@ -35,11 +35,14 @@ def predict_impl(
         new_node = Node(node_id=self._next_id("n"))
         self.run_graph.add_node(new_node)
 
+        ot_meta: dict[str, object] = {"ordinal": index}
+        if user_id is not None:
+            ot_meta["user_id"] = user_id
         ot = OutputTransition(
             output_transition_id=self._next_id("ot"),
             input_transition_id=input_transition_id,
             to_node_id=new_node.node_id,
-            metadata={"ordinal": index},
+            metadata=ot_meta,
         )
         self.run_graph.add_output_transition(ot)
 

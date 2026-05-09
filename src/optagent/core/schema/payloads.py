@@ -21,6 +21,15 @@ from optagent.core.types import (
 )
 
 
+def _validate_probability(value: float | None, name: str) -> None:
+    if value is not None and not 0.0 <= value <= 1.0:
+        raise ValueError(f"{name} must be in [0, 1] or None, got {value}")
+
+
+def _opt_float(value: object) -> float | None:
+    return float(value) if value is not None else None
+
+
 class PayloadBase(ABC):
     """Common contract for payload records attached to graph targets."""
 
@@ -89,6 +98,10 @@ class PredictionPayload(PayloadBase):
 
     target_kind: TargetKind = field(default="output_transition", init=False)
     payload_type: PayloadType = field(default="prediction", init=False)
+
+    def __post_init__(self) -> None:
+        _validate_probability(self.probability, "probability")
+        _validate_probability(self.confidence, "confidence")
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
@@ -197,8 +210,8 @@ def _prediction_from_dict(data: dict[str, JSONValue]) -> PredictionPayload:
         predicted_artifacts=tuple(str(a) for a in (data.get("predicted_artifacts") or [])),
         predicted_metrics={str(k): float(v) for k, v in (data.get("predicted_metrics") or {}).items()},
         rationale=data.get("rationale"),
-        probability=data.get("probability"),
-        confidence=data.get("confidence"),
+        probability=_opt_float(data.get("probability")),
+        confidence=_opt_float(data.get("confidence")),
         predictor=data.get("predictor"),
         metadata=dict(data.get("metadata") or {}),
     )
