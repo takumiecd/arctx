@@ -32,6 +32,12 @@ optagent <subcommand> ...
 
 ## Quick Start
 
+CLI から概念、内部構造、基本ループを確認するには、次を実行します。
+
+```bash
+optagent guide
+```
+
 ```bash
 optagent init req_kernel \
   --target-type kernel \
@@ -80,6 +86,16 @@ mutating command の user attribution は次の順に解決します。
 `RunGraph` は run 全体の DAG です。`GraphView` は `root_node_id` だけを持ち、read-time の reachability で内容が決まります。view からの読み取りには `reachable --view` を使います。
 
 ## Commands
+
+### `guide`
+
+```bash
+optagent guide
+```
+
+optagent が何を構築しているか、内部の `RunGraph` / transition / payload 構造、基本ループ、主要 command の対応を表示します。LLM や人間に短い利用ガイドを渡したい場合に使います。
+
+日本語で表示したい場合は `optagent guide --lang ja` を使います。
 
 ### `init`
 

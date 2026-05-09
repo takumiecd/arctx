@@ -6,6 +6,7 @@ import tempfile
 
 import pytest
 
+from optagent.cli.commands.guide import run_guide_command
 from optagent.cli.commands.init import run_init_command
 from optagent.cli.commands.list import run_list_command
 from optagent.cli.commands.note import run_note_command
@@ -28,6 +29,14 @@ def _init(td: str, rid: str = "rid") -> str:
         store_dir=td,
     )
     return rid
+
+
+def test_guide_describes_core_concepts():
+    guide = run_guide_command()["guide"]
+    assert "RunGraph" in guide
+    assert "PlanPayload" in guide
+    assert "optagent plan" in guide
+    assert "append-only" in guide
 
 
 def test_init_creates_run():

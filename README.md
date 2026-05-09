@@ -107,6 +107,14 @@ python3 -m pip install -e ".[dev]"
 
 ## CLI Quick Start
 
+CLI から概念と基本ループを確認するには、次を実行します。
+
+```bash
+optagent guide
+```
+
+日本語で表示したい場合は `optagent guide --lang ja` を使います。
+
 ```bash
 optagent init req_kernel \
   --target-type kernel \
