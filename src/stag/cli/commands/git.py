@@ -40,7 +40,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_finish.add_argument("--output-transition", default=None, dest="output_transition_id",
                            help="Attach to existing OT (form B)")
     # Form A options
-    sp_finish.add_argument("--status", default="completed")
+    sp_finish.add_argument("--status", default=None)
     sp_finish.add_argument("--summary", default=None)
     sp_finish.add_argument("--artifact", action="append")
     sp_finish.add_argument("--raw-output", action="append")
@@ -177,10 +177,8 @@ def _cli_git_finish(args) -> int:
         form_b_options_used = []
         for opt in ("status", "summary", "artifact", "raw_output", "log", "metric", "error"):
             val = getattr(args, opt, None)
-            if val and opt not in ("status",):
+            if val:
                 form_b_options_used.append(f"--{opt.replace('_', '-')}")
-            elif opt == "status" and val != "completed":
-                form_b_options_used.append("--status")
         if getattr(args, "matched_prediction_output_id", None):
             form_b_options_used.append("--matched-prediction")
         if form_b_options_used:
@@ -217,7 +215,7 @@ def _cli_git_finish(args) -> int:
                 handle,
                 run_dir,
                 session_id,
-                status=args.status,
+                status=args.status if args.status is not None else "completed",
                 summary=args.summary,
                 artifacts=tuple(getattr(args, "artifact", None) or []),
                 raw_outputs=tuple(getattr(args, "raw_output", None) or []),
