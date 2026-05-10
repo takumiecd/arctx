@@ -6,6 +6,7 @@ import argparse
 import sys
 
 from optagent.cli.commands.current import add_parser as add_current_parser, cli_current
+from optagent.cli.commands.dump import add_parser as add_dump_parser, cli_dump
 from optagent.cli.commands.guide import add_parser as add_guide_parser, cli_guide
 from optagent.cli.commands.init import add_parser as add_init_parser, cli_init
 from optagent.cli.commands.list import add_parser as add_list_parser, cli_list
@@ -30,6 +31,7 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     add_current_parser(subparsers)
+    add_dump_parser(subparsers)
     add_guide_parser(subparsers)
     add_init_parser(subparsers)
     add_list_parser(subparsers)
@@ -60,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "current":
         return cli_current(args)
+    if args.command == "dump":
+        return cli_dump(args)
     if args.command == "guide":
         return cli_guide(args)
     if args.command == "init":
