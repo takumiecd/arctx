@@ -59,6 +59,7 @@ init
 - stag dump: run 全体を outline または mermaid でレンダリングする。
 - stag show: run 内の record を表示する。
 - stag list, current, use: 保存済み run を管理する。
+- stag git: Git の変更履歴を OutputTransition の payload として記録する (詳細は `stag guide --topic git`)。
 
 ## 最小例
 
@@ -427,6 +428,83 @@ joins (3):
 multi-input または multi-output の IT はダイアモンド中間ノード {{...}} として展開されます。
 各 input Node から IT ノードへ --> が引かれ、IT ノードから to_node へ --> または -.-> が引かれます。
 """,
+
+    "git": """\
+# stag git — Git 変更を OutputTransition に記録する
+
+`stag git` は Git の commit / diff / branch を STAG の transition に対応付けます。
+Git は file / commit / diff の source of truth で、STAG はその上に乗る semantic layer
+として「なぜやったか / どうなると思ったか / 実際どうなったか / 何が変わったか」を記録します。
+
+## 記録モデル
+
+| 意味 | 保存先 |
+|---|---|
+| なぜやったか | InputTransition + PlanPayload |
+| どうなると思ったか | OutputTransition + PredictionPayload |
+| 実際どうなったか | OutputTransition + ResultPayload |
+| 何が変わったか (Git) | OutputTransition + GitChangePayload |
+
+`GitChangePayload` は OutputTransition に attach され、`ResultPayload` と共存します。
+patch 本文は `<run_dir>/artifacts/git/<payload_id>.patch` に分離保存されます。
+
+## サブコマンド
+
+```bash
+stag git start  <input_transition_id>
+stag git finish <session_id> [--status completed] [--summary TEXT]
+                             [--matched-prediction <ot_id>]
+                             [--artifact PATH] [--metric k=v] ...
+stag git finish <session_id> --output-transition <ot_id>
+stag git status
+stag git diff   <session_id> | --output-transition <ot_id>
+stag git log    <session_id> | --output-transition <ot_id>
+```
+
+## 基本フロー
+
+```bash
+stag plan --run demo --input-node n_0000 --intent "add Git payload support"
+
+stag git start it_0001
+# -> gs_0001 (pending session)
+
+# (ファイル編集 + git commit)
+
+stag git finish gs_0001 --status completed --summary "added MVP"
+# -> 新 OutputTransition + ResultPayload + GitChangePayload を作る (形式 A)
+```
+
+## 既存 observe に Git だけ後付けする (形式 B)
+
+```bash
+stag observe it_0001 --status completed
+# -> ot_0003 (ResultPayload 付き)
+stag git finish gs_0001 --output-transition ot_0003
+# -> ot_0003 に GitChangePayload だけを attach
+```
+
+形式 B では `--matched-prediction` や `--status` 等の ResultPayload 変更系オプションは
+受け付けません。意味は元の observe で確定済みのためです。
+
+## 制約 (MVP)
+
+- `start` 時に detached HEAD は error。
+- `start` から `finish` までの branch 切替は error。
+- `finish` 時の tracked file の dirty 状態は error。untracked は許容。
+- 空 diff (base == HEAD) は warning だけで通常通り attach する。
+- 同じ IT に observed OT が既にある状態で形式 A を使うと warning。`--output-transition` の利用を促す。
+
+## 出力先
+
+```text
+<run_dir>/git/sessions/gs_0001.json     # pending session
+<run_dir>/git/current.json              # 最後に start した session への pointer
+<run_dir>/artifacts/git/pl_0008.patch   # GitChangePayload の patch 本文
+```
+
+詳細仕様は `docs/ja/GIT_INTEGRATION.md` を参照してください。
+""",
 }
 
 
@@ -485,6 +563,7 @@ init
 - stag dump: render the whole run as outline or mermaid.
 - stag show: inspect run records.
 - stag list, current, use: manage saved runs.
+- stag git: record Git changes as a payload on the OutputTransition (see `stag guide --topic git`).
 
 ## Minimal example
 
@@ -820,6 +899,84 @@ joins (3):
 Multi-input ITs appear as diamond intermediate nodes {{...}}.
 Each input Node has an edge to the IT node, then the IT node connects to its outputs.
 """,
+
+    "git": """\
+# stag git — record Git changes on an OutputTransition
+
+`stag git` connects Git commits / diffs / branches to STAG transitions.
+Git remains the source of truth for files and history; STAG adds the semantic layer
+of "why we did it / what we expected / what actually happened / what changed".
+
+## Recording model
+
+| Meaning | Stored as |
+|---|---|
+| Why we did it | InputTransition + PlanPayload |
+| What we expected | OutputTransition + PredictionPayload |
+| What actually happened | OutputTransition + ResultPayload |
+| What changed (Git) | OutputTransition + GitChangePayload |
+
+`GitChangePayload` attaches to an OutputTransition and coexists with `ResultPayload`.
+The patch text lives at `<run_dir>/artifacts/git/<payload_id>.patch`.
+
+## Subcommands
+
+```bash
+stag git start  <input_transition_id>
+stag git finish <session_id> [--status completed] [--summary TEXT]
+                             [--matched-prediction <ot_id>]
+                             [--artifact PATH] [--metric k=v] ...
+stag git finish <session_id> --output-transition <ot_id>
+stag git status
+stag git diff   <session_id> | --output-transition <ot_id>
+stag git log    <session_id> | --output-transition <ot_id>
+```
+
+## Basic flow
+
+```bash
+stag plan --run demo --input-node n_0000 --intent "add Git payload support"
+
+stag git start it_0001
+# -> gs_0001 (pending session)
+
+# edit files + git commit
+
+stag git finish gs_0001 --status completed --summary "added MVP"
+# -> creates new OutputTransition + ResultPayload + GitChangePayload (form A)
+```
+
+## Attach Git data to an existing observation (form B)
+
+```bash
+stag observe it_0001 --status completed
+# -> ot_0003 with ResultPayload
+stag git finish gs_0001 --output-transition ot_0003
+# -> attaches only a GitChangePayload to ot_0003
+```
+
+Form B rejects `--matched-prediction` and ResultPayload-mutating options.
+The result semantics are owned by the original `observe`.
+
+## MVP constraints
+
+- detached HEAD at `start` is an error.
+- branch switches between `start` and `finish` are errors.
+- tracked-file dirty state at `finish` is an error. Untracked files are allowed.
+- empty diffs (base == HEAD) emit a warning but the payload is attached normally.
+- Form A on an InputTransition that already has an observed OT emits a warning
+  recommending `--output-transition`.
+
+## On-disk layout
+
+```text
+<run_dir>/git/sessions/gs_0001.json     # pending session
+<run_dir>/git/current.json              # pointer to the last started session
+<run_dir>/artifacts/git/pl_0008.patch   # patch text for a GitChangePayload
+```
+
+See `docs/ja/GIT_INTEGRATION.md` for the full specification.
+""",
 }
 
 
@@ -840,6 +997,7 @@ TOPIC_SUMMARIES: dict[str, str] = {
     "payloads":  "Payload types, attachment targets, Prediction/Result exclusivity",
     "cut":    "Append-only invalidation; IT cut vs OT cut",
     "joins":     "Multi-input transitions and how dump renders them",
+    "git":       "Record Git commits / diffs as a payload on an OutputTransition",
 }
 
 _DEFAULT_TOPIC = "overview"

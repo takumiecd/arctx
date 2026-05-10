@@ -24,18 +24,18 @@ ALL_TOPICS = list(TOPIC_SUMMARIES.keys())
 # ---------------------------------------------------------------------------
 
 
-def test_list_returns_all_seven_topics():
+def test_list_returns_all_topics():
     result = run_guide_list(lang="en")
     ids = [t["id"] for t in result["topics"]]
-    assert len(ids) == 7
+    assert len(ids) == len(ALL_TOPICS)
     for topic in ALL_TOPICS:
         assert topic in ids
 
 
-def test_list_ja_returns_all_seven_topics():
+def test_list_ja_returns_all_topics():
     result = run_guide_list(lang="ja")
     ids = [t["id"] for t in result["topics"]]
-    assert len(ids) == 7
+    assert len(ids) == len(ALL_TOPICS)
     for topic in ALL_TOPICS:
         assert topic in ids
 
@@ -156,7 +156,7 @@ def test_cli_bad_topic_nonzero_exit():
     assert "does_not_exist" in result.stderr or "topic" in result.stderr.lower()
 
 
-def test_cli_list_shows_seven_topics():
+def test_cli_list_shows_all_topics():
     result = subprocess.run(
         [sys.executable, "-m", "stag.cli.main", "guide", "--list"],
         capture_output=True,
