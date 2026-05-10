@@ -6,6 +6,7 @@ The JsonlRunStore is always placed inside <tmp_path>/runs/.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -38,6 +39,10 @@ def git_repo(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "symbolic-ref", "HEAD", "refs/heads/main"],
+        cwd=str(repo), check=True, capture_output=True,
+    )
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
         cwd=str(repo), check=True, capture_output=True,
@@ -708,3 +713,116 @@ def test_git_change_payload_roundtrip(stag_env, git_repo):
     assert isinstance(restored, GitChangePayload)
     assert restored.branch == gcp.branch
     assert restored.base_commit == gcp.base_commit
+
+
+# ---------------------------------------------------------------------------
+# CLI E2E — status / diff / log
+# ---------------------------------------------------------------------------
+
+def test_git_status_cli_e2e(stag_env, git_repo, capsys):
+    store_dir, run_id, run_dir, handle, it_id = stag_env
+    store = JsonlRunStore(store_dir)
+
+    s1 = git_start(handle, run_dir, it_id)
+    store.save_run(handle)
+
+    from stag.cli.main import main as cli_main
+    ret = cli_main([
+        "git", "status",
+        "--run", run_id,
+        "--store-dir", store_dir,
+    ])
+    assert ret == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["run_id"] == run_id
+    assert payload["git"]["repo_root"]
+    assert payload["git"]["branch"] == "main"
+    assert any(s["session_id"] == s1["session_id"] for s in payload["open_sessions"])
+    assert payload["latest_git_change_payload"] is None
+
+
+def test_git_diff_cli_e2e_session(stag_env, git_repo, capsys):
+    store_dir, run_id, run_dir, handle, it_id = stag_env
+    store = JsonlRunStore(store_dir)
+
+    s1 = git_start(handle, run_dir, it_id)
+    store.save_run(handle)
+    _make_commit(git_repo, "diff_test.py", "diff session")
+
+    from stag.cli.main import main as cli_main
+    ret = cli_main([
+        "git", "diff", s1["session_id"],
+        "--run", run_id,
+        "--store-dir", store_dir,
+    ])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "diff_test.py" in captured.out
+
+
+def test_git_diff_cli_e2e_output_transition(stag_env, git_repo, capsys):
+    store_dir, run_id, run_dir, handle, it_id = stag_env
+    store = JsonlRunStore(store_dir)
+
+    s1 = git_start(handle, run_dir, it_id)
+    store.save_run(handle)
+    _make_commit(git_repo, "diff_ot.py", "diff via OT")
+
+    handle = store.load_run(run_id)
+    res = git_finish_form_a(handle, run_dir, s1["session_id"], status="completed")
+    store.save_run(handle)
+    ot_id = res["created"]["output_transition_id"]
+
+    from stag.cli.main import main as cli_main
+    ret = cli_main([
+        "git", "diff", "--output-transition", ot_id,
+        "--run", run_id,
+        "--store-dir", store_dir,
+    ])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "diff_ot.py" in captured.out
+
+
+def test_git_log_cli_e2e_session(stag_env, git_repo, capsys):
+    store_dir, run_id, run_dir, handle, it_id = stag_env
+    store = JsonlRunStore(store_dir)
+
+    s1 = git_start(handle, run_dir, it_id)
+    store.save_run(handle)
+    _make_commit(git_repo, "log_test.py", "log session entry")
+
+    from stag.cli.main import main as cli_main
+    ret = cli_main([
+        "git", "log", s1["session_id"],
+        "--run", run_id,
+        "--store-dir", store_dir,
+    ])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "log session entry" in captured.out
+
+
+def test_git_log_cli_e2e_output_transition(stag_env, git_repo, capsys):
+    store_dir, run_id, run_dir, handle, it_id = stag_env
+    store = JsonlRunStore(store_dir)
+
+    s1 = git_start(handle, run_dir, it_id)
+    store.save_run(handle)
+    _make_commit(git_repo, "log_ot.py", "log via OT")
+
+    handle = store.load_run(run_id)
+    res = git_finish_form_a(handle, run_dir, s1["session_id"], status="completed")
+    store.save_run(handle)
+    ot_id = res["created"]["output_transition_id"]
+
+    from stag.cli.main import main as cli_main
+    ret = cli_main([
+        "git", "log", "--output-transition", ot_id,
+        "--run", run_id,
+        "--store-dir", store_dir,
+    ])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "log via OT" in captured.out
