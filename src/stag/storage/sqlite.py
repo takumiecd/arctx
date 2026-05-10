@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from stag.core import _json as _fast_json
 from stag.core.graph_view import GraphView
 from stag.core.run import RunHandle
 from stag.core.run_graph import RunGraph
@@ -96,21 +97,21 @@ class SqliteRunStore:
                 "INSERT OR REPLACE INTO run_meta(key, value) VALUES (?, ?)",
                 (
                     "requirement_json",
-                    json.dumps(run.requirement.to_dict(), ensure_ascii=False, sort_keys=True),
+                    _fast_json.dumps(run.requirement.to_dict()),
                 ),
             )
             con.execute(
                 "INSERT OR REPLACE INTO run_meta(key, value) VALUES (?, ?)",
                 (
                     "counters_json",
-                    json.dumps(dict(run._counters), ensure_ascii=False, sort_keys=True),
+                    _fast_json.dumps(dict(run._counters)),
                 ),
             )
             con.execute(
                 "INSERT OR REPLACE INTO run_meta(key, value) VALUES (?, ?)",
                 (
                     "graph_metadata_json",
-                    json.dumps(dict(run.run_graph.metadata), ensure_ascii=False, sort_keys=True),
+                    _fast_json.dumps(dict(run.run_graph.metadata)),
                 ),
             )
 
@@ -178,11 +179,11 @@ class SqliteRunStore:
                 "SELECT value FROM run_meta WHERE key = 'graph_metadata_json'"
             ).fetchone()
             if meta_row:
-                graph.metadata = dict(json.loads(meta_row["value"]))
+                graph.metadata = dict(_fast_json.loads(meta_row["value"]))
 
             # Nodes (seq ASC preserves insertion order)
             for row in con.execute("SELECT data_json FROM nodes ORDER BY seq ASC"):
-                d = json.loads(row["data_json"])
+                d = _fast_json.loads(row["data_json"])
                 graph.nodes[d["node_id"]] = Node(
                     node_id=d["node_id"],
                     metadata=dict(d.get("metadata") or {}),
@@ -192,7 +193,7 @@ class SqliteRunStore:
             for row in con.execute(
                 "SELECT data_json FROM input_transitions ORDER BY seq ASC"
             ):
-                d = json.loads(row["data_json"])
+                d = _fast_json.loads(row["data_json"])
                 it = InputTransition(
                     input_transition_id=d["input_transition_id"],
                     input_node_ids=tuple(d.get("input_node_ids") or []),
@@ -208,7 +209,7 @@ class SqliteRunStore:
             for row in con.execute(
                 "SELECT data_json FROM output_transitions ORDER BY seq ASC"
             ):
-                d = json.loads(row["data_json"])
+                d = _fast_json.loads(row["data_json"])
                 ot = OutputTransition(
                     output_transition_id=d["output_transition_id"],
                     input_transition_id=d["input_transition_id"],
@@ -225,7 +226,7 @@ class SqliteRunStore:
 
             # Payloads
             for row in con.execute("SELECT data_json FROM payloads ORDER BY seq ASC"):
-                d = json.loads(row["data_json"])
+                d = _fast_json.loads(row["data_json"])
                 payload = payload_from_dict(d)
                 graph.payloads[payload.payload_id] = payload
                 if payload.target_kind == "node":
@@ -243,7 +244,7 @@ class SqliteRunStore:
 
             # Views
             for row in con.execute("SELECT data_json FROM views ORDER BY seq ASC"):
-                d = json.loads(row["data_json"])
+                d = _fast_json.loads(row["data_json"])
                 v = GraphView(
                     view_id=str(d["view_id"]),
                     name=str(d["name"]),
@@ -372,7 +373,7 @@ def _delta_insert(
             extra_vals = [fn(rec) for fn in extra_cols.values()]
             con.execute(
                 sql,
-                [data[id_col], json.dumps(data, ensure_ascii=False, sort_keys=True)]
+                [data[id_col], _fast_json.dumps(data)]
                 + extra_vals,
             )
     else:
@@ -383,7 +384,7 @@ def _delta_insert(
                 sql,
                 (
                     data[id_col],
-                    json.dumps(data, ensure_ascii=False, sort_keys=True),
+                    _fast_json.dumps(data),
                 ),
             )
 

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from stag.core import _json as _fast_json
 from stag.core.graph_view import GraphView
 from stag.core.run import RunHandle
 from stag.core.run_graph import RunGraph
@@ -199,7 +200,7 @@ class JsonlRunStore:
         mode = "a" if disk_count > 0 else "w"
         with path.open(mode, encoding="utf-8") as f:
             for rec in new_records:
-                f.write(json.dumps(to_dict(rec), ensure_ascii=False, sort_keys=True) + "\n")
+                f.write(_fast_json.dumps(to_dict(rec)) + "\n")
 
     @staticmethod
     def _write_json(path: Path, data: dict[str, Any]) -> None:
@@ -217,7 +218,7 @@ class JsonlRunStore:
         if not path.exists():
             return []
         return [
-            json.loads(line)
+            _fast_json.loads(line)
             for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
