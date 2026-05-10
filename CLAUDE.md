@@ -95,6 +95,7 @@ Current commands:
 - `view` — manage `GraphView`s
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
 - `guide` — print usage hints
+- `migrate` — convert a jsonl run dir to sqlite (`--to sqlite`, `--run <id>` or `--all`)
 
 Commands resolve the target run in this order:
 

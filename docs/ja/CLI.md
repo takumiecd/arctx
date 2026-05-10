@@ -278,6 +278,16 @@ flowchart TD
 
 multi-input または multi-output の IT はダイアモンド中間ノードとして展開します。
 
+### `migrate`
+
+```bash
+stag migrate --to sqlite --run <run_id>   # 単一 run を jsonl → sqlite に変換
+stag migrate --to sqlite --all            # store-dir 配下の全 run を変換
+stag migrate --to sqlite --run <run_id> --force  # run.db が存在しても上書き
+```
+
+jsonl run directory を sqlite 形式に片道変換します。jsonl ファイルは削除されません。
+
 ### `list` / `current` / `use`
 
 ```bash

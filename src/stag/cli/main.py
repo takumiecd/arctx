@@ -19,6 +19,7 @@ from stag.cli.commands.reachable import add_parser as add_reachable_parser, cli_
 from stag.cli.commands.cut import add_parser as add_cut_parser, cli_cut
 from stag.cli.commands.show import add_parser as add_show_parser, cli_show
 from stag.cli.commands.trace import add_parser as add_trace_parser, cli_trace
+from stag.cli.commands.migrate import add_parser as add_migrate_parser, cli_migrate
 from stag.cli.commands.use import add_parser as add_use_parser, cli_use
 from stag.cli.commands.view import add_parser as add_view_parser, cli_view
 
@@ -35,6 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_guide_parser(subparsers)
     add_init_parser(subparsers)
     add_list_parser(subparsers)
+    add_migrate_parser(subparsers)
     add_note_parser(subparsers)
     add_observe_parser(subparsers)
     add_outcomes_parser(subparsers)
@@ -70,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_init(args)
     if args.command == "list":
         return cli_list(args)
+    if args.command == "migrate":
+        return cli_migrate(args)
     if args.command == "note":
         return cli_note(args)
     if args.command == "observe":
