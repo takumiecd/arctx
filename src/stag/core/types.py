@@ -20,7 +20,7 @@ ActionType = Literal[
 ResultStatus = Literal["completed", "failed", "timeout", "skipped"]
 
 TargetKind = Literal["node", "input_transition", "output_transition"]
-PayloadType = Literal["note", "plan_payload", "prediction", "result", "cut"]
+PayloadType = Literal["note", "plan_payload", "prediction", "result", "cut", "git_change"]
 
 NODE_PREFIX = "n"
 INPUT_TRANSITION_PREFIX = "it"

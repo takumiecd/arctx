@@ -131,6 +131,78 @@ class ResultPayload(PayloadBase):
 
 
 @dataclass(frozen=True)
+class CommitEntry:
+    """A single commit entry in a GitChangePayload commit_log."""
+
+    sha: str
+    subject: str
+    author: str
+    date: str  # ISO 8601 with timezone
+
+    def to_dict(self) -> dict[str, str]:
+        return {"sha": self.sha, "subject": self.subject, "author": self.author, "date": self.date}
+
+
+@dataclass(frozen=True)
+class DiffSummary:
+    """Aggregate diff stats from git --shortstat."""
+
+    files_changed: int
+    insertions: int
+    deletions: int
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "files_changed": self.files_changed,
+            "insertions": self.insertions,
+            "deletions": self.deletions,
+        }
+
+
+@dataclass(frozen=True)
+class GitChangePayload(PayloadBase):
+    """Git repository change information attached to an OutputTransition.
+
+    Captures the diff between base_commit..HEAD at the time stag git finish
+    was executed. Co-exists with ResultPayload on the same OutputTransition.
+    """
+
+    payload_id: str
+    target_id: str
+    repo_root: str
+    base_commit: str
+    head_commit: str
+    branch: str
+    commit_log: tuple[CommitEntry, ...] = ()
+    diff_summary: DiffSummary = field(
+        default_factory=lambda: DiffSummary(files_changed=0, insertions=0, deletions=0)
+    )
+    changed_files: tuple[str, ...] = ()
+    patch_artifact: str | None = None
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: TargetKind = field(default="output_transition", init=False)
+    payload_type: PayloadType = field(default="git_change", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return {
+            "payload_id": self.payload_id,
+            "payload_type": self.payload_type,
+            "target_kind": self.target_kind,
+            "target_id": self.target_id,
+            "repo_root": self.repo_root,
+            "base_commit": self.base_commit,
+            "head_commit": self.head_commit,
+            "branch": self.branch,
+            "commit_log": [c.to_dict() for c in self.commit_log],
+            "diff_summary": self.diff_summary.to_dict(),
+            "changed_files": list(self.changed_files),
+            "patch_artifact": self.patch_artifact,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
 class CutPayload(PayloadBase):
     """Append-only cut marker on an InputTransition or OutputTransition.
 
@@ -159,6 +231,7 @@ Payload = Union[
     PredictionPayload,
     ResultPayload,
     CutPayload,
+    GitChangePayload,
 ]
 
 
@@ -175,6 +248,8 @@ def payload_from_dict(data: dict[str, JSONValue]) -> Payload:
         return _result_from_dict(data)
     if payload_type == "cut":
         return _cut_from_dict(data)
+    if payload_type == "git_change":
+        return _git_change_from_dict(data)
     raise ValueError(f"unknown payload_type: {payload_type!r}")
 
 
@@ -241,5 +316,37 @@ def _cut_from_dict(data: dict[str, JSONValue]) -> CutPayload:
         cut_at=str(data["cut_at"]),
         reason=data.get("reason"),
         user_id=data.get("user_id"),
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
+def _git_change_from_dict(data: dict[str, JSONValue]) -> GitChangePayload:
+    raw_log = data.get("commit_log") or []
+    commit_log = tuple(
+        CommitEntry(
+            sha=str(e["sha"]),
+            subject=str(e["subject"]),
+            author=str(e["author"]),
+            date=str(e["date"]),
+        )
+        for e in raw_log
+    )
+    raw_summary = data.get("diff_summary") or {}
+    diff_summary = DiffSummary(
+        files_changed=int(raw_summary.get("files_changed", 0)),
+        insertions=int(raw_summary.get("insertions", 0)),
+        deletions=int(raw_summary.get("deletions", 0)),
+    )
+    return GitChangePayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        repo_root=str(data["repo_root"]),
+        base_commit=str(data["base_commit"]),
+        head_commit=str(data["head_commit"]),
+        branch=str(data["branch"]),
+        commit_log=commit_log,
+        diff_summary=diff_summary,
+        changed_files=tuple(str(f) for f in (data.get("changed_files") or [])),
+        patch_artifact=data.get("patch_artifact"),
         metadata=dict(data.get("metadata") or {}),
     )
