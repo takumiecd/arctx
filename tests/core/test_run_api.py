@@ -89,22 +89,22 @@ def test_note_attaches_to_node():
     assert any(isinstance(p, NotePayload) for p in payloads)
 
 
-def test_rewind_input_transition_cuts_it_and_its_ots():
+def test_cut_input_transition_cuts_it_and_its_ots():
     run = init(_req(), run_id="t_rew_it")
     it = run.plan([run.root_node_id], _plan_payload())
     ot = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
-    cut = run.rewind(it.input_transition_id, target_kind="input_transition", reason="undo")
+    cut = run.cut(it.input_transition_id, target_kind="input_transition", reason="undo")
     assert isinstance(cut, CutPayload)
     assert cut.target_kind == "input_transition"
     assert is_inactive_output_transition(run.run_graph, ot.output_transition_id)
     assert not is_active_node(run.run_graph, ot.to_node_id)
 
 
-def test_rewind_output_transition_cuts_only_that_ot():
+def test_cut_output_transition_cuts_only_that_ot():
     run = init(_req(), run_id="t_rew_ot")
     it = run.plan([run.root_node_id], _plan_payload())
     ot = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
-    run.rewind(ot.output_transition_id, target_kind="output_transition")
+    run.cut(ot.output_transition_id, target_kind="output_transition")
     assert is_inactive_output_transition(run.run_graph, ot.output_transition_id)
     assert not is_active_node(run.run_graph, ot.to_node_id)
 
@@ -113,17 +113,17 @@ def test_plan_on_cut_node_raises():
     run = init(_req(), run_id="t_plan_cut")
     it = run.plan([run.root_node_id], _plan_payload())
     ot = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
-    run.rewind(ot.output_transition_id, target_kind="output_transition")
+    run.cut(ot.output_transition_id, target_kind="output_transition")
     with pytest.raises(ValueError):
         run.plan([ot.to_node_id], _plan_payload())
 
 
-def test_rewind_already_cut_raises():
+def test_cut_already_cut_raises():
     run = init(_req(), run_id="t_rew_dup")
     it = run.plan([run.root_node_id], _plan_payload())
-    run.rewind(it.input_transition_id, target_kind="input_transition")
+    run.cut(it.input_transition_id, target_kind="input_transition")
     with pytest.raises(ValueError):
-        run.rewind(it.input_transition_id, target_kind="input_transition")
+        run.cut(it.input_transition_id, target_kind="input_transition")
 
 
 def test_trace_walks_backwards():
@@ -201,7 +201,7 @@ def test_multiple_observed_outputs_per_input_transition():
 def test_predict_on_cut_input_transition_raises():
     run = init(_req(), run_id="t_pred_cut")
     it = run.plan([run.root_node_id], _plan_payload())
-    run.rewind(it.input_transition_id, target_kind="input_transition")
+    run.cut(it.input_transition_id, target_kind="input_transition")
     with pytest.raises(ValueError, match="inactive"):
         run.predict(it.input_transition_id)
 
@@ -209,7 +209,7 @@ def test_predict_on_cut_input_transition_raises():
 def test_observe_on_cut_input_transition_raises():
     run = init(_req(), run_id="t_obs_cut")
     it = run.plan([run.root_node_id], _plan_payload())
-    run.rewind(it.input_transition_id, target_kind="input_transition")
+    run.cut(it.input_transition_id, target_kind="input_transition")
     with pytest.raises(ValueError, match="inactive"):
         run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
 
@@ -219,7 +219,7 @@ def test_observe_on_input_transition_with_cut_input_node_raises():
     it1 = run.plan([run.root_node_id], _plan_payload())
     ot1 = run.observe(it1.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
     # cut the OT so ot1.to_node_id becomes inactive
-    run.rewind(ot1.output_transition_id, target_kind="output_transition")
+    run.cut(ot1.output_transition_id, target_kind="output_transition")
     # plan rooted at the now-inactive node
     it2 = run.run_graph.input_transitions.get(
         next(
@@ -255,7 +255,7 @@ def test_outcomes_marks_inactive_observation():
     it = run.plan([run.root_node_id], _plan_payload())
     ot1 = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
     ot2 = run.observe(it.input_transition_id, ResultPayload(payload_id="y", target_id="y", status="completed"))
-    run.rewind(ot1.output_transition_id, target_kind="output_transition")
+    run.cut(ot1.output_transition_id, target_kind="output_transition")
     out = run.outcomes(it.input_transition_id)
     assert ot1.output_transition_id in out["observations"]
     assert ot1.output_transition_id in out["inactive_observations"]
@@ -287,11 +287,11 @@ def test_trace_collects_all_input_nodes_of_multi_input_it():
 
 
 def test_trace_skips_inactive_observed_ots():
-    """observe → rewind した OT は trace に出てこないこと。"""
+    """observe → cut した OT は trace に出てこないこと。"""
     run = init(_req(), run_id="t_trace_inactive")
     it = run.plan([run.root_node_id], _plan_payload())
     ot = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
-    run.rewind(ot.output_transition_id, target_kind="output_transition")
+    run.cut(ot.output_transition_id, target_kind="output_transition")
 
     ctx = run.trace(ot.to_node_id)
     assert ot.output_transition_id not in ctx.output_transition_ids
@@ -366,12 +366,12 @@ def test_observe_matched_prediction_different_it_raises():
 
 
 def test_observe_matched_prediction_inactive_raises():
-    """prediction OT を rewind した後 matched に指定 → ValueError。"""
+    """prediction OT を cut した後 matched に指定 → ValueError。"""
     run = init(_req(), run_id="t_mpid_inactive")
     it = run.plan([run.root_node_id], _plan_payload())
     pred_ots = run.predict(it.input_transition_id, max_outcomes=1)
     pred_ot = pred_ots[0]
-    run.rewind(pred_ot.output_transition_id, target_kind="output_transition")
+    run.cut(pred_ot.output_transition_id, target_kind="output_transition")
 
     result = ResultPayload(
         payload_id="r1", target_id="r1", status="completed",

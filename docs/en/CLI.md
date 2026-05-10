@@ -139,11 +139,11 @@ optagent note --node <node_id> --text TEXT [--tag TAG]
 
 Attaches a lightweight memo as `NotePayload` to a node. Existing records are not modified.
 
-### `rewind`
+### `cut`
 
 ```bash
-optagent rewind --input-transition <input_transition_id> [--reason TEXT]
-optagent rewind --output-transition <output_transition_id> [--reason TEXT]
+optagent cut --input-transition <input_transition_id> [--reason TEXT]
+optagent cut --output-transition <output_transition_id> [--reason TEXT]
 ```
 
 Attaches a `CutPayload`. When attached to an input transition, the entire plan becomes inactive. When attached to an output transition, only that prediction/result output becomes inactive.

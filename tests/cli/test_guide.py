@@ -112,8 +112,8 @@ def test_topic_overview_contains_core_concepts():
     assert "dump" in guide
 
 
-def test_topic_rewind_mentions_cutpayload():
-    guide = run_guide_command(lang="en", topic="rewind")["guide"]
+def test_topic_cut_mentions_cutpayload():
+    guide = run_guide_command(lang="en", topic="cut")["guide"]
     assert "CutPayload" in guide
     assert "append-only" in guide
 

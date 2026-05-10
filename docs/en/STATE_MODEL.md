@@ -255,9 +255,9 @@ To "integrate a view", simply add one `OutputTransition` from any node in main t
 - `depth` is the number of backward steps (`None` for all ancestors).
 - Collection fields of `TraceContext` are returned as ascending sorted tuples. `artifact_refs` is a deduplicated tuple preserving appearance order.
 
-## Rewind
+## Cut
 
-`rewind` appends a `CutPayload`.
+`cut` appends a `CutPayload`.
 
 Key points:
 

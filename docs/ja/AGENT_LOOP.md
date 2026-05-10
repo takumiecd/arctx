@@ -111,12 +111,12 @@ run.predict(future_input.input_transition_id, max_outcomes=3)
 
 探索結果を main に統合したい場合は、main 内のノードから `exp-a` の `root_node_id` への OutputTransition を `plan` / `observe` で足します。`view_merge` は不要です。
 
-## Rewind
+## Cut
 
 間違った plan を無効化したい場合は input transition を cut します。
 
 ```python
-run.rewind(
+run.cut(
     input_transition.input_transition_id,
     target_kind="input_transition",
     reason="bad plan",
@@ -126,11 +126,11 @@ run.rewind(
 予測や実測 output だけを無効化したい場合は output transition を cut します。
 
 ```python
-run.rewind(
+run.cut(
     predicted[0].output_transition_id,
     target_kind="output_transition",
     reason="bad prediction",
 )
 ```
 
-rewind は削除ではありません。`CutPayload` を append し、active / inactive は read-time に計算します。
+cut は削除ではありません。`CutPayload` を append し、active / inactive は read-time に計算します。

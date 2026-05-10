@@ -117,7 +117,7 @@ def test_outline_cut_marker():
     run = init(_req(), run_id="t_cut")
     it = run.plan([run.root_node_id], _plan("doomed"))
     ot = run.observe(it.input_transition_id, _result())
-    run.rewind(ot.output_transition_id, target_kind="output_transition")
+    run.cut(ot.output_transition_id, target_kind="output_transition")
 
     out = dump(run, "outline", _opts())
     assert "✂" in out

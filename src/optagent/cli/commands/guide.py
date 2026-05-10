@@ -52,7 +52,7 @@ init
 - optagent predict: plan に対する実行前の予測を記録する。
 - optagent observe: 外部実行後の実測結果を記録する。
 - optagent note: node に人間や evaluator 向けの文脈を残す。
-- optagent rewind: 履歴を消さずに transition を無効化する。
+- optagent cut: 履歴を消さずに transition を無効化する。
 - optagent trace: ある node に至る履歴を読む。
 - optagent outcomes: 1 つの input transition の予測と実測を比較する。
 - optagent reachable: node や view から見える active subgraph を調べる。
@@ -101,8 +101,8 @@ LLM トークン効率が良く、一貫した文脈が得られます。
 **predict は省略可能**
 予想が不要な場合は predict を飛ばして observe を直接呼んで構いません。
 
-**rewind は履歴を消さない**
-rewind は append-only の CutPayload を attach するだけです。
+**cut は履歴を消さない**
+cut は append-only の CutPayload を attach するだけです。
 過去の record は削除されず、read-time に cuts.py で inactive として計算されます。
 
 ## Anti-patterns
@@ -132,8 +132,8 @@ optagent observe --run <rid> <it_id> --status completed --metric score=0.92
 # 4. dump で全体を確認する (LLM はこれを読む)
 optagent dump --run <rid>
 
-# 5. 必要なら rewind して別の plan を試す
-optagent rewind --run <rid> --input-transition <it_id> --reason "score insufficient"
+# 5. 必要なら cut して別の plan を試す
+optagent cut --run <rid> --input-transition <it_id> --reason "score insufficient"
 ```
 """,
 
@@ -266,10 +266,10 @@ optagent dump --run demo
 
 ## plan を修正したい場合
 
-間違った plan を rewind して別の plan を試します。
+間違った plan を cut して別の plan を試します。
 
 ```bash
-optagent rewind --run demo --input-transition it_0002 --reason "wrong approach"
+optagent cut --run demo --input-transition it_0002 --reason "wrong approach"
 optagent plan --run demo --input-node n_0001 --intent "apply vectorization instead"
 ```
 """,
@@ -307,7 +307,7 @@ graph record (Node / InputTransition / OutputTransition) 自体には
 ### CutPayload
 - attach 先: InputTransition または OutputTransition
 - 役割: append-only な無効化マーカー。record を削除せず、read-time に inactive として扱う。
-- CLI: optagent rewind で attach される。
+- CLI: optagent cut で attach される。
 
 ## PredictionPayload と ResultPayload の排他制約
 
@@ -326,20 +326,20 @@ OutputTransition に付いている Payload の型で判定します。
 Node の役割も同様で、incoming OutputTransition が全て prediction なら predicted node です。
 """,
 
-    "rewind": """\
-# rewind — append-only な無効化
+    "cut": """\
+# cut — append-only な無効化
 
-rewind は履歴を削除しません。CutPayload を対象の transition に append するだけです。
+cut は履歴を削除しません。CutPayload を対象の transition に append するだけです。
 active/inactive の判定は read-time に cuts.py で計算されます。
 
 ## コマンド書式
 
 ```bash
 # InputTransition を cut する (plan 全体を無効化)
-optagent rewind --run <rid> --input-transition <it_id> [--reason TEXT]
+optagent cut --run <rid> --input-transition <it_id> [--reason TEXT]
 
 # OutputTransition を cut する (その output だけを無効化)
-optagent rewind --run <rid> --output-transition <ot_id> [--reason TEXT]
+optagent cut --run <rid> --output-transition <ot_id> [--reason TEXT]
 ```
 
 ## IT cut の効果
@@ -368,10 +368,10 @@ is_active_node 等のユーティリティで active/inactive を確認できま
 
 ```bash
 # 方向性が間違っていた plan 全体を無効化する
-optagent rewind --run demo --input-transition it_0002 --reason "wrong approach"
+optagent cut --run demo --input-transition it_0002 --reason "wrong approach"
 
 # 1 つの observed result だけを取り消す
-optagent rewind --run demo --output-transition ot_0003 --reason "measurement error"
+optagent cut --run demo --output-transition ot_0003 --reason "measurement error"
 
 # 別の plan を試す
 optagent plan --run demo --input-node n_0001 --intent "apply vectorization"
@@ -478,7 +478,7 @@ init
 - optagent predict: record expected outcomes for a plan.
 - optagent observe: record actual results after external execution.
 - optagent note: attach human or evaluator context to a node.
-- optagent rewind: invalidate a transition without deleting history.
+- optagent cut: invalidate a transition without deleting history.
 - optagent trace: read the path that led to a node.
 - optagent outcomes: compare predictions and observations for one input transition.
 - optagent reachable: inspect the active subgraph from a node or view.
@@ -525,8 +525,8 @@ Multiple `optagent show` calls waste tokens and give a fragmented picture.
 **predict is optional.**
 When you have no prior expectation, skip predict and call observe directly.
 
-**rewind does not delete history.**
-rewind appends a CutPayload. Past records remain; inactive status is computed at read time.
+**cut does not delete history.**
+cut appends a CutPayload. Past records remain; inactive status is computed at read time.
 
 ## Anti-patterns — terms that do not exist in 0.1
 
@@ -549,7 +549,7 @@ optagent plan --run <rid> --input-node n_0000 --intent "..."
 optagent observe --run <rid> <it_id> --status completed --metric score=0.92
 optagent dump --run <rid>
 # if needed, invalidate and retry
-optagent rewind --run <rid> --input-transition <it_id> --reason "score insufficient"
+optagent cut --run <rid> --input-transition <it_id> --reason "score insufficient"
 ```
 """,
 
@@ -673,7 +673,7 @@ optagent dump --run demo
 ## Correcting a mistake
 
 ```bash
-optagent rewind --run demo --input-transition it_0002 --reason "wrong approach"
+optagent cut --run demo --input-transition it_0002 --reason "wrong approach"
 optagent plan --run demo --input-node n_0001 --intent "apply vectorization instead"
 ```
 """,
@@ -710,7 +710,7 @@ ResultPayload
 CutPayload
   Attaches to: InputTransition or OutputTransition
   Purpose: append-only invalidation marker. Does not delete records.
-  CLI: attached by optagent rewind.
+  CLI: attached by optagent cut.
 
 ## PredictionPayload and ResultPayload are mutually exclusive on the same OT
 
@@ -725,20 +725,20 @@ Check the Payload type on the OutputTransition:
 - output_kind == "prediction" -> PredictionPayload -> predicted
 """,
 
-    "rewind": """\
-# rewind — append-only invalidation
+    "cut": """\
+# cut — append-only invalidation
 
-rewind attaches a CutPayload to a transition. It does not delete any records.
+cut attaches a CutPayload to a transition. It does not delete any records.
 Active/inactive status is computed at read time by cuts.py.
 
 ## Usage
 
 ```bash
 # Cut an entire plan (InputTransition)
-optagent rewind --run <rid> --input-transition <it_id> [--reason TEXT]
+optagent cut --run <rid> --input-transition <it_id> [--reason TEXT]
 
 # Cut a single output (OutputTransition)
-optagent rewind --run <rid> --output-transition <ot_id> [--reason TEXT]
+optagent cut --run <rid> --output-transition <ot_id> [--reason TEXT]
 ```
 
 ## IT cut effects
@@ -766,8 +766,8 @@ Use is_active_node and related helpers to filter programmatically.
 ## Example
 
 ```bash
-optagent rewind --run demo --input-transition it_0002 --reason "wrong approach"
-optagent rewind --run demo --output-transition ot_0003 --reason "measurement error"
+optagent cut --run demo --input-transition it_0002 --reason "wrong approach"
+optagent cut --run demo --output-transition ot_0003 --reason "measurement error"
 optagent plan --run demo --input-node n_0001 --intent "apply vectorization"
 ```
 """,
@@ -838,7 +838,7 @@ TOPIC_SUMMARIES: dict[str, str] = {
     "dump":      "optagent dump output formats and symbols",
     "record":    "Typical workflow to record one experiment",
     "payloads":  "Payload types, attachment targets, Prediction/Result exclusivity",
-    "rewind":    "Append-only invalidation; IT cut vs OT cut",
+    "cut":    "Append-only invalidation; IT cut vs OT cut",
     "joins":     "Multi-input transitions and how dump renders them",
 }
 

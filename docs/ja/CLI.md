@@ -139,11 +139,11 @@ optagent note --node <node_id> --text TEXT [--tag TAG]
 
 node に軽いメモとして `NotePayload` を attach します。既存 record は変更しません。
 
-### `rewind`
+### `cut`
 
 ```bash
-optagent rewind --input-transition <input_transition_id> [--reason TEXT]
-optagent rewind --output-transition <output_transition_id> [--reason TEXT]
+optagent cut --input-transition <input_transition_id> [--reason TEXT]
+optagent cut --output-transition <output_transition_id> [--reason TEXT]
 ```
 
 `CutPayload` を attach します。input transition に attach した場合は plan 全体を、output transition に attach した場合はその prediction / result output だけを inactive にします。

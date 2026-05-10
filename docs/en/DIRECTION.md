@@ -47,7 +47,7 @@ Lightweight memos can be attached to nodes as `NotePayload`.
 - Save plan information as `PlanPayload`
 - Save prediction outputs and `PredictionPayload`
 - Save observed outputs and `ResultPayload`
-- Save rewinds as append-only cuts
+- Save cuts as append-only cuts
 - Create and display `GraphView`
 - Save to and load from JSONL run directories
 

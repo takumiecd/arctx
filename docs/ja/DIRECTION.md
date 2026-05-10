@@ -47,7 +47,7 @@ node には軽いメモとして `NotePayload` を attach できます。
 - plan 情報を `PlanPayload` として保存する
 - prediction output と `PredictionPayload` を保存する
 - observed output と `ResultPayload` を保存する
-- rewind を append-only cut として保存する
+- cut を append-only cut として保存する
 - `GraphView` を作成・表示する
 - JSONL run directory に保存・読み込みする
 
@@ -83,7 +83,7 @@ executor、planner、predictor、LLM、benchmark runner は外側から接続し
 
 1. `RunGraph` + `GraphView` + `InputTransition` / `OutputTransition` モデル
 2. `NotePayload` / `PlanPayload` / `PredictionPayload` / `ResultPayload` / `CutPayload` の 5 payload
-3. CLI コマンド全セット (`init` / `plan` / `predict` / `observe` / `note` / `rewind` / `trace` / `outcomes` / `show` / `reachable` / `view` / `dump` / `guide` / `list` / `current` / `use`)
+3. CLI コマンド全セット (`init` / `plan` / `predict` / `observe` / `note` / `cut` / `trace` / `outcomes` / `show` / `reachable` / `view` / `dump` / `guide` / `list` / `current` / `use`)
 4. `optagent dump --format outline|mermaid` による run 全体のレンダリング
 5. JSONL ストレージ (`run.json` / `graph.json` / `nodes.jsonl` / `input_transitions.jsonl` / `output_transitions.jsonl` / `payloads.jsonl` / `views.jsonl`)
 

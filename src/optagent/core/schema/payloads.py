@@ -1,7 +1,7 @@
 """Payload records attached to nodes or transitions.
 
 A target may have multiple payloads attached.
-Payloads are immutable and append-only; CutPayload encodes rewinds
+Payloads are immutable and append-only; CutPayload encodes cuts
 without ever deleting graph records.
 """
 

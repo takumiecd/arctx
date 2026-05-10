@@ -80,7 +80,7 @@ def test_round_trip_cut_payload():
     run = init(_req(), run_id="rt_cut")
     it = run.plan([run.root_node_id], _plan_payload())
     ot = run.observe(it.input_transition_id, ResultPayload(payload_id="x", target_id="x", status="completed"))
-    run.rewind(ot.output_transition_id, target_kind="output_transition", reason="undo")
+    run.cut(ot.output_transition_id, target_kind="output_transition", reason="undo")
 
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)

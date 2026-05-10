@@ -174,10 +174,10 @@ Classifies and returns all output transitions associated with a single input tra
 
 Raises `KeyError` if the input_transition_id is unknown.
 
-## `run.rewind`
+## `run.cut`
 
 ```python
-run.rewind(
+run.cut(
     target_id: str,
     *,
     target_kind: Literal["input_transition", "output_transition"],

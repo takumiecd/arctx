@@ -15,7 +15,7 @@ from optagent.cli.commands.outcomes import run_outcomes_command
 from optagent.cli.commands.plan import run_plan_command
 from optagent.cli.commands.predict import run_predict_command
 from optagent.cli.commands.reachable import run_reachable_command
-from optagent.cli.commands.rewind import run_rewind_command
+from optagent.cli.commands.cut import run_cut_command
 from optagent.cli.commands.show import run_show_command
 from optagent.cli.commands.trace import run_trace_command
 
@@ -105,7 +105,7 @@ def test_predict_flow():
             assert p["input_transition_id"] == it_id
 
 
-def test_rewind_input_transition():
+def test_cut_input_transition():
     with tempfile.TemporaryDirectory() as td:
         rid = _init(td)
         it = run_plan_command(
@@ -113,7 +113,7 @@ def test_rewind_input_transition():
             intent="x", store_dir=td,
         )["input_transition"]
         it_id = it["input_transition_id"]
-        cut = run_rewind_command(
+        cut = run_cut_command(
             run_id=rid, target_id=it_id, target_kind="input_transition",
             reason="oops", store_dir=td,
         )["cut"]
@@ -121,7 +121,7 @@ def test_rewind_input_transition():
         assert cut["target_kind"] == "input_transition"
 
 
-def test_rewind_output_transition():
+def test_cut_output_transition():
     with tempfile.TemporaryDirectory() as td:
         rid = _init(td)
         it = run_plan_command(
@@ -134,7 +134,7 @@ def test_rewind_output_transition():
             artifacts=None, raw_outputs=None, logs=None, metrics=None, errors=None,
             store_dir=td,
         )["output_transition"]
-        cut = run_rewind_command(
+        cut = run_cut_command(
             run_id=rid, target_id=ot["output_transition_id"],
             target_kind="output_transition", reason="undo", store_dir=td,
         )["cut"]

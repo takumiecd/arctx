@@ -1,4 +1,4 @@
-"""RunHandle.rewind implementation."""
+"""RunHandle.cut implementation."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from optagent.core.cuts import cut_input_transition_ids, cut_output_transition_i
 from optagent.core.schema.payloads import CutPayload
 
 
-def rewind_impl(
+def cut_impl(
     self,
     target_id: str,
     *,

@@ -84,7 +84,7 @@ from optagent.core.run.observe import observe_impl as _observe_impl  # noqa: E40
 from optagent.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from optagent.core.run.plan import plan_impl as _plan_impl  # noqa: E402
 from optagent.core.run.predict import predict_impl as _predict_impl  # noqa: E402
-from optagent.core.run.rewind import rewind_impl as _rewind_impl  # noqa: E402
+from optagent.core.run.cut import cut_impl as _cut_impl  # noqa: E402
 from optagent.core.run.trace import trace_impl as _trace_impl  # noqa: E402
 from optagent.core.run.view import (  # noqa: E402
     view_create_impl as _view_create_impl,
@@ -97,7 +97,7 @@ RunHandle.note = _note_impl
 RunHandle.observe = _observe_impl
 RunHandle.result = _observe_impl
 RunHandle.predict = _predict_impl
-RunHandle.rewind = _rewind_impl
+RunHandle.cut = _cut_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl
 RunHandle.outcomes = _outcomes_impl

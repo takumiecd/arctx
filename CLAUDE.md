@@ -56,7 +56,7 @@ Payload types live under `src/optagent/core/schema/payloads.py`.
 - `PlanPayload`: operation intent attached to an InputTransition
 - `PredictionPayload`: predicted outcome attached to an OutputTransition
 - `ResultPayload`: actual execution result attached to an OutputTransition
-- `CutPayload`: append-only rewind marker on an InputTransition or OutputTransition
+- `CutPayload`: append-only cut marker on an InputTransition or OutputTransition
 
 `PredictionPayload` and `ResultPayload` are mutually exclusive on the same OT; `RunGraph.attach_payload` enforces this.
 
@@ -72,7 +72,7 @@ Public verbs (each implemented in `src/optagent/core/run/<verb>.py`):
 - `observe(input_transition_id, result_payload, *, user_id=None)` (alias: `result`)
 - `predict(input_transition_id, *, payloads=None, max_outcomes=None, user_id=None)`
 - `note(node_id, text, *, tags=(), user_id=None)`
-- `rewind(target_id, *, target_kind, reason=None, user_id=None)`
+- `cut(target_id, *, target_kind, reason=None, user_id=None)`
 - `trace(node_id, ...)` (alias: `history`)
 - `outcomes(...)`
 - `view_create(name, *, root_node_id)`
@@ -89,7 +89,7 @@ Current commands:
 
 - `current` / `use` — manage the active run pointer
 - `init` / `list` — create / list runs
-- `plan` / `predict` / `observe` / `note` / `rewind` — mutate the run
+- `plan` / `predict` / `observe` / `note` / `cut` — mutate the run
 - `show` — inspect a node / IT / OT / payload as JSON
 - `trace` / `outcomes` / `reachable` — derived queries
 - `view` — manage `GraphView`s
@@ -136,9 +136,9 @@ Current prefixes include:
 
 Do not hand-format new IDs except for seed roots created during `init` (the root node is always `n_0000`).
 
-## Rewind
+## Cut
 
-Rewind is append-only. It attaches a `CutPayload` to an InputTransition or OutputTransition; it does not delete nodes, transitions, plans, or payloads.
+Cut is append-only. It attaches a `CutPayload` to an InputTransition or OutputTransition; it does not delete nodes, transitions, plans, or payloads.
 
 Activity is computed at read time in `src/optagent/core/cuts.py`:
 

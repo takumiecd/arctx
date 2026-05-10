@@ -174,10 +174,10 @@ run.outcomes(
 
 input_transition_id が不明な場合は `KeyError` を送出します。
 
-## `run.rewind`
+## `run.cut`
 
 ```python
-run.rewind(
+run.cut(
     target_id: str,
     *,
     target_kind: Literal["input_transition", "output_transition"],
@@ -205,7 +205,7 @@ run.trace(
 node から過去の observed history を backward BFS で辿ります。
 
 - multi-input IT の `input_node_ids` をすべてキューに積むため、複数親を持つ merge node からも全祖先を正しく収集します。
-- inactive な observed OT（rewind 済み）は辿りません。
+- inactive な observed OT（cut 済み）は辿りません。
 - 返り値 `TraceContext` のフィールド: `current_node_id`、`past_node_ids`、`output_transition_ids`、`input_transition_ids`、`result_payload_ids`、`prediction_output_transition_ids`、`note_payload_ids` は昇順 sorted tuple。`artifact_refs` は出現順を保ちつつ重複除去した tuple です。
 - `depth` は backward の段数。0 段目は `node_id` 自体、`depth=1` でその直接親まで。`None` で全祖先。
 - `include_predictions=False` の場合は observed OT のみ収集します。`run.history(...)` は alias です。

@@ -1,4 +1,4 @@
-"""optagent CLI rewind command."""
+"""optagent CLI cut command."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from optagent.storage.jsonl import JsonlRunStore
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("rewind", help="Cut an InputTransition or OutputTransition")
+    parser = subparsers.add_parser("cut", help="Cut an InputTransition or OutputTransition")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--input-transition", dest="input_transition_id", metavar="IT_ID")
     group.add_argument("--output-transition", dest="output_transition_id", metavar="OT_ID")
@@ -21,7 +21,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     return parser
 
 
-def run_rewind_command(
+def run_cut_command(
     *,
     run_id: str,
     target_id: str,
@@ -34,7 +34,7 @@ def run_rewind_command(
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
-    cut = handle.rewind(
+    cut = handle.cut(
         target_id,
         target_kind=target_kind,  # type: ignore[arg-type]
         reason=reason,
@@ -44,7 +44,7 @@ def run_rewind_command(
     return {"cut": cut.to_dict()}
 
 
-def cli_rewind(args) -> int:
+def cli_cut(args) -> int:
     if args.input_transition_id is not None:
         target_id = args.input_transition_id
         target_kind = "input_transition"
@@ -52,7 +52,7 @@ def cli_rewind(args) -> int:
         target_id = args.output_transition_id
         target_kind = "output_transition"
 
-    result = run_rewind_command(
+    result = run_cut_command(
         run_id=resolve_run_id_from_args(args),
         target_id=target_id,
         target_kind=target_kind,

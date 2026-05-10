@@ -111,12 +111,12 @@ run.predict(future_input.input_transition_id, max_outcomes=3)
 
 To integrate exploration results into main, add an `OutputTransition` from a node in main to the `root_node_id` of `exp-a` via `plan` / `observe`. `view_merge` is unnecessary.
 
-## Rewind
+## Cut
 
 To invalidate a mistaken plan, cut the input transition.
 
 ```python
-run.rewind(
+run.cut(
     input_transition.input_transition_id,
     target_kind="input_transition",
     reason="bad plan",
@@ -126,11 +126,11 @@ run.rewind(
 To invalidate only a prediction or observed output, cut the output transition.
 
 ```python
-run.rewind(
+run.cut(
     predicted[0].output_transition_id,
     target_kind="output_transition",
     reason="bad prediction",
 )
 ```
 
-Rewind is not deletion. It appends a `CutPayload`, and active/inactive is computed at read-time.
+Cut is not deletion. It appends a `CutPayload`, and active/inactive is computed at read-time.
