@@ -87,14 +87,14 @@ history = run.trace(observed.to_node_id, depth=3)
 
 取得できるもの:
 
-- past node ids
-- note payload ids
-- input transition ids
-- output transition ids
-- plan payload ids
-- prediction payload ids
-- result payload ids
-- artifact / raw output / log refs
+- `current_node_id`
+- `past_node_ids`
+- `output_transition_ids`
+- `input_transition_ids`
+- `result_payload_ids`
+- `prediction_output_transition_ids`（`include_predictions=True` の場合のみ収集）
+- `note_payload_ids`
+- `artifact_refs`（artifacts / raw_outputs / logs の参照）
 
 ## 7. GraphView で探索する
 

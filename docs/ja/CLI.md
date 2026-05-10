@@ -209,6 +209,75 @@ optagent view show <view_name>
 
 view の `root_node_id` と metadata を表示します。
 
+### `dump`
+
+```bash
+optagent dump [--format outline|mermaid]
+              [--node <node_id>]
+              [--depth N]
+              [--observed-only]
+              [--predicted-only]
+              [--full-payloads]
+```
+
+run 全体を 1 発でレンダリングします。LLM に文脈を渡す場合は `outline`、図として確認する場合は `mermaid` を使います。
+
+**フォーマット**
+
+- `outline`（デフォルト）: インデント付きのスパニングツリー。LLM 向けのテキスト形式です。
+- `mermaid`: Mermaid の `flowchart TD` として出力します。Markdown ファイルに貼れる形で返ります。
+
+**オプション**
+
+| オプション | 説明 |
+|---|---|
+| `--format outline\|mermaid` | 出力形式（省略時は `outline`） |
+| `--node <node_id>` | 指定ノードを起点とするサブツリーだけを表示 |
+| `--depth N` | 探索の深さ上限 |
+| `--observed-only` | prediction output を除外し、observed (result) のみ表示 |
+| `--predicted-only` | observed output を除外し、prediction のみ表示 |
+| `--full-payloads` | metrics / rationale を省略せず全量表示 |
+
+`--observed-only` と `--predicted-only` は同時指定不可です。
+
+**outline の表記ルール**
+
+```
+n_0000  [root]
+└─ it_0001  [run baseline benchmark]
+    └─→ n_0001  status=completed latency_ms=1.5
+        └─ it_0002 (+n_0003)  [merge variant]
+            └─→ n_0004  status=completed latency_ms=1.2
+    └─⇢ n_0002  latency_ms=1.0
+```
+
+- `→` : observed (ResultPayload 付き OutputTransition)
+- `⇢` : predicted (PredictionPayload 付き OutputTransition)
+- `✂` : cut 済み (inactive)
+- `↻n_X` : すでに表示済みノードへの後方参照
+- `(+n_X)` : multi-input IT の追加入力ノード
+- `▸ feeds it_X (@n_primary)` : non-primary 親ノードからの forward pointer
+- `joins (N):` : multi-input IT が 3 個以上の場合に表示されるインデックス
+
+**mermaid の出力例**
+
+````markdown
+```mermaid
+flowchart TD
+    classDef observed fill:#dff5e1,...
+    classDef predicted fill:#eef0fb,...
+    classDef cut fill:#f4e3e3,...
+    classDef root fill:#fff5d6,...
+    n_0000["n_0000"]
+    class n_0000 root;
+    n_0001["n_0001"]
+    class n_0001 observed;
+    n_0000 -->|"run baseline benchmark"| n_0001
+```
+````
+
+multi-input または multi-output の IT はダイアモンド中間ノードとして展開します。
+
 ### `list` / `current` / `use`
 
 ```bash

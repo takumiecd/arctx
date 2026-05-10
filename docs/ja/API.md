@@ -206,7 +206,7 @@ node から過去の observed history を backward BFS で辿ります。
 
 - multi-input IT の `input_node_ids` をすべてキューに積むため、複数親を持つ merge node からも全祖先を正しく収集します。
 - inactive な observed OT（rewind 済み）は辿りません。
-- 返り値 `TraceContext` の各コレクションフィールド（`past_node_ids`、`output_transition_ids`、`input_transition_ids`、`result_payload_ids`、`prediction_output_transition_ids`、`note_payload_ids`）は決定的順序の昇順 sorted tuple です。`artifact_refs` は出現順を保ちつつ重複除去した tuple です。
+- 返り値 `TraceContext` のフィールド: `current_node_id`、`past_node_ids`、`output_transition_ids`、`input_transition_ids`、`result_payload_ids`、`prediction_output_transition_ids`、`note_payload_ids` は昇順 sorted tuple。`artifact_refs` は出現順を保ちつつ重複除去した tuple です。
 - `depth` は backward の段数。0 段目は `node_id` 自体、`depth=1` でその直接親まで。`None` で全祖先。
 - `include_predictions=False` の場合は observed OT のみ収集します。`run.history(...)` は alias です。
 
@@ -227,6 +227,33 @@ run.run_graph.reachable_from(node_id: str) -> dict
 ```
 
 「view を統合する」場合は、統合先のノードから統合元の `root_node_id` への OutputTransition を通常の `plan` / `observe` で足すだけです。`view_merge` は廃止しました。
+
+## `dump`
+
+```python
+from optagent.core.run.dump import dump, DumpOptions
+
+opts = DumpOptions(
+    node_id=None,          # サブツリーの起点（None で root から全体）
+    depth=None,            # 探索深さ上限（None で無制限）
+    observed_only=False,   # predicted OT を除外
+    predicted_only=False,  # observed OT を除外
+    full_payloads=False,   # metrics / rationale を全量表示
+)
+text = dump(handle, fmt="outline", opts=opts)
+# fmt は "outline" または "mermaid"
+```
+
+run 全体を outline（LLM 向けインデントテキスト）または mermaid（Mermaid flowchart TD）としてレンダリングします。CLI では `optagent dump` として利用できます。
+
+outline の記号:
+
+- `→`: observed output（ResultPayload 付き OT）
+- `⇢`: predicted output（PredictionPayload 付き OT）
+- `✂`: cut 済み（inactive）
+- `↻n_X`: 既出ノードへの後方参照
+- `(+n_X)`: multi-input IT の追加入力ノード
+- `▸ feeds it_X (@n_primary)`: non-primary 親からの forward pointer
 
 ## Storage
 

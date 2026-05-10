@@ -253,7 +253,7 @@ exp-a
 - 各 observed OT からその `InputTransition` に移り、`input_node_ids` に列挙された**全ノード**をキューに積みます。multi-input IT（merge node）でも全祖先が正しく収集されます。
 - 既訪問ノードは重複なくスキップします。
 - `depth` は backward の段数（`None` で全祖先）。
-- `TraceContext` の集合フィールドは昇順 sorted tuple で返します。`artifact_refs` は出現順を保ちつつ重複除去した tuple です。
+- `TraceContext` のフィールド: `current_node_id`、`past_node_ids`、`output_transition_ids`、`input_transition_ids`、`result_payload_ids`、`prediction_output_transition_ids`、`note_payload_ids` は昇順 sorted tuple。`artifact_refs` は出現順を保ちつつ重複除去した tuple です。`plan_payload_ids` フィールドはありません。
 
 ## Rewind
 

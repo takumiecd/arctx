@@ -79,13 +79,19 @@ executor、planner、predictor、LLM、benchmark runner は外側から接続し
 
 これらは `PredictionPayload` と `ResultPayload` が価値を出しやすい領域です。
 
-## 近い実装予定
+## 実装済みのコア機能
 
-1. `RunGraph` + `GraphView` + input/output transition model を 0.1 として固める
-2. CLI と JSONL storage の仕様をドキュメントと一致させる
-3. `NotePayload` / `PlanPayload` / `PredictionPayload` / `ResultPayload` / `CutPayload` に payload を整理する
-4. `GraphView` workflow の作成・表示を具体化する
-5. executor / evaluator の protocol を整える
+1. `RunGraph` + `GraphView` + `InputTransition` / `OutputTransition` モデル
+2. `NotePayload` / `PlanPayload` / `PredictionPayload` / `ResultPayload` / `CutPayload` の 5 payload
+3. CLI コマンド全セット (`init` / `plan` / `predict` / `observe` / `note` / `rewind` / `trace` / `outcomes` / `show` / `reachable` / `view` / `dump` / `guide` / `list` / `current` / `use`)
+4. `optagent dump --format outline|mermaid` による run 全体のレンダリング
+5. JSONL ストレージ (`run.json` / `graph.json` / `nodes.jsonl` / `input_transitions.jsonl` / `output_transitions.jsonl` / `payloads.jsonl` / `views.jsonl`)
+
+## 今後の方向性
+
+- executor / evaluator の protocol 整備
+- domains (code / kernel) の具体化
+- search (beam / greedy / MCTS) の接続
 
 ## ドキュメント
 
