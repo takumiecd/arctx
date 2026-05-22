@@ -19,3 +19,8 @@ decisions.jsonl
 findings.jsonl
 requirements.json
 run.json
+
+# IDE / Agent state directories
+.claude/
+.antigravitycli/
+

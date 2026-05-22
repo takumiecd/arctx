@@ -22,6 +22,7 @@ from stag.core.cuts import (
 from stag.core.run.handle import RunHandle
 from stag.core.run_graph import RunGraph
 from stag.core.schema.payloads import (
+    GitChangePayload,
     NotePayload,
     PlanPayload,
     PredictionPayload,
@@ -61,8 +62,33 @@ def _ot_summary(graph: RunGraph, ot_id: str, full: bool) -> tuple[str, str]:
     kind_marker is "→" (result), "⇢" (prediction), or "?" (unknown).
     """
     payloads = graph.payloads_for_output_transition(ot_id)
+
+    # 1. Find GitChangePayload if any
+    git_part = ""
+    for p in payloads:
+        if isinstance(p, GitChangePayload):
+            summary = p.diff_summary
+            files = ",".join(p.changed_files)
+            if full:
+                git_part = (
+                    f"git:[{p.branch} {p.head_commit[:7]}] "
+                    f"files_changed={summary.files_changed} "
+                    f"(+{summary.insertions}/-{summary.deletions}) [{files}]"
+                )
+            else:
+                git_part = f"git:(+{summary.insertions}/-{summary.deletions})"
+                if p.changed_files:
+                    git_part += f" [{files}]"
+            break
+
+    # 2. Find primary payload (Result or Prediction) and determine kind
+    kind_marker = "?"
+    primary_part = ""
+
+    # Check ResultPayload first
     for p in payloads:
         if isinstance(p, ResultPayload):
+            kind_marker = "→"
             parts: list[str] = [f"status={p.status}"]
             if p.metrics:
                 metrics = (
@@ -71,16 +97,30 @@ def _ot_summary(graph: RunGraph, ot_id: str, full: bool) -> tuple[str, str]:
                     else _short_metrics(p.metrics)
                 )
                 parts.append(metrics)
-            return "→", " ".join(parts)
-    for p in payloads:
-        if isinstance(p, PredictionPayload):
-            parts = []
-            if p.predicted_metrics:
-                parts.append(_short_metrics(p.predicted_metrics))
-            if p.rationale and full:
-                parts.append(f'"{p.rationale}"')
-            return "⇢", " ".join(parts)
-    return "?", ""
+            primary_part = " ".join(parts)
+            break
+
+    # If no ResultPayload, check PredictionPayload
+    if kind_marker == "?":
+        for p in payloads:
+            if isinstance(p, PredictionPayload):
+                kind_marker = "⇢"
+                parts = []
+                if p.predicted_metrics:
+                    parts.append(_short_metrics(p.predicted_metrics))
+                if p.rationale and full:
+                    parts.append(f'"{p.rationale}"')
+                primary_part = " ".join(parts)
+                break
+
+    # Combine primary_part and git_part
+    combined_parts = []
+    if primary_part:
+        combined_parts.append(primary_part)
+    if git_part:
+        combined_parts.append(git_part)
+
+    return kind_marker, "  ".join(combined_parts)
 
 
 def _short_metrics(metrics: dict[str, float], limit: int = 3) -> str:
@@ -136,14 +176,10 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
 
     # Counters
     n_observed = sum(
-        1
-        for nid in graph.nodes
-        if nid not in inactive_nodes and not _is_predicted_node(graph, nid)
+        1 for nid in graph.nodes if nid not in inactive_nodes and not _is_predicted_node(graph, nid)
     )
     n_predicted = sum(
-        1
-        for nid in graph.nodes
-        if nid not in inactive_nodes and _is_predicted_node(graph, nid)
+        1 for nid in graph.nodes if nid not in inactive_nodes and _is_predicted_node(graph, nid)
     )
     n_cut = len(inactive_nodes)
 
@@ -164,8 +200,7 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
         f"run={handle.run_id}  target={target}  "
         f"nodes={len(graph.nodes)}  its={len(graph.input_transitions)}  "
         f"ots={len(graph.output_transitions)}  "
-        f"observed={n_observed}  predicted={n_predicted}"
-        + (f"  cut={n_cut}" if n_cut else "")
+        f"observed={n_observed}  predicted={n_predicted}" + (f"  cut={n_cut}" if n_cut else "")
     )
 
     # Joins index (only if ≥3)
@@ -198,7 +233,11 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
         visited_nodes.add(node_id)
 
         if depth == 0:
-            lines.append(f"{node_id}{cut_mark}  [root]" if node_id == handle.root_node_id else f"{node_id}{cut_mark}")
+            lines.append(
+                f"{node_id}{cut_mark}  [root]"
+                if node_id == handle.root_node_id
+                else f"{node_id}{cut_mark}"
+            )
         else:
             connector = "└─" if is_last else "├─"
             lines.append(f"{prefix}{connector} {node_id}{cut_mark}")
@@ -243,9 +282,7 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
         for i, it_id in enumerate(child_its):
             emit_input_transition(it_id, child_prefix, i == n_children - 1, depth + 1)
 
-    def emit_input_transition(
-        it_id: str, prefix: str, is_last: bool, depth: int
-    ) -> None:
+    def emit_input_transition(it_id: str, prefix: str, is_last: bool, depth: int) -> None:
         if it_id in visited_its:
             return
         visited_its.add(it_id)
@@ -279,9 +316,7 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
         ot_ids_visible = [o for o in ot_ids if show_ot(o)]
         ot_ids_visible.sort()
         # Order: results first
-        ot_ids_visible.sort(
-            key=lambda o: (0 if graph.output_kind(o) == "result" else 1, o)
-        )
+        ot_ids_visible.sort(key=lambda o: (0 if graph.output_kind(o) == "result" else 1, o))
 
         n_ots = len(ot_ids_visible)
         for j, ot_id in enumerate(ot_ids_visible):
@@ -337,9 +372,7 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
                 lines.append(f"{sub_prefix}▸ feeds {fp} (@{primary})")
 
             for k, sub_it in enumerate(child_its):
-                emit_input_transition(
-                    sub_it, sub_prefix, k == len(child_its) - 1, depth + 1
-                )
+                emit_input_transition(sub_it, sub_prefix, k == len(child_its) - 1, depth + 1)
 
     emit_node(root_id, "", True, 0)
 
@@ -368,8 +401,12 @@ def render_mermaid(handle: RunHandle, opts: DumpOptions) -> str:
 
     # Style classes
     lines.append("    classDef observed fill:#dff5e1,stroke:#2a8540,color:#1a3a22;")
-    lines.append("    classDef predicted fill:#eef0fb,stroke:#5664c2,color:#22264a,stroke-dasharray: 4 3;")
-    lines.append("    classDef cut fill:#f4e3e3,stroke:#a14040,color:#4a1d1d,stroke-dasharray: 2 2;")
+    lines.append(
+        "    classDef predicted fill:#eef0fb,stroke:#5664c2,color:#22264a,stroke-dasharray: 4 3;"
+    )
+    lines.append(
+        "    classDef cut fill:#f4e3e3,stroke:#a14040,color:#4a1d1d,stroke-dasharray: 2 2;"
+    )
     lines.append("    classDef root fill:#fff5d6,stroke:#a07000,color:#3a2a00;")
 
     # Nodes
@@ -420,9 +457,7 @@ def render_mermaid(handle: RunHandle, opts: DumpOptions) -> str:
             label = intent or it_id
             parent = it.input_node_ids[0]
             cut_marker = " ✂" if ot_id in inactive_ots else ""
-            lines.append(
-                f'    {parent} {arrow}|"{label}{cut_marker}"| {ot.to_node_id}'
-            )
+            lines.append(f'    {parent} {arrow}|"{label}{cut_marker}"| {ot.to_node_id}')
 
     lines.append("```")
     return "\n".join(lines)

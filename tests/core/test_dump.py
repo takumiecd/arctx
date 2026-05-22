@@ -5,6 +5,8 @@ from __future__ import annotations
 from stag import init
 from stag.core.run.dump import DumpOptions, dump
 from stag.core.schema.payloads import (
+    DiffSummary,
+    GitChangePayload,
     PlanPayload,
     PredictionPayload,
     ResultPayload,
@@ -101,9 +103,7 @@ def test_outline_joins_index_appears_when_three_or_more():
         nodes.append(ot.to_node_id)
     # Three multi-input transitions
     for i in range(3):
-        it_j = run.plan(
-            [nodes[0], nodes[i + 1]], _plan(f"join{i}")
-        )
+        it_j = run.plan([nodes[0], nodes[i + 1]], _plan(f"join{i}"))
         run.observe(it_j.input_transition_id, _result())
 
     out = dump(run, "outline", _opts())
@@ -158,3 +158,30 @@ def test_outline_renders_node_note():
     run.note(ot.to_node_id, "key insight")
     out = dump(run, "outline", _opts())
     assert "▸ note: key insight" in out
+
+
+def test_outline_renders_git_change_payload():
+    """Verify that git change payload is rendered in outline format."""
+    run = init(_req(), run_id="t_git")
+    it = run.plan([run.root_node_id], _plan("step"))
+    ot = run.observe(it.input_transition_id, _result())
+
+    git_payload = GitChangePayload(
+        payload_id="git_pl",
+        target_id=ot.output_transition_id,
+        repo_root="/dummy",
+        base_commit="1234567890abcdef",
+        head_commit="abcdef1234567890",
+        branch="main",
+        changed_files=("src/kernel.cu",),
+        diff_summary=DiffSummary(files_changed=1, insertions=15, deletions=2),
+    )
+    run.run_graph.attach_payload(git_payload)
+
+    # Test short format (default)
+    out_short = dump(run, "outline", _opts(full_payloads=False))
+    assert "git:(+15/-2) [src/kernel.cu]" in out_short
+
+    # Test full format
+    out_full = dump(run, "outline", _opts(full_payloads=True))
+    assert "git:[main abcdef1] files_changed=1 (+15/-2) [src/kernel.cu]" in out_full
