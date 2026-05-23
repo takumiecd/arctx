@@ -103,12 +103,12 @@ To display in Japanese, use `stag guide --lang ja`.
 stag init <requirement_id> [--target-type code] [--target-id ID] [--run-id RID] [--store-dir DIR]
 ```
 
-Creates a run and seeds the `RunGraph` and `main` view. The root node is `n_0000`. On success, outputs the run id and updates the current run.
+Creates a run and seeds the `RunGraph` and `main` view. The root node gets an opaque `n_<id>` identifier. Programmatic init returns `root_node_id`, and the CLI sets the current run.
 
 ### `plan`
 
 ```bash
-stag plan --input-node n_0000 [--input-node n_0003] [--action-type analysis] [--intent TEXT] [--input k=v] [--assumption TEXT]
+stag plan --input-node <node_id> [--input-node <node_id>] [--action-type analysis] [--intent TEXT] [--input k=v] [--assumption TEXT]
 ```
 
 Creates an `InputTransition` from multiple input nodes and attaches a `PlanPayload`.
@@ -116,7 +116,7 @@ Creates an `InputTransition` from multiple input nodes and attaches a `PlanPaylo
 ### `anchor`
 
 ```bash
-stag anchor --from n_0000 --label "common benchmark setup"
+stag anchor --from <node_id> --label "common benchmark setup"
 ```
 
 Creates a branching point for shared context such as common constraints or benchmark setup. Internally this creates a `PlanPayload` with `action_type=scope_refinement`, then a completed `ResultPayload` with `metadata.kind=anchor`, and returns the new output node for follow-up experiments.

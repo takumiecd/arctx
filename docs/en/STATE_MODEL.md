@@ -87,7 +87,7 @@ The same node can be visible from multiple views via `reachable_from`. View inte
 `Node` is a pure graph node.
 
 ```python
-Node(node_id="n_0000", metadata={})
+Node(node_id="n_<opaque>", metadata={})
 ```
 
 Nodes do not directly hold state contents. Necessary information is attached as payloads to nodes / input transitions / output transitions.
@@ -100,8 +100,8 @@ Lightweight memos can be attached to nodes as `NotePayload`. These are not sourc
 
 ```python
 InputTransition(
-    input_transition_id="it_0001",
-    input_node_ids=("n_0000", "n_0003"),
+    input_transition_id="it_<opaque>",
+    input_node_ids=("n_<opaque>", "n_<opaque>"),
 )
 ```
 
@@ -113,9 +113,9 @@ InputTransition(
 
 ```python
 OutputTransition(
-    output_transition_id="ot_0001",
-    input_transition_id="it_0001",
-    to_node_id="n_0004",
+    output_transition_id="ot_<opaque>",
+    input_transition_id="it_<opaque>",
+    to_node_id="n_<opaque>",
 )
 ```
 

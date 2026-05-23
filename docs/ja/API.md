@@ -78,7 +78,7 @@ stag.init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle
 作られるもの:
 
 - `run.run_graph`: run 全体の `RunGraph`
-- `run.run_graph.views["main"]`: default `GraphView`（root は `n_0000`）
+- `run.run_graph.views["main"]`: default `GraphView`（root は `run.root_node_id`）
 - root node: `run.root_node_id`
 
 ## `run.plan`

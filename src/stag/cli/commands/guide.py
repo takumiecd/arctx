@@ -88,7 +88,7 @@ Node の metadata にドメインデータ (スコア、パラメータ、根拠
 
 **ID は手で組み立てない**
 stag が返す ID (it_XXXX, ot_XXXX, n_XXXX 等) をそのまま使います。
-root node だけは n_0000 が固定です。それ以外を手で作ってはいけません。
+root node も opaque ID です。`stag init` / API の `root_node_id` を使います。
 
 **observed/predicted を kind フィールドで分岐しない**
 OutputTransition に attach された Payload の型で判定します。
@@ -601,7 +601,7 @@ Node metadata is for graph-level bookkeeping only.
 
 **Never hand-craft IDs.**
 Use IDs returned by stag commands (it_XXXX, ot_XXXX, n_XXXX).
-The root node is always n_0000. Do not construct any other ID manually.
+The root node is also opaque; use `root_node_id` from init/API output.
 
 **Do not branch on observed vs predicted by a kind field.**
 Identify the output by the Payload type attached to the OutputTransition:

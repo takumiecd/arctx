@@ -123,23 +123,23 @@ stag init req_kernel \
 
 stag plan \
   --run demo \
-  --input-node n_0000 \
+  --input-node <root_node_id> \
   --intent "run baseline benchmark"
 
 stag predict \
   --run demo \
-  it_0001 \
+  <input_transition_id> \
   --max-outcomes 1
 
 stag observe \
   --run demo \
-  it_0001 \
-  --matched-prediction ot_0001 \
+  <input_transition_id> \
+  --matched-prediction <prediction_output_transition_id> \
   --status completed \
   --raw-output raw/profile.txt \
   --metric latency_ms=1.5
 
-stag trace --run demo --from-node n_0002
+stag trace --run demo --from-node <observed_node_id>
 stag show --run demo
 ```
 

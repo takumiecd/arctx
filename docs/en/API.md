@@ -78,7 +78,7 @@ Creates a new run.
 What is created:
 
 - `run.run_graph`: the overall `RunGraph` for the run
-- `run.run_graph.views["main"]`: the default `GraphView` (root is `n_0000`)
+- `run.run_graph.views["main"]`: the default `GraphView` rooted at `run.root_node_id`
 - root node: `run.root_node_id`
 
 ## `run.plan`
