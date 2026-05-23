@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from stag.cli.commands.anchor import add_parser as add_anchor_parser, cli_anchor
 from stag.cli.commands.current import add_parser as add_current_parser, cli_current
 from stag.cli.commands.dump import add_parser as add_dump_parser, cli_dump
 from stag.cli.commands.git import add_parser as add_git_parser, cli_git
@@ -32,6 +33,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    add_anchor_parser(subparsers)
     add_current_parser(subparsers)
     add_dump_parser(subparsers)
     add_git_parser(subparsers)
@@ -64,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
     args = parse_args(argv)
 
+    if args.command == "anchor":
+        return cli_anchor(args)
     if args.command == "current":
         return cli_current(args)
     if args.command == "dump":

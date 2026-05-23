@@ -42,6 +42,27 @@ def test_plan_creates_input_transition():
     assert any(isinstance(p, PlanPayload) for p in payloads)
 
 
+def test_anchor_creates_scope_refinement_branch_point():
+    run = init(_req(), run_id="t_anchor")
+    ot = run.anchor(run.root_node_id, "common benchmark setup")
+    it = run.run_graph.input_transitions[ot.input_transition_id]
+
+    assert tuple(it.input_node_ids) == (run.root_node_id,)
+    assert ot.to_node_id in run.run_graph.nodes
+
+    plan_payloads = run.run_graph.payloads_for_input_transition(it.input_transition_id)
+    plan = next(p for p in plan_payloads if isinstance(p, PlanPayload))
+    assert plan.intent == "common benchmark setup"
+    assert plan.action_type == "scope_refinement"
+    assert plan.metadata["kind"] == "anchor"
+
+    result_payloads = run.run_graph.payloads_for_output_transition(ot.output_transition_id)
+    result = next(p for p in result_payloads if isinstance(p, ResultPayload))
+    assert result.status == "completed"
+    assert result.metadata["kind"] == "anchor"
+    assert result.metadata["label"] == "common benchmark setup"
+
+
 def test_plan_multi_input_nodes():
     run = init(_req(), run_id="t_plan_multi")
     # add a second node via observe

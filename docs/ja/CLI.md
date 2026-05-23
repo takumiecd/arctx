@@ -113,6 +113,14 @@ stag plan --input-node n_0000 [--input-node n_0003] [--action-type analysis] [--
 
 複数 input node から `InputTransition` を作り、`PlanPayload` を attach します。
 
+### `anchor`
+
+```bash
+stag anchor --from n_0000 --label "common benchmark setup"
+```
+
+共通条件や問題設定を表す branching point を作ります。内部的には `action_type=scope_refinement` の `PlanPayload` と、`metadata.kind=anchor` の completed `ResultPayload` を作り、新しい output node を返します。その node から複数の実験を生やせます。
+
 ### `predict`
 
 ```bash

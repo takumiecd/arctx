@@ -10,6 +10,7 @@ from stag.cli.commands.guide import run_guide_command
 from stag.cli.commands.init import run_init_command
 from stag.cli.commands.list import run_list_command
 from stag.cli.commands.note import run_note_command
+from stag.cli.commands.anchor import run_anchor_command
 from stag.cli.commands.observe import run_observe_command
 from stag.cli.commands.outcomes import run_outcomes_command
 from stag.cli.commands.plan import run_plan_command
@@ -87,6 +88,30 @@ def test_full_observed_flow():
             store_dir=td,
         )
         assert node_view["node"]["node_id"] == "n_0000"
+
+
+def test_anchor_command_creates_branch_point():
+    with tempfile.TemporaryDirectory() as td:
+        rid = _init(td)
+        anchor = run_anchor_command(
+            run_id=rid,
+            from_node_id="n_0000",
+            label="common benchmark setup",
+            store_dir=td,
+        )["anchor"]
+        assert anchor["input_transition_id"] == "it_0001"
+        assert anchor["output_transition_id"] == "ot_0001"
+        assert anchor["node_id"] == "n_0001"
+        assert anchor["label"] == "common benchmark setup"
+
+        it = run_plan_command(
+            run_id=rid,
+            input_node_ids=[anchor["node_id"]],
+            action_type="verification",
+            intent="run variant A",
+            store_dir=td,
+        )["input_transition"]
+        assert it["input_node_ids"] == [anchor["node_id"]]
 
 
 def test_predict_flow():

@@ -80,6 +80,7 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 
 # Bind verb implementations.
 from stag.core.run.note import note_impl as _note_impl  # noqa: E402
+from stag.core.run.anchor import anchor_impl as _anchor_impl  # noqa: E402
 from stag.core.run.observe import observe_impl as _observe_impl  # noqa: E402
 from stag.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from stag.core.run.plan import plan_impl as _plan_impl  # noqa: E402
@@ -93,6 +94,7 @@ from stag.core.run.view import (  # noqa: E402
 )
 
 RunHandle.plan = _plan_impl
+RunHandle.anchor = _anchor_impl
 RunHandle.note = _note_impl
 RunHandle.observe = _observe_impl
 RunHandle.result = _observe_impl

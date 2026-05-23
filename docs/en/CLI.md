@@ -113,6 +113,14 @@ stag plan --input-node n_0000 [--input-node n_0003] [--action-type analysis] [--
 
 Creates an `InputTransition` from multiple input nodes and attaches a `PlanPayload`.
 
+### `anchor`
+
+```bash
+stag anchor --from n_0000 --label "common benchmark setup"
+```
+
+Creates a branching point for shared context such as common constraints or benchmark setup. Internally this creates a `PlanPayload` with `action_type=scope_refinement`, then a completed `ResultPayload` with `metadata.kind=anchor`, and returns the new output node for follow-up experiments.
+
 ### `predict`
 
 ```bash

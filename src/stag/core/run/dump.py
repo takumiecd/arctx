@@ -89,7 +89,11 @@ def _ot_summary(graph: RunGraph, ot_id: str, full: bool) -> tuple[str, str]:
     for p in payloads:
         if isinstance(p, ResultPayload):
             kind_marker = "→"
-            parts: list[str] = [f"status={p.status}"]
+            if p.metadata.get("kind") == "anchor":
+                label = str(p.metadata.get("label") or "anchor")
+                parts: list[str] = [f"anchor={_truncate(label, 48)}"]
+            else:
+                parts = [f"status={p.status}"]
             if p.metrics:
                 metrics = (
                     " ".join(f"{k}={v}" for k, v in p.metrics.items())
