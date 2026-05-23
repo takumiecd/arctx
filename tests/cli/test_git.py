@@ -16,6 +16,7 @@ from stag.cli.commands.init import run_init_command
 from stag.cli.commands.observe import run_observe_command
 from stag.cli.commands.plan import run_plan_command
 from stag.cli.commands.predict import run_predict_command
+from stag.core.git.attach import attach_commits_to_output_transition
 from stag.core.git.finish import git_finish_form_a, git_finish_form_b
 from stag.core.git.session import (
     list_sessions,
@@ -234,6 +235,7 @@ def test_git_finish_form_a_golden_path(stag_env, git_repo):
     gcp = gcps[0]
     assert isinstance(gcp, GitChangePayload)
     assert gcp.branch == "main"
+    assert len(gcp.commits) == 1
     assert len(gcp.commit_log) == 1
     assert gcp.patch_artifact is not None
 
@@ -244,6 +246,54 @@ def test_git_finish_form_a_golden_path(stag_env, git_repo):
 
     # current.json should be cleared
     assert load_current_pointer(run_dir) is None
+
+
+# ---------------------------------------------------------------------------
+# git attach — explicit commit list
+# ---------------------------------------------------------------------------
+
+def test_git_attach_commits_to_existing_output_transition(stag_env, git_repo):
+    store_dir, run_id, run_dir, handle, it_id = stag_env
+    store = JsonlRunStore(store_dir)
+
+    ot = run_observe_command(
+        run_id=run_id,
+        input_transition_id=it_id,
+        status="completed",
+        artifacts=None,
+        raw_outputs=None,
+        logs=None,
+        metrics=None,
+        errors=None,
+        store_dir=store_dir,
+    )["output_transition"]
+    commit = _make_commit(git_repo, "explicit.py", "Explicit commit")
+
+    handle = store.load_run(run_id)
+    result = attach_commits_to_output_transition(
+        handle,
+        run_dir,
+        ot["output_transition_id"],
+        (commit[:8],),
+        user_id="alice",
+    )
+    assert result["linked"]["output_transition_id"] == ot["output_transition_id"]
+    assert result["git"]["commits"] == [commit]
+    assert result["git"]["files_changed"] == 1
+    store.save_run(handle)
+
+    fresh = store.load_run(run_id)
+    gcps = fresh.run_graph.payloads_for_output_transition(
+        ot["output_transition_id"], payload_type="git_change"
+    )
+    assert len(gcps) == 1
+    gcp = gcps[0]
+    assert isinstance(gcp, GitChangePayload)
+    assert gcp.commits == (commit,)
+    assert len(gcp.commit_log) == 1
+    assert gcp.commit_log[0].sha == commit
+    assert gcp.metadata["attached_by"] == "alice"
+    assert gcp.patch_artifact is not None
 
 
 # ---------------------------------------------------------------------------
@@ -707,12 +757,14 @@ def test_git_change_payload_roundtrip(stag_env, git_repo):
     assert d["payload_type"] == "git_change"
     assert d["target_kind"] == "output_transition"
     assert len(d["commit_log"]) == 1
+    assert len(d["commits"]) == 1
 
     from stag.core.schema.payloads import payload_from_dict
     restored = payload_from_dict(d)
     assert isinstance(restored, GitChangePayload)
     assert restored.branch == gcp.branch
     assert restored.base_commit == gcp.base_commit
+    assert restored.commits == gcp.commits
 
 
 # ---------------------------------------------------------------------------

@@ -86,6 +86,7 @@ def _collect_git_data(session: GitSession, repo_root: Path) -> dict:
     patch_text = git_repo.diff_patch(repo_root, session.base_commit)
     return {
         "head_commit": head_commit,
+        "commits": tuple(e.sha for e in commit_log),
         "commit_log": commit_log,
         "diff_summary": diff_summary,
         "changed_files": changed_files,
@@ -279,6 +280,7 @@ def git_finish_form_a(
         base_commit=session.base_commit,
         head_commit=head_commit,
         branch=branch,
+        commits=gdata["commits"],
         commit_log=gdata["commit_log"],
         diff_summary=gdata["diff_summary"],
         changed_files=gdata["changed_files"],
@@ -468,6 +470,7 @@ def git_finish_form_b(
         base_commit=session.base_commit,
         head_commit=head_commit,
         branch=branch,
+        commits=gdata["commits"],
         commit_log=gdata["commit_log"],
         diff_summary=gdata["diff_summary"],
         changed_files=gdata["changed_files"],

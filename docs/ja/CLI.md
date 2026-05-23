@@ -356,6 +356,18 @@ payloads.jsonl
 
 Git repository の変更履歴を STAG の DAG に紐付ける subcommand 群です。`stag git <subcommand>` の形で呼び出します。
 
+### `stag git attach`
+
+既存の observed OutputTransition に、明示した commit list を `GitChangePayload` として attach します。Git 連携の正規ルートです。
+
+```bash
+stag git attach --output-transition ot_0003 \
+  --commit abc123 --commit def456 \
+  [--run <run_id>] [--store-dir .stag/runs] [--user <user_id>]
+```
+
+`commit_log` / `changed_files` / `patch_artifact` は指定 commit から生成されます。`start` / `finish` は、この commit list を自動で作るための wrapper として扱います。
+
 ### `stag git start <input_transition_id>`
 
 指定した InputTransition に対して GitSession を作成します。起点コミット・ブランチを記録し、`<run_dir>/git/sessions/<session_id>.json` に保存します。
@@ -370,7 +382,7 @@ stag git start it_0001 [--run <run_id>] [--store-dir .stag/runs] [--user <user_i
 
 ### `stag git finish <session_id>`
 
-GitSession を閉じて `GitChangePayload` を `OutputTransition` に attach します。2 形式があります。
+GitSession を閉じて、開始地点から現在の HEAD までの commit list を作り、`GitChangePayload` を `OutputTransition` に attach します。`attach` の convenience wrapper です。2 形式があります。
 
 #### 形式 A: OutputTransition を自動作成
 

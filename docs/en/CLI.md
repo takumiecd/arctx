@@ -272,3 +272,29 @@ payloads.jsonl
 ```
 
 In 0.1 alpha, there is no compatibility with old storage schemas.
+
+## stag git
+
+Git integration links repository changes to STAG output transitions.
+
+### `stag git attach`
+
+Attaches an explicit commit list to an observed `OutputTransition` as a `GitChangePayload`. This is the canonical Git integration path.
+
+```bash
+stag git attach --output-transition ot_0003 \
+  --commit abc123 --commit def456 \
+  [--run <run_id>] [--store-dir .stag/runs] [--user <user_id>]
+```
+
+`commit_log`, `changed_files`, and `patch_artifact` are generated from the provided commits. `start` / `finish` are convenience wrappers that produce this commit list automatically.
+
+### `stag git start` / `finish`
+
+```bash
+stag git start it_0001
+stag git finish gs_0001 --status completed
+stag git finish gs_0001 --output-transition ot_0003
+```
+
+`start` records a pending GitSession. `finish` closes it, derives commits from `base_commit..HEAD`, and attaches a `GitChangePayload`.

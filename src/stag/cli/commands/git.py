@@ -1,4 +1,4 @@
-"""stag git subcommand — start / finish / status / diff / log."""
+"""stag git subcommand — attach / start / finish / status / diff / log."""
 
 from __future__ import annotations
 
@@ -53,6 +53,17 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_finish.add_argument("--store-dir", default=".stag/runs")
     sp_finish.add_argument("--user", default=None)
 
+    # --- attach ---
+    sp_attach = git_sub.add_parser(
+        "attach",
+        help="Attach explicit Git commits to an OutputTransition",
+    )
+    sp_attach.add_argument("--output-transition", required=True, dest="output_transition_id")
+    sp_attach.add_argument("--commit", action="append", required=True, dest="commits")
+    sp_attach.add_argument("--run", default=None)
+    sp_attach.add_argument("--store-dir", default=".stag/runs")
+    sp_attach.add_argument("--user", default=None)
+
     # --- status ---
     sp_status = git_sub.add_parser("status", help="Show STAG run and Git repo status")
     sp_status.add_argument("--run", default=None)
@@ -105,6 +116,8 @@ def _run_dir(store: object, run_id: str) -> Path:
 # ---------------------------------------------------------------------------
 
 def cli_git(args) -> int:
+    if args.git_command == "attach":
+        return _cli_git_attach(args)
     if args.git_command == "start":
         return _cli_git_start(args)
     if args.git_command == "finish":
@@ -117,6 +130,41 @@ def cli_git(args) -> int:
         return _cli_git_log(args)
     print(f"unknown git subcommand: {args.git_command}", file=sys.stderr)
     return 1
+
+
+# ---------------------------------------------------------------------------
+# attach
+# ---------------------------------------------------------------------------
+
+def _cli_git_attach(args) -> int:
+    store = resolve_store(args.store_dir)
+    run_id = resolve_run_id_from_args(args)
+    user_id = resolve_user_id_from_args(args)
+
+    if not store.run_path(run_id).exists():
+        print(f"error: unknown run_id: {run_id}", file=sys.stderr)
+        return 1
+
+    handle = store.load_run(run_id)
+    run_dir = _run_dir(store, run_id)
+
+    from stag.core.git.attach import attach_commits_to_output_transition
+
+    try:
+        result = attach_commits_to_output_transition(
+            handle,
+            run_dir,
+            args.output_transition_id,
+            tuple(args.commits),
+            user_id=user_id,
+        )
+    except (KeyError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    store.save_run(handle)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
 
 
 # ---------------------------------------------------------------------------

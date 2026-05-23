@@ -52,6 +52,11 @@ def current_commit(repo_root: str | Path) -> str:
     return _git(["rev-parse", "HEAD"], repo_root)
 
 
+def resolve_commit(repo_root: str | Path, commit: str) -> str:
+    """Return the full SHA for *commit* if it resolves to a commit object."""
+    return _git(["rev-parse", "--verify", f"{commit}^{{commit}}"], repo_root)
+
+
 def current_branch(repo_root: str | Path) -> str | None:
     """Return the current branch name, or None if HEAD is detached.
 
@@ -140,6 +145,28 @@ def commit_log(repo_root: str | Path, base_commit: str) -> list[dict[str, str]]:
     return entries
 
 
+def commit_log_for_commits(repo_root: str | Path, commits: list[str] | tuple[str, ...]) -> list[dict[str, str]]:
+    """Return commit metadata for explicit commit SHAs in the given order."""
+    if not commits:
+        return []
+    rs = "\x1e"
+    entries = []
+    for commit in commits:
+        fmt = f"%H{rs}%s{rs}%aN{rs}%aI"
+        raw = _git(["show", "--no-patch", f"--format={fmt}", commit], repo_root)
+        parts = raw.split(rs, 3)
+        if len(parts) < 4:
+            continue
+        sha, subject, author, date = parts[0], parts[1], parts[2], parts[3]
+        entries.append({
+            "sha": sha.strip(),
+            "subject": subject.strip(),
+            "author": author.strip(),
+            "date": date.strip(),
+        })
+    return entries
+
+
 def diff_shortstat(repo_root: str | Path, base_commit: str) -> dict[str, int]:
     """Return ``git diff --shortstat base_commit..HEAD`` as a dict.
 
@@ -168,6 +195,23 @@ def diff_shortstat(repo_root: str | Path, base_commit: str) -> dict[str, int]:
     return result
 
 
+def diff_shortstat_for_commits(repo_root: str | Path, commits: list[str] | tuple[str, ...]) -> dict[str, int]:
+    """Return aggregate shortstat for explicit commits."""
+    result = {"files_changed": 0, "insertions": 0, "deletions": 0}
+    for commit in commits:
+        raw = _git(["show", "--shortstat", "--format=", commit], repo_root)
+        m = re.search(r"(\d+) files? changed", raw)
+        if m:
+            result["files_changed"] += int(m.group(1))
+        m = re.search(r"(\d+) insertion", raw)
+        if m:
+            result["insertions"] += int(m.group(1))
+        m = re.search(r"(\d+) deletion", raw)
+        if m:
+            result["deletions"] += int(m.group(1))
+    return result
+
+
 def diff_name_only(repo_root: str | Path, base_commit: str) -> list[str]:
     """Return list of changed file paths from ``git diff --name-only base..HEAD``."""
     try:
@@ -175,6 +219,15 @@ def diff_name_only(repo_root: str | Path, base_commit: str) -> list[str]:
     except subprocess.CalledProcessError:
         return []
     return [line for line in raw.splitlines() if line]
+
+
+def diff_name_only_for_commits(repo_root: str | Path, commits: list[str] | tuple[str, ...]) -> list[str]:
+    """Return sorted unique file paths changed by explicit commits."""
+    files: set[str] = set()
+    for commit in commits:
+        raw = _git(["show", "--format=", "--name-only", commit], repo_root)
+        files.update(line for line in raw.splitlines() if line)
+    return sorted(files)
 
 
 def diff_patch(repo_root: str | Path, base_commit: str) -> str:
@@ -187,3 +240,10 @@ def diff_patch(repo_root: str | Path, base_commit: str) -> str:
     except subprocess.CalledProcessError:
         return ""
     return raw
+
+
+def diff_patch_for_commits(repo_root: str | Path, commits: list[str] | tuple[str, ...]) -> str:
+    """Return concatenated patch text for explicit commits."""
+    if not commits:
+        return ""
+    return _git(["show", "--format=medium", "--patch", *commits], repo_root)

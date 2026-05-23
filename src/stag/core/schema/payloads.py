@@ -173,6 +173,7 @@ class GitChangePayload(PayloadBase):
     base_commit: str
     head_commit: str
     branch: str
+    commits: tuple[str, ...] = ()
     commit_log: tuple[CommitEntry, ...] = ()
     diff_summary: DiffSummary = field(
         default_factory=lambda: DiffSummary(files_changed=0, insertions=0, deletions=0)
@@ -194,6 +195,7 @@ class GitChangePayload(PayloadBase):
             "base_commit": self.base_commit,
             "head_commit": self.head_commit,
             "branch": self.branch,
+            "commits": list(self.commits),
             "commit_log": [c.to_dict() for c in self.commit_log],
             "diff_summary": self.diff_summary.to_dict(),
             "changed_files": list(self.changed_files),
@@ -344,6 +346,7 @@ def _git_change_from_dict(data: dict[str, JSONValue]) -> GitChangePayload:
         base_commit=str(data["base_commit"]),
         head_commit=str(data["head_commit"]),
         branch=str(data["branch"]),
+        commits=tuple(str(c) for c in (data.get("commits") or [c.sha for c in commit_log])),
         commit_log=commit_log,
         diff_summary=diff_summary,
         changed_files=tuple(str(f) for f in (data.get("changed_files") or [])),
