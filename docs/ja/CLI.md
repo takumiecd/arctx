@@ -156,6 +156,19 @@ stag cut --output-transition <output_transition_id> [--reason TEXT]
 
 `CutPayload` を attach します。input transition に attach した場合は plan 全体を、output transition に attach した場合はその prediction / result output だけを inactive にします。
 
+### `sync`
+
+```bash
+stag sync init --run local_a --shared-run sr_demo
+stag sync status --run local_a
+stag sync push --run local_a
+stag sync pull --run local_b --shared-run sr_demo
+```
+
+ローカル完結の shared DAG 実験用 command です。既定では `.stag/remotes/local-shared/runs/<shared_run_id>/records.jsonl` を共有append logとして使います。HTTP server や DB は使わず、local run の graph record を shared log に push し、別の local run に pull できます。
+
+`sync init` は `<run>/sync.json` に remote / shared run 設定を書きます。`push` / `pull` / `status` は `--shared-run` を直接指定するか、保存済み設定を使います。
+
 ### `trace`
 
 ```bash

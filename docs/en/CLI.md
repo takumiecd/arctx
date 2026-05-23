@@ -156,6 +156,19 @@ stag cut --output-transition <output_transition_id> [--reason TEXT]
 
 Attaches a `CutPayload`. When attached to an input transition, the entire plan becomes inactive. When attached to an output transition, only that prediction/result output becomes inactive.
 
+### `sync`
+
+```bash
+stag sync init --run local_a --shared-run sr_demo
+stag sync status --run local_a
+stag sync push --run local_a
+stag sync pull --run local_b --shared-run sr_demo
+```
+
+Experimental local-only shared DAG sync. By default it uses `.stag/remotes/local-shared/runs/<shared_run_id>/records.jsonl` as a shared append log. No HTTP server or database is required: one local run can push graph records into the shared log, and another local run can pull them.
+
+`sync init` writes remote / shared-run settings to `<run>/sync.json`. `push`, `pull`, and `status` can either receive `--shared-run` directly or reuse the saved config.
+
 ### `trace`
 
 ```bash

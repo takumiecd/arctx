@@ -20,6 +20,7 @@ from stag.cli.commands.predict import add_parser as add_predict_parser, cli_pred
 from stag.cli.commands.reachable import add_parser as add_reachable_parser, cli_reachable
 from stag.cli.commands.cut import add_parser as add_cut_parser, cli_cut
 from stag.cli.commands.show import add_parser as add_show_parser, cli_show
+from stag.cli.commands.sync import add_parser as add_sync_parser, cli_sync
 from stag.cli.commands.trace import add_parser as add_trace_parser, cli_trace
 from stag.cli.commands.migrate import add_parser as add_migrate_parser, cli_migrate
 from stag.cli.commands.use import add_parser as add_use_parser, cli_use
@@ -49,6 +50,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_reachable_parser(subparsers)
     add_cut_parser(subparsers)
     add_show_parser(subparsers)
+    add_sync_parser(subparsers)
     add_trace_parser(subparsers)
     add_use_parser(subparsers)
     add_view_parser(subparsers)
@@ -98,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_cut(args)
     if args.command == "show":
         return cli_show(args)
+    if args.command == "sync":
+        return cli_sync(args)
     if args.command == "trace":
         return cli_trace(args)
     if args.command == "use":
