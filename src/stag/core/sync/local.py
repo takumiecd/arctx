@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from stag.core import _json as _fast_json
 from stag.core.graph_view import GraphView
 from stag.core.run import RunHandle
 from stag.core.run_graph import RunGraph
@@ -27,9 +26,9 @@ from stag.core.sync.records import (
     flatten_batches,
     local_id_for_body,
     new_shared_id,
-    read_batches,
     records_path,
 )
+from stag.core.sync.shared_store import FileSharedRunStore
 
 
 @dataclass(frozen=True)
@@ -72,9 +71,7 @@ def sync_init(
     )
     run_path.mkdir(parents=True, exist_ok=True)
     _write_json(run_path / "sync.json", cfg.to_dict())
-    path = records_path(remote_dir, remote, shared_run_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch(exist_ok=True)
+    path = FileSharedRunStore(remote_dir).ensure_run(remote, shared_run_id)
     return {
         "run_id": handle.run_id,
         "remote": remote,
@@ -92,7 +89,8 @@ def sync_status(
 ) -> dict[str, Any]:
     """Return local/remote counts and pending push/pull counts."""
     local_records = _local_records(handle)
-    remote_records = flatten_batches(read_batches(remote_dir, remote, shared_run_id))
+    shared_store = FileSharedRunStore(remote_dir)
+    remote_records = flatten_batches(shared_store.read_batches(remote, shared_run_id))
     remote_keys = {body_key(r["record_kind"], r["body"]) for r in remote_records}
     local_keys = {body_key(kind, body) for kind, _, body in local_records}
     return {
@@ -124,9 +122,10 @@ def sync_push(
     actor_type: str = "human",
 ) -> dict[str, Any]:
     """Append local records missing from the file-backed shared run."""
-    path = records_path(remote_dir, remote, shared_run_id)
+    shared_store = FileSharedRunStore(remote_dir)
+    path = shared_store.records_path(remote, shared_run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    remote_batches = read_batches(remote_dir, remote, shared_run_id)
+    remote_batches = shared_store.read_batches(remote, shared_run_id)
     remote_records = flatten_batches(remote_batches)
     remote_by_key = {
         body_key(r["record_kind"], r["body"]): r
@@ -188,10 +187,7 @@ def sync_push(
             remote_by_key[body_key(record["record_kind"], record["body"])] = record
         next_seq += 1
 
-    if pushed_batches:
-        with path.open("a", encoding="utf-8") as fh:
-            for batch in pushed_batches:
-                fh.write(_fast_json.dumps(batch) + "\n")
+    shared_store.append_batches(remote, shared_run_id, pushed_batches)
     if new_mappings:
         append_idmap(
             run_path=run_path,
@@ -217,7 +213,8 @@ def sync_pull(
     remote_dir: str | Path,
 ) -> dict[str, Any]:
     """Apply records missing from the shared run into the local graph."""
-    batches = read_batches(remote_dir, remote, shared_run_id)
+    shared_store = FileSharedRunStore(remote_dir)
+    batches = shared_store.read_batches(remote, shared_run_id)
     pulled = 0
     new_mappings: list[dict[str, str]] = []
     for record in flatten_batches(batches):
