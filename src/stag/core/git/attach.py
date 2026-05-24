@@ -18,6 +18,7 @@ def attach_commits_to_output_transition(
     commits: tuple[str, ...],
     *,
     user_id: str = "user",
+    work_session_id: str | None = None,
 ) -> dict:
     """Attach explicit Git commits as a GitChangePayload."""
     if not commits:
@@ -77,6 +78,16 @@ def attach_commits_to_output_transition(
         metadata={"attached_by": user_id},
     )
     handle.run_graph.attach_payload(gcp)
+    handle.record_work_event(
+        user_id=user_id,
+        work_session_id=work_session_id,
+        event_type="git_change_attached",
+        target_kind="output_transition",
+        target_id=output_transition_id,
+        created_records=(payload_id,),
+        summary=f"{len(resolved)} commit(s)",
+        data={"commits": list(resolved), "branch": branch},
+    )
 
     return {
         "created": {

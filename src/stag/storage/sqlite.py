@@ -594,6 +594,10 @@ def _validate_append_batch(graph: RunGraph, batch: AppendBatch) -> None:
         _validate_note_append(graph, batch)
     if any(event.event_type == "cut_added" for event in batch.events):
         _validate_cut_append(graph, batch)
+    if any(event.event_type == "view_created" for event in batch.events):
+        _validate_view_append(graph, batch)
+    if any(event.event_type == "git_change_attached" for event in batch.events):
+        _validate_git_change_append(graph, batch)
 
 
 def _validate_plan_append(graph: RunGraph, batch: AppendBatch) -> None:
@@ -693,6 +697,39 @@ def _validate_cut_append(graph: RunGraph, batch: AppendBatch) -> None:
                 raise ValueError(f"output_transition already cut: {payload.target_id}")
         else:
             raise ValueError(f"invalid cut target_kind: {payload.target_kind!r}")
+
+
+def _validate_view_append(graph: RunGraph, batch: AppendBatch) -> None:
+    view_records = _batch_records(batch, "view")
+    if not view_records:
+        raise ValueError("view_created batch must contain a GraphView")
+    for envelope in view_records:
+        if not isinstance(envelope.record, GraphView):
+            raise ValueError("view_created batch must contain GraphView records")
+        if envelope.record.root_node_id not in graph.nodes:
+            raise KeyError(f"unknown root_node_id: {envelope.record.root_node_id}")
+
+
+def _validate_git_change_append(graph: RunGraph, batch: AppendBatch) -> None:
+    git_payloads = [
+        envelope.record
+        for envelope in _batch_records(batch, "payload")
+        if getattr(envelope.record, "payload_type", None) == "git_change"
+    ]
+    if not git_payloads:
+        raise ValueError("git_change_attached batch must contain a GitChangePayload")
+    for payload in git_payloads:
+        if payload.target_id not in graph.output_transitions:
+            new_targets = [
+                envelope.record
+                for envelope in _batch_records(batch, "output_transition")
+                if isinstance(envelope.record, OutputTransition)
+                and envelope.record.output_transition_id == payload.target_id
+            ]
+            if not new_targets:
+                raise KeyError(f"unknown output_transition_id: {payload.target_id}")
+        elif is_inactive_output_transition(graph, payload.target_id):
+            raise ValueError(f"output_transition {payload.target_id} is inactive (cut)")
 
 
 def _ensure_active_input_transition(

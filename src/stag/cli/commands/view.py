@@ -5,7 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 
-from stag.cli.context import resolve_store, resolve_run_id_from_args
+from stag.cli.append_batch import graph_counts, maybe_append_or_save
+from stag.cli.context import (
+    resolve_run_id_from_args,
+    resolve_store,
+    resolve_user_id_from_args,
+    resolve_work_session_id_from_args,
+)
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -18,6 +24,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     create.add_argument("--root-node", required=True, dest="root_node")
     create.add_argument("--run", default=None)
     create.add_argument("--store-dir", default=".stag/runs")
+    create.add_argument("--user", default=None)
+    create.add_argument("--work-session", default=None)
 
     # view list
     lst = view_sub.add_parser("list", help="List all GraphViews")
@@ -41,8 +49,26 @@ def cli_view(args) -> int:
     handle = store.load_run(run_id)
 
     if args.view_command == "create":
+        user_id = resolve_user_id_from_args(args)
+        work_session_id = resolve_work_session_id_from_args(args)
+        before = graph_counts(handle)
         view = handle.view_create(args.name, root_node_id=args.root_node)
-        store.save_run(handle)
+        handle.record_work_event(
+            user_id=user_id,
+            work_session_id=work_session_id,
+            event_type="view_created",
+            target_kind="view",
+            target_id=view.view_id,
+            created_records=(view.view_id,),
+            summary=view.name,
+        )
+        maybe_append_or_save(
+            store=store,
+            handle=handle,
+            user_id=user_id,
+            work_session_id=work_session_id,
+            before=before,
+        )
         print(json.dumps(view.to_dict(), ensure_ascii=False, indent=2))
 
     elif args.view_command == "list":

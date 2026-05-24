@@ -11,7 +11,9 @@ from stag.cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
+    resolve_work_session_id_from_args,
 )
+from stag.cli.append_batch import graph_counts, maybe_append_or_save
 from stag.core.git.session import (
     list_sessions,
     load_current_pointer,
@@ -52,6 +54,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_finish.add_argument("--run", default=None)
     sp_finish.add_argument("--store-dir", default=".stag/runs")
     sp_finish.add_argument("--user", default=None)
+    sp_finish.add_argument("--work-session", default=None)
 
     # --- attach ---
     sp_attach = git_sub.add_parser(
@@ -63,6 +66,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_attach.add_argument("--run", default=None)
     sp_attach.add_argument("--store-dir", default=".stag/runs")
     sp_attach.add_argument("--user", default=None)
+    sp_attach.add_argument("--work-session", default=None)
 
     # --- status ---
     sp_status = git_sub.add_parser("status", help="Show STAG run and Git repo status")
@@ -140,6 +144,7 @@ def _cli_git_attach(args) -> int:
     store = resolve_store(args.store_dir)
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)
+    work_session_id = resolve_work_session_id_from_args(args)
 
     if not store.run_path(run_id).exists():
         print(f"error: unknown run_id: {run_id}", file=sys.stderr)
@@ -151,18 +156,26 @@ def _cli_git_attach(args) -> int:
     from stag.core.git.attach import attach_commits_to_output_transition
 
     try:
+        before = graph_counts(handle)
         result = attach_commits_to_output_transition(
             handle,
             run_dir,
             args.output_transition_id,
             tuple(args.commits),
             user_id=user_id,
+            work_session_id=work_session_id,
         )
     except (KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    store.save_run(handle)
+    maybe_append_or_save(
+        store=store,
+        handle=handle,
+        user_id=user_id,
+        work_session_id=work_session_id,
+        before=before,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -196,9 +209,6 @@ def _cli_git_start(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    # Persist updated counters (gs counter)
-    store.save_run(handle)
-
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -211,6 +221,7 @@ def _cli_git_finish(args) -> int:
     store = resolve_store(args.store_dir)
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)
+    work_session_id = resolve_work_session_id_from_args(args)
 
     if not store.run_path(run_id).exists():
         print(f"error: unknown run_id: {run_id}", file=sys.stderr)
@@ -239,12 +250,14 @@ def _cli_git_finish(args) -> int:
 
         from stag.core.git.finish import git_finish_form_b
         try:
+            before = graph_counts(handle)
             result = git_finish_form_b(
                 handle,
                 run_dir,
                 session_id,
                 output_transition_id=args.output_transition_id,
                 user_id=user_id,
+                work_session_id=work_session_id,
             )
         except (KeyError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -259,6 +272,7 @@ def _cli_git_finish(args) -> int:
 
         from stag.core.git.finish import git_finish_form_a
         try:
+            before = graph_counts(handle)
             result = git_finish_form_a(
                 handle,
                 run_dir,
@@ -272,12 +286,19 @@ def _cli_git_finish(args) -> int:
                 errors_list=tuple(getattr(args, "error", None) or []),
                 matched_prediction_output_id=getattr(args, "matched_prediction_output_id", None),
                 user_id=user_id,
+                work_session_id=work_session_id,
             )
         except (KeyError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
 
-    store.save_run(handle)
+    maybe_append_or_save(
+        store=store,
+        handle=handle,
+        user_id=user_id,
+        work_session_id=work_session_id,
+        before=before,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +15,7 @@ from stag.cli.commands.note import run_note_command
 from stag.cli.commands.observe import run_observe_command
 from stag.cli.commands.plan import run_plan_command
 from stag.cli.commands.predict import run_predict_command
+from stag.cli.commands.view import cli_view
 from stag.cli.context import resolve_store
 from stag.core.run.dump import DumpOptions, dump
 
@@ -180,3 +182,35 @@ def test_sqlite_mutating_commands_use_append_batches(monkeypatch):
         assert [event.seq for event in handle.run_graph.work_events] == list(range(1, 8))
         assert anchor["input_transition_id"] in handle.run_graph.input_transitions
         assert anchor["output_transition_id"] in handle.run_graph.output_transitions
+
+
+def test_sqlite_view_create_uses_append_batch(monkeypatch, capsys):
+    monkeypatch.setenv("STAG_STORE", "sqlite")
+    with tempfile.TemporaryDirectory() as td:
+        result = run_init_command(
+            requirement_id="r1",
+            target_type="task",
+            target_id="t1",
+            run_id="run_view_append",
+            store_dir=td,
+        )
+
+        rc = cli_view(
+            SimpleNamespace(
+                view_command="create",
+                name="review",
+                root_node=result["root_node_id"],
+                run=result["run_id"],
+                store_dir=td,
+                user="alice",
+                work_session="ws_view",
+            )
+        )
+        assert rc == 0
+        capsys.readouterr()
+
+        store = resolve_store(td)
+        handle = store.load_run(result["run_id"])
+        assert "review" in handle.run_graph.views
+        assert handle.run_graph.work_events[-1].event_type == "view_created"
+        assert handle.run_graph.work_events[-1].seq == 1

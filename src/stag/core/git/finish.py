@@ -136,6 +136,7 @@ def git_finish_form_a(
     errors_list: tuple[str, ...] = (),
     matched_prediction_output_id: str | None = None,
     user_id: str = "user",
+    work_session_id: str | None = None,
 ) -> dict:
     """Form A: create new OT + ResultPayload + GitChangePayload.
 
@@ -266,7 +267,12 @@ def git_finish_form_a(
         metadata=meta,
     )
     # observe() will mint new node + OT + ResultPayload internally
-    ot = handle.observe(it_id, result_template, user_id=user_id)
+    ot = handle.observe(
+        it_id,
+        result_template,
+        user_id=user_id,
+        work_session_id=work_session_id,
+    )
     result_pl_id = handle.run_graph.payloads_by_output_transition[ot.output_transition_id][-1]
 
     # Now attach GitChangePayload with the pre-minted id
@@ -284,6 +290,16 @@ def git_finish_form_a(
         patch_artifact=patch_artifact,
     )
     handle.run_graph.attach_payload(gcp)
+    handle.record_work_event(
+        user_id=user_id,
+        work_session_id=work_session_id,
+        event_type="git_change_attached",
+        target_kind="output_transition",
+        target_id=ot.output_transition_id,
+        created_records=(git_payload_id_tentative,),
+        summary=f"{len(gdata['commit_log'])} commit(s)",
+        data={"head_commit": head_commit, "branch": branch},
+    )
 
     # Step 7: close session
     from datetime import datetime, timezone
@@ -341,6 +357,7 @@ def git_finish_form_b(
     *,
     output_transition_id: str,
     user_id: str = "user",
+    work_session_id: str | None = None,
 ) -> dict:
     """Form B: attach GitChangePayload to an existing observed OT.
 
@@ -471,6 +488,16 @@ def git_finish_form_b(
         patch_artifact=patch_artifact,
     )
     handle.run_graph.attach_payload(gcp)
+    handle.record_work_event(
+        user_id=user_id,
+        work_session_id=work_session_id,
+        event_type="git_change_attached",
+        target_kind="output_transition",
+        target_id=output_transition_id,
+        created_records=(git_payload_id,),
+        summary=f"{len(gdata['commit_log'])} commit(s)",
+        data={"head_commit": head_commit, "branch": branch},
+    )
 
     # Close session
     from datetime import datetime, timezone
