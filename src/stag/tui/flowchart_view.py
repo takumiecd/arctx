@@ -8,7 +8,7 @@ from textual.widgets import Static
 from textual.message import Message
 from textual.events import Click, MouseDown, MouseMove, MouseUp
 
-from stag.tui.flowchart import ClickRegion, render_flowchart
+from stag.tui.flowchart import ClickRegion, navigate_selection, render_flowchart
 
 
 class FlowchartItemClicked(Message):
@@ -72,10 +72,10 @@ class FlowchartView(ScrollableContainer, can_focus=True):
     # ------------------------------------------------------------------
 
     def show(self, handle, center_node_id: str, depth: int | None = None) -> None:
-        """Load a run and render from center_node_id."""
+        """Load a run and render from center_node_id with center auto-selected."""
         self._handle = handle
         self._center_node_id = center_node_id
-        self._selected = None
+        self._selected = ("node", center_node_id)
         if depth is not None:
             self._depth = depth
         else:
@@ -173,14 +173,37 @@ class FlowchartView(ScrollableContainer, can_focus=True):
     # Keyboard scrolling
     # ------------------------------------------------------------------
 
-    def scroll_arrow(self, direction: str) -> None:
-        """Scroll one step in the given direction. Called from app-level bindings."""
-        if direction == "up":
-            self.scroll_relative(y=-2, animate=False)
-        elif direction == "down":
-            self.scroll_relative(y=2, animate=False)
-        elif direction == "left":
-            self.scroll_relative(x=-4, animate=False)
-        elif direction == "right":
-            self.scroll_relative(x=4, animate=False)
+    def navigate(self, direction: str) -> None:
+        """Move the selection in the given direction and update detail / scroll.
+
+        direction in {"up", "down", "left", "right"}.
+        """
+        if self._handle is None or self._center_node_id is None:
+            return
+        nxt = navigate_selection(
+            self._handle, self._center_node_id, self._depth, self._selected, direction
+        )
+        if nxt is None:
+            return
+        self._selected = nxt
+        self._refresh_lines()
+        self._scroll_to_selection()
+        self.post_message(FlowchartItemClicked(nxt[0], nxt[1]))
+
+    def _scroll_to_selection(self) -> None:
+        """Scroll so the currently selected item's row is visible."""
+        if not self._selected or not self._click_map:
+            return
+        kind, rid = self._selected
+        rows = [r.row for r in self._click_map if r.kind == kind and r.raw_id == rid]
+        if not rows:
+            return
+        target_row = rows[len(rows) // 2]  # middle row of multi-row regions (e.g. node boxes)
+        viewport_h = self.size.height or 20
+        scroll_y = self.scroll_y
+        # If above viewport, scroll up; if below, scroll down so it's centered-ish.
+        if target_row < scroll_y + 2:
+            self.scroll_to(self.scroll_x, max(0, target_row - 2), animate=False)
+        elif target_row > scroll_y + viewport_h - 3:
+            self.scroll_to(self.scroll_x, target_row - viewport_h + 3, animate=False)
 

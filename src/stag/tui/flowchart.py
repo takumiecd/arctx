@@ -39,6 +39,108 @@ class ClickRegion:
     raw_id: str
 
 
+def _compute_layers(
+    handle: RunHandle, center_node_id: str, depth: int
+) -> tuple[dict[tuple[str, str], int], dict[int, list[tuple[str, str]]]]:
+    """BFS the subgraph from *center_node_id* and assign layer indices.
+
+    Returns (layers, by_layer) where layers maps (kind, raw_id) -> layer_idx and
+    by_layer maps layer_idx -> ordered list of items.
+    """
+    graph = handle.run_graph
+    layers: dict[tuple[str, str], int] = {}
+    queue: deque[tuple[str, str, int]] = deque()
+    queue.append(("node", center_node_id, 0))
+
+    while queue:
+        kind, rid, layer = queue.popleft()
+        key = (kind, rid)
+        if key in layers:
+            continue
+        if abs(layer) > depth:
+            continue
+        layers[key] = layer
+
+        if kind == "node":
+            for tid in graph.transitions_from_node(rid):
+                queue.append(("transition", tid, layer + 1))
+            for tid in graph.transitions_to_node(rid):
+                queue.append(("transition", tid, layer - 1))
+        else:
+            for nid in graph.transition_outputs(rid):
+                queue.append(("node", nid, layer + 1))
+            for nid in graph.transition_inputs(rid):
+                queue.append(("node", nid, layer - 1))
+
+    by_layer: dict[int, list[tuple[str, str]]] = {}
+    for (kind, rid), layer in layers.items():
+        by_layer.setdefault(layer, []).append((kind, rid))
+    return layers, by_layer
+
+
+def _connected(handle: RunHandle, upper: tuple[str, str], lower: tuple[str, str]) -> bool:
+    """True iff there is a direct edge from *upper* (at layer L) to *lower* (at layer L+1)."""
+    graph = handle.run_graph
+    u_kind, u_id = upper
+    l_kind, l_id = lower
+    if u_kind == "node" and l_kind == "transition":
+        return u_id in graph.transition_inputs(l_id)
+    if u_kind == "transition" and l_kind == "node":
+        return graph.transition_output(u_id) == l_id
+    return False
+
+
+def navigate_selection(
+    handle: RunHandle,
+    center_node_id: str,
+    depth: int,
+    current: tuple[str, str] | None,
+    direction: str,
+) -> tuple[str, str] | None:
+    """Return the next (kind, raw_id) when moving *direction* from *current*.
+
+    direction is one of {"up", "down", "left", "right"}.
+    Returns None when movement is not possible (edge of layout / no edge).
+    Falls back to the center node when *current* is None or out of layout.
+    """
+    if center_node_id not in handle.run_graph.nodes:
+        return None
+    layers, by_layer = _compute_layers(handle, center_node_id, depth)
+    if not layers:
+        return None
+
+    center_item = ("node", center_node_id)
+    if current is None or current not in layers:
+        return center_item if center_item in layers else None
+
+    cur_layer = layers[current]
+    cur_items = by_layer[cur_layer]
+    try:
+        cur_idx = cur_items.index(current)
+    except ValueError:
+        return center_item
+
+    if direction == "left":
+        if cur_idx > 0:
+            return cur_items[cur_idx - 1]
+        return None
+    if direction == "right":
+        if cur_idx + 1 < len(cur_items):
+            return cur_items[cur_idx + 1]
+        return None
+    if direction == "down":
+        for cand in by_layer.get(cur_layer + 1, []):
+            if _connected(handle, current, cand):
+                return cand
+        return None
+    if direction == "up":
+        for cand in by_layer.get(cur_layer - 1, []):
+            if _connected(handle, cand, current):
+                return cand
+        return None
+    return None
+
+
 def _build_labels(handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
     graph = handle.run_graph
     root_id = handle.root_node_id

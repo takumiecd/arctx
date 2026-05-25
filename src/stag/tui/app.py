@@ -201,7 +201,7 @@ class StagApp(App):
 
     def action_flowchart_scroll(self, direction: str) -> None:
         fv = self.query_one("#flowchart-view", FlowchartView)
-        fv.scroll_arrow(direction)
+        fv.navigate(direction)
 
     def action_recenter_flowchart(self) -> None:
         if self._current_handle is None:
