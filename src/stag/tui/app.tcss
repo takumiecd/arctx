@@ -1,0 +1,88 @@
+/* STAG TUI stylesheet */
+
+Screen {
+    layout: horizontal;
+}
+
+/* ---------- Sidebar (runs list) ---------- */
+#sidebar {
+    width: 28;
+    border-right: solid $boost;
+    overflow-y: auto;
+}
+
+#sidebar-title {
+    background: $boost;
+    color: $text;
+    text-align: center;
+    padding: 0 1;
+    height: 1;
+}
+
+#runs-list {
+    overflow-y: auto;
+    height: 1fr;
+}
+
+/* ---------- DAG tree pane ---------- */
+#dag-pane {
+    width: 2fr;
+    border-right: solid $boost;
+}
+
+#dag-pane-title {
+    background: $boost;
+    color: $text;
+    text-align: center;
+    padding: 0 1;
+    height: 1;
+}
+
+#dag-tree {
+    height: 1fr;
+    overflow-y: auto;
+}
+
+/* ---------- Detail pane ---------- */
+#detail-pane {
+    width: 1fr;
+    overflow: hidden;
+}
+
+#detail-pane-title {
+    background: $boost;
+    color: $text;
+    text-align: center;
+    padding: 0 1;
+    height: 1;
+}
+
+#detail-markdown {
+    height: 1fr;
+    overflow-y: auto;
+    padding: 0 1;
+}
+
+#flowchart-view {
+    height: 1fr;
+    display: none;
+    overflow: auto auto;
+}
+
+/* ---------- Focus highlight ---------- */
+#sidebar:focus-within {
+    border-right: solid $accent;
+}
+
+#dag-pane:focus-within {
+    border-right: solid $accent;
+}
+
+/* ---------- List items ---------- */
+ListView > ListItem {
+    padding: 0 1;
+}
+
+ListView > ListItem.--highlight {
+    background: $accent 30%;
+}
