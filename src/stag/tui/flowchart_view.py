@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from textual.containers import ScrollableContainer
+from textual.widgets import Static
 from textual.message import Message
-from textual.widget import Widget
 from textual.events import Click, MouseDown, MouseMove, MouseUp
 
 from stag.tui.flowchart import ClickRegion, render_flowchart
@@ -22,18 +23,27 @@ class FlowchartItemClicked(Message):
 _DRAG_THRESHOLD = 2
 
 
-class FlowchartView(Widget, can_focus=True):
+class FlowchartView(ScrollableContainer, can_focus=True):
     """Scrollable, clickable, drag-pannable flowchart widget.
+
+    Uses a ScrollableContainer + Static child so Textual handles scrollbars and
+    wheel scrolling automatically. The Static child holds the rendered markup;
+    its natural size drives the virtual content area.
 
     - mouse wheel / arrow keys: scroll
     - left-button drag: pan
     - left-button click (no drag): post FlowchartItemClicked on the hit region
+    - 0 key (in app): recenter via recenter_to()
     """
 
     DEFAULT_CSS = """
     FlowchartView {
-        overflow: auto auto;
         background: $surface;
+        scrollbar-size: 1 1;
+    }
+    FlowchartView > Static#flowchart-canvas {
+        width: auto;
+        height: auto;
     }
     """
 
@@ -48,17 +58,27 @@ class FlowchartView(Widget, can_focus=True):
         ("end", "scroll_end", "Bottom"),
     ]
 
-    _depth: int = 2
-    _handle = None
-    _center_node_id: str | None = None
-    _selected: tuple[str, str] | None = None
-    _drag_origin: tuple[int, int] | None = None
-    _drag_scroll_start: tuple[float, float] | None = None
-    _drag_moved: bool = False
-    _lines: list[str] = []
-    _click_map: list[ClickRegion] = []
+    def __init__(self, **kw) -> None:
+        super().__init__(**kw)
+        self._canvas = Static("", id="flowchart-canvas", markup=True)
+        self._handle = None
+        self._center_node_id: str | None = None
+        self._selected: tuple[str, str] | None = None
+        self._depth: int = 2
+        self._click_map: list[ClickRegion] = []
+        self._drag_origin: tuple[int, int] | None = None
+        self._drag_scroll_start: tuple[float, float] | None = None
+        self._drag_moved: bool = False
+
+    def compose(self):
+        yield self._canvas
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def show(self, handle, center_node_id: str, depth: int | None = None) -> None:
+        """Load a run and render from center_node_id."""
         self._handle = handle
         self._center_node_id = center_node_id
         self._selected = None
@@ -69,11 +89,31 @@ class FlowchartView(Widget, can_focus=True):
         self._refresh_lines()
 
     def set_selected(self, kind: str | None, raw_id: str | None) -> None:
+        """Update the selection highlight without changing the center."""
         if kind is None or raw_id is None:
             self._selected = None
         else:
             self._selected = (kind, raw_id)
         self._refresh_lines()
+
+    def adjust_depth(self, delta: int) -> None:
+        self._depth = max(1, min(6, self._depth + delta))
+        self._refresh_lines()
+
+    def recenter_to(self, node_id: str | None = None) -> None:
+        """Recenter the flowchart on node_id (or the current center) and scroll home."""
+        if node_id is not None and node_id != self._center_node_id:
+            self._center_node_id = node_id
+            self._refresh_lines()
+        self.scroll_home(animate=False)
+
+    # Legacy alias used by app.py before this fix.
+    def recenter(self) -> None:
+        self.scroll_home(animate=False)
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
 
     def _auto_depth(self) -> int:
         h = self.size.height or 24
@@ -86,19 +126,8 @@ class FlowchartView(Widget, can_focus=True):
         lines, regions = render_flowchart(
             self._handle, self._center_node_id, self._depth, selected=self._selected
         )
-        self._lines = lines
         self._click_map = regions
-        self.refresh()
-
-    def render(self) -> str:
-        return "\n".join(self._lines) if self._lines else " "
-
-    def adjust_depth(self, delta: int) -> None:
-        self._depth = max(1, min(6, self._depth + delta))
-        self._refresh_lines()
-
-    def recenter(self) -> None:
-        self.scroll_home(animate=False)
+        self._canvas.update("\n".join(lines) if lines else " ")
 
     # ------------------------------------------------------------------
     # Mouse: drag-pan + click (mutually exclusive based on movement)
@@ -136,6 +165,8 @@ class FlowchartView(Widget, can_focus=True):
             self._drag_moved = False
             event.stop()
             return
+        # Translate widget-relative click coordinates into content coordinates
+        # by adding current scroll offset.
         content_x = event.x + int(self.scroll_x)
         content_y = event.y + int(self.scroll_y)
         for region in self._click_map:
@@ -145,7 +176,8 @@ class FlowchartView(Widget, can_focus=True):
                 return
 
     # ------------------------------------------------------------------
-    # Keyboard scrolling
+    # Keyboard scrolling (ScrollableContainer has built-ins but these
+    # override to give fine-grained control consistent with the old widget).
     # ------------------------------------------------------------------
 
     def action_scroll_up(self) -> None:

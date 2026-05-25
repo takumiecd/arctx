@@ -206,3 +206,98 @@ def test_mermaid_in_tui_scenario():
     handle = _make_handle()
     out = render_mermaid(handle, DumpOptions())
     assert "flowchart TD" in out
+
+
+# ---------------------------------------------------------------------------
+# Issue 1: node click must not recenter
+# ---------------------------------------------------------------------------
+
+
+def test_node_click_calls_set_selected_not_show():
+    """on_flowchart_item_clicked for a node must call set_selected, not show.
+
+    We verify by inspecting the app source: the node-click branch should NOT
+    call fv.show(). This is a structural check so it catches regressions without
+    needing a running Textual runtime.
+    """
+    import ast
+    import pathlib
+
+    src = pathlib.Path("src/stag/tui/app.py").read_text()
+    tree = ast.parse(src)
+
+    # Find on_flowchart_item_clicked method body.
+    handler_body_src = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "on_flowchart_item_clicked":
+            handler_body_src = ast.unparse(node)
+            break
+
+    assert handler_body_src is not None, "on_flowchart_item_clicked not found in app.py"
+
+    # The handler must call set_selected.
+    assert "set_selected" in handler_body_src, (
+        "on_flowchart_item_clicked must call fv.set_selected() for node clicks"
+    )
+
+    # The handler must NOT branch on event.kind == "node" to call fv.show().
+    # Specifically: fv.show(..., event.raw_id) after an isinstance/kind check should be absent.
+    # We look for fv.show being called inside an if-branch that checks event.kind.
+    # A simpler proxy: the string 'fv.show' must not appear in the handler body.
+    assert "fv.show" not in handler_body_src, (
+        "on_flowchart_item_clicked must not call fv.show() — node click should only set_selected"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Issues 2 & 3: junction glyphs must be correct for 1->2 branch
+# ---------------------------------------------------------------------------
+
+
+def _make_branching_handle():
+    """Root -> T1 -> N1, Root -> T2 -> N2 — two transitions from root."""
+    from stag import init
+    from stag.core.schema.payloads import TransitionPayload
+    from stag.core.schema.requirements import Requirement
+
+    req = Requirement(requirement_id="r", target_type="task", target_id="t")
+    run = init(req, run_id="branch_test")
+    tp = lambda t: TransitionPayload(payload_id="_", target_id="_", type=t)
+
+    # Two separate transitions from root produce two children at the same layer.
+    [t1] = run.transition([run.root_node_id], tp("left"))
+    [t2] = run.transition([run.root_node_id], tp("right"))
+    return run
+
+
+def test_flowchart_junctions_use_proper_glyphs():
+    """When a node fans out to two transitions, connector junction must use ┴/┬/┌/┐, not └/┘ mid-line."""
+    from stag.tui.flowchart import render_flowchart
+
+    handle = _make_branching_handle()
+    lines, _ = render_flowchart(handle, handle.root_node_id, depth=2)
+    plain = re.sub(r"\[[^\]]*\]", "", "\n".join(lines))
+
+    # There must be horizontal connector characters somewhere (we have at least one
+    # non-straight connection in a fan-out topology when items are in different columns).
+    has_horizontal = "─" in plain
+    has_junction = any(ch in plain for ch in ("┴", "┬", "┌", "┐", "┼", "├", "┤"))
+
+    if has_horizontal:
+        # If there is a horizontal segment, there must also be proper corner/junction glyphs.
+        assert has_junction, (
+            f"Horizontal connector found but no junction glyphs (┴┬┌┐┼├┤). "
+            f"Likely a bare └ or ┘ in the middle of a horizontal run.\nPlain:\n{plain}"
+        )
+
+    # There must be no standalone └ or ┘ at a position that has a horizontal
+    # neighbour on BOTH sides (that would be a T-junction rendered as a corner).
+    for line in plain.splitlines():
+        for i, ch in enumerate(line):
+            if ch in ("└", "┘"):
+                left_has_horiz = i > 0 and line[i - 1] == "─"
+                right_has_horiz = i < len(line) - 1 and line[i + 1] == "─"
+                assert not (left_has_horiz and right_has_horiz), (
+                    f"Found {ch!r} at col {i} with '─' on both sides — should be ┴ or ┬.\n"
+                    f"Line: {line!r}"
+                )

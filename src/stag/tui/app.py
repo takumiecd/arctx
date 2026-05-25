@@ -142,12 +142,8 @@ class StagApp(App):
         self._set_markdown(md)
 
         fv = self.query_one("#flowchart-view", FlowchartView)
-        if event.kind == "node":
-            # Clicking a node recenters the flowchart on it and clears any prior selection.
-            fv.show(self._current_handle, event.raw_id)
-        else:
-            # Transition click: keep current center, just highlight the transition.
-            fv.set_selected(event.kind, event.raw_id)
+        # Keep the center stable on all clicks; just update selection highlight.
+        fv.set_selected(event.kind, event.raw_id)
 
     # ------------------------------------------------------------------
     # Detail pane helpers
@@ -201,6 +197,10 @@ class StagApp(App):
         if self._current_handle is None:
             return
         fv = self.query_one("#flowchart-view", FlowchartView)
-        # Recenter to initial root node and scroll home.
-        fv.show(self._current_handle, self._current_handle.root_node_id)
-        fv.recenter()
+        # Recenter on the currently selected node, or fall back to root.
+        selected = self._selected
+        if selected is not None and selected[0] == "node":
+            target_node_id = selected[1]
+        else:
+            target_node_id = self._current_handle.root_node_id
+        fv.recenter_to(target_node_id)

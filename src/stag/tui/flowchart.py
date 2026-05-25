@@ -216,13 +216,33 @@ def _build_markup_lines(
 
     total_rows = layer_start_row(max_layer) + BAND_H
 
-    # Build a plain-text connector buffer.
-    conn_buf: list[list[str]] = [[" "] * total_cols for _ in range(total_rows)]
+    # Build connectors using a per-cell directions bitmap.
+    # Directions: N=1, E=2, S=4, W=8
+    _N, _E, _S, _W = 1, 2, 4, 8
+    _GLYPH: dict[int, str] = {
+        0:        " ",
+        _N:       "│",
+        _S:       "│",
+        _E:       "─",
+        _W:       "─",
+        _N | _S:  "│",
+        _E | _W:  "─",
+        _N | _E:  "└",
+        _N | _W:  "┘",
+        _S | _E:  "┌",
+        _S | _W:  "┐",
+        _N | _E | _S:       "├",
+        _N | _W | _S:       "┤",
+        _N | _E | _W:       "┴",
+        _S | _E | _W:       "┬",
+        _N | _S | _E | _W:  "┼",
+    }
 
-    def conn_set(r: int, c: int, ch: str) -> None:
+    dirs: dict[tuple[int, int], int] = {}
+
+    def add_dir(r: int, c: int, d: int) -> None:
         if 0 <= r < total_rows and 0 <= c < total_cols:
-            if ch != " " or conn_buf[r][c] == " ":
-                conn_buf[r][c] = ch
+            dirs[(r, c)] = dirs.get((r, c), 0) | d
 
     # Draw connectors for each adjacent layer pair.
     for layer_idx in range(min_layer, max_layer):
@@ -231,6 +251,7 @@ def _build_markup_lines(
 
         upper_row_end = layer_start_row(layer_idx) + BAND_H - 1
         lower_row_start = layer_start_row(layer_idx + 1)
+        junction_row = (upper_row_end + lower_row_start) // 2
 
         for u_item in upper_items:
             u_kind, u_rid = u_item
@@ -250,24 +271,52 @@ def _build_markup_lines(
                 if connected:
                     connected_lower.append(l_item)
 
+            if not connected_lower:
+                continue
+
+            # Vertical segment from upper bottom to junction row at u_col.
+            for r in range(upper_row_end, junction_row):
+                add_dir(r, u_col, _N | _S)
+            # At junction row the upper column receives N (from above).
+            add_dir(junction_row, u_col, _N)
+
             for l_item in connected_lower:
                 l_col = col_centers.get(l_item, 0)
 
-                for r in range(upper_row_end, lower_row_start + 1):
-                    conn_set(r, u_col, "│")
-
-                if u_col != l_col:
-                    gap_mid = (upper_row_end + lower_row_start) // 2
+                if u_col == l_col:
+                    # Straight vertical: mark S at junction and N|S downward.
+                    add_dir(junction_row, u_col, _S)
+                    for r in range(junction_row + 1, lower_row_start + 1):
+                        add_dir(r, l_col, _N | _S)
+                else:
+                    # Horizontal run at junction_row between u_col and l_col.
                     lo_col = min(u_col, l_col)
                     hi_col = max(u_col, l_col)
-                    for c in range(lo_col, hi_col + 1):
-                        conn_set(gap_mid, c, "─")
-                    if u_col < l_col:
-                        conn_set(gap_mid, u_col, "└")
+
+                    # Inner cells: pure horizontal.
+                    for c in range(lo_col + 1, hi_col):
+                        add_dir(junction_row, c, _E | _W)
+
+                    # u_col junction: add direction toward l_col.
+                    if l_col > u_col:
+                        add_dir(junction_row, u_col, _E)
                     else:
-                        conn_set(gap_mid, u_col, "┘")
-                    for r in range(gap_mid, lower_row_start + 1):
-                        conn_set(r, l_col, "│")
+                        add_dir(junction_row, u_col, _W)
+
+                    # l_col endpoint: comes from u_col side + goes down.
+                    if l_col > u_col:
+                        add_dir(junction_row, l_col, _W | _S)
+                    else:
+                        add_dir(junction_row, l_col, _E | _S)
+
+                    # Vertical from junction_row down to lower band.
+                    for r in range(junction_row + 1, lower_row_start + 1):
+                        add_dir(r, l_col, _N | _S)
+
+    # Convert directions bitmap to connector characters.
+    conn_buf: list[list[str]] = [[" "] * total_cols for _ in range(total_rows)]
+    for (r, c), d in dirs.items():
+        conn_buf[r][c] = _GLYPH.get(d, "?")
 
     # Accumulate per-row markup placements and click regions from content bands.
     # row_markup[r] = list of (col, markup_string, visible_len, kind, raw_id)
