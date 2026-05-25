@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 
 import pytest
 
+from stag.cli.commands.cut import run_cut_command
+from stag.cli.commands.dump import run_dump_command
+from stag.cli.commands.guide import run_guide_command, run_guide_list
 from stag.cli.commands.init import run_init_command
 from stag.cli.commands.list import run_list_command
 from stag.cli.commands.payload import run_payload_add_command, run_payload_list_command
 from stag.cli.commands.transition import run_transition_command
-from stag.cli.commands.cut import run_cut_command
-from stag.cli.commands.dump import run_dump_command
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -212,3 +211,29 @@ def test_dump_mermaid():
         )
         assert "```mermaid" in out
         assert "flowchart TD" in out
+
+
+# ---------------------------------------------------------------------------
+# stag guide
+# ---------------------------------------------------------------------------
+
+
+def test_guide_uses_current_cli_commands():
+    result = run_guide_command(lang="en", topic="overview")
+    guide = result["guide"]
+    assert "stag transition create" in guide
+    assert "stag payload add" in guide
+    assert "stag graph dump" in guide
+    assert "stag attach" not in guide
+
+
+def test_guide_ja_topics_are_localized():
+    result = run_guide_command(lang="ja", topic="record")
+    assert "1 つの実験を記録する" in result["guide"]
+    assert "stag transition create" in result["guide"]
+
+
+def test_guide_list_uses_selected_language_summaries():
+    result = run_guide_list(lang="ja")
+    summaries = {entry["id"]: entry["summary"] for entry in result["topics"]}
+    assert summaries["record"] == "1 つの実験を記録する基本フロー"

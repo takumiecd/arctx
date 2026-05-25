@@ -29,9 +29,11 @@ Common commands:
 
 ```bash
 stag init req_demo --run-id demo
-stag transition --run demo --inputs <node_id> --type experiment --content '{"name": "baseline"}'
-stag attach --run demo --node <node_id> --type note --content '{"text": "context here"}'
-stag dump --run demo
+stag transition create --run demo --from <node_id> \\
+  --payload-type transition_payload --field type=experiment --field name=baseline
+stag payload add --run demo --node <node_id> \\
+  --payload-type node_payload --field type=note --field text="context here"
+stag graph dump --run demo
 ```
 """,
     "agent": """\
@@ -39,23 +41,26 @@ stag dump --run demo
 
 - Treat Node and Transition IDs as opaque.
 - Put domain meaning in payloads (TransitionPayload / NodePayload), not in graph fields.
-- Use `stag transition` to record attempts. Use `stag attach` for node annotations.
-- Use `stag dump` when you need broad context.
+- Use `stag transition create` to record attempts.
+- Use `stag payload add` for node or transition annotations.
+- Use `stag graph dump` when you need broad context.
 - Use CutPayload through `stag cut` instead of deleting records.
 """,
     "dump": """\
 # Dump
 
-`stag dump` renders the active graph in outline or mermaid form. Each Transition
-has exactly one output Node. Cut records render with `✂`; revisited nodes with `↻`.
+`stag graph dump` renders the active graph in outline or mermaid form. Each
+Transition has exactly one output Node. Cut records render with `✂`; revisited
+nodes with `↻`.
 """,
     "record": """\
 # Record One Experiment
 
 ```bash
 stag init req_demo --run-id demo
-stag transition --run demo --inputs <root_node_id> --type experiment --content '{"name": "run1"}'
-stag show --run demo --transition <transition_id> --with-payloads
+stag transition create --run demo --from <root_node_id> \\
+  --payload-type transition_payload --field type=experiment --field name=run1
+stag transition show --run demo <transition_id> --with-payloads
 ```
 """,
     "payloads": """\
@@ -77,19 +82,18 @@ an append-only CutPayload. Records are not deleted; inactive branches are comput
     "joins": """\
 # Joins (Multi-input Transitions)
 
-Pass multiple `--inputs` values to `stag transition` to create a Transition with
-multiple input nodes but still exactly one output node.
+Pass multiple `--from` values to `stag transition create` to create a
+Transition with multiple input nodes but still exactly one output node.
 """,
     "git": """\
 # Git
 
-Git sessions attach commit and diff information to a Transition.
+Git commands attach commit information to a Transition.
 
 ```bash
-stag git start <transition_id>
-stag git finish <session_id>
-stag git diff --transition <transition_id>
-stag git log --transition <transition_id>
+stag git add --run demo --transition <transition_id> --commit <sha>
+stag git list --run demo --transition <transition_id>
+stag git show --run demo --transition <transition_id>
 ```
 """,
 }
@@ -114,22 +118,79 @@ GitChangePayload / CutPayload が、Node や Transition に意味を付けます
 ```text
 init -> transition -> dump
 ```
+
+よく使うコマンド:
+
+```bash
+stag init req_demo --run-id demo
+stag transition create --run demo --from <node_id> \\
+  --payload-type transition_payload --field type=experiment --field name=baseline
+stag payload add --run demo --node <node_id> \\
+  --payload-type node_payload --field type=note --field text="context here"
+stag graph dump --run demo
+```
 """,
     "agent": """\
 # Agent Rules
 
 - Node / Transition ID は opaque として扱う。
 - ドメイン上の意味は graph record ではなく payload に入れる。
-- 作業の記録は `stag transition`、ノードへの注釈は `stag attach`。
-- 広い文脈確認は `stag dump` を使う。
+- 作業の記録は `stag transition create` を使う。
+- Node / Transition への注釈は `stag payload add` を使う。
+- 広い文脈確認は `stag graph dump` を使う。
 - 履歴は削除せず、`stag cut` で CutPayload を追加する。
 """,
-    "dump": TOPICS_EN["dump"],
-    "record": TOPICS_EN["record"],
-    "payloads": TOPICS_EN["payloads"],
-    "cut": TOPICS_EN["cut"],
-    "joins": TOPICS_EN["joins"],
-    "git": TOPICS_EN["git"],
+    "dump": """\
+# Dump
+
+`stag graph dump` は active graph を outline または mermaid 形式で表示します。
+各 Transition は必ず 1 つの output Node を持ちます。Cut 済みレコードは `✂`、
+再訪した Node は `↻` で表示されます。
+""",
+    "record": """\
+# 1 つの実験を記録する
+
+```bash
+stag init req_demo --run-id demo
+stag transition create --run demo --from <root_node_id> \\
+  --payload-type transition_payload --field type=experiment --field name=run1
+stag transition show --run demo <transition_id> --with-payloads
+```
+""",
+    "payloads": """\
+# Payloads
+
+- TransitionPayload は Transition に付けます。`type` で作業ステップの種類を表します。
+- NodePayload は Node に付けます。`type` で注釈の種類を表します。
+- GitChangePayload は Transition に付け、commit 情報を保持します。
+- CutPayload は Node または Transition に付け、inactive として扱うために使います。
+
+独自の PayloadBase サブクラスは `register_payload_class()` で登録できます。
+""",
+    "cut": """\
+# Cut
+
+`stag cut node <node_id>` または `stag cut transition <transition_id>` は
+append-only な CutPayload を追加します。レコードは削除されません。inactive な
+branch は読み取り時に計算されます。
+""",
+    "joins": """\
+# Joins (Multi-input Transitions)
+
+`stag transition create` に複数の `--from` を渡すと、複数 input node から
+1 つの output node へ向かう Transition を作成できます。
+""",
+    "git": """\
+# Git
+
+Git コマンドは Transition に commit 情報を付けます。
+
+```bash
+stag git add --run demo --transition <transition_id> --commit <sha>
+stag git list --run demo --transition <transition_id>
+stag git show --run demo --transition <transition_id>
+```
+""",
 }
 
 
@@ -138,15 +199,27 @@ GUIDES: dict[str, dict[str, str]] = {
     "en": TOPICS_EN,
 }
 
-TOPIC_SUMMARIES: dict[str, str] = {
-    "overview": "Concept, RunGraph model, basic loop",
-    "agent": "Rules for agents using stag",
-    "dump": "stag dump output model",
-    "record": "Typical workflow to record one experiment",
-    "payloads": "Payload types and attachment targets",
-    "cut": "Append-only invalidation",
-    "joins": "Multi-input transitions",
-    "git": "Record Git commits and diffs on a Transition",
+TOPIC_SUMMARIES: dict[str, dict[str, str]] = {
+    "en": {
+        "overview": "Concept, RunGraph model, basic loop",
+        "agent": "Rules for agents using stag",
+        "dump": "stag graph dump output model",
+        "record": "Typical workflow to record one experiment",
+        "payloads": "Payload types and attachment targets",
+        "cut": "Append-only invalidation",
+        "joins": "Multi-input transitions",
+        "git": "Record Git commits on a Transition",
+    },
+    "ja": {
+        "overview": "概念、RunGraph model、基本ループ",
+        "agent": "stag を使う agent 向けルール",
+        "dump": "stag graph dump の出力モデル",
+        "record": "1 つの実験を記録する基本フロー",
+        "payloads": "Payload の種類と attachment target",
+        "cut": "Append-only な無効化",
+        "joins": "複数 input node の Transition",
+        "git": "Transition への Git commit 記録",
+    },
 }
 
 _DEFAULT_TOPIC = "overview"
@@ -164,8 +237,9 @@ def run_guide_command(*, lang: str = "en", topic: str = _DEFAULT_TOPIC) -> dict:
 def run_guide_list(lang: str = "en") -> dict:
     """Return topic id + summary pairs for *lang*."""
     topics = GUIDES[lang]
+    summaries = TOPIC_SUMMARIES[lang]
     return {
-        "topics": [{"id": tid, "summary": TOPIC_SUMMARIES.get(tid, "")} for tid in topics],
+        "topics": [{"id": tid, "summary": summaries.get(tid, "")} for tid in topics],
         "lang": lang,
     }
 
