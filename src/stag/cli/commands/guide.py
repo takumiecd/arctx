@@ -29,6 +29,7 @@ Common commands:
 
 ```bash
 stag init req_demo --run-id demo
+eval "$(stag work-session env --run demo --new)"
 stag transition create --run demo --from <node_id> \\
   --payload-type transition_payload --field type=experiment --field name=baseline
 stag payload add --run demo --node <node_id> \\
@@ -45,6 +46,39 @@ stag graph dump --run demo
 - Use `stag payload add` for node or transition annotations.
 - Use `stag graph dump` when you need broad context.
 - Use CutPayload through `stag cut` instead of deleting records.
+- For parallel work, pin each process to a distinct work session with
+  `stag work-session env --run <run_id> --new` or pass `--work-session` explicitly.
+""",
+    "work-session": """\
+# Work Sessions
+
+Use a work session to separate one process, terminal, or worker's history inside
+the same run.
+
+There are two supported modes.
+
+Explicit mode passes the session on every mutating command:
+
+```bash
+stag transition create --run demo --work-session ws_a --from <node_id> \\
+  --payload-type transition_payload --field type=experiment
+```
+
+Fixed mode stores the run/session in the current shell environment, not in
+shared `current.json` state:
+
+```bash
+eval "$(stag work-session env --run demo --new)"
+stag transition create --from <node_id> --payload-type transition_payload
+```
+
+For sub processes, use `spawn`; each invocation creates or uses one session and
+passes `STAG_RUN_ID`, `STAG_WORK_SESSION_ID`, and `STAG_USER_ID` only to the child.
+
+```bash
+stag work-session spawn --run demo -- codex
+stag work-session spawn --run demo -- claude
+```
 """,
     "dump": """\
 # Dump
@@ -123,6 +157,7 @@ init -> transition -> dump
 
 ```bash
 stag init req_demo --run-id demo
+eval "$(stag work-session env --run demo --new)"
 stag transition create --run demo --from <node_id> \\
   --payload-type transition_payload --field type=experiment --field name=baseline
 stag payload add --run demo --node <node_id> \\
@@ -139,6 +174,40 @@ stag graph dump --run demo
 - Node / Transition への注釈は `stag payload add` を使う。
 - 広い文脈確認は `stag graph dump` を使う。
 - 履歴は削除せず、`stag cut` で CutPayload を追加する。
+- 並列作業では `stag work-session env --run <run_id> --new` でプロセスごとに
+  別 work session を固定するか、毎回 `--work-session` を明示する。
+""",
+    "work-session": """\
+# Work Sessions
+
+work session は、同じ run の中で、1 つのプロセス・ターミナル・worker の履歴を
+分けるための単位です。
+
+使い方は 2 種類あります。
+
+毎回明示モードでは、mutating command ごとに session を渡します。
+
+```bash
+stag transition create --run demo --work-session ws_a --from <node_id> \\
+  --payload-type transition_payload --field type=experiment
+```
+
+固定モードでは、共有の `current.json` ではなく、現在の shell 環境に run/session
+を固定します。並列ターミナルや sub process ではこちらを使います。
+
+```bash
+eval "$(stag work-session env --run demo --new)"
+stag transition create --from <node_id> --payload-type transition_payload
+```
+
+sub process を起動する場合は `spawn` を使います。各 invocation は 1 つの session
+を作成または使用し、子プロセスだけに `STAG_RUN_ID` / `STAG_WORK_SESSION_ID` /
+`STAG_USER_ID` を渡します。
+
+```bash
+stag work-session spawn --run demo -- codex
+stag work-session spawn --run demo -- claude
+```
 """,
     "dump": """\
 # Dump
@@ -205,6 +274,7 @@ TOPIC_SUMMARIES: dict[str, dict[str, str]] = {
         "agent": "Rules for agents using stag",
         "dump": "stag graph dump output model",
         "record": "Typical workflow to record one experiment",
+        "work-session": "Separate parallel process history within one run",
         "payloads": "Payload types and attachment targets",
         "cut": "Append-only invalidation",
         "joins": "Multi-input transitions",
@@ -215,6 +285,7 @@ TOPIC_SUMMARIES: dict[str, dict[str, str]] = {
         "agent": "stag を使う agent 向けルール",
         "dump": "stag graph dump の出力モデル",
         "record": "1 つの実験を記録する基本フロー",
+        "work-session": "同じ run 内で並列プロセスの履歴を分ける",
         "payloads": "Payload の種類と attachment target",
         "cut": "Append-only な無効化",
         "joins": "複数 input node の Transition",

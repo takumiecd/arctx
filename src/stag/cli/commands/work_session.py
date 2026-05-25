@@ -21,18 +21,40 @@ from stag.core.ids import opaque_id
 def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "work-session",
-        help="Create and use fixed work sessions",
+        help="Create, inspect, and pin work sessions for parallel work",
+        description=(
+            "Create and use work sessions. Use explicit mode with --work-session on "
+            "mutating commands, or fixed mode via `eval \"$(stag work-session env "
+            "--run RUN --new)\"`. Fixed mode writes only shell environment variables, "
+            "so parallel terminals and child processes do not share current.json state."
+        ),
     )
     work_sub = parser.add_subparsers(dest="work_session_command", required=True)
 
-    start = work_sub.add_parser("start", help="Create a work session")
+    start = work_sub.add_parser(
+        "start",
+        help="Create a work session and print its id",
+        description=(
+            "Create a work session in a run. This does not switch global state; pass "
+            "the id with --work-session or use `work-session env` for shell-local "
+            "fixed mode."
+        ),
+    )
     start.add_argument("--run", default=None)
     start.add_argument("--work-session", default=None)
     start.add_argument("--user", default=None)
     start.add_argument("--store-dir", default=".stag/runs")
     start.add_argument("--json", action="store_true", dest="as_json")
 
-    env = work_sub.add_parser("env", help="Print shell exports for a fixed work session")
+    env = work_sub.add_parser(
+        "env",
+        help="Print shell exports for shell-local fixed mode",
+        description=(
+            "Print exports for STAG_RUN_ID, STAG_WORK_SESSION_ID, and STAG_USER_ID. "
+            "Use eval with this output to pin only the current shell or subprocess "
+            "environment, which is safe for parallel terminals."
+        ),
+    )
     env.add_argument("work_session_id", nargs="?")
     env.add_argument("--run", default=None)
     env.add_argument("--new", action="store_true", dest="create_new")
@@ -40,7 +62,15 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     env.add_argument("--store-dir", default=".stag/runs")
     env.add_argument("--json", action="store_true", dest="as_json")
 
-    spawn = work_sub.add_parser("spawn", help="Run a command with a fixed work session")
+    spawn = work_sub.add_parser(
+        "spawn",
+        help="Run a command with a child-only fixed work session",
+        description=(
+            "Run a child command with STAG_RUN_ID, STAG_WORK_SESSION_ID, and "
+            "STAG_USER_ID set only in that child process. Use this for Codex, "
+            "Claude Code, scripts, or other parallel workers."
+        ),
+    )
     spawn.add_argument("--run", default=None)
     spawn.add_argument("--work-session", default=None)
     spawn.add_argument("--user", default=None)

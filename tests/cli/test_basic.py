@@ -224,6 +224,7 @@ def test_guide_uses_current_cli_commands():
     assert "stag transition create" in guide
     assert "stag payload add" in guide
     assert "stag graph dump" in guide
+    assert "stag work-session env" in guide
     assert "stag attach" not in guide
 
 
@@ -237,3 +238,12 @@ def test_guide_list_uses_selected_language_summaries():
     result = run_guide_list(lang="ja")
     summaries = {entry["id"]: entry["summary"] for entry in result["topics"]}
     assert summaries["record"] == "1 つの実験を記録する基本フロー"
+    assert summaries["work-session"] == "同じ run 内で並列プロセスの履歴を分ける"
+
+
+def test_guide_work_session_topic_explains_both_modes():
+    result = run_guide_command(lang="ja", topic="work-session")
+    guide = result["guide"]
+    assert "毎回明示モード" in guide
+    assert "固定モード" in guide
+    assert "stag work-session spawn" in guide

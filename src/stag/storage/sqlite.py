@@ -98,6 +98,17 @@ class SqliteRunStore:
         try:
             _setup_db(con)
             con.execute("BEGIN IMMEDIATE")
+            row = con.execute(
+                "SELECT data_json FROM work_sessions WHERE work_session_id = ?",
+                (batch.work_session.work_session_id,),
+            ).fetchone()
+            if row is not None:
+                existing_user = str(json.loads(row[0])["user_id"])
+                if existing_user != batch.work_session.user_id:
+                    raise ValueError(
+                        f"work_session_id {batch.work_session.work_session_id!r} belongs to "
+                        f"user {existing_user!r}, not {batch.work_session.user_id!r}"
+                    )
             con.execute(
                 """
                 INSERT OR IGNORE INTO work_sessions(work_session_id, data_json)

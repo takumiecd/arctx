@@ -7,8 +7,10 @@ import tempfile
 import pytest
 
 from stag import init
+from stag.core.append import AppendBatch
 from stag.core.schema.payloads import CutPayload, NodePayload, TransitionPayload
 from stag.core.schema.requirements import Requirement
+from stag.core.schema.work import WorkSession
 from stag.storage.sqlite import SqliteRunStore
 
 
@@ -104,3 +106,32 @@ def test_list_runs():
         ids = [r["run_id"] for r in listed]
         assert "sq_a" in ids
         assert "sq_b" in ids
+
+
+def test_append_batch_rejects_work_session_user_mismatch():
+    run = init(_req(), run_id="sq_ws_conflict")
+    with tempfile.TemporaryDirectory() as td:
+        store = SqliteRunStore(td)
+        store.save_run(run)
+        store.append_batch(
+            AppendBatch(
+                run_id=run.run_id,
+                user_id="user_a",
+                work_session_id="ws_shared",
+                work_session=WorkSession("ws_shared", run.run_id, "user_a"),
+                records=(),
+                events=(),
+            )
+        )
+
+        with pytest.raises(ValueError, match="belongs to user"):
+            store.append_batch(
+                AppendBatch(
+                    run_id=run.run_id,
+                    user_id="user_b",
+                    work_session_id="ws_shared",
+                    work_session=WorkSession("ws_shared", run.run_id, "user_b"),
+                    records=(),
+                    events=(),
+                )
+            )

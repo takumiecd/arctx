@@ -122,6 +122,27 @@ stag transition create \
   --field type=experiment \
   --field intent="run baseline benchmark"
 
+並列ターミナルや子プロセスでは、work session で履歴を分けます。毎回明示モードでは、
+各 mutating command に `--run` と `--work-session` を渡します。
+
+```bash
+stag transition create \
+  --run demo \
+  --work-session ws_a \
+  --from <root_node_id> \
+  --payload-type transition_payload \
+  --field type=experiment
+```
+
+固定モードでは、共有の `current.json` ではなく、現在の shell 環境だけに run/session
+を固定します。
+
+```bash
+eval "$(stag work-session env --run demo --new)"
+stag transition create --from <root_node_id> --payload-type transition_payload
+stag work-session spawn --run demo -- codex
+```
+
 stag payload add \
   --run demo \
   --node <output_node_id> \

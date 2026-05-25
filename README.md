@@ -128,6 +128,28 @@ stag transition create \
   --field type=experiment \
   --field intent="run baseline benchmark"
 
+For parallel terminals or child processes, split history by work session. Use
+explicit mode when you want every command to be self-contained:
+
+```bash
+stag transition create \
+  --run demo \
+  --work-session ws_a \
+  --from <root_node_id> \
+  --payload-type transition_payload \
+  --field type=experiment
+```
+
+Use fixed mode when a terminal or subprocess should keep using one session.
+This pins only shell environment variables and does not update shared
+`current.json` state:
+
+```bash
+eval "$(stag work-session env --run demo --new)"
+stag transition create --from <root_node_id> --payload-type transition_payload
+stag work-session spawn --run demo -- codex
+```
+
 stag payload add \
   --run demo \
   --node <output_node_id> \

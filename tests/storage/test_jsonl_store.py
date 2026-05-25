@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 from stag import init
+from stag.core.append import AppendBatch
 from stag.core.schema.payloads import CutPayload, NodePayload, TransitionPayload
+from stag.core.schema.work import WorkSession
 from stag.core.schema.requirements import Requirement
 from stag.storage.jsonl import JsonlRunStore
 
@@ -142,3 +144,32 @@ def test_incremental_save():
         loaded = store.load_run("rt_incr")
         assert len(loaded.run_graph.transitions) == 1
         assert len(loaded.run_graph.nodes) == 2  # root + output
+
+
+def test_append_batch_rejects_work_session_user_mismatch():
+    run = init(_req(), run_id="rt_ws_conflict")
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(run)
+        store.append_batch(
+            AppendBatch(
+                run_id=run.run_id,
+                user_id="user_a",
+                work_session_id="ws_shared",
+                work_session=WorkSession("ws_shared", run.run_id, "user_a"),
+                records=(),
+                events=(),
+            )
+        )
+
+        with pytest.raises(ValueError, match="belongs to user"):
+            store.append_batch(
+                AppendBatch(
+                    run_id=run.run_id,
+                    user_id="user_b",
+                    work_session_id="ws_shared",
+                    work_session=WorkSession("ws_shared", run.run_id, "user_b"),
+                    records=(),
+                    events=(),
+                )
+            )
