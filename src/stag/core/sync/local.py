@@ -17,7 +17,7 @@ from typing import Any
 from stag.core.graph_view import GraphView
 from stag.core.run import RunHandle
 from stag.core.run_graph import RunGraph
-from stag.core.schema.graph import InputTransition, Node, OutputTransition
+from stag.core.schema.graph import Edge, Node, Transition
 from stag.core.schema.payloads import payload_from_dict
 from stag.core.sync.records import (
     RecordTuple,
@@ -101,7 +101,8 @@ def sync_status(
             1 for kind, _, body in local_records if body_key(kind, body) not in remote_keys
         ),
         "unpulled_records": sum(
-            1 for record in remote_records
+            1
+            for record in remote_records
             if body_key(record["record_kind"], record["body"]) not in local_keys
         ),
         "records_path": str(records_path(remote_dir, remote, shared_run_id)),
@@ -124,10 +125,7 @@ def sync_push(
     path.parent.mkdir(parents=True, exist_ok=True)
     remote_batches = shared_store.read_batches(remote, shared_run_id)
     remote_records = flatten_batches(remote_batches)
-    remote_by_key = {
-        body_key(r["record_kind"], r["body"]): r
-        for r in remote_records
-    }
+    remote_by_key = {body_key(r["record_kind"], r["body"]): r for r in remote_records}
 
     next_seq = len(remote_batches) + 1
     pushed_batches: list[dict[str, Any]] = []
@@ -225,11 +223,7 @@ def default_remote_dir(store_dir: str | Path) -> Path:
 
 
 def _local_records(handle: RunHandle) -> list[RecordTuple]:
-    return [
-        record
-        for batch in _local_batches(handle)
-        for record in batch["records"]
-    ]
+    return [record for batch in _local_batches(handle) for record in batch["records"]]
 
 
 def _local_batches(handle: RunHandle) -> list[dict[str, Any]]:
@@ -248,27 +242,36 @@ def _local_batches(handle: RunHandle) -> list[dict[str, Any]]:
     if seed_records:
         batches.append({"operation": "seed", "records": seed_records})
 
-    for it in graph.input_transitions.values():
-        records: list[RecordTuple] = [
-            ("input_transition", it.input_transition_id, it.to_dict())
-        ]
-        included.add(("input_transition", it.input_transition_id))
-        for payload in graph.payloads_for_input_transition(it.input_transition_id):
+    for transition in graph.transitions.values():
+        records = [("transition", transition.transition_id, transition.to_dict())]
+        included.add(("transition", transition.transition_id))
+
+        for edge_id in graph.incoming_edges.get(f"transition:{transition.transition_id}", []):
+            edge = graph.edges[edge_id]
+            if edge.from_kind == "node" and edge.from_id in graph.nodes:
+                node = graph.nodes[edge.from_id]
+                if ("node", node.node_id) not in included:
+                    records.append(("node", node.node_id, node.to_dict()))
+                    included.add(("node", node.node_id))
+            records.append(("edge", edge.edge_id, edge.to_dict()))
+            included.add(("edge", edge.edge_id))
+
+        for edge_id in graph.outgoing_edges.get(f"transition:{transition.transition_id}", []):
+            edge = graph.edges[edge_id]
+            if edge.to_kind == "node" and edge.to_id in graph.nodes:
+                node = graph.nodes[edge.to_id]
+                if ("node", node.node_id) not in included:
+                    records.append(("node", node.node_id, node.to_dict()))
+                    included.add(("node", node.node_id))
+            records.append(("edge", edge.edge_id, edge.to_dict()))
+            included.add(("edge", edge.edge_id))
+
+        for payload in graph.payloads_for_transition(transition.transition_id):
             records.append(("payload", payload.payload_id, payload.to_dict()))
             included.add(("payload", payload.payload_id))
-        for ot_id in graph.output_transitions_from_it.get(it.input_transition_id, []):
-            ot = graph.output_transitions[ot_id]
-            to_node = graph.nodes[ot.to_node_id]
-            records.append(("node", to_node.node_id, to_node.to_dict()))
-            included.add(("node", to_node.node_id))
-            records.append(("output_transition", ot.output_transition_id, ot.to_dict()))
-            included.add(("output_transition", ot.output_transition_id))
-            for payload in graph.payloads_for_output_transition(ot.output_transition_id):
-                records.append(("payload", payload.payload_id, payload.to_dict()))
-                included.add(("payload", payload.payload_id))
         batches.append(
             {
-                "operation": _operation_for_input_transition(graph, it.input_transition_id),
+                "operation": _operation_for_transition(graph, transition.transition_id),
                 "records": records,
             }
         )
@@ -292,19 +295,21 @@ def _local_batches(handle: RunHandle) -> list[dict[str, Any]]:
             )
             included.add(key)
 
+    for edge in graph.edges.values():
+        key = ("edge", edge.edge_id)
+        if key not in included:
+            batches.append(
+                {"operation": "edge", "records": [("edge", edge.edge_id, edge.to_dict())]}
+            )
+            included.add(key)
+
     return batches
 
 
-def _operation_for_input_transition(graph: RunGraph, it_id: str) -> str:
-    payloads = graph.payloads_for_input_transition(it_id)
+def _operation_for_transition(graph: RunGraph, transition_id: str) -> str:
+    payloads = graph.payloads_for_transition(transition_id)
     if any(getattr(p, "metadata", {}).get("kind") == "anchor" for p in payloads):
         return "anchor"
-    for ot_id in graph.output_transitions_from_it.get(it_id, []):
-        if any(
-            getattr(p, "metadata", {}).get("kind") == "anchor"
-            for p in graph.payloads_for_output_transition(ot_id)
-        ):
-            return "anchor"
     return "transition"
 
 
@@ -318,31 +323,32 @@ def _apply_record(graph: RunGraph, kind: str, body: dict[str, Any]) -> bool:
         graph.add_node(node)
         return True
 
-    if kind == "input_transition":
-        it = InputTransition(
-            input_transition_id=str(body["input_transition_id"]),
-            input_node_ids=tuple(str(n) for n in (body.get("input_node_ids") or [])),
+    if kind == "transition":
+        transition = Transition(
+            transition_id=str(body["transition_id"]),
             metadata=dict(body.get("metadata") or {}),
         )
-        existing = graph.input_transitions.get(it.input_transition_id)
+        existing = graph.transitions.get(transition.transition_id)
         if existing is not None:
-            _ensure_same(existing.to_dict(), body, kind, it.input_transition_id)
+            _ensure_same(existing.to_dict(), body, kind, transition.transition_id)
             return False
-        graph.add_input_transition(it)
+        graph.add_transition(transition)
         return True
 
-    if kind == "output_transition":
-        ot = OutputTransition(
-            output_transition_id=str(body["output_transition_id"]),
-            input_transition_id=str(body["input_transition_id"]),
-            to_node_id=str(body["to_node_id"]),
+    if kind == "edge":
+        edge = Edge(
+            edge_id=str(body["edge_id"]),
+            from_kind=body["from_kind"],
+            from_id=str(body["from_id"]),
+            to_kind=body["to_kind"],
+            to_id=str(body["to_id"]),
             metadata=dict(body.get("metadata") or {}),
         )
-        existing = graph.output_transitions.get(ot.output_transition_id)
+        existing = graph.edges.get(edge.edge_id)
         if existing is not None:
-            _ensure_same(existing.to_dict(), body, kind, ot.output_transition_id)
+            _ensure_same(existing.to_dict(), body, kind, edge.edge_id)
             return False
-        graph.add_output_transition(ot)
+        graph.add_edge(edge)
         return True
 
     if kind == "payload":
@@ -375,16 +381,16 @@ def _apply_record(graph: RunGraph, kind: str, body: dict[str, Any]) -> bool:
 
 def _refresh_counters(handle: RunHandle) -> None:
     handle._counters["n"] = _max_suffix(handle.run_graph.nodes)
-    handle._counters["it"] = _max_suffix(handle.run_graph.input_transitions)
-    handle._counters["ot"] = _max_suffix(handle.run_graph.output_transitions)
+    handle._counters["t"] = _max_suffix(handle.run_graph.transitions)
+    handle._counters["e"] = _max_suffix(handle.run_graph.edges)
     handle._counters["pl"] = _max_suffix(handle.run_graph.payloads)
 
 
 def _is_empty_seed_graph(graph: RunGraph) -> bool:
     return (
         len(graph.nodes) == 1
-        and not graph.input_transitions
-        and not graph.output_transitions
+        and not graph.transitions
+        and not graph.edges
         and not graph.payloads
         and set(graph.views) <= {"main"}
     )
@@ -392,16 +398,14 @@ def _is_empty_seed_graph(graph: RunGraph) -> bool:
 
 def _clear_graph(graph: RunGraph) -> None:
     graph.nodes.clear()
-    graph.input_transitions.clear()
-    graph.output_transitions.clear()
+    graph.transitions.clear()
+    graph.edges.clear()
     graph.payloads.clear()
     graph.views.clear()
     graph.payloads_by_node.clear()
-    graph.payloads_by_input_transition.clear()
-    graph.payloads_by_output_transition.clear()
-    graph.input_transitions_from_node.clear()
-    graph.output_transitions_from_it.clear()
-    graph.output_transitions_to_node.clear()
+    graph.payloads_by_transition.clear()
+    graph.outgoing_edges.clear()
+    graph.incoming_edges.clear()
     graph.metadata.pop("root_node_id", None)
 
 
@@ -422,8 +426,6 @@ def _ensure_same(
 ) -> None:
     if existing != incoming:
         raise RuntimeError(f"local {kind}:{item_id} differs from remote record")
-
-
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:

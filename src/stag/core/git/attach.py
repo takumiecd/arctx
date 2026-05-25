@@ -1,20 +1,20 @@
-"""Attach explicit Git commits to an observed OutputTransition."""
+"""Attach explicit Git commits to a result-bearing Transition."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from stag.core.cuts import is_inactive_output_transition
+from stag.core.cuts import is_inactive_transition
 from stag.core.git import repo as git_repo
 from stag.core.git.finish import _write_patch_artifact
 from stag.core.run.handle import RunHandle
 from stag.core.schema.payloads import CommitEntry, DiffSummary, GitChangePayload
 
 
-def attach_commits_to_output_transition(
+def attach_commits_to_transition(
     handle: RunHandle,
     run_dir: Path,
-    output_transition_id: str,
+    transition_id: str,
     commits: tuple[str, ...],
     *,
     user_id: str = "user",
@@ -23,18 +23,16 @@ def attach_commits_to_output_transition(
     """Attach explicit Git commits as a GitChangePayload."""
     if not commits:
         raise ValueError("at least one --commit is required")
-    if output_transition_id not in handle.run_graph.output_transitions:
-        raise KeyError(f"unknown output_transition_id: {output_transition_id}")
-    if is_inactive_output_transition(handle.run_graph, output_transition_id):
-        raise ValueError(f"output_transition {output_transition_id} is inactive (cut)")
+    if transition_id not in handle.run_graph.transitions:
+        raise KeyError(f"unknown transition_id: {transition_id}")
+    if is_inactive_transition(handle.run_graph, transition_id):
+        raise ValueError(f"transition {transition_id} is inactive (cut)")
 
-    result_payloads = handle.run_graph.payloads_for_output_transition(
-        output_transition_id, payload_type="result"
-    )
+    result_payloads = handle.run_graph.payloads_for_transition(transition_id, payload_type="result")
     if not result_payloads:
         raise ValueError(
-            f"output_transition {output_transition_id} has no ResultPayload. "
-            "Git commits can only be attached to observed OutputTransitions."
+            f"transition {transition_id} has no ResultPayload. "
+            "Git commits can only be attached after an observed result."
         )
 
     repo_root = git_repo.find_repo_root(Path("."))
@@ -65,7 +63,7 @@ def attach_commits_to_output_transition(
 
     gcp = GitChangePayload(
         payload_id=payload_id,
-        target_id=output_transition_id,
+        target_id=transition_id,
         repo_root=str(repo_root),
         base_commit="",
         head_commit=resolved[-1],
@@ -82,8 +80,8 @@ def attach_commits_to_output_transition(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type="git_change_attached",
-        target_kind="output_transition",
-        target_id=output_transition_id,
+        target_kind="transition",
+        target_id=transition_id,
         created_records=(payload_id,),
         summary=f"{len(resolved)} commit(s)",
         data={"commits": list(resolved), "branch": branch},
@@ -94,7 +92,7 @@ def attach_commits_to_output_transition(
             "git_change_payload_id": payload_id,
         },
         "linked": {
-            "output_transition_id": output_transition_id,
+            "transition_id": transition_id,
         },
         "git": {
             "commits": list(resolved),
@@ -103,6 +101,6 @@ def attach_commits_to_output_transition(
             "patch_artifact": patch_artifact,
         },
         "next": [
-            f"stag git diff --output-transition {output_transition_id}",
+            f"stag git diff --transition {transition_id}",
         ],
     }

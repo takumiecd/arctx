@@ -9,10 +9,8 @@ from stag.cli.context import resolve_store, resolve_run_id_from_args
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser(
-        "outcomes", help="List predictions/observations for an InputTransition"
-    )
-    parser.add_argument("input_transition_id", help="InputTransition to inspect")
+    parser = subparsers.add_parser("outcomes", help="List output nodes for a Transition")
+    parser.add_argument("transition_id", help="Transition to inspect")
     parser.add_argument("--run", default=None)
     parser.add_argument("--include-payloads", action="store_true")
     parser.add_argument("--store-dir", default=".stag/runs")
@@ -22,7 +20,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 def run_outcomes_command(
     *,
     run_id: str,
-    input_transition_id: str,
+    transition_id: str,
     include_payloads: bool,
     store_dir: str,
 ) -> dict:
@@ -32,44 +30,18 @@ def run_outcomes_command(
     handle = store.load_run(run_id)
     g = handle.run_graph
 
-    result = handle.outcomes(input_transition_id)
+    result = handle.outcomes(transition_id)
 
     if include_payloads:
-        result["predictions"] = [
-            {
-                "output_transition_id": ot_id,
-                "payloads": [
-                    p.to_dict() for p in g.payloads_for_output_transition(ot_id)
-                ],
-            }
-            for ot_id in result["predictions"]
+        result["transition_payloads"] = [
+            p.to_dict() for p in g.payloads_for_transition(transition_id)
         ]
-        result["observations"] = [
+        result["output_nodes"] = [
             {
-                "output_transition_id": ot_id,
-                "payloads": [
-                    p.to_dict() for p in g.payloads_for_output_transition(ot_id)
-                ],
+                "node": g.nodes[node_id].to_dict(),
+                "payloads": [p.to_dict() for p in g.payloads_for_node(node_id)],
             }
-            for ot_id in result["observations"]
-        ]
-        result["active_observations"] = [
-            {
-                "output_transition_id": ot_id,
-                "payloads": [
-                    p.to_dict() for p in g.payloads_for_output_transition(ot_id)
-                ],
-            }
-            for ot_id in result["active_observations"]
-        ]
-        result["inactive_observations"] = [
-            {
-                "output_transition_id": ot_id,
-                "payloads": [
-                    p.to_dict() for p in g.payloads_for_output_transition(ot_id)
-                ],
-            }
-            for ot_id in result["inactive_observations"]
+            for node_id in result["output_node_ids"]
         ]
 
     return result
@@ -78,7 +50,7 @@ def run_outcomes_command(
 def cli_outcomes(args) -> int:
     result = run_outcomes_command(
         run_id=resolve_run_id_from_args(args),
-        input_transition_id=args.input_transition_id,
+        transition_id=args.transition_id,
         include_payloads=args.include_payloads,
         store_dir=args.store_dir,
     )

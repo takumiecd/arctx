@@ -164,7 +164,7 @@ class GitChangePayload(PayloadBase):
     """Git repository change information attached to a Transition.
 
     Captures the diff between base_commit..HEAD at the time stag git finish
-    was executed. Co-exists with ResultPayload on the same OutputTransition.
+    was executed. Co-exists with ResultPayload on the same Transition.
     """
 
     payload_id: str
@@ -304,9 +304,7 @@ def _result_from_dict(data: dict[str, JSONValue]) -> ResultPayload:
         metrics={str(k): float(v) for k, v in (data.get("metrics") or {}).items()},
         errors=tuple(str(e) for e in (data.get("errors") or [])),
         actual_cost=dict(data.get("actual_cost") or {}),
-        matched_prediction_transition_id=(
-            data.get("matched_prediction_transition_id") or data.get("matched_prediction_output_id")
-        ),
+        matched_prediction_transition_id=data.get("matched_prediction_transition_id"),
         metadata=dict(data.get("metadata") or {}),
     )
 

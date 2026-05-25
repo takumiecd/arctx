@@ -9,14 +9,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 _CURRENT_FILENAME = "current.json"
 _SESSIONS_DIR = "sessions"
 
 
 @dataclass
 class GitSession:
-    """Pending work interval anchored to an InputTransition.
+    """Pending work interval anchored to a Transition.
 
     Created by ``stag git start`` and closed by ``stag git finish``.
     Stored under ``<run_dir>/git/sessions/<session_id>.json``.
@@ -25,16 +24,16 @@ class GitSession:
 
     session_id: str
     run_id: str
-    input_transition_id: str
-    repo_root: str          # absolute path
+    transition_id: str
+    repo_root: str  # absolute path
     base_commit: str
     base_branch: str
     base_dirty: bool
-    started_at: str         # ISO 8601 with timezone
+    started_at: str  # ISO 8601 with timezone
     started_by: str
     closed_at: str | None = None
     closed_by: str | None = None
-    output_transition_id: str | None = None
+    result_node_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -45,7 +44,7 @@ class GitSession:
         return {
             "session_id": self.session_id,
             "run_id": self.run_id,
-            "input_transition_id": self.input_transition_id,
+            "transition_id": self.transition_id,
             "repo_root": self.repo_root,
             "base_commit": self.base_commit,
             "base_branch": self.base_branch,
@@ -54,7 +53,7 @@ class GitSession:
             "started_by": self.started_by,
             "closed_at": self.closed_at,
             "closed_by": self.closed_by,
-            "output_transition_id": self.output_transition_id,
+            "result_node_id": self.result_node_id,
             "metadata": dict(self.metadata),
         }
 
@@ -63,7 +62,7 @@ class GitSession:
         return cls(
             session_id=str(data["session_id"]),
             run_id=str(data["run_id"]),
-            input_transition_id=str(data["input_transition_id"]),
+            transition_id=str(data["transition_id"]),
             repo_root=str(data["repo_root"]),
             base_commit=str(data["base_commit"]),
             base_branch=str(data["base_branch"]),
@@ -72,7 +71,7 @@ class GitSession:
             started_by=str(data["started_by"]),
             closed_at=data.get("closed_at"),
             closed_by=data.get("closed_by"),
-            output_transition_id=data.get("output_transition_id"),
+            result_node_id=data.get("result_node_id"),
             metadata=dict(data.get("metadata") or {}),
         )
 
@@ -80,6 +79,7 @@ class GitSession:
 # ---------------------------------------------------------------------------
 # Storage helpers
 # ---------------------------------------------------------------------------
+
 
 def _sessions_dir(run_dir: Path) -> Path:
     return run_dir / "git" / _SESSIONS_DIR

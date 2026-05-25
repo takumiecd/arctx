@@ -1,8 +1,4 @@
-"""stag git start implementation.
-
-Creates a GitSession anchored to an InputTransition and writes it to
-``<run_dir>/git/sessions/<session_id>.json``.
-"""
+"""stag git start implementation."""
 
 from __future__ import annotations
 
@@ -10,7 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from stag.core.cuts import is_inactive_input_transition
+from stag.core.cuts import is_inactive_transition
 from stag.core.git import repo as git_repo
 from stag.core.git.session import (
     GitSession,
@@ -27,31 +23,28 @@ from stag.core.run.handle import RunHandle
 def git_start(
     handle: RunHandle,
     run_dir: Path,
-    input_transition_id: str,
+    transition_id: str,
     *,
     repo_root_hint: Path | None = None,
     user_id: str = "user",
 ) -> dict:
-    """Create a GitSession for *input_transition_id*.
+    """Create a GitSession for *transition_id*.
 
-    Returns a dict with ``session_id``, ``input_transition_id``,
+    Returns a dict with ``session_id``, ``transition_id``,
     ``base_commit``, ``branch``, ``dirty``, ``warnings``, and ``next``.
 
     Raises
     ------
     KeyError
-        If *input_transition_id* is not found in the graph.
+        If *transition_id* is not found in the graph.
     ValueError
         If the IT is inactive, HEAD is detached, or the repo root cannot be
         detected.
     """
-    # 1. Validate InputTransition
-    if input_transition_id not in handle.run_graph.input_transitions:
-        raise KeyError(f"unknown input_transition_id: {input_transition_id}")
-    if is_inactive_input_transition(handle.run_graph, input_transition_id):
-        raise ValueError(
-            f"input_transition is inactive (cut or in cut subtree): {input_transition_id}"
-        )
+    if transition_id not in handle.run_graph.transitions:
+        raise KeyError(f"unknown transition_id: {transition_id}")
+    if is_inactive_transition(handle.run_graph, transition_id):
+        raise ValueError(f"transition is inactive (cut): {transition_id}")
 
     # 2. Detect repo root
     cwd = repo_root_hint or Path(".")
@@ -66,9 +59,7 @@ def git_start(
     # 3. Detached HEAD check
     branch = git_repo.current_branch(repo_root)
     if branch is None:
-        raise ValueError(
-            "HEAD is detached. Checkout a branch before running 'stag git start'."
-        )
+        raise ValueError("HEAD is detached. Checkout a branch before running 'stag git start'.")
 
     # 4. Commit and dirty state
     base_commit = git_repo.current_commit(repo_root)
@@ -89,14 +80,10 @@ def git_start(
     # Check for parallel open sessions on the same IT
     existing_sessions = list_sessions(run_dir)
     for s in existing_sessions:
-        if (
-            s.input_transition_id == input_transition_id
-            and s.is_open
-            and s.session_id != session_id
-        ):
+        if s.transition_id == transition_id and s.is_open and s.session_id != session_id:
             warnings.append(
                 f"Another open GitSession ({s.session_id}) is already tracking "
-                f"input_transition {input_transition_id}. "
+                f"transition {transition_id}. "
                 "Multiple sessions on the same IT are allowed but unusual."
             )
             break
@@ -106,7 +93,7 @@ def git_start(
     session = GitSession(
         session_id=session_id,
         run_id=handle.run_id,
-        input_transition_id=input_transition_id,
+        transition_id=transition_id,
         repo_root=str(repo_root),
         base_commit=base_commit,
         base_branch=branch,
@@ -121,7 +108,7 @@ def git_start(
 
     return {
         "session_id": session_id,
-        "input_transition_id": input_transition_id,
+        "transition_id": transition_id,
         "base_commit": base_commit,
         "branch": branch,
         "dirty": dirty,

@@ -17,9 +17,8 @@ def anchor_impl(
 ) -> Node:
     """Create a lightweight scope anchor node from an existing node.
 
-    An anchor is represented using the existing graph model:
-    InputTransition + PlanPayload(action_type="scope_refinement") followed by
-    OutputTransition + ResultPayload(status="completed", metadata.kind="anchor").
+    An anchor is represented as a Transition with Plan/Result payloads and
+    a generated output node tagged with metadata.kind="anchor".
     The output node can then be used as a shared branching point for experiments.
     """
     meta = dict(metadata or {})

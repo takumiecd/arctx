@@ -46,13 +46,13 @@ def run_anchor_command(
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
     before = graph_counts(handle)
-    ot = handle.anchor(
+    node = handle.anchor(
         from_node_id,
         label,
         user_id=user_id,
         work_session_id=work_session_id,
     )
-    it = handle.run_graph.input_transitions[ot.input_transition_id]
+    transition_id = handle.run_graph.transitions_to_node(node.node_id)[0]
     maybe_append_or_save(
         store=store,
         handle=handle,
@@ -62,9 +62,8 @@ def run_anchor_command(
     )
     return {
         "anchor": {
-            "input_transition_id": it.input_transition_id,
-            "output_transition_id": ot.output_transition_id,
-            "node_id": ot.to_node_id,
+            "transition_id": transition_id,
+            "node_id": node.node_id,
             "label": label,
         }
     }

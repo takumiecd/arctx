@@ -1,8 +1,4 @@
-"""stag git finish implementation (form A and form B).
-
-Form A: create new OutputTransition + ResultPayload + GitChangePayload.
-Form B: attach GitChangePayload to an existing observed OutputTransition.
-"""
+"""stag git finish implementation."""
 
 from __future__ import annotations
 
@@ -10,7 +6,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from stag.core.cuts import is_inactive_input_transition, is_inactive_output_transition
+from stag.core.cuts import is_inactive_transition
 from stag.core.git import repo as git_repo
 from stag.core.git.session import (
     GitSession,
@@ -26,7 +22,6 @@ from stag.core.schema.payloads import (
     ResultPayload,
 )
 from stag.core.run.handle import RunHandle
-
 
 _RESULT_FORM_B_OPTIONS = (
     "--status",
@@ -109,16 +104,10 @@ def _validate_session(session: GitSession, handle: RunHandle) -> list[str]:
         raise ValueError(
             f"session {session.session_id} is already closed (closed_at={session.closed_at})"
         )
-    # 4. IT exists
-    if session.input_transition_id not in handle.run_graph.input_transitions:
-        raise KeyError(
-            f"session references unknown input_transition_id: {session.input_transition_id}"
-        )
-    # 5. IT is active
-    if is_inactive_input_transition(handle.run_graph, session.input_transition_id):
-        raise ValueError(
-            f"input_transition {session.input_transition_id} is inactive (cut)"
-        )
+    if session.transition_id not in handle.run_graph.transitions:
+        raise KeyError(f"session references unknown transition_id: {session.transition_id}")
+    if is_inactive_transition(handle.run_graph, session.transition_id):
+        raise ValueError(f"transition {session.transition_id} is inactive (cut)")
     return []
 
 
@@ -134,11 +123,11 @@ def git_finish_form_a(
     logs: tuple[str, ...] = (),
     metrics: dict[str, float] | None = None,
     errors_list: tuple[str, ...] = (),
-    matched_prediction_output_id: str | None = None,
+    matched_prediction_transition_id: str | None = None,
     user_id: str = "user",
     work_session_id: str | None = None,
 ) -> dict:
-    """Form A: create new OT + ResultPayload + GitChangePayload.
+    """Create a result node and attach Result/GitChange payloads to the Transition.
 
     Returns a result dict with created IDs, git info, warnings, and next hints.
     """
@@ -148,26 +137,20 @@ def git_finish_form_a(
     # Validation checks 1-5
     _validate_session(session, handle)
 
-    it_id = session.input_transition_id
+    transition_id = session.transition_id
 
     # 6. matched_prediction validation
-    if matched_prediction_output_id is not None:
-        mpid = matched_prediction_output_id
-        if mpid not in handle.run_graph.output_transitions:
-            raise KeyError(f"unknown matched_prediction_output_id: {mpid}")
-        pred_payloads = handle.run_graph.payloads_for_output_transition(mpid)
+    if matched_prediction_transition_id is not None:
+        mpid = matched_prediction_transition_id
+        if mpid not in handle.run_graph.transitions:
+            raise KeyError(f"unknown matched_prediction_transition_id: {mpid}")
+        pred_payloads = handle.run_graph.payloads_for_transition(mpid)
         if not any(isinstance(p, PredictionPayload) for p in pred_payloads):
             raise ValueError(
-                f"matched_prediction_output_id does not point to a PredictionPayload: {mpid}"
+                f"matched_prediction_transition_id does not point to a PredictionPayload: {mpid}"
             )
-        matched_ot = handle.run_graph.output_transitions[mpid]
-        if matched_ot.input_transition_id != it_id:
-            raise ValueError(
-                f"matched_prediction_output_id {mpid} belongs to a different "
-                f"input_transition than session: {matched_ot.input_transition_id!r} != {it_id!r}"
-            )
-        if is_inactive_output_transition(handle.run_graph, mpid):
-            raise ValueError(f"matched_prediction_output_id is inactive: {mpid}")
+        if is_inactive_transition(handle.run_graph, mpid):
+            raise ValueError(f"matched_prediction_transition_id is inactive: {mpid}")
 
     # 15. repo root matches
     try:
@@ -203,25 +186,22 @@ def git_finish_form_a(
     warnings: list[str] = []
 
     # Duplicate observation warning
-    existing_result_ots = handle.run_graph.output_ids_for_input(it_id, kind="result")
-    if existing_result_ots:
+    existing_results = handle.run_graph.payloads_for_transition(
+        transition_id, payload_type="result"
+    )
+    if existing_results:
         warnings.append(
-            f"InputTransition {it_id} already has observed OutputTransition(s): "
-            f"{existing_result_ots}. Consider using "
-            f"'stag git finish {session_id} --output-transition <ot_id>' instead."
+            f"Transition {transition_id} already has {len(existing_results)} ResultPayload(s)."
         )
 
     # Parallel session warning
     from stag.core.git.session import list_sessions
+
     for s in list_sessions(run_dir):
-        if (
-            s.input_transition_id == it_id
-            and s.is_open
-            and s.session_id != session_id
-        ):
+        if s.transition_id == transition_id and s.is_open and s.session_id != session_id:
             warnings.append(
                 f"Another open GitSession ({s.session_id}) is tracking the same "
-                f"InputTransition {it_id}."
+                f"Transition {transition_id}."
             )
             break
 
@@ -263,22 +243,20 @@ def git_finish_form_a(
         logs=logs,
         metrics=dict(metrics or {}),
         errors=errors_list,
-        matched_prediction_output_id=matched_prediction_output_id,
+        matched_prediction_transition_id=matched_prediction_transition_id,
         metadata=meta,
     )
-    # observe() will mint new node + OT + ResultPayload internally
-    ot = handle.observe(
-        it_id,
+    result_node = handle.observe(
+        transition_id,
         result_template,
         user_id=user_id,
         work_session_id=work_session_id,
     )
-    result_pl_id = handle.run_graph.payloads_by_output_transition[ot.output_transition_id][-1]
+    result_pl_id = handle.run_graph.payloads_by_transition[transition_id][-1]
 
-    # Now attach GitChangePayload with the pre-minted id
     gcp = GitChangePayload(
         payload_id=git_payload_id_tentative,
-        target_id=ot.output_transition_id,
+        target_id=transition_id,
         repo_root=session.repo_root,
         base_commit=session.base_commit,
         head_commit=head_commit,
@@ -294,8 +272,8 @@ def git_finish_form_a(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type="git_change_attached",
-        target_kind="output_transition",
-        target_id=ot.output_transition_id,
+        target_kind="transition",
+        target_id=transition_id,
         created_records=(git_payload_id_tentative,),
         summary=f"{len(gdata['commit_log'])} commit(s)",
         data={"head_commit": head_commit, "branch": branch},
@@ -303,11 +281,12 @@ def git_finish_form_a(
 
     # Step 7: close session
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).isoformat()
     closed_session = GitSession(
         session_id=session.session_id,
         run_id=session.run_id,
-        input_transition_id=session.input_transition_id,
+        transition_id=session.transition_id,
         repo_root=session.repo_root,
         base_commit=session.base_commit,
         base_branch=session.base_branch,
@@ -316,7 +295,7 @@ def git_finish_form_a(
         started_by=session.started_by,
         closed_at=now,
         closed_by=user_id,
-        output_transition_id=ot.output_transition_id,
+        result_node_id=result_node.node_id,
         metadata=dict(session.metadata),
     )
     save_session(closed_session, run_dir)
@@ -326,13 +305,13 @@ def git_finish_form_a(
 
     return {
         "created": {
-            "output_transition_id": ot.output_transition_id,
+            "transition_id": transition_id,
+            "result_node_id": result_node.node_id,
             "result_payload_id": result_pl_id,
             "git_change_payload_id": git_payload_id_tentative,
         },
         "linked": {
-            "input_transition_id": it_id,
-            "matched_prediction_output_id": matched_prediction_output_id,
+            "matched_prediction_transition_id": matched_prediction_transition_id,
         },
         "git": {
             "base_commit": session.base_commit,
@@ -344,8 +323,8 @@ def git_finish_form_a(
         },
         "warnings": warnings,
         "next": [
-            f"stag trace --from-node {handle.run_graph.output_transitions[ot.output_transition_id].to_node_id}",
-            f"stag git diff --output-transition {ot.output_transition_id}",
+            f"stag trace --from-node {result_node.node_id}",
+            f"stag git diff --transition {transition_id}",
         ],
     }
 
@@ -355,11 +334,11 @@ def git_finish_form_b(
     run_dir: Path,
     session_id: str,
     *,
-    output_transition_id: str,
+    transition_id: str,
     user_id: str = "user",
     work_session_id: str | None = None,
 ) -> dict:
-    """Form B: attach GitChangePayload to an existing observed OT.
+    """Attach GitChangePayload to an existing result-bearing Transition.
 
     Returns a result dict with created IDs, git info, warnings, and next hints.
     """
@@ -369,32 +348,24 @@ def git_finish_form_b(
     # Validation checks 1-5
     _validate_session(session, handle)
 
-    it_id = session.input_transition_id
+    session_transition_id = session.transition_id
 
-    # 9. OT exists
-    if output_transition_id not in handle.run_graph.output_transitions:
-        raise KeyError(f"unknown output_transition_id: {output_transition_id}")
-
-    # 10. OT's IT matches session
-    ot = handle.run_graph.output_transitions[output_transition_id]
-    if ot.input_transition_id != it_id:
+    if transition_id not in handle.run_graph.transitions:
+        raise KeyError(f"unknown transition_id: {transition_id}")
+    if transition_id != session_transition_id:
         raise ValueError(
-            f"output_transition {output_transition_id} belongs to input_transition "
-            f"{ot.input_transition_id!r}, not session IT {it_id!r}"
+            f"transition {transition_id} does not match session transition "
+            f"{session_transition_id!r}"
         )
 
-    # 11. OT is active
-    if is_inactive_output_transition(handle.run_graph, output_transition_id):
-        raise ValueError(f"output_transition {output_transition_id} is inactive (cut)")
+    if is_inactive_transition(handle.run_graph, transition_id):
+        raise ValueError(f"transition {transition_id} is inactive (cut)")
 
-    # 12. OT has ResultPayload
-    result_payloads = handle.run_graph.payloads_for_output_transition(
-        output_transition_id, payload_type="result"
-    )
+    result_payloads = handle.run_graph.payloads_for_transition(transition_id, payload_type="result")
     if not result_payloads:
         raise ValueError(
-            f"output_transition {output_transition_id} has no ResultPayload. "
-            "Form B only supports observed (result) OutputTransitions."
+            f"transition {transition_id} has no ResultPayload. "
+            "Attach mode only supports observed result transitions."
         )
 
     # 15. repo root matches
@@ -429,27 +400,24 @@ def git_finish_form_b(
     warnings: list[str] = []
 
     # Duplicate GitChangePayload warning
-    existing_gcp = handle.run_graph.payloads_for_output_transition(
-        output_transition_id, payload_type="git_change"
+    existing_gcp = handle.run_graph.payloads_for_transition(
+        transition_id, payload_type="git_change"
     )
     if existing_gcp:
         warnings.append(
-            f"OutputTransition {output_transition_id} already has "
+            f"Transition {transition_id} already has "
             f"{len(existing_gcp)} GitChangePayload(s). Attaching another is allowed "
             "but unusual."
         )
 
     # Parallel session warning
     from stag.core.git.session import list_sessions
+
     for s in list_sessions(run_dir):
-        if (
-            s.input_transition_id == it_id
-            and s.is_open
-            and s.session_id != session_id
-        ):
+        if s.transition_id == session_transition_id and s.is_open and s.session_id != session_id:
             warnings.append(
                 f"Another open GitSession ({s.session_id}) is tracking the same "
-                f"InputTransition {it_id}."
+                f"Transition {session_transition_id}."
             )
             break
 
@@ -476,7 +444,7 @@ def git_finish_form_b(
     # Attach GitChangePayload
     gcp = GitChangePayload(
         payload_id=git_payload_id,
-        target_id=output_transition_id,
+        target_id=transition_id,
         repo_root=session.repo_root,
         base_commit=session.base_commit,
         head_commit=head_commit,
@@ -492,8 +460,8 @@ def git_finish_form_b(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type="git_change_attached",
-        target_kind="output_transition",
-        target_id=output_transition_id,
+        target_kind="transition",
+        target_id=transition_id,
         created_records=(git_payload_id,),
         summary=f"{len(gdata['commit_log'])} commit(s)",
         data={"head_commit": head_commit, "branch": branch},
@@ -501,11 +469,12 @@ def git_finish_form_b(
 
     # Close session
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).isoformat()
     closed_session = GitSession(
         session_id=session.session_id,
         run_id=session.run_id,
-        input_transition_id=session.input_transition_id,
+        transition_id=session.transition_id,
         repo_root=session.repo_root,
         base_commit=session.base_commit,
         base_branch=session.base_branch,
@@ -514,7 +483,7 @@ def git_finish_form_b(
         started_by=session.started_by,
         closed_at=now,
         closed_by=user_id,
-        output_transition_id=output_transition_id,
+        result_node_id=session.result_node_id,
         metadata=dict(session.metadata),
     )
     save_session(closed_session, run_dir)
@@ -524,13 +493,12 @@ def git_finish_form_b(
 
     return {
         "created": {
-            "output_transition_id": None,
+            "transition_id": transition_id,
             "result_payload_id": None,
             "git_change_payload_id": git_payload_id,
         },
         "linked": {
-            "input_transition_id": it_id,
-            "matched_prediction_output_id": None,
+            "matched_prediction_transition_id": None,
         },
         "git": {
             "base_commit": session.base_commit,
@@ -542,6 +510,6 @@ def git_finish_form_b(
         },
         "warnings": warnings,
         "next": [
-            f"stag git diff --output-transition {output_transition_id}",
+            f"stag git diff --transition {transition_id}",
         ],
     }

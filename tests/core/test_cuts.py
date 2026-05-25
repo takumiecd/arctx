@@ -1,120 +1,47 @@
-"""Tests for cut/inactive computation over CutPayloads."""
-
-from __future__ import annotations
-
 from stag.core.cuts import (
-    cut_input_transition_ids,
-    cut_output_transition_ids,
-    inactive_input_transition_ids,
+    cut_node_ids,
+    cut_transition_ids,
     inactive_node_ids,
-    inactive_output_transition_ids,
+    inactive_transition_ids,
     is_active_node,
-    is_inactive_input_transition,
-    is_inactive_output_transition,
+    is_inactive_transition,
 )
 from stag.core.run_graph import RunGraph
-from stag.core.schema.graph import InputTransition, Node, OutputTransition
-from stag.core.schema.payloads import CutPayload, ResultPayload
+from stag.core.schema.graph import Edge, Node, Transition
+from stag.core.schema.payloads import CutPayload
 
 
-def _linear_graph() -> RunGraph:
-    """n_a → (it1) → ot1 → n_b → (it2) → ot2 → n_c"""
-    g = RunGraph()
-    for nid in ("n_a", "n_b", "n_c"):
-        g.add_node(Node(node_id=nid))
-
-    it1 = InputTransition(input_transition_id="it_1", input_node_ids=("n_a",))
-    g.add_input_transition(it1)
-    ot1 = OutputTransition(output_transition_id="ot_1", input_transition_id="it_1", to_node_id="n_b")
-    g.add_output_transition(ot1)
-    g.attach_payload(ResultPayload(payload_id="rp_1", target_id="ot_1", status="completed"))
-
-    it2 = InputTransition(input_transition_id="it_2", input_node_ids=("n_b",))
-    g.add_input_transition(it2)
-    ot2 = OutputTransition(output_transition_id="ot_2", input_transition_id="it_2", to_node_id="n_c")
-    g.add_output_transition(ot2)
-    g.attach_payload(ResultPayload(payload_id="rp_2", target_id="ot_2", status="completed"))
-
-    return g
+def _graph() -> RunGraph:
+    graph = RunGraph()
+    for node_id in ("n_a", "n_b", "n_c"):
+        graph.add_node(Node(node_id=node_id))
+    for transition_id in ("t_1", "t_2"):
+        graph.add_transition(Transition(transition_id=transition_id))
+    graph.add_edge(Edge("e_1", "node", "n_a", "transition", "t_1"))
+    graph.add_edge(Edge("e_2", "transition", "t_1", "node", "n_b"))
+    graph.add_edge(Edge("e_3", "node", "n_b", "transition", "t_2"))
+    graph.add_edge(Edge("e_4", "transition", "t_2", "node", "n_c"))
+    return graph
 
 
-def test_no_cuts_means_empty_sets():
-    g = _linear_graph()
-    assert cut_input_transition_ids(g) == set()
-    assert cut_output_transition_ids(g) == set()
-    assert inactive_output_transition_ids(g) == set()
-    assert inactive_node_ids(g) == set()
-
-
-def test_cut_on_input_transition_makes_all_its_ots_inactive():
-    g = _linear_graph()
-    g.attach_payload(
-        CutPayload(
-            payload_id="cp_1",
-            target_id="it_1",
-            target_kind="input_transition",
-            cut_at="2026-01-01T00:00:00Z",
-        )
+def test_transition_cut_marks_downstream_inactive():
+    graph = _graph()
+    graph.attach_payload(
+        CutPayload("pl_cut", target_kind="transition", target_id="t_1", cut_at="now")
     )
-    assert "it_1" in cut_input_transition_ids(g)
-    assert "ot_1" in inactive_output_transition_ids(g)
-    assert is_inactive_output_transition(g, "ot_1")
-    # n_b and n_c become inactive (reachable from ot_1)
-    assert "n_b" in inactive_node_ids(g)
-    assert "n_c" in inactive_node_ids(g)
-    # ot_2 is also inactive because it starts from cut n_b
-    assert "ot_2" in inactive_output_transition_ids(g)
-    # n_a remains active
-    assert is_active_node(g, "n_a")
+
+    assert cut_transition_ids(graph) == {"t_1"}
+    assert inactive_transition_ids(graph) == {"t_1", "t_2"}
+    assert inactive_node_ids(graph) == {"n_b", "n_c"}
+    assert is_inactive_transition(graph, "t_1")
+    assert not is_active_node(graph, "n_b")
 
 
-def test_cut_on_output_transition_only_that_ot_inactive():
-    g = _linear_graph()
-    g.attach_payload(
-        CutPayload(
-            payload_id="cp_2",
-            target_id="ot_1",
-            target_kind="output_transition",
-            cut_at="2026-01-01T00:00:00Z",
-        )
-    )
-    assert "ot_1" in cut_output_transition_ids(g)
-    assert is_inactive_output_transition(g, "ot_1")
-    # n_b and downstream become inactive
-    assert not is_active_node(g, "n_b")
-    assert not is_active_node(g, "n_c")
-    # n_a still active
-    assert is_active_node(g, "n_a")
-    # it_1 itself is not cut (only its output was)
-    assert "it_1" not in cut_input_transition_ids(g)
+def test_node_cut_marks_downstream_inactive():
+    graph = _graph()
+    graph.attach_payload(CutPayload("pl_cut", target_kind="node", target_id="n_b", cut_at="now"))
 
-
-def test_is_inactive_input_transition_directly_cut():
-    g = _linear_graph()
-    g.attach_payload(
-        CutPayload(
-            payload_id="cp_it",
-            target_id="it_1",
-            target_kind="input_transition",
-            cut_at="2026-01-01T00:00:00Z",
-        )
-    )
-    assert is_inactive_input_transition(g, "it_1")
-    assert "it_1" in inactive_input_transition_ids(g)
-    # it_2 is not directly cut, but its input node n_b is inactive
-    assert is_inactive_input_transition(g, "it_2")
-
-
-def test_is_inactive_input_transition_via_inactive_input_node():
-    g = _linear_graph()
-    # cut ot_1 so n_b becomes inactive, making it_2 inactive
-    g.attach_payload(
-        CutPayload(
-            payload_id="cp_ot",
-            target_id="ot_1",
-            target_kind="output_transition",
-            cut_at="2026-01-01T00:00:00Z",
-        )
-    )
-    assert not is_inactive_input_transition(g, "it_1")
-    assert is_inactive_input_transition(g, "it_2")
+    assert cut_node_ids(graph) == {"n_b"}
+    assert inactive_transition_ids(graph) == {"t_2"}
+    assert inactive_node_ids(graph) == {"n_b", "n_c"}
+    assert is_active_node(graph, "n_a")

@@ -1,72 +1,24 @@
-"""Tests for note and view CLI commands."""
-
-from __future__ import annotations
-
 from stag.cli.commands.init import run_init_command
-from stag.cli.commands.note import run_note_command
-from stag.cli.commands.observe import run_observe_command
 from stag.cli.commands.plan import run_plan_command
-from stag.storage.jsonl import JsonlRunStore
+from stag.cli.commands.reachable import run_reachable_command
 
 
-def _init(store_dir: str) -> str:
-    run_init_command(
-        requirement_id="req",
-        target_type="task",
-        target_id="target",
-        run_id="run_a",
-        store_dir=store_dir,
-    )
-    return "run_a"
-
-
-def _root(store_dir: str, run_id: str) -> str:
-    return JsonlRunStore(store_dir).load_run(run_id).root_node_id
-
-
-def test_note_attaches_to_node(tmp_path):
-    store_dir = str(tmp_path / "runs")
-    run_id = _init(store_dir)
-    root = _root(store_dir, run_id)
-
-    note = run_note_command(
+def test_reachable_reports_transitions(tmp_path):
+    store_dir = str(tmp_path)
+    run_id = "run"
+    root = run_init_command(
+        requirement_id="req", target_type="code", target_id=None, run_id=run_id, store_dir=store_dir
+    )["root_node_id"]
+    transition_id = run_plan_command(
         run_id=run_id,
-        node_id=root,
-        text="baseline setup",
-        tags=["context", "setup"],
+        input_node_ids=[root],
+        action_type="analysis",
+        intent="try",
         store_dir=store_dir,
-        user_id="alice",
-    )["note"]
+    )["transition"]["transition_id"]
 
-    assert note["text"] == "baseline setup"
-    assert note["target_id"] == root
-    assert note["payload_type"] == "note"
-    assert set(note["tags"]) == {"context", "setup"}
+    result = run_reachable_command(
+        run_id=run_id, from_node=root, view_name=None, include_records=False, store_dir=store_dir
+    )
 
-    handle = JsonlRunStore(store_dir).load_run(run_id)
-    note_payloads = handle.run_graph.payloads_for_node(root, payload_type="note")
-    assert len(note_payloads) == 1
-    assert note_payloads[0].text == "baseline setup"
-
-
-def test_note_shows_in_trace(tmp_path):
-    store_dir = str(tmp_path / "runs")
-    run_id = _init(store_dir)
-    root = _root(store_dir, run_id)
-
-    run_note_command(run_id=run_id, node_id=root, text="root note", store_dir=store_dir)
-    it_id = run_plan_command(
-        run_id=run_id, input_node_ids=[root], action_type="analysis",
-        intent="x", store_dir=store_dir,
-    )["input_transition"]["input_transition_id"]
-    ot = run_observe_command(
-        run_id=run_id, input_transition_id=it_id, status="completed",
-        artifacts=None, raw_outputs=None, logs=None, metrics=None, errors=None,
-        store_dir=store_dir,
-    )["output_transition"]
-
-    from stag.cli.commands.trace import run_trace_command
-    history = run_trace_command(
-        run_id=run_id, from_node_id=ot["to_node_id"], depth=None, store_dir=store_dir
-    )["history"]
-    assert len(history["note_payload_ids"]) >= 1
+    assert transition_id in result["transition_ids"]

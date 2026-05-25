@@ -67,10 +67,10 @@ def body_key(kind: str, body: dict[str, Any]) -> tuple[str, str]:
     """Return a stable local identity key for a graph record body."""
     if kind == "node":
         return kind, str(body["node_id"])
-    if kind == "input_transition":
-        return kind, str(body["input_transition_id"])
-    if kind == "output_transition":
-        return kind, str(body["output_transition_id"])
+    if kind == "transition":
+        return kind, str(body["transition_id"])
+    if kind == "edge":
+        return kind, str(body["edge_id"])
     if kind == "payload":
         return kind, str(body["payload_id"])
     if kind == "view":

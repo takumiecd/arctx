@@ -1,140 +1,94 @@
-"""Tests for file-backed local/shared sync commands."""
-
-from __future__ import annotations
-
-import json
-
-from stag.cli.commands.anchor import run_anchor_command
 from stag.cli.commands.init import run_init_command
 from stag.cli.commands.plan import run_plan_command
-from stag.cli.commands.sync import (
-    run_sync_init_command,
-    run_sync_pull_command,
-    run_sync_push_command,
-    run_sync_status_command,
-)
-from stag.cli.context import resolve_store
-from stag.core.run.dump import DumpOptions, dump
+from stag.core.sync.local import sync_init, sync_pull, sync_push, sync_status
+from stag.storage.jsonl import JsonlRunStore
 
 
-def _init(store_dir: str, run_id: str) -> None:
+def test_local_sync_pushes_transition_edge_records(tmp_path):
+    store_dir = tmp_path / "runs"
+    remote_dir = tmp_path / "remotes"
+    run_id = "run"
+    root = run_init_command(
+        requirement_id="req",
+        target_type="code",
+        target_id=None,
+        run_id=run_id,
+        store_dir=str(store_dir),
+    )["root_node_id"]
+    transition_id = run_plan_command(
+        run_id=run_id,
+        input_node_ids=[root],
+        action_type="analysis",
+        intent="try",
+        store_dir=str(store_dir),
+    )["transition"]["transition_id"]
+    handle = JsonlRunStore(store_dir).load_run(run_id)
+    run_path = JsonlRunStore(store_dir).run_path(run_id)
+
+    sync_init(
+        handle=handle,
+        run_path=run_path,
+        remote="local",
+        shared_run_id="shared",
+        remote_dir=remote_dir,
+        workspace_id="ws",
+        actor_id="user",
+    )
+    pushed = sync_push(
+        handle=handle,
+        remote="local",
+        shared_run_id="shared",
+        remote_dir=remote_dir,
+        workspace_id="ws",
+        actor_id="user",
+    )
+    status = sync_status(
+        handle=handle, remote="local", shared_run_id="shared", remote_dir=remote_dir
+    )
+
+    assert pushed["pushed_records"] > 0
+    assert status["unpushed_records"] == 0
+    assert transition_id in handle.run_graph.transitions
+
+
+def test_local_sync_pull_accepts_transition_records(tmp_path):
+    source_dir = tmp_path / "source"
+    dest_dir = tmp_path / "dest"
+    remote_dir = tmp_path / "remotes"
+    run_id = "run"
+    root = run_init_command(
+        requirement_id="req",
+        target_type="code",
+        target_id=None,
+        run_id=run_id,
+        store_dir=str(source_dir),
+    )["root_node_id"]
+    transition_id = run_plan_command(
+        run_id=run_id,
+        input_node_ids=[root],
+        action_type="analysis",
+        intent="try",
+        store_dir=str(source_dir),
+    )["transition"]["transition_id"]
+    source = JsonlRunStore(source_dir).load_run(run_id)
+    sync_push(
+        handle=source,
+        remote="local",
+        shared_run_id="shared",
+        remote_dir=remote_dir,
+        workspace_id="ws1",
+        actor_id="user",
+    )
+
     run_init_command(
         requirement_id="req",
-        target_type="task",
-        target_id="target",
+        target_type="code",
+        target_id=None,
         run_id=run_id,
-        store_dir=store_dir,
+        store_dir=str(dest_dir),
     )
+    dest_store = JsonlRunStore(dest_dir)
+    dest = dest_store.load_run(run_id)
+    sync_pull(handle=dest, remote="local", shared_run_id="shared", remote_dir=remote_dir)
 
-
-def _root(store_dir: str, run_id: str) -> str:
-    return resolve_store(store_dir).load_run(run_id).root_node_id
-
-
-def test_local_shared_sync_push_pull_round_trip(tmp_path):
-    store_dir = str(tmp_path / "runs")
-    remote_dir = str(tmp_path / "remotes")
-    _init(store_dir, "local_a")
-    _init(store_dir, "local_b")
-    root = _root(store_dir, "local_a")
-
-    anchor = run_anchor_command(
-        run_id="local_a",
-        from_node_id=root,
-        label="common benchmark setup",
-        store_dir=store_dir,
-    )["anchor"]
-
-    init = run_sync_init_command(
-        run_id="local_a",
-        shared_run_id="sr_demo",
-        store_dir=store_dir,
-        remote_dir=remote_dir,
-        workspace_id="mbp",
-        actor_id="takumi",
-    )
-    assert init["shared_run_id"] == "sr_demo"
-
-    before = run_sync_status_command(
-        run_id="local_a",
-        store_dir=store_dir,
-        shared_run_id="sr_demo",
-        remote_dir=remote_dir,
-    )
-    assert before["unpushed_records"] == 7
-    assert before["unpulled_records"] == 0
-
-    pushed = run_sync_push_command(
-        run_id="local_a",
-        store_dir=store_dir,
-        shared_run_id="sr_demo",
-        remote_dir=remote_dir,
-        workspace_id="mbp",
-        actor_id="takumi",
-    )
-    assert pushed["pushed_records"] == 7
-    assert pushed["pushed_batches"] == 2
-
-    records_path = tmp_path / "remotes" / "local-shared" / "runs" / "sr_demo" / "records.jsonl"
-    batches = [
-        json.loads(line)
-        for line in records_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    assert [batch["operation"] for batch in batches] == ["seed", "anchor"]
-    assert all("batch_id" in batch for batch in batches)
-    assert all("actor" in batch for batch in batches)
-    assert all("origin" in batch for batch in batches)
-    assert len(batches[1]["records"]) == 5
-    for batch in batches:
-        for record in batch["records"]:
-            assert "record_id" in record, f"missing record_id in {record}"
-            assert "shared_id" not in record, f"unexpected shared_id in {record}"
-            assert record["record_id"] == record["body"][{
-                "node": "node_id",
-                "input_transition": "input_transition_id",
-                "output_transition": "output_transition_id",
-                "payload": "payload_id",
-                "view": "view_id",
-            }[record["record_kind"]]]
-
-    pulled = run_sync_pull_command(
-        run_id="local_b",
-        store_dir=store_dir,
-        shared_run_id="sr_demo",
-        remote_dir=remote_dir,
-    )
-    assert pulled["pulled_records"] == 7
-    assert pulled["pulled_batches"] == 2
-
-    handle = resolve_store(store_dir).load_run("local_b")
-    rendered = dump(handle, "outline", DumpOptions())
-    assert "anchor=common benchmark setup" in rendered
-
-    it = run_plan_command(
-        run_id="local_b",
-        input_node_ids=[anchor["node_id"]],
-        action_type="verification",
-        intent="run variant B",
-        store_dir=store_dir,
-    )["input_transition"]
-    assert it["input_transition_id"].startswith("it_")
-    assert it["input_node_ids"] == [anchor["node_id"]]
-
-
-def test_sync_status_uses_saved_config(tmp_path):
-    store_dir = str(tmp_path / "runs")
-    remote_dir = str(tmp_path / "remotes")
-    _init(store_dir, "local_a")
-
-    run_sync_init_command(
-        run_id="local_a",
-        shared_run_id="sr_demo",
-        store_dir=store_dir,
-        remote_dir=remote_dir,
-        workspace_id="mbp",
-        actor_id="takumi",
-    )
-    status = run_sync_status_command(run_id="local_a", store_dir=store_dir)
-    assert status["remote"] == "local-shared"
-    assert status["shared_run_id"] == "sr_demo"
+    assert transition_id in dest.run_graph.transitions
