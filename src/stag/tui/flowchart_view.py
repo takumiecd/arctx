@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from textual.strip import Strip
 from textual.widget import Widget
 from textual.events import MouseDown, MouseMove, MouseUp
-from textual.geometry import Size
 
 from stag.tui.flowchart import render_flowchart
 
@@ -74,7 +72,7 @@ class FlowchartView(Widget):
         sx, sy = self._drag_scroll_start or (0, 0)
         self.scroll_to(sx + dx, sy + dy, animate=False)
 
-    def on_mouse_up(self, event: MouseUp) -> None:
+    def on_mouse_up(self, _event: MouseUp) -> None:
         self._drag_start = None
         self._drag_scroll_start = None
         self.release_mouse()
