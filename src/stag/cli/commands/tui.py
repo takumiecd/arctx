@@ -12,6 +12,17 @@ from stag.cli.context import resolve_store
 def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("tui", help="Launch the Textual UI")
     parser.add_argument("--store-dir", default=".stag/runs")
+    parser.add_argument(
+        "--watch-interval",
+        type=float,
+        default=2.0,
+        help="Seconds between automatic run refresh checks",
+    )
+    parser.add_argument(
+        "--no-watch",
+        action="store_true",
+        help="Disable automatic refresh checks",
+    )
     return parser
 
 
@@ -22,5 +33,6 @@ def cli_tui(args) -> int:
     from stag.tui.app import StagApp
 
     store = resolve_store(args.store_dir)
-    StagApp(store=store).run()
+    watch_interval = None if args.no_watch else args.watch_interval
+    StagApp(store=store, watch_interval=watch_interval).run()
     return 0

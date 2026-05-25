@@ -46,14 +46,16 @@ class StagApp(App):
         Binding("0", "recenter_flowchart", "Recenter"),
     ]
 
-    def __init__(self, store, **kwargs):
+    def __init__(self, store, watch_interval: float | None = 2.0, **kwargs):
         super().__init__(**kwargs)
         self._store = store
+        self._watch_interval = watch_interval
         self._current_handle = None
         self._state_labels: dict[str, str] = {}
         self._plan_labels: dict[str, str] = {}
         self._selected: tuple[str, str] | None = None  # (kind, raw_id)
         self._runs_meta: list[dict] = []
+        self._run_signatures: dict[str, tuple[tuple[str, int, int], ...]] = {}
 
     def compose(self) -> ComposeResult:
         # Sidebar.
@@ -75,6 +77,8 @@ class StagApp(App):
 
     def on_mount(self) -> None:
         self._load_runs()
+        if self._watch_interval is not None and self._watch_interval > 0:
+            self.set_interval(self._watch_interval, self._refresh_if_changed)
 
     # ------------------------------------------------------------------
     # Runs list
@@ -83,6 +87,9 @@ class StagApp(App):
     def _load_runs(self) -> None:
         runs = self._store.list_runs()
         self._runs_meta = runs
+        for meta in runs:
+            rid = meta["run_id"]
+            self._run_signatures.setdefault(rid, self._run_signature(rid))
         lv = self.query_one("#runs-list", ListView)
         lv.clear()
         for meta in runs:
@@ -95,6 +102,7 @@ class StagApp(App):
                 handle = self._store.load_run(first_id)
                 self._current_handle = handle
                 self._load_run(handle)
+                self._remember_run_signature(first_id)
             except Exception:
                 pass
 
@@ -122,6 +130,7 @@ class StagApp(App):
             return
         self._current_handle = handle
         self._load_run(handle)
+        self._remember_run_signature(run_id)
 
     def _load_run(self, handle) -> None:
         """Initialize flowchart and detail for a freshly loaded run."""
@@ -144,6 +153,107 @@ class StagApp(App):
         self._load_run(handle)
         if selected is not None:
             self._select_item(*selected)
+        self._remember_run_signature(handle.run_id)
+
+    def _refresh_if_changed(self) -> None:
+        """Reload list/current run when another writer changes the store."""
+        try:
+            pulled_records = self._pull_current_sync_updates()
+        except Exception as exc:
+            self.notify(f"Sync pull failed: {exc}", severity="error")
+            pulled_records = 0
+        changed_runs = self._changed_run_ids()
+        if not changed_runs:
+            return
+
+        self._load_runs()
+        if self._current_handle is None:
+            return
+        run_id = self._current_handle.run_id
+        if run_id not in changed_runs:
+            return
+
+        selected = self._selected
+        try:
+            self._reload_current_run(selected=selected)
+        except Exception as exc:
+            self.notify(f"Refresh failed: {exc}", severity="error")
+            return
+        if pulled_records:
+            self.notify(f"Pulled {pulled_records} shared records into {run_id}")
+        else:
+            self.notify(f"Updated run {run_id}")
+
+    def _pull_current_sync_updates(self) -> int:
+        if self._current_handle is None:
+            return 0
+        try:
+            from stag.core.sync import local as sync
+
+            run_path = self._store.run_path(self._current_handle.run_id)
+            cfg = sync.load_sync_config(run_path)
+            result = sync.sync_pull(
+                handle=self._current_handle,
+                remote=cfg["remote"],
+                shared_run_id=cfg["shared_run_id"],
+                remote_dir=cfg["remote_dir"],
+            )
+            pulled_records = int(result.get("pulled_records") or 0)
+            if pulled_records:
+                self._store.save_run(self._current_handle)
+            return pulled_records
+        except RuntimeError as exc:
+            if "sync is not initialized" in str(exc):
+                return 0
+            raise
+        except FileNotFoundError:
+            return 0
+        except KeyError:
+            return 0
+
+    def _changed_run_ids(self) -> set[str]:
+        current = {
+            meta["run_id"]: self._run_signature(meta["run_id"])
+            for meta in self._store.list_runs()
+        }
+        changed = {
+            run_id
+            for run_id, signature in current.items()
+            if self._run_signatures.get(run_id) != signature
+        }
+        removed = set(self._run_signatures) - set(current)
+        self._run_signatures = current
+        return changed | removed
+
+    def _remember_run_signature(self, run_id: str) -> None:
+        self._run_signatures[run_id] = self._run_signature(run_id)
+
+    def _run_signature(self, run_id: str) -> tuple[tuple[str, int, int], ...]:
+        run_path = self._store.run_path(run_id)
+        if not run_path.exists():
+            return ()
+        files = (
+            "run.json",
+            "graph.json",
+            "nodes.jsonl",
+            "transitions.jsonl",
+            "payloads.jsonl",
+            "views.jsonl",
+            "work_sessions.jsonl",
+            "work_events.jsonl",
+            "run.db",
+        )
+        signature: list[tuple[str, int, int]] = []
+        for name in files:
+            path = run_path / name
+            if not path.exists():
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            signature.append((name, stat.st_size, stat.st_mtime_ns))
+        return tuple(signature)
 
     # ------------------------------------------------------------------
     # Flowchart click handler

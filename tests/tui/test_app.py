@@ -121,6 +121,33 @@ def test_app_has_editor_actions_bound():
     assert '"G"' in src
 
 
+def test_app_has_auto_refresh_watch_methods():
+    import ast
+    import pathlib
+
+    src = pathlib.Path("src/stag/tui/app.py").read_text()
+    tree = ast.parse(src)
+    method_names = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    }
+
+    assert "_refresh_if_changed" in method_names
+    assert "_pull_current_sync_updates" in method_names
+    assert "_run_signature" in method_names
+    assert "sync_pull" in src
+    assert "set_interval" in src
+    assert "watch_interval" in src
+
+
+def test_tui_cli_exposes_watch_flags():
+    import pathlib
+
+    src = pathlib.Path("src/stag/cli/commands/tui.py").read_text()
+
+    assert "--watch-interval" in src
+    assert "--no-watch" in src
+
+
 def test_editor_payload_type_options_are_target_compatible():
     from stag.tui.editor import _payload_type_options
 
