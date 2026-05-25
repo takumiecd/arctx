@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from stag.core import _json as _fast_json
+from stag.core.append import AppendBatch, AppendResult
 from stag.core.graph_view import GraphView
 from stag.core.run import RunHandle
 from stag.core.run_graph import RunGraph
@@ -86,6 +87,75 @@ class SqliteRunStore:
 
         save_cache(run_path, self._row_counts(run_path), run.run_graph)
         return run_path
+
+    def append_batch(self, batch: AppendBatch) -> AppendResult:
+        """Atomically append one work-session batch to an existing run."""
+        run_path = self.run_path(batch.run_id)
+        if not (run_path / "run.json").exists():
+            raise KeyError(f"unknown run_id: {batch.run_id}")
+
+        con = sqlite3.connect(run_path / "run.db", timeout=30)
+        try:
+            _setup_db(con)
+            con.execute("BEGIN IMMEDIATE")
+            con.execute(
+                """
+                INSERT OR IGNORE INTO work_sessions(work_session_id, data_json)
+                VALUES (?, ?)
+                """,
+                (
+                    batch.work_session.work_session_id,
+                    _dumps(batch.work_session.to_dict()),
+                ),
+            )
+
+            appended_records: list[str] = []
+            for record in batch.records:
+                table, id_col = _record_table(record.record_kind)
+                before = con.total_changes
+                con.execute(
+                    f"INSERT OR IGNORE INTO {table}({id_col}, data_json) VALUES (?, ?)",
+                    (record.record_id, _dumps(record.record.to_dict())),
+                )
+                if con.total_changes != before:
+                    appended_records.append(record.record_id)
+
+            event_ids: list[str] = []
+            event_seqs: list[int] = []
+            for event in batch.events:
+                data = event.to_dict()
+                before = con.total_changes
+                con.execute(
+                    "INSERT OR IGNORE INTO work_events(event_id, data_json) VALUES (?, ?)",
+                    (event.event_id, _dumps(data)),
+                )
+                if con.total_changes != before:
+                    seq = int(
+                        con.execute(
+                            "SELECT seq FROM work_events WHERE event_id = ?",
+                            (event.event_id,),
+                        ).fetchone()[0]
+                    )
+                    data["seq"] = seq
+                    con.execute(
+                        "UPDATE work_events SET data_json = ? WHERE event_id = ?",
+                        (_dumps(data), event.event_id),
+                    )
+                    event_ids.append(event.event_id)
+                    event_seqs.append(seq)
+            con.commit()
+            return AppendResult(
+                event_id=event_ids[0] if event_ids else "",
+                event_seq=event_seqs[0] if event_seqs else 0,
+                record_ids=tuple(appended_records),
+                event_ids=tuple(event_ids),
+                event_seqs=tuple(event_seqs),
+            )
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
 
     def load_run(self, run_id: str) -> RunHandle:
         run_path = self.run_path(run_id)
@@ -245,6 +315,15 @@ def _replace_work_events(con: sqlite3.Connection, events: list[WorkEvent]) -> No
 
 def _dumps(data: dict[str, Any]) -> str:
     return _fast_json.dumps(data)
+
+
+def _record_table(kind: str) -> tuple[str, str]:
+    return {
+        "node": ("nodes", "node_id"),
+        "transition": ("transitions", "transition_id"),
+        "payload": ("payloads", "payload_id"),
+        "view": ("views", "view_id"),
+    }[kind]
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:

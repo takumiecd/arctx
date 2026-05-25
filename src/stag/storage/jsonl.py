@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import itertools
 import json
 from pathlib import Path
 from typing import Any
 
 from stag.core import _json as _fast_json
+from stag.core.append import AppendBatch, AppendResult, GraphRecordEnvelope
 from stag.core.graph_view import GraphView
 from stag.core.run import RunHandle
 from stag.core.run_graph import RunGraph
@@ -128,6 +131,57 @@ class JsonlRunStore:
         save_cache(run_path, row_counts, run.run_graph)
 
         return run_path
+
+    def append_batch(self, batch: AppendBatch) -> AppendResult:
+        """Atomically append one work-session batch to an existing run."""
+        run_path = self.run_path(batch.run_id)
+        if not (run_path / "run.json").exists():
+            raise KeyError(f"unknown run_id: {batch.run_id}")
+        run_path.mkdir(parents=True, exist_ok=True)
+
+        with _run_lock(run_path):
+            existing = _existing_ids(run_path)
+            if batch.work_session.work_session_id not in existing["work_sessions"]:
+                _append_dicts(
+                    run_path / "work_sessions.jsonl",
+                    [batch.work_session.to_dict()],
+                )
+                existing["work_sessions"].add(batch.work_session.work_session_id)
+
+            appended_records: list[str] = []
+            for record in batch.records:
+                if record.record_id in existing[record.record_kind]:
+                    continue
+                _append_dicts(
+                    run_path / _record_file(record),
+                    [record.record.to_dict()],
+                )
+                existing[record.record_kind].add(record.record_id)
+                appended_records.append(record.record_id)
+
+            next_seq = len(existing["work_events"]) + 1
+            event_ids: list[str] = []
+            event_seqs: list[int] = []
+            event_rows: list[dict[str, Any]] = []
+            for event in batch.events:
+                if event.event_id in existing["work_events"]:
+                    continue
+                data = event.to_dict()
+                data["seq"] = next_seq
+                event_rows.append(data)
+                event_ids.append(event.event_id)
+                event_seqs.append(next_seq)
+                existing["work_events"].add(event.event_id)
+                next_seq += 1
+            _append_dicts(run_path / "work_events.jsonl", event_rows)
+
+            return AppendResult(
+                event_id=event_ids[0] if event_ids else "",
+                event_seq=event_seqs[0] if event_seqs else 0,
+                record_ids=tuple(appended_records),
+                event_ids=tuple(event_ids),
+                event_seqs=tuple(event_seqs),
+            )
 
     def load_run(self, run_id: str) -> RunHandle:
         run_path = self.run_path(run_id)
@@ -264,3 +318,53 @@ def _requirement_from_dict(data: dict[str, Any]) -> Requirement:
         constraints=dict(data.get("constraints") or {}),
         metadata=dict(data.get("metadata") or {}),
     )
+
+
+@contextlib.contextmanager
+def _run_lock(run_path: Path):
+    lock_path = run_path / ".append.lock"
+    with lock_path.open("a", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _existing_ids(run_path: Path) -> dict[str, set[str]]:
+    return {
+        "node": _ids_from_jsonl(run_path / "nodes.jsonl", "node_id"),
+        "transition": _ids_from_jsonl(run_path / "transitions.jsonl", "transition_id"),
+        "payload": _ids_from_jsonl(run_path / "payloads.jsonl", "payload_id"),
+        "view": _ids_from_jsonl(run_path / "views.jsonl", "view_id"),
+        "work_sessions": _ids_from_jsonl(run_path / "work_sessions.jsonl", "work_session_id"),
+        "work_events": _ids_from_jsonl(run_path / "work_events.jsonl", "event_id"),
+    }
+
+
+def _ids_from_jsonl(path: Path, key: str) -> set[str]:
+    if not path.exists():
+        return set()
+    return {
+        str(row[key])
+        for row in JsonlRunStore._read_jsonl(path)
+        if key in row
+    }
+
+
+def _record_file(record: GraphRecordEnvelope) -> str:
+    return {
+        "node": "nodes.jsonl",
+        "transition": "transitions.jsonl",
+        "payload": "payloads.jsonl",
+        "view": "views.jsonl",
+    }[record.record_kind]
+
+
+def _append_dicts(path: Path, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    mode = "a" if path.exists() else "w"
+    with path.open(mode, encoding="utf-8") as f:
+        for row in rows:
+            f.write(_fast_json.dumps(row) + "\n")
