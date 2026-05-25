@@ -118,7 +118,7 @@ def test_app_has_editor_actions_bound():
     assert '"t"' in src
     assert '"p"' in src
     assert '"c"' in src
-    assert '"shift+g"' in src
+    assert '"G"' in src
 
 
 def test_editor_payload_type_options_are_target_compatible():
@@ -145,6 +145,29 @@ def test_git_payload_form_data():
     data = GitPayloadFormData(transition_id="t_1", commits=("HEAD", "abc123"))
     assert data.transition_id == "t_1"
     assert data.commits == ("HEAD", "abc123")
+
+
+@pytest.mark.asyncio
+async def test_git_payload_shortcut_uses_uppercase_g_key():
+    from stag.tui.app import StagApp
+
+    class EmptyStore:
+        def list_runs(self):
+            return []
+
+    class TestApp(StagApp):
+        def __init__(self):
+            super().__init__(store=EmptyStore())
+            self.git_payload_action_count = 0
+
+        def action_attach_git_payload(self) -> None:
+            self.git_payload_action_count += 1
+
+    app = TestApp()
+    async with app.run_test() as pilot:
+        await pilot.press("G")
+
+    assert app.git_payload_action_count == 1
 
 
 # ---------------------------------------------------------------------------

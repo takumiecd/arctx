@@ -40,7 +40,7 @@ class StagApp(App):
         Binding("t", "create_transition", "Transition"),
         Binding("p", "attach_payload", "Payload"),
         Binding("c", "cut_selected", "Cut"),
-        Binding("shift+g", "attach_git_payload", "Git Payload"),
+        Binding("G", "attach_git_payload", "Git Payload"),
         Binding("+", "depth_increase", "+Depth"),
         Binding("-", "depth_decrease", "-Depth"),
         Binding("0", "recenter_flowchart", "Recenter"),
