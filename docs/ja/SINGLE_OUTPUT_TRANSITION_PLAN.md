@@ -1,70 +1,146 @@
-# Single-Output Transition リファクタ計画
+# Single-Output Transition + Generic Payload リファクタ計画
 
-## 動機
+## 設計哲学
 
-現在のスキーマは `Transition` に **複数 output Node** を許している（`predict(max_outcomes=N)` が 1 Transition に N 個の output Node を生やす）。これが以下の問題を生んでいる：
+1. **関数的 Transition**: 複数 input → 1 つの action → **1 つの output Node**。`inputs → action → output` で 1:1 に追えること
+2. **拡張は Python で**: ユーザーが新しい記録種別を増やしたければ `PayloadBase` を継承して自作する。これが基本路線
+3. **デフォルトの逃げ道**: Python 書きたくないユーザー向けに、`type` + `content` を持つ generic な `NodePayload` / `TransitionPayload` を同梱。文字列 type で何でも記録できる
+4. **必要最小限の built-in 特殊 Payload**: `CutPayload`（cascade 意味論があるので必須）、`GitChangePayload`（用途が普遍的なので便利）。それ以外（旧 Plan / Prediction / Result / Note）は廃止
 
-1. **意味が曖昧**: 同じ Transition に `PredictionPayload` と `ResultPayload` が併存しうる。「予測されたが実行もされた」という中間状態がスキーマ上 valid になってしまう
-2. **関数的でない**: 「何かをした → こうなった」を `inputs → action → output` で 1:1 に追えない。fan-out があると制御フローが追跡しづらい
-3. **TUI/可視化が複雑**: Transition を畳む単位が自明でない。Tree も Flowchart も特殊ケース handling が必要
+## スキーマ
 
-## 新スキーマ
-
-### 原則
-
-- **Transition は関数**: 複数 input → 1 つの action → **1 つの output**
-- 予測も観測も同じ shape の Transition。違いは attach されている Payload の型のみ
-- 中間 record `Edge` を廃止。`Transition` 自体が入出力 Node を直接持つ
-
-### 型
+### Graph records
 
 ```python
 @dataclass(frozen=True)
 class Node:
     node_id: str
-    metadata: dict[str, JSONValue]
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class Transition:
     transition_id: str
     input_node_ids: tuple[str, ...]   # 複数 OK（multi-input join）
     output_node_id: str               # 必ず 1 つ
-    metadata: dict[str, JSONValue]
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
 ```
 
-### Payload（Transition に貼り付く）
+`Edge` は廃止。逆引きは `RunGraph` 内の dict で。
 
-- `PredictionPayload` — 「もしこうしたら、こうなりそう」（metrics, rationale, probability, ...）
-- `ResultPayload` — 「こうしたら、こうなった」（status, metrics, errors, `matched_prediction_transition_id`）
-- `CutPayload` — append-only な無効化マーク（Node または Transition）
+### Payload
 
-### Node に貼り付く Payload
+```python
+class PayloadBase(ABC):
+    """すべての Payload の親。fix なのはこの 3 フィールドだけ。"""
+    payload_id: str
+    target_kind: Literal["node", "transition"]
+    target_id: str
+    payload_type: str  # シリアライズ時の dispatch key（subclass 名 / "node" / "transition" / "cut" / "git_change" 等）
 
-- `NotePayload` — Node 上のメモ
-- `GitChangePayload` — そのまま
+    @abstractmethod
+    def to_dict(self) -> dict[str, JSONValue]: ...
+```
 
-### 廃止
+#### Built-in concrete payloads
 
-- `Edge` record — `Transition` が直接 input/output を持つため不要
-- `PlanPayload` — 意図のみの記録は metrics 抜きの `PredictionPayload` で代替
-- `plan` verb — 同上
+```python
+@dataclass(frozen=True)
+class NodePayload(PayloadBase):
+    """汎用 Node Payload。type 文字列で用途を分ける。"""
+    payload_id: str
+    target_id: str
+    type: str                                  # free-form
+    content: dict[str, JSONValue] = field(default_factory=dict)
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-## RunGraph 構造
+    target_kind: Literal["node"] = field(default="node", init=False)
+    payload_type: str = field(default="node_payload", init=False)
+
+
+@dataclass(frozen=True)
+class TransitionPayload(PayloadBase):
+    """汎用 Transition Payload。type 文字列で用途を分ける。"""
+    payload_id: str
+    target_id: str
+    type: str
+    content: dict[str, JSONValue] = field(default_factory=dict)
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: Literal["transition"] = field(default="transition", init=False)
+    payload_type: str = field(default="transition_payload", init=False)
+
+
+@dataclass(frozen=True)
+class CutPayload(PayloadBase):
+    """append-only な無効化マーク。Node または Transition に貼る。
+    cascade 判定の意味論を core が持つので built-in。
+    """
+    payload_id: str
+    target_kind: Literal["node", "transition"]
+    target_id: str
+    reason: str | None = None
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    payload_type: str = field(default="cut", init=False)
+
+
+@dataclass(frozen=True)
+class GitChangePayload(PayloadBase):
+    """Git の commit / diff 記録。Transition にのみ貼る（変更は action なので）。"""
+    payload_id: str
+    target_id: str
+    branch: str
+    head_commit: str
+    diff_summary: DiffSummary
+    commit_log: tuple[CommitEntry, ...] = ()
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: Literal["transition"] = field(default="transition", init=False)
+    payload_type: str = field(default="git_change", init=False)
+```
+
+#### 廃止される旧 Payload
+
+- `PlanPayload` — intent は generic `TransitionPayload(type="...")` の content で表現
+- `PredictionPayload` / `ResultPayload` — 「予測か実測か」を type 名で表現（e.g., `type="suggestion"` vs `type="implementation"`）。マッチングしたい時は content に prior transition_id を入れる
+- `NotePayload` — `NodePayload(type="note", content={"text": "..."})` で代替
+
+#### ユーザー自作 subclass
+
+ユーザーが自分のプロジェクトで `PayloadBase` を継承して、型付きフィールドを持つ custom Payload を作れる。例：
+
+```python
+# user_code.py
+@dataclass(frozen=True)
+class ExperimentResultPayload(PayloadBase):
+    payload_id: str
+    target_id: str
+    metrics: dict[str, float]
+    seed: int
+    duration_sec: float
+
+    target_kind: Literal["transition"] = field(default="transition", init=False)
+    payload_type: str = field(default="experiment_result", init=False)
+```
+
+`isinstance(p, ExperimentResultPayload)` で型安全に取り出せる。
+
+## RunGraph
 
 ```python
 @dataclass
 class RunGraph:
     nodes: dict[str, Node]
     transitions: dict[str, Transition]
-    payloads: dict[str, Payload]
+    payloads: dict[str, PayloadBase]
     views: dict[str, GraphView]
     work_sessions: dict[str, WorkSession]
     work_events: list[WorkEvent]
-    metadata: dict[str, JSONValue]  # root_node_id 等
+    metadata: dict[str, JSONValue]
 
-    # ---- 逆引きインデックス（永続化しない、ロード時に再構築） ----
-    transitions_by_input_node: dict[str, list[str]]   # node_id -> [transition_id, ...]
-    transition_by_output_node: dict[str, str]         # node_id -> transition_id (output は1つ)
+    # ---- 逆引きインデックス（永続化せず、ロード時に再構築） ----
+    transitions_by_input_node: dict[str, list[str]]
+    transition_by_output_node: dict[str, str]
     payloads_by_node: dict[str, list[str]]
     payloads_by_transition: dict[str, list[str]]
 ```
@@ -72,54 +148,73 @@ class RunGraph:
 ### 公開 API（lookup）
 
 - `transitions_from_node(node_id) -> list[transition_id]`
-- `transition_to_node(node_id) -> transition_id | None`（output は1つなので Transition も最大1つ）
+- `transition_to_node(node_id) -> transition_id | None`
 - `transition_inputs(transition_id) -> tuple[str, ...]`
 - `transition_output(transition_id) -> str`
-- `transition_kind(transition_id) -> Literal["prediction", "result", "unknown"]`
-- `payloads_for_node(node_id, *, payload_type=None)`
-- `payloads_for_transition(transition_id, *, payload_type=None)`
+- `payloads_for_node(node_id, *, payload_type=None) -> list[PayloadBase]`
+- `payloads_for_transition(transition_id, *, payload_type=None) -> list[PayloadBase]`
 
-## Verb
+`transition_kind()` は廃止。kind は payload の type を見て呼び出し側が判断する。
 
-### `predict`
+## Verb（最小）
 
 ```python
-predict(
+run.transition(
     input_node_ids: list[str],
-    payload: PredictionPayload,
+    payload: PayloadBase,                  # TransitionPayload subclass instance
     *,
     max_outcomes: int = 1,
     user_id, work_session_id,
 ) -> list[Transition]
 ```
 
-- N 個の **sibling Transition** を生成。各 Transition は同じ `input_node_ids`、独立した output Node を 1 つ、独立した `PredictionPayload` を 1 つ
-- 戻り値は作られた Transition のリスト
-
-### `observe`
+- N 個の sibling Transition を生成、各 Transition に payload の **コピーを attach**（payload_id だけ振り直し）
+- 戻り値は Transition のリスト
+- max_outcomes=1 が普通（observation）。複数 sibling が欲しい時（予測の枝分かれ等）は ≥2
 
 ```python
-observe(
-    input_node_ids: list[str],
-    payload: ResultPayload,
+run.attach(
+    node_id: str,
+    payload: PayloadBase,                  # NodePayload subclass instance
     *,
-    matched_prediction_transition_id: str | None = None,
     user_id, work_session_id,
-) -> Transition
+) -> PayloadBase
 ```
 
-- 1 つの Transition + 1 つの output Node + 1 つの ResultPayload を生成
-- 既存の prediction Transition と紐付けたい場合は `matched_prediction_transition_id` を payload に乗せる（予測 Transition 自体は変更しない、append-only）
+- Node に Payload を attach（汎用記録 / メモ / 任意の custom）
 
-### `note` / `cut`
+```python
+run.cut(target_id: str, *, target_kind: Literal["node", "transition"], reason=None, ...) -> CutPayload
+```
 
-変更なし。
+- Convenience。内部で `CutPayload` を attach
 
-### 廃止: `plan`
+### 廃止
 
-意図のみの記録は `predict()` を metrics/rationale なしで呼ぶ。
+- `run.plan()` — `run.transition()` で代替
+- `run.predict()` — `run.transition(..., max_outcomes=N)` で代替
+- `run.observe()` — `run.transition(..., max_outcomes=1)` で代替
+- `run.note()` — `run.attach(node_id, NodePayload(type="note", content={"text": ...}))` で代替（CLI には残してもいい convenience）
 
-## ストレージ（JsonlRunStore）
+## CLI
+
+破壊的変更。alpha なので互換性なし。
+
+- `stag transition --inputs S0 --type suggestion --content '{"proposal": "..."}' [--max-outcomes N]` — generic do
+- `stag attach <node> --type note --content '{"text": "..."}'` — node payload
+- `stag cut <target>` — convenience
+- `stag show` / `stag trace` / `stag outcomes` / `stag dump` — 新スキーマに追従
+- `stag tui` — 新スキーマに追従
+
+旧 `stag plan` / `stag predict` / `stag observe` / `stag note` は **削除**。convenience として残すかは後検討。
+
+## Cut の意味（変更なし）
+
+- Node に `CutPayload` → そのノード + 下流の Transition / output Node が inactive
+- Transition に `CutPayload` → その Transition + output Node + 下流が inactive
+- 「inactive」は read-time に計算（`inactive_node_ids` / `inactive_transition_ids`）
+
+## ストレージ
 
 新しい run directory 構造：
 
@@ -127,66 +222,68 @@ observe(
 - `graph.json` — RunGraph metadata + counters
 - `nodes.jsonl`
 - `transitions.jsonl` — `input_node_ids` と `output_node_id` を含む
-- `payloads.jsonl`
+- `payloads.jsonl` — `payload_type` で dispatch
 - `views.jsonl`
 - ~~`edges.jsonl`~~ — 削除
+- ~~`input_transitions.jsonl` / `output_transitions.jsonl`~~ — 既に削除済み
 
-旧形式（`input_transitions.jsonl` / `output_transitions.jsonl` / `edges.jsonl`）の互換性は **持たない**（alpha のため）。
+旧形式の互換性は **持たない**。
 
-## CLI
+### Payload deserialization
 
-- `stag plan` — **削除**
-- `stag predict` — multi-outcome は内部で複数 Transition を作る
-- `stag observe` — 単一 Transition + output Node
-- `stag note` / `stag cut` — 変更なし
-- `stag show` / `stag trace` / `stag outcomes` / `stag dump` — 新スキーマに追従
-- `stag tui` — 新スキーマに追従（multi-output 表示は概念上消える）
+`payload_from_dict(data)` が `payload_type` フィールドを見て該当 class にディスパッチ。built-in は core が登録、ユーザー自作 subclass は明示的に登録 API で追加：
 
-## Cut の意味
+```python
+from stag.core.schema.payloads import register_payload_class
+register_payload_class(ExperimentResultPayload)
+```
 
-- Node に CutPayload を貼ると、そのノード + 下流の全 Transition と output Node が inactive
-- Transition に CutPayload を貼ると、その Transition + その output Node + 下流が inactive
-- 「inactive」は read-time に `inactive_node_ids` / `inactive_transition_ids` で計算（現状と同じ）
+未登録の `payload_type` が出てきたら：
+
+- (a) **fallback to generic**: 同じ target_kind の generic Payload (`NodePayload` / `TransitionPayload`) に変換、`type=元のpayload_type`、`content=元のフィールド全部` として読み込む
+- (b) **error**: 未登録 type は load 失敗
+
+MVP 案: **(a)** を採用。ユーザーが custom payload class を import せず CLI 触っても落ちない。
 
 ## TUI への影響
 
-Transition の output は 1 つに固定されるので：
+- Tree: Transition の output が 1 つに固定されるので、Transition → 単一 output Node の直線関係に。fan-out は **複数 sibling Transition** として表現
+- Flowchart: 各 Transition は 1:N input + 1 output の標準形。layout が単純化
+- Payload 表示: type ごとの特別 rendering は MVP では持たない。`type` / `content` を JSON dump で表示。Cut / GitChange は subclass なので typed access で綺麗に表示できる
+- TUI が認識する built-in payload は `CutPayload` と `GitChangePayload` の 2 つ + 汎用の `NodePayload` / `TransitionPayload`
 
-- Tree: `T → S_out` という直線的な親子関係。fan-out は **複数の sibling Transition** として表現（兄弟ノードとして展開）。「Transition を畳む」は自然に「その Transition の output Node 以下を畳む」と等価
-- Flowchart: 各 Transition は 1:N input + 1 output の標準的な diamond/box ノード。layout が単純化される
+## 影響を受けるファイル（ざっくり）
 
-## マイグレーション
-
-alpha なので **既存 run のマイグレーションは行わない**。新スキーマで作り直し。テストは全面書き直し。
-
-## 影響を受けるファイル（推定）
-
-実装フェーズで詳細化するが、ざっくり：
-
-- `src/stag/core/schema/graph.py` — `Edge`, `GraphRef`, `GraphRecordKind` 削除、`Transition` に `input_node_ids` / `output_node_id` 追加
-- `src/stag/core/schema/payloads.py` — `PlanPayload` 削除、`ResultPayload.matched_prediction_transition_id` は残す
-- `src/stag/core/run_graph.py` — Edge 関連 API 削除、逆引きインデックスを `Transition.add` 時に更新
+- `src/stag/core/schema/graph.py` — `Edge`/`GraphRef`/`GraphRecordKind` 削除、`Transition` に `input_node_ids` / `output_node_id` 追加
+- `src/stag/core/schema/payloads.py` — 全面書き直し。`PlanPayload` / `PredictionPayload` / `ResultPayload` / `NotePayload` 削除、`NodePayload` / `TransitionPayload` 新設、`CutPayload` / `GitChangePayload` 残す（API は調整）、`register_payload_class` API 新設
+- `src/stag/core/run_graph.py` — Edge 関連 API 削除、逆引きインデックス
 - `src/stag/core/run/plan.py` — **削除**
-- `src/stag/core/run/predict.py` — N Transition を生成するよう書き直し
-- `src/stag/core/run/observe.py` — 単純化（既存 Transition への attach ではなく新規生成）
+- `src/stag/core/run/predict.py` — **削除**（または rename）
+- `src/stag/core/run/observe.py` — **削除**（または rename）
+- `src/stag/core/run/transition.py` — 新規。`run.transition()` の実装
+- `src/stag/core/run/attach.py` — 新規。`run.attach()`（or `run/note.py` を rename / 削除）
+- `src/stag/core/run/cut.py` — 追従
 - `src/stag/core/run/dump.py` — outline/mermaid を新スキーマで再実装
-- `src/stag/core/run/trace.py` / `outcomes.py` / `cut.py` — 追従
-- `src/stag/core/cuts.py` — `inactive_transition_ids` のロジック調整
+- `src/stag/core/run/trace.py` / `outcomes.py` — 追従
+- `src/stag/core/cuts.py` — `CutPayload` ベースで再実装（変更小）
 - `src/stag/storage/jsonl.py` / `sqlite.py` — `transitions.jsonl` のフォーマット変更、`edges.jsonl` 削除
-- `src/stag/cli/*` — `plan` 削除、他追従
-- `src/stag/tui/*` — 追従（fan-out 表示の簡素化）
+- `src/stag/cli/main.py` 他 — verb 削除 / 新設
+- `src/stag/tui/*` — 追従
 - `tests/` — 全面書き直し
+- `docs/ja/{DIRECTION,STATE_MODEL,API,CLI,AGENT_LOOP,CONCEPT}.md` — 更新
+- `CLAUDE.md` — 更新
 
 ## 進め方
 
 1. 本ドキュメントに合意
 2. `feat/single-output-transition` ブランチで実装
-3. core schema → RunGraph → verb → storage → CLI → TUI の順で破壊的に書き直す
+3. 実装順: core schema → RunGraph → verb → storage → CLI → TUI
 4. テスト全面再構築
-5. CLAUDE.md と `docs/ja/{DIRECTION,STATE_MODEL,API,CLI,AGENT_LOOP}.md` 更新
+5. docs / CLAUDE.md 更新
 
 ## 未決の論点（実装時に決める）
 
-- `predict` の戻り値: `list[Transition]` か `list[Node]`（output Nodes）か → 多分前者の方が情報量多い
-- Transition.metadata に user_id / work_session_id を入れるか別フィールドにするか（現状は metadata）
-- multi-input Transition の入力順序が意味を持つか → 持たせない（順序不問の set として扱う）
+- `run.transition()` のシグネチャ詳細: `max_outcomes=1` で sibling 1 個か、`max_outcomes=N` で payload を N 個分受け取るか
+- `run.attach()` という名前が良いか別の動詞か（`add_payload` 等）
+- CLI で convenience verb (`stag note` 等) を完全削除するか、type="note" 用の shortcut として残すか
+- `payload_from_dict` の fallback (a) を本当に許すか、registry 必須にするか
