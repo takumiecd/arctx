@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from stag import init
-from stag.core.cuts import is_inactive_transition
-from stag.core.schema.payloads import NotePayload, PlanPayload, PredictionPayload, ResultPayload
+from stag.core.schema.payloads import CutPayload, NodePayload, TransitionPayload
 from stag.core.schema.requirements import Requirement
 from stag.storage.jsonl import JsonlRunStore
 
@@ -15,15 +17,25 @@ def _req() -> Requirement:
     return Requirement(requirement_id="r", target_type="task", target_id="t")
 
 
-def _plan_payload(intent: str = "x") -> PlanPayload:
-    return PlanPayload(payload_id="pending", target_id="pending", intent=intent)
+def _tp(t_type: str = "experiment") -> TransitionPayload:
+    return TransitionPayload(payload_id="_", target_id="_", type=t_type)
+
+
+def _np() -> NodePayload:
+    return NodePayload(payload_id="_", target_id="_", type="note", content={"text": "hi"})
+
+
+def _make_populated_run(run_id: str = "test_run"):
+    run = init(_req(), run_id=run_id)
+    [t1] = run.transition([run.root_node_id], _tp("suggestion"))
+    n1 = t1.output_node_id
+    [t2] = run.transition([n1], _tp("implementation"))
+    run.attach(run.root_node_id, _np())
+    return run
 
 
 def test_round_trip_basic():
-    run = init(_req(), run_id="rt_basic")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    run.observe(transition.transition_id, ResultPayload("x", "x", "completed", metrics={"a": 1.0}))
-
+    run = _make_populated_run("rt_basic")
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
@@ -32,113 +44,101 @@ def test_round_trip_basic():
     assert loaded.run_id == run.run_id
     assert len(loaded.run_graph.nodes) == len(run.run_graph.nodes)
     assert len(loaded.run_graph.transitions) == len(run.run_graph.transitions)
-    assert len(loaded.run_graph.edges) == len(run.run_graph.edges)
     assert len(loaded.run_graph.payloads) == len(run.run_graph.payloads)
 
 
-def test_round_trip_work_history():
-    run = init(_req(), run_id="rt_work")
-    transition = run.plan(
-        [run.root_node_id],
-        _plan_payload("x"),
-        user_id="alice",
-        work_session_id="ws_1",
-    )
-    run.observe(
-        transition.transition_id,
-        ResultPayload("x", "x", "completed"),
-        user_id="alice",
-        work_session_id="ws_1",
-    )
-
+def test_round_trip_indices_rebuilt():
+    run = _make_populated_run("rt_idx")
+    [t1] = list(run.run_graph.transitions.values())[:1]
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
-        loaded = store.load_run("rt_work")
+        loaded = store.load_run("rt_idx")
 
-    assert loaded.run_graph.work_sessions["ws_1"].user_id == "alice"
-    assert [event.event_type for event in loaded.run_graph.work_events] == [
-        "transition_planned",
-        "result_observed",
-    ]
+    # Verify reverse indices are rebuilt.
+    for tid, t in loaded.run_graph.transitions.items():
+        for nid in t.input_node_ids:
+            assert tid in loaded.run_graph.transitions_by_input_node.get(nid, [])
+        if t.output_node_id:
+            assert loaded.run_graph.transition_by_output_node.get(t.output_node_id) == tid
 
 
-def test_round_trip_with_predictions():
-    run = init(_req(), run_id="rt_pred")
-    run.note(run.root_node_id, "start note", tags=["setup"])
-    transition = run.plan([run.root_node_id], _plan_payload())
-    run.predict(transition.transition_id, max_outcomes=3)
-    run.observe(transition.transition_id, ResultPayload("x", "x", "completed"))
-
+def test_round_trip_payloads_preserved():
+    run = _make_populated_run("rt_payloads")
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
-        loaded = store.load_run("rt_pred")
+        loaded = store.load_run("rt_payloads")
 
-    assert len(loaded.run_graph.transition_outputs(transition.transition_id)) == 4
-    assert len(loaded.run_graph.payloads) == 6
+    assert len(loaded.run_graph.payloads) == len(run.run_graph.payloads)
+    for payload_id in run.run_graph.payloads:
+        assert payload_id in loaded.run_graph.payloads
 
 
-def test_round_trip_preserves_views():
-    run = init(_req(), run_id="rt_views")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    node = run.observe(transition.transition_id, ResultPayload("x", "x", "completed"))
-    run.view_create("exp-a", root_node_id=node.node_id)
+def test_round_trip_with_cut():
+    run = _make_populated_run("rt_cut")
+    t_ids = list(run.run_graph.transitions)
+    run.cut(t_ids[0], target_kind="transition", reason="bad")
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(run)
+        loaded = store.load_run("rt_cut")
 
+    cut_payloads = [p for p in loaded.run_graph.payloads.values() if isinstance(p, CutPayload)]
+    assert len(cut_payloads) >= 1
+
+
+def test_round_trip_views_preserved():
+    run = _make_populated_run("rt_views")
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
         loaded = store.load_run("rt_views")
 
     assert "main" in loaded.run_graph.views
-    assert "exp-a" in loaded.run_graph.views
-    assert loaded.run_graph.views["exp-a"].root_node_id == node.node_id
 
 
-def test_round_trip_cut_payload():
-    run = init(_req(), run_id="rt_cut")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    run.observe(transition.transition_id, ResultPayload("x", "x", "completed"))
-    run.cut(transition.transition_id, target_kind="transition", reason="undo")
-
+def test_jsonl_files_created():
+    run = _make_populated_run("rt_files")
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
-        loaded = store.load_run("rt_cut")
+        run_path = Path(td) / "rt_files"
+        assert (run_path / "run.json").exists()
+        assert (run_path / "nodes.jsonl").exists()
+        assert (run_path / "transitions.jsonl").exists()
+        assert (run_path / "payloads.jsonl").exists()
+        # Old edge file should NOT exist.
+        assert not (run_path / "edges.jsonl").exists()
+        # Old split files should NOT exist.
+        assert not (run_path / "input_transitions.jsonl").exists()
+        assert not (run_path / "output_transitions.jsonl").exists()
 
-    assert is_inactive_transition(loaded.run_graph, transition.transition_id)
+
+def test_list_runs():
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        run1 = _make_populated_run("run_a")
+        run2 = _make_populated_run("run_b")
+        store.save_run(run1)
+        store.save_run(run2)
+        listed = store.list_runs()
+        ids = [r["run_id"] for r in listed]
+        assert "run_a" in ids
+        assert "run_b" in ids
 
 
-def test_prediction_payload_probability_round_trip():
-    run = init(_req(), run_id="rt_prob")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    run.predict(
-        transition.transition_id,
-        payloads=[
-            PredictionPayload(
-                payload_id="pending",
-                target_id="pending",
-                probability=0.75,
-                confidence=0.9,
-            )
-        ],
-    )
-
+def test_incremental_save():
+    """Saving twice should append only new records."""
+    run = init(_req(), run_id="rt_incr")
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
-        loaded = store.load_run("rt_prob")
 
-    payloads = loaded.run_graph.payloads_for_transition(transition.transition_id)
-    pred = next(p for p in payloads if isinstance(p, PredictionPayload))
-    assert pred.probability == 0.75
-    assert pred.confidence == 0.9
-
-
-def test_list_runs_returns_summaries():
-    with tempfile.TemporaryDirectory() as td:
-        store = JsonlRunStore(td)
-        run = init(_req(), run_id="rt_listing")
+        # Add more data.
+        [t1] = run.transition([run.root_node_id], _tp())
         store.save_run(run)
-        runs = store.list_runs()
-        assert any(r["run_id"] == "rt_listing" for r in runs)
+
+        loaded = store.load_run("rt_incr")
+        assert len(loaded.run_graph.transitions) == 1
+        assert len(loaded.run_graph.nodes) == 2  # root + output

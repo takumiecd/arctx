@@ -8,24 +8,10 @@ from typing import Any, Literal
 
 JSONValue = Any
 
-ActionType = Literal[
-    "investigation",
-    "implementation",
-    "verification",
-    "analysis",
-    "scope_refinement",
-]
-
-ResultStatus = Literal["completed", "failed", "timeout", "skipped"]
-
 TargetKind = Literal["node", "transition"]
-PayloadType = Literal["note", "plan_payload", "prediction", "result", "cut", "git_change"]
 
 NODE_PREFIX = "n"
-INPUT_TRANSITION_PREFIX = "it"
-OUTPUT_TRANSITION_PREFIX = "ot"
 TRANSITION_PREFIX = "t"
-EDGE_PREFIX = "e"
 PAYLOAD_PREFIX = "pl"
 
 

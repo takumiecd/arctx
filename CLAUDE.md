@@ -31,36 +31,35 @@ The current core model is **a single RunGraph plus attached payloads**. Pure gra
 
 Pure graph records (`src/stag/core/schema/graph.py`):
 
-- `Node`: pure graph node
-- `InputTransition`: entry point of an operation, with `input_node_ids: tuple[str, ...]` (multi-input allowed)
-- `OutputTransition`: result edge from one InputTransition to one output node
+- `Node`: pure DAG node
+- `Transition`: connects many input nodes to exactly one output node (`input_node_ids: tuple[str, ...]`, `output_node_id: str`). Fan-out is represented as sibling Transitions sharing the same input nodes.
 
 Container (`src/stag/core/run_graph.py`):
 
-- `RunGraph`: holds all nodes / input_transitions / output_transitions / payloads / views, plus traversal indices
+- `RunGraph`: holds all nodes / transitions / payloads / views, plus reverse-lookup indices
 - `GraphView`: lightweight named label anchored to a root node; contents derived at read time via reachability
 
-Observed vs predicted is a property of the **OutputTransition's attached payload**, not a separate record family:
+There is no `Edge` record, no `InputTransition`/`OutputTransition` split, and no `transition_kind()` method. Kind is expressed by the `type` field on the attached `TransitionPayload`.
 
-- A `ResultPayload` on an OT → that OT is observed
-- A `PredictionPayload` on an OT → that OT is predicted
-- `RunGraph.output_kind(ot_id)` returns `"result" | "prediction" | "unknown"`
-
-Avoid reintroducing `Dag` (singular per role), `StateNode`, `ExecutionPlan`, `PredictionPlan`, `ObservedTransition`, `PredictedTransition`, `ActionResult`, or `DerivedRecord` as public compatibility aliases unless the task explicitly asks for that.
+Avoid reintroducing `Dag`, `StateNode`, `ExecutionPlan`, `PredictionPlan`, `ObservedTransition`, `PredictedTransition`, `ActionResult`, `DerivedRecord`, `InputTransition`, `OutputTransition`, `PlanPayload`, `PredictionPayload`, `ResultPayload`, or `NotePayload` as public symbols.
 
 ## Payloads
 
-Payload types live under `src/stag/core/schema/payloads.py`.
+Two-tier design. All payloads live under `src/stag/core/schema/payloads.py`.
 
-- `NotePayload`: lightweight memo on a node
-- `PlanPayload`: operation intent attached to an InputTransition
-- `PredictionPayload`: predicted outcome attached to an OutputTransition
-- `ResultPayload`: actual execution result attached to an OutputTransition
-- `CutPayload`: append-only cut marker on an InputTransition or OutputTransition
+**Generic payloads** (use `type` string to distinguish purpose):
+- `NodePayload(payload_id, target_id, type, content={}, metadata={})` — any node annotation
+- `TransitionPayload(payload_id, target_id, type, content={}, metadata={})` — any transition annotation
 
-`PredictionPayload` and `ResultPayload` are mutually exclusive on the same OT; `RunGraph.attach_payload` enforces this.
+**Built-in typed payloads** (special semantics known to core):
+- `CutPayload(payload_id, target_id, target_kind, reason=None)` — append-only cut marker
+- `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=())` — git record on a Transition
 
-There is no separate `SnapshotPayload` / `DerivedPayload` / `MatchPayload` in the current schema. Match information lives in `ResultPayload.matched_prediction_output_id`.
+**User subclasses**: inherit `PayloadBase`, set `payload_type` as a class-level `field(default="...", init=False)`, register with `register_payload_class(MyClass)`.
+
+**Deserialization**: `payload_from_dict(data)` dispatches by `payload_type`. Unknown types fall back to `NodePayload` or `TransitionPayload` (generic) — CLI never crashes on unregistered custom types.
+
+Old payload types `PlanPayload`, `PredictionPayload`, `ResultPayload`, `NotePayload` are deleted. Use `TransitionPayload(type="...")` and `NodePayload(type="note", content={"text": "..."})` instead.
 
 ## RunHandle
 
@@ -68,16 +67,17 @@ There is no separate `SnapshotPayload` / `DerivedPayload` / `MatchPayload` in th
 
 Public verbs (each implemented in `src/stag/core/run/<verb>.py`):
 
-- `plan(input_node_ids, plan_payload, *, user_id=None)`
-- `observe(input_transition_id, result_payload, *, user_id=None)` (alias: `result`)
-- `predict(input_transition_id, *, payloads=None, max_outcomes=None, user_id=None)`
-- `note(node_id, text, *, tags=(), user_id=None)`
-- `cut(target_id, *, target_kind, reason=None, user_id=None)`
-- `trace(node_id, ...)` (alias: `history`)
-- `outcomes(...)`
+- `transition(input_node_ids, payload, *, max_outcomes=1, user_id=None, work_session_id=None) -> list[Transition]` — create N sibling Transitions from input nodes; `payload` must be transition-targeting
+- `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
+- `cut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> CutPayload` — mark a Node or Transition inactive
+- `anchor(from_node_id, label, ...)` — create a lightweight scope anchor node
+- `trace(node_id, ...)` (alias: `history`) — walk history backwards
+- `outcomes(transition_id)` — return output node info for a transition
 - `view_create(name, *, root_node_id)`
 - `view_list()`
 - `view_show(name)`
+
+Deleted verbs: `plan`, `predict`, `observe`, `note`.
 
 When adding a new RunHandle method, implement it in a focused `src/stag/core/run/<verb>.py` module and bind it in `handle.py`.
 
@@ -89,13 +89,19 @@ Current commands:
 
 - `current` / `use` — manage the active run pointer
 - `init` / `list` — create / list runs
-- `plan` / `predict` / `observe` / `note` / `cut` — mutate the run
-- `show` — inspect a node / IT / OT / payload as JSON
+- `transition` — create a Transition (`--inputs NODE --type TYPE --content JSON [--max-outcomes N]`)
+- `cut` — cut a Node or Transition (`--node NODE_ID` or `--transition T_ID`)
+- `show` — inspect a node / transition / payload as JSON
 - `trace` / `outcomes` / `reachable` — derived queries
 - `view` — manage `GraphView`s
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
+- `anchor` — create a scope anchor node
 - `guide` — print usage hints
-- `migrate` — convert a jsonl run dir to sqlite (`--to sqlite`, `--run <id>` or `--all`)
+- `migrate` — convert a jsonl run dir to sqlite
+- `git` — git integration helpers
+- `sync` — sync helpers
+
+Deleted commands: `plan`, `predict`, `observe`, `note`.
 
 Commands resolve the target run in this order:
 
@@ -116,35 +122,36 @@ The `workflows/`, `domains/`, `execution/`, and `search/` packages are scaffoldi
 
 `stag dump` is the single command for getting the whole run structure in one shot. Two formats:
 
-- `--format outline` (default): LLM-optimized indented spanning tree. Each node and each transition is rendered exactly once. Multi-input transitions are anchored under `input_node_ids[0]` (primary parent); additional inputs appear inline as `(+n_X)`; non-primary parents get a one-line `▸ feeds it_X (@n_primary)` pointer. Back-references use `↻n_X`. Predicted OTs use `⇢`, observed `→`, cuts `✂`. When ≥3 multi-input transitions exist, a top-level `joins:` index is emitted.
-- `--format mermaid`: human/visual format. Renders a `flowchart TD` mermaid block. Single-input/single-output transitions become labeled edges; multi-input or multi-output transitions become diamond intermediate nodes. Class styles separate observed / predicted / cut / root.
+- `--format outline` (default): LLM-optimized indented spanning tree. Each node and transition rendered exactly once. Multi-input transitions anchored under `input_node_ids[0]`; additional inputs shown inline as `(+n_X)`; non-primary parents show `▸ feeds t_X (@n_primary)`. Back-references use `↻n_X`. Cuts show `✂`. When ≥3 multi-input transitions exist, a top-level `joins:` index is emitted.
+- `--format mermaid`: human/visual format. Renders a `flowchart TD` mermaid block. Each Transition becomes labeled edges from each input to the single output.
 
-Useful flags: `--node`, `--depth`, `--observed-only`, `--predicted-only`, `--full-payloads`.
+Useful flags: `--node`, `--depth`, `--full-payloads`.
 
 Renderer code: `src/stag/core/run/dump.py`. Tests: `tests/core/test_dump.py`.
 
 ## IDs
 
-IDs are minted through `RunHandle._next_id(prefix)`.
+IDs are minted through `RunHandle._next_id(prefix)` (delegates to `opaque_id(prefix)`).
 
-Current prefixes include:
+Current prefixes:
 
 - `n` — Node
-- `it` — InputTransition
-- `ot` — OutputTransition
+- `t` — Transition
 - `pl` — Payload
 - `run` — Run
+- `we` — WorkEvent
+- `view` — GraphView
 
-IDs are opaque and collision-resistant (`n_<uuid>`, `it_<uuid>`, `ot_<uuid>`, `pl_<uuid>`). Do not assume sequential IDs such as `n_0000` or `it_0001`. The root node is also opaque; use `run.root_node_id` or the `root_node_id` returned by `run_init_command`.
+IDs are opaque and collision-resistant (`n_<uuid>`, `t_<uuid>`, `pl_<uuid>`). Do not assume sequential IDs. The root node is opaque; use `run.root_node_id` or the `root_node_id` returned by `run_init_command`.
 
 ## Cut
 
-Cut is append-only. It attaches a `CutPayload` to an InputTransition or OutputTransition; it does not delete nodes, transitions, plans, or payloads.
+Cut is append-only. It attaches a `CutPayload` to a Node or Transition; it does not delete records.
 
 Activity is computed at read time in `src/stag/core/cuts.py`:
 
-- A `CutPayload` on an InputTransition makes the IT and all its OTs and downstream nodes inactive (cascading forward).
-- A `CutPayload` on an OutputTransition makes that OT and its `to_node` (and descendants) inactive.
+- A `CutPayload` on a Node makes that node and all downstream Transitions and Nodes inactive.
+- A `CutPayload` on a Transition makes that Transition and its output Node (and descendants) inactive.
 
 Writers that extend observed history must reject cut nodes via `_ensure_active_node(node_id)`.
 
@@ -153,11 +160,16 @@ Writers that extend observed history must reject cut nodes via `_ensure_active_n
 `JsonlRunStore` writes the current schema only. A run directory contains:
 
 - `run.json`
-- `graph.json` (RunGraph metadata + counters)
+- `graph.json` (RunGraph metadata)
 - `nodes.jsonl`
-- `input_transitions.jsonl`
-- `output_transitions.jsonl`
-- `payloads.jsonl`
+- `transitions.jsonl` — each row has `transition_id`, `input_node_ids`, `output_node_id`, `metadata`
+- `payloads.jsonl` — dispatched by `payload_type` on load
 - `views.jsonl`
+- `work_sessions.jsonl`
+- `work_events.jsonl`
 
-Do not preserve old `dags.jsonl` / `states.jsonl` / `plans.jsonl` / `transitions.jsonl` / `selections.jsonl` / `execution_plans.jsonl` compatibility unless requested.
+Old files `edges.jsonl`, `input_transitions.jsonl`, `output_transitions.jsonl`, `dags.jsonl`, `states.jsonl` do not exist in the current schema.
+
+`SqliteRunStore` stores the same data in a per-run `run.db`.
+
+Payload deserialization uses `payload_from_dict(data)` which dispatches by `payload_type`. Fallback: unknown types become generic `NodePayload` / `TransitionPayload`.

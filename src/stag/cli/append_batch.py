@@ -10,7 +10,6 @@ def graph_counts(handle) -> dict[str, set[str]]:
     return {
         "nodes": set(handle.run_graph.nodes),
         "transitions": set(handle.run_graph.transitions),
-        "edges": set(handle.run_graph.edges),
         "payloads": set(handle.run_graph.payloads),
         "views": {view.view_id for view in handle.run_graph.views.values()},
         "work_events": {event.event_id for event in handle.run_graph.work_events},
@@ -56,10 +55,6 @@ def build_append_batch(
     for transition_id in _new_ids(handle.run_graph.transitions, before, "transitions"):
         transition = handle.run_graph.transitions[transition_id]
         records.append(GraphRecordEnvelope("transition", transition.transition_id, transition))
-
-    for edge_id in _new_ids(handle.run_graph.edges, before, "edges"):
-        edge = handle.run_graph.edges[edge_id]
-        records.append(GraphRecordEnvelope("edge", edge.edge_id, edge))
 
     for payload_id in _new_ids(handle.run_graph.payloads, before, "payloads"):
         payload = handle.run_graph.payloads[payload_id]

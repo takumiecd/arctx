@@ -51,8 +51,9 @@ def _assign_layers(handle: RunHandle) -> dict[tuple[str, str], int]:
             for tid in graph.transitions_from_node(rid):
                 queue.append(("transition", tid, layer + 1))
         else:
-            for nid in graph.transition_outputs(rid):
-                queue.append(("node", nid, layer + 1))
+            out = graph.transition_output(rid)
+            if out:
+                queue.append(("node", out, layer + 1))
 
     return layers
 
@@ -83,33 +84,49 @@ def render_graph_html(handle: RunHandle) -> str:
             positions[item] = (x + _NODE_W / 2, y + _NODE_H / 2)
 
     svg_width = _MARGIN * 2 + (max_layer + 1) * (_NODE_W + _H_GAP)
-    svg_height = _MARGIN * 2 + max(
+    svg_height = (_MARGIN * 2 + max(
         (len(v) * (_NODE_H + _V_GAP)) for v in by_layer.values()
-    ) if by_layer else 200
+    )) if by_layer else 200
 
     svg_parts: list[str] = []
 
-    # Draw edges first (so nodes appear on top).
-    for edge in graph.edges.values():
-        src_key = (edge.from_kind, edge.from_id)
-        dst_key = (edge.to_kind, edge.to_id)
-        if src_key not in positions or dst_key not in positions:
+    # Draw edges: node -> transition and transition -> node.
+    for tid, t in graph.transitions.items():
+        t_key = ("transition", tid)
+        t_pos = positions.get(t_key)
+        if t_pos is None:
             continue
-        x1, y1 = positions[src_key]
-        x2, y2 = positions[dst_key]
-        is_cut = (
-            edge.from_id in inactive_nodes or edge.from_id in inactive_trans
-            or edge.to_id in inactive_nodes or edge.to_id in inactive_trans
-        )
-        stroke = "#999" if is_cut else "#555"
-        dash = 'stroke-dasharray="4 4"' if is_cut else ""
-        svg_parts.append(
-            f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
-            f'stroke="{stroke}" stroke-width="1.5" {dash} marker-end="url(#arrow)"/>'
-        )
+        # Input edges: node -> transition.
+        for inp in t.input_node_ids:
+            src_key = ("node", inp)
+            if src_key not in positions:
+                continue
+            x1, y1 = positions[src_key]
+            x2, y2 = t_pos
+            is_cut = inp in inactive_nodes or tid in inactive_trans
+            stroke = "#999" if is_cut else "#555"
+            dash = 'stroke-dasharray="4 4"' if is_cut else ""
+            svg_parts.append(
+                f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
+                f'stroke="{stroke}" stroke-width="1.5" {dash} marker-end="url(#arrow)"/>'
+            )
+        # Output edge: transition -> node.
+        out = t.output_node_id
+        if out:
+            dst_key = ("node", out)
+            if dst_key in positions:
+                x1, y1 = t_pos
+                x2, y2 = positions[dst_key]
+                is_cut = tid in inactive_trans or out in inactive_nodes
+                stroke = "#999" if is_cut else "#555"
+                dash = 'stroke-dasharray="4 4"' if is_cut else ""
+                svg_parts.append(
+                    f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
+                    f'stroke="{stroke}" stroke-width="1.5" {dash} marker-end="url(#arrow)"/>'
+                )
 
     # Draw nodes.
-    for nid, node in graph.nodes.items():
+    for nid in graph.nodes:
         key = ("node", nid)
         if key not in positions:
             continue
@@ -139,10 +156,7 @@ def render_graph_html(handle: RunHandle) -> str:
         hw = _TRANS_W / 2
         hh = _TRANS_H / 2
         is_cut = tid in inactive_trans
-        t_kind = graph.transition_kind(tid)
-        fill = "#10b981" if t_kind == "result" else "#06b6d4" if t_kind == "prediction" else "#f59e0b"
-        if is_cut:
-            fill = "#9ca3af"
+        fill = "#9ca3af" if is_cut else "#f59e0b"
         # Diamond shape.
         pts = f"{cx:.0f},{cy - hh:.0f} {cx + hw:.0f},{cy:.0f} {cx:.0f},{cy + hh:.0f} {cx - hw:.0f},{cy:.0f}"
         svg_parts.append(
@@ -177,8 +191,8 @@ def render_graph_html(handle: RunHandle) -> str:
 <div class="meta">
   Run: {handle.run_id} &nbsp;|&nbsp;
   Target: {req.target_type} / {req.target_id} &nbsp;|&nbsp;
-  States: {len(graph.nodes)} &nbsp;|&nbsp;
-  Plans: {len(graph.transitions)}
+  Nodes: {len(graph.nodes)} &nbsp;|&nbsp;
+  Transitions: {len(graph.transitions)}
 </div>
 <svg width="{svg_width:.0f}" height="{svg_height:.0f}" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -190,10 +204,8 @@ def render_graph_html(handle: RunHandle) -> str:
 </svg>
 <div class="legend">
   <div class="legend-item"><div class="dot" style="background:#ffcc00"></div> Root</div>
-  <div class="legend-item"><div class="dot" style="background:#3b82f6"></div> State</div>
-  <div class="legend-item"><div class="dot" style="background:#10b981"></div> Observed</div>
-  <div class="legend-item"><div class="dot" style="background:#06b6d4"></div> Predicted</div>
-  <div class="legend-item"><div class="dot" style="background:#f59e0b"></div> Unknown</div>
+  <div class="legend-item"><div class="dot" style="background:#3b82f6"></div> Node</div>
+  <div class="legend-item"><div class="dot" style="background:#f59e0b"></div> Transition</div>
   <div class="legend-item"><div class="dot" style="background:#9ca3af"></div> Cut</div>
 </div>
 </body>

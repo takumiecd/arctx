@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Literal
 
 from stag.core.cuts import cut_node_ids, cut_transition_ids
@@ -36,9 +35,7 @@ def cut_impl(
         payload_id=self._next_id("pl"),
         target_id=target_id,
         target_kind=target_kind,
-        cut_at=datetime.now(timezone.utc).isoformat(),
         reason=reason,
-        user_id=user_id,
     )
     self.run_graph.attach_payload(cut)
     self.record_work_event(

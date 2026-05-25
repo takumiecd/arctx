@@ -8,11 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from stag.core import _json as _fast_json
-from stag.core.append import AppendBatch, AppendResult, GraphRecordEnvelope
 from stag.core.graph_view import GraphView
 from stag.core.run import RunHandle
 from stag.core.run_graph import RunGraph
-from stag.core.schema.graph import Edge, Node, Transition
+from stag.core.schema.graph import Node, Transition
 from stag.core.schema.payloads import payload_from_dict
 from stag.core.schema.requirements import Requirement
 from stag.core.schema.work import WorkEvent, work_event_from_dict, work_session_from_dict
@@ -61,7 +60,9 @@ class SqliteRunStore:
                 "counters": dict(run._counters),
             },
         )
-        con = sqlite3.connect(run_path / "run.db")
+        db_path = run_path / "run.db"
+        # Alpha: drop and recreate on schema mismatch rather than migrate.
+        con = sqlite3.connect(db_path)
         try:
             _setup_db(con)
             con.execute("DELETE FROM run_meta")
@@ -73,7 +74,6 @@ class SqliteRunStore:
             _replace_records(
                 con, "transitions", "transition_id", run.run_graph.transitions.values()
             )
-            _replace_records(con, "edges", "edge_id", run.run_graph.edges.values())
             _replace_records(con, "payloads", "payload_id", run.run_graph.payloads.values())
             _replace_records(con, "views", "view_id", run.run_graph.views.values())
             _replace_records(
@@ -86,35 +86,6 @@ class SqliteRunStore:
 
         save_cache(run_path, self._row_counts(run_path), run.run_graph)
         return run_path
-
-    def append_batch(self, batch: AppendBatch) -> AppendResult:
-        run_path = self.run_path(batch.run_id)
-        if not run_path.exists():
-            raise KeyError(f"unknown run_id: {batch.run_id}")
-        con = sqlite3.connect(run_path / "run.db")
-        try:
-            _setup_db(con)
-            _insert_work_session_if_needed(con, batch)
-            record_ids: list[str] = []
-            for envelope in batch.records:
-                _insert_graph_record(con, envelope)
-                record_ids.append(envelope.record_id)
-            event_ids: list[str] = []
-            event_seqs: list[int] = []
-            for event in batch.events:
-                seq = _insert_work_event(con, event)
-                event_ids.append(event.event_id)
-                event_seqs.append(seq)
-            con.commit()
-        finally:
-            con.close()
-        return AppendResult(
-            event_id=event_ids[0],
-            event_seq=event_seqs[0],
-            record_ids=tuple(record_ids),
-            event_ids=tuple(event_ids),
-            event_seqs=tuple(event_seqs),
-        )
 
     def load_run(self, run_id: str) -> RunHandle:
         run_path = self.run_path(run_id)
@@ -150,7 +121,7 @@ class SqliteRunStore:
     def _row_counts(self, run_path: Path) -> tuple[int, ...]:
         db_path = run_path / "run.db"
         if not db_path.exists():
-            return (0, 0, 0, 0, 0, 0, 0)
+            return (0, 0, 0, 0, 0, 0)
         con = sqlite3.connect(db_path)
         try:
             _setup_db(con)
@@ -159,7 +130,6 @@ class SqliteRunStore:
                 for table in (
                     "nodes",
                     "transitions",
-                    "edges",
                     "payloads",
                     "views",
                     "work_sessions",
@@ -184,11 +154,6 @@ def _setup_db(con: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS transitions (
             seq INTEGER PRIMARY KEY AUTOINCREMENT,
             transition_id TEXT UNIQUE NOT NULL,
-            data_json TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS edges (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            edge_id TEXT UNIQUE NOT NULL,
             data_json TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS payloads (
@@ -220,23 +185,23 @@ def _load_graph(con: sqlite3.Connection) -> RunGraph:
     if row:
         graph.metadata = dict(json.loads(row[0]).get("metadata") or {})
     for data in _rows(con, "nodes"):
-        graph.add_node(Node(data["node_id"], dict(data.get("metadata") or {})))
+        graph.nodes[data["node_id"]] = Node(data["node_id"], dict(data.get("metadata") or {}))
     for data in _rows(con, "transitions"):
-        graph.add_transition(Transition(data["transition_id"], dict(data.get("metadata") or {})))
-    for data in _rows(con, "edges"):
-        graph.add_edge(
-            Edge(
-                data["edge_id"],
-                data["from_kind"],
-                data["from_id"],
-                data["to_kind"],
-                data["to_id"],
-                dict(data.get("metadata") or {}),
+        graph.add_transition(
+            Transition(
+                transition_id=data["transition_id"],
+                input_node_ids=tuple(data.get("input_node_ids") or []),
+                output_node_id=str(data.get("output_node_id") or ""),
+                metadata=dict(data.get("metadata") or {}),
             )
         )
     for data in _rows(con, "payloads"):
         payload = payload_from_dict(data)
-        graph.attach_payload(payload)
+        graph.payloads[payload.payload_id] = payload
+        if payload.target_kind == "node":
+            graph.payloads_by_node.setdefault(payload.target_id, []).append(payload.payload_id)
+        elif payload.target_kind == "transition":
+            graph.payloads_by_transition.setdefault(payload.target_id, []).append(payload.payload_id)
     for data in _rows(con, "views"):
         view = GraphView(
             str(data["view_id"]),
@@ -272,47 +237,10 @@ def _replace_records(con: sqlite3.Connection, table: str, id_col: str, records) 
 def _replace_work_events(con: sqlite3.Connection, events: list[WorkEvent]) -> None:
     con.execute("DELETE FROM work_events")
     for event in events:
-        _insert_work_event(con, event)
-
-
-def _insert_work_session_if_needed(con: sqlite3.Connection, batch: AppendBatch) -> None:
-    con.execute(
-        "INSERT OR IGNORE INTO work_sessions(work_session_id, data_json) VALUES (?, ?)",
-        (batch.work_session.work_session_id, _dumps(batch.work_session.to_dict())),
-    )
-
-
-def _insert_graph_record(con: sqlite3.Connection, envelope: GraphRecordEnvelope) -> None:
-    table, id_col = _table_for_record_kind(envelope.record_kind)
-    con.execute(
-        f"INSERT INTO {table}({id_col}, data_json) VALUES (?, ?)",
-        (envelope.record_id, _dumps(envelope.record.to_dict())),
-    )
-
-
-def _insert_work_event(con: sqlite3.Connection, event: WorkEvent) -> int:
-    con.execute(
-        "INSERT INTO work_events(event_id, data_json) VALUES (?, ?)",
-        (event.event_id, _dumps(event.to_dict())),
-    )
-    row = con.execute(
-        "SELECT seq FROM work_events WHERE event_id = ?", (event.event_id,)
-    ).fetchone()
-    return int(row[0])
-
-
-def _table_for_record_kind(record_kind: str) -> tuple[str, str]:
-    if record_kind == "node":
-        return "nodes", "node_id"
-    if record_kind == "transition":
-        return "transitions", "transition_id"
-    if record_kind == "edge":
-        return "edges", "edge_id"
-    if record_kind == "payload":
-        return "payloads", "payload_id"
-    if record_kind == "view":
-        return "views", "view_id"
-    raise ValueError(f"unsupported record_kind: {record_kind!r}")
+        con.execute(
+            "INSERT INTO work_events(event_id, data_json) VALUES (?, ?)",
+            (event.event_id, _dumps(event.to_dict())),
+        )
 
 
 def _dumps(data: dict[str, Any]) -> str:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from stag.core.cuts import inactive_node_ids, inactive_transition_ids
 from stag.core.run.handle import RunHandle
-from stag.core.schema.payloads import NotePayload, PlanPayload
+from stag.core.schema.payloads import NodePayload, TransitionPayload
 
 
 def _build_labels(handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
@@ -18,7 +18,6 @@ def _build_labels(handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
 
     state_labels: dict[str, str] = {}
     counter = 0
-    # Root always S0.
     state_labels[root_id] = "S0"
     for node_id in graph.nodes:
         if node_id == root_id:
@@ -33,10 +32,11 @@ def _build_labels(handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
     return state_labels, plan_labels
 
 
-def _plan_intent(handle: RunHandle, transition_id: str) -> str | None:
+def _transition_type(handle: RunHandle, transition_id: str) -> str | None:
+    """Return the type string of the first TransitionPayload on this transition."""
     for p in handle.run_graph.payloads_for_transition(transition_id):
-        if isinstance(p, PlanPayload):
-            s = p.intent
+        if isinstance(p, TransitionPayload):
+            s = p.type
             return s if len(s) <= 60 else s[:59] + "…"
     return None
 
@@ -68,32 +68,22 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
             return f"[red strike]{sl} ✂[/red strike]"
         if is_root:
             return f"[bold]{sl} (root)[/bold]"
-
-        # Determine role from incoming transitions.
-        incoming = graph.transitions_to_node(node_id)
-        if incoming:
-            kind = graph.transition_kind(incoming[0])
-            if kind == "result":
-                return sl  # default colour
-            if kind == "prediction":
-                return f"[cyan]{sl}[/cyan]"
         return sl
 
     def transition_label(transition_id: str) -> str:
         pl = plan_labels.get(transition_id, transition_id)
         is_cut = transition_id in inactive_trans
-        intent = _plan_intent(handle, transition_id) or ""
+        t_type = _transition_type(handle, transition_id) or ""
         inputs = graph.transition_inputs(transition_id)
 
-        # Extra input labels beyond the primary.
         extra = ""
         if len(inputs) > 1:
             others = " ".join(f"(+{state_labels.get(n, n)})" for n in inputs[1:])
             extra = f" {others}"
 
         cut_marker = " ✂" if is_cut else ""
-        intent_part = f" [yellow]{intent}[/yellow]" if intent else ""
-        return f"[bold]{pl}[/bold]{intent_part}{extra}{cut_marker}"
+        type_part = f" [yellow]{t_type}[/yellow]" if t_type else ""
+        return f"[bold]{pl}[/bold]{type_part}{extra}{cut_marker}"
 
     def add_node(parent_tree_node, node_id: str, *, is_last: bool) -> None:
         if node_id in visited_nodes:
@@ -108,10 +98,10 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
         label = node_label(node_id)
         tree_node = parent_tree_node.add(label, data={"type": "node", "id": node_id})
 
-        # Attach note as child leaf.
+        # Attach note-type NodePayload leaves.
         for payload in graph.payloads_for_node(node_id):
-            if isinstance(payload, NotePayload):
-                text = payload.text
+            if isinstance(payload, NodePayload) and payload.type == "note":
+                text = str(payload.content.get("text", ""))
                 if len(text) > 80:
                     text = text[:79] + "…"
                 tree_node.add_leaf(
@@ -119,11 +109,9 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
                     data={"type": "note", "id": node_id},
                 )
 
-        # Recurse into outgoing transitions.
         out_trans = graph.transitions_from_node(node_id)
         for tid in out_trans:
             inputs = graph.transition_inputs(tid)
-            # If this node is not the primary (first) input, add a forward pointer.
             if inputs and inputs[0] != node_id:
                 pl = plan_labels.get(tid, tid)
                 primary = state_labels.get(inputs[0], inputs[0])
@@ -147,28 +135,23 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
         label = transition_label(transition_id)
         t_node = parent_tree_node.add(label, data={"type": "transition", "id": transition_id})
 
-        kind = graph.transition_kind(transition_id)
-        marker = "→" if kind == "result" else "⇢" if kind == "prediction" else "◇"
-        color = "green" if kind == "result" else "cyan" if kind == "prediction" else "white"
-
-        outputs = graph.transition_outputs(transition_id)
-        for out_id in outputs:
+        out_id = graph.transition_output(transition_id)
+        if out_id:
             sl = state_labels.get(out_id, out_id)
-            child_label = f"[{color}]{marker} {sl}[/{color}]"
+            is_cut = transition_id in inactive_trans
+            color = "red" if is_cut else "green"
+            child_label = f"[{color}]→ {sl}[/{color}]"
             child = t_node.add(child_label, data={"type": "node", "id": out_id})
-            # Recurse through child subtree reusing add_node logic inlined to avoid
-            # double-adding the tree node we just created.
             _recurse_from_node(child, out_id)
 
     def _recurse_from_node(tree_node, node_id: str) -> None:
-        """Add note leaves and outgoing transitions under an already-created tree node."""
         if node_id in visited_nodes:
             return
         visited_nodes.add(node_id)
 
         for payload in graph.payloads_for_node(node_id):
-            if isinstance(payload, NotePayload):
-                text = payload.text
+            if isinstance(payload, NodePayload) and payload.type == "note":
+                text = str(payload.content.get("text", ""))
                 if len(text) > 80:
                     text = text[:79] + "…"
                 tree_node.add_leaf(

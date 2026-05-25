@@ -1,4 +1,4 @@
-"""Seed `.stag/runs` with rich sample runs for TUI exploration.
+"""Seed `.stag/runs` with sample runs for TUI exploration.
 
 Usage:
     PYTHONPATH=src python3 scripts/seed_sample_runs.py
@@ -11,11 +11,14 @@ from pathlib import Path
 
 import stag
 from stag import (
-    PlanPayload,
-    PredictionPayload,
+    CommitEntry,
+    DiffSummary,
+    GitChangePayload,
+    NodePayload,
     Requirement,
-    ResultPayload,
+    TransitionPayload,
 )
+from stag.core.ids import opaque_id
 from stag.storage.jsonl import JsonlRunStore
 
 
@@ -28,184 +31,147 @@ def _wipe() -> None:
     STORE_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _tp(t_type: str, **content) -> TransitionPayload:
+    return TransitionPayload(payload_id="_", target_id="_", type=t_type, content=dict(content))
+
+
+def _np(text: str) -> NodePayload:
+    return NodePayload(payload_id="_", target_id="_", type="note", content={"text": text})
+
+
+# ---------------------------------------------------------------------------
+# Demo 1: scheduling optimization with hyperparameter variants
+# ---------------------------------------------------------------------------
+
 def _scheduling_run(store: JsonlRunStore) -> None:
-    """A small scheduling optimization run: linear plan → multi-input join."""
+    """A scheduling optimization: baseline -> two variant branches."""
     req = Requirement("req_sched", "demo", "job_scheduling")
     run = stag.init(req, run_id="scheduling-demo")
 
-    user = "alice"
-    sess = "ws_sched"
-
-    # P1: baseline scheduling
-    t1 = run.plan(
+    # Baseline experiment.
+    [t_baseline] = run.transition(
         [run.root_node_id],
-        PlanPayload("_", "_", "baseline FIFO scheduling", action_type="execution"),
-        user_id=user,
-        work_session_id=sess,
+        _tp("experiment", algorithm="FIFO", max_queue_size=100),
     )
-    out1 = run.observe(
-        t1.transition_id,
-        ResultPayload("_", "_", "success", metrics={"makespan": 142.0, "wait_p95": 38.0}),
-        user_id=user,
-        work_session_id=sess,
-    )
+    n_baseline = t_baseline.output_node_id
+    run.attach(n_baseline, _np("makespan=142.0  wait_p95=38.0"))
 
-    # P2: try shortest-job-first from baseline
-    t2 = run.plan(
-        [out1.node_id],
-        PlanPayload("_", "_", "switch to shortest-job-first", action_type="execution"),
-        user_id=user,
-        work_session_id=sess,
-    )
-    run.predict(
-        t2.transition_id,
-        payloads=[
-            PredictionPayload(
-                "_", "_",
-                predicted_metrics={"makespan": 118.0, "wait_p95": 27.0},
-                rationale="SJF typically improves p95 wait",
-                probability=0.7,
-            ),
-            PredictionPayload(
-                "_", "_",
-                predicted_metrics={"makespan": 135.0, "wait_p95": 33.0},
-                rationale="Pathological case: many long jobs first",
-                probability=0.3,
-            ),
-        ],
+    # Two sibling variants from baseline (max_outcomes=2).
+    variants = run.transition(
+        [n_baseline],
+        _tp("experiment", algorithm="SJF", max_queue_size=100),
         max_outcomes=2,
-        user_id=user,
-        work_session_id=sess,
     )
-    obs2 = run.observe(
-        t2.transition_id,
-        ResultPayload(
-            "_", "_", "success",
-            metrics={"makespan": 122.0, "wait_p95": 28.5},
-            matched_prediction_transition_id=t2.transition_id,
+    n_sjf_opt = variants[0].output_node_id
+    n_sjf_pess = variants[1].output_node_id
+    run.attach(n_sjf_opt, _np("makespan=118.0  wait_p95=27.0 (optimistic)"))
+    run.attach(n_sjf_pess, _np("makespan=135.0  wait_p95=33.0 (pathological)"))
+
+    # Observe one of them.
+    [t_observe] = run.transition(
+        [n_sjf_opt],
+        _tp("implementation", notes="deploy SJF to staging"),
+    )
+    run.attach(t_observe.output_node_id, _np("deployed successfully"))
+
+    store.save_run(run)
+    print(f"saved: {run.run_id}")
+
+
+# ---------------------------------------------------------------------------
+# Demo 2: kernel hyperparam sweep with GitChangePayload
+# ---------------------------------------------------------------------------
+
+def _kernel_run(store: JsonlRunStore) -> None:
+    """A kernel optimization run exercising GitChangePayload."""
+    req = Requirement("req_kern", "demo", "conv_kernel")
+    run = stag.init(req, run_id="kernel-opt-demo")
+
+    # First suggestion.
+    [t1] = run.transition(
+        [run.root_node_id],
+        _tp("suggestion", param="sparse_threshold", value=0.5),
+    )
+    n1 = t1.output_node_id
+    run.attach(n1, _np("threshold=0.5 → accuracy 87.2%"))
+
+    # Attach GitChangePayload to the transition (typed subclass path).
+    diff = DiffSummary(files_changed=3, insertions=42, deletions=8)
+    commit_log = (
+        CommitEntry(
+            sha="a1b2c3d",
+            subject="tune sparse threshold to 0.5",
+            author="alice",
+            date="2026-05-25T10:00:00+00:00",
         ),
-        user_id=user,
-        work_session_id=sess,
     )
-    run.note(obs2.node_id, "SJF wins on this workload", user_id=user, work_session_id=sess)
-
-    # P3: parallel — try EDF from baseline (another branch)
-    t3 = run.plan(
-        [out1.node_id],
-        PlanPayload("_", "_", "earliest-deadline-first", action_type="execution"),
-        user_id=user,
-        work_session_id=sess,
-    )
-    run.predict(
-        t3.transition_id,
-        payloads=[
-            PredictionPayload("_", "_", predicted_metrics={"makespan": 130.0}, probability=0.5),
-        ],
-        max_outcomes=1,
-        user_id=user,
-        work_session_id=sess,
-    )
-
-    # P4: hybrid — multi-input join (combines SJF and EDF results)
-    edf_outputs = run.run_graph.transition_outputs(t3.transition_id)
-    if edf_outputs:
-        t4 = run.plan(
-            [obs2.node_id, edf_outputs[0]],
-            PlanPayload("_", "_", "hybrid SJF+EDF heuristic", action_type="execution"),
-            user_id=user,
-            work_session_id=sess,
+    run.run_graph.attach_payload(
+        GitChangePayload(
+            payload_id=opaque_id("pl"),
+            target_id=t1.transition_id,
+            branch="feat/sparse-tune",
+            head_commit="a1b2c3d",
+            diff_summary=diff,
+            commit_log=commit_log,
         )
-        run.observe(
-            t4.transition_id,
-            ResultPayload("_", "_", "success", metrics={"makespan": 109.0, "wait_p95": 24.0}),
-            user_id=user,
-            work_session_id=sess,
-        )
+    )
 
-    # P5: dead-end branch we cut later
-    t5 = run.plan(
+    # Second iteration from result.
+    [t2] = run.transition(
+        [n1],
+        _tp("suggestion", param="sparse_threshold", value=0.3),
+    )
+    n2 = t2.output_node_id
+    run.attach(n2, _np("threshold=0.3 → accuracy 89.1%"))
+
+    # Cut the first result node (superseded).
+    run.cut(n1, target_kind="node", reason="superseded by threshold=0.3 run")
+
+    store.save_run(run)
+    print(f"saved: {run.run_id}")
+
+
+# ---------------------------------------------------------------------------
+# Demo 3: multi-input join (solution synthesis)
+# ---------------------------------------------------------------------------
+
+def _synthesis_run(store: JsonlRunStore) -> None:
+    """Two separate analyses joined into a synthesis transition."""
+    req = Requirement("req_synth", "demo", "code_review")
+    run = stag.init(req, run_id="synthesis-demo")
+
+    # Branch A: performance analysis.
+    [ta] = run.transition(
         [run.root_node_id],
-        PlanPayload("_", "_", "random scheduling (control)", action_type="execution"),
-        user_id=user,
-        work_session_id=sess,
+        _tp("analysis", domain="performance"),
     )
-    obs5 = run.observe(
-        t5.transition_id,
-        ResultPayload("_", "_", "success", metrics={"makespan": 187.0}),
-        user_id=user,
-        work_session_id=sess,
-    )
-    run.cut(obs5.node_id, target_kind="node", reason="control branch, not pursuing", user_id=user, work_session_id=sess)
+    na = ta.output_node_id
+    run.attach(na, _np("hot path: matrix multiply bottleneck"))
 
-    run.save(store)
-
-
-def _hyperparameter_run(store: JsonlRunStore) -> None:
-    """A small hyperparameter search: 3 predictions, one matched observation."""
-    req = Requirement("req_hp", "demo", "hyperparam_search")
-    run = stag.init(req, run_id="hyperparam-demo")
-
-    user = "bob"
-    sess = "ws_hp"
-
-    t = run.plan(
+    # Branch B: correctness analysis.
+    [tb] = run.transition(
         [run.root_node_id],
-        PlanPayload(
-            "_", "_",
-            "sweep learning_rate {1e-4, 3e-4, 1e-3}",
-            action_type="execution",
-            inputs={"sweep_values": [1e-4, 3e-4, 1e-3]},
-        ),
-        user_id=user, work_session_id=sess,
+        _tp("analysis", domain="correctness"),
     )
-    run.predict(
-        t.transition_id,
-        payloads=[
-            PredictionPayload("_", "_", predicted_metrics={"val_loss": 0.42}, rationale="lr=1e-4 underfits", probability=0.2),
-            PredictionPayload("_", "_", predicted_metrics={"val_loss": 0.31}, rationale="lr=3e-4 sweet spot",  probability=0.6),
-            PredictionPayload("_", "_", predicted_metrics={"val_loss": 0.55}, rationale="lr=1e-3 diverges",   probability=0.2),
-        ],
-        max_outcomes=3,
-        user_id=user, work_session_id=sess,
+    nb = tb.output_node_id
+    run.attach(nb, _np("edge case: empty input not handled"))
+
+    # Join both analyses into a synthesis (multi-input transition).
+    [t_join] = run.transition(
+        [na, nb],
+        _tp("synthesis", strategy="combined fix"),
     )
-    run.observe(
-        t.transition_id,
-        ResultPayload("_", "_", "success", metrics={"val_loss": 0.29, "lr_chosen": 3e-4}),
-        user_id=user, work_session_id=sess,
-    )
+    n_synth = t_join.output_node_id
+    run.attach(n_synth, _np("fix both: vectorize + add guard clause"))
 
-    run.save(store)
-
-
-def _minimal_run(store: JsonlRunStore) -> None:
-    """Tiny run with just a single plan + observation."""
-    req = Requirement("req_mini", "demo", "minimal_example")
-    run = stag.init(req, run_id="minimal-demo")
-
-    t = run.plan(
-        [run.root_node_id],
-        PlanPayload("_", "_", "hello world", action_type="analysis"),
-        user_id="carol",
-        work_session_id="ws_mini",
-    )
-    run.observe(
-        t.transition_id,
-        ResultPayload("_", "_", "success"),
-        user_id="carol",
-        work_session_id="ws_mini",
-    )
-
-    run.save(store)
-
-
-def main() -> None:
-    _wipe()
-    store = JsonlRunStore(STORE_DIR)
-    _scheduling_run(store)
-    _hyperparameter_run(store)
-    _minimal_run(store)
-    print(f"Seeded {STORE_DIR}: scheduling-demo, hyperparam-demo, minimal-demo")
+    store.save_run(run)
+    print(f"saved: {run.run_id}")
 
 
 if __name__ == "__main__":
-    main()
+    _wipe()
+    store = JsonlRunStore(STORE_DIR)
+    _scheduling_run(store)
+    _kernel_run(store)
+    _synthesis_run(store)
+    print("done.")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from stag.core.schema.graph import Node
-from stag.core.schema.payloads import PlanPayload, ResultPayload
+from stag.core.schema.payloads import TransitionPayload
 
 
 def anchor_impl(
@@ -17,32 +17,26 @@ def anchor_impl(
 ) -> Node:
     """Create a lightweight scope anchor node from an existing node.
 
-    An anchor is represented as a Transition with Plan/Result payloads and
-    a generated output node tagged with metadata.kind="anchor".
+    An anchor is a Transition with type="anchor" and a generated output node.
     The output node can then be used as a shared branching point for experiments.
     """
     meta = dict(metadata or {})
     meta.setdefault("kind", "anchor")
     meta.setdefault("label", label)
 
-    plan = PlanPayload(
+    payload = TransitionPayload(
         payload_id="pending",
         target_id="pending",
-        intent=label,
-        action_type="scope_refinement",
-        metadata={"kind": "anchor", "label": label},
-    )
-    transition = self.plan([from_node_id], plan, user_id=user_id, work_session_id=work_session_id)
-
-    result = ResultPayload(
-        payload_id="pending",
-        target_id="pending",
-        status="completed",
+        type="anchor",
+        content={"label": label},
         metadata=meta,
     )
-    return self.observe(
-        transition.transition_id,
-        result,
+    transitions = self.transition(
+        [from_node_id],
+        payload,
+        max_outcomes=1,
         user_id=user_id,
         work_session_id=work_session_id,
     )
+    t = transitions[0]
+    return self.run_graph.nodes[t.output_node_id]

@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Union
 
 from stag.core.graph_view import GraphView
-from stag.core.schema.graph import Edge, Node, Transition
-from stag.core.schema.payloads import Payload
+from stag.core.schema.graph import Node, Transition
+from stag.core.schema.payloads import PayloadBase
 from stag.core.schema.work import WorkEvent, WorkSession
 
-GraphRecordKind = Literal["node", "transition", "edge", "payload", "view"]
-GraphRecord = Node | Transition | Edge | Payload | GraphView
+GraphRecordKind = Literal["node", "transition", "payload", "view"]
+GraphRecord = Union[Node, Transition, PayloadBase, GraphView]
 
 
 @dataclass(frozen=True)

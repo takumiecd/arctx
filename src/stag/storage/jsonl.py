@@ -11,7 +11,7 @@ from stag.core import _json as _fast_json
 from stag.core.graph_view import GraphView
 from stag.core.run import RunHandle
 from stag.core.run_graph import RunGraph
-from stag.core.schema.graph import Edge, Node, Transition
+from stag.core.schema.graph import Node, Transition
 from stag.core.schema.payloads import payload_from_dict
 from stag.core.schema.requirements import Requirement
 from stag.core.schema.work import work_event_from_dict, work_session_from_dict
@@ -52,12 +52,11 @@ class JsonlRunStore:
         return runs
 
     def _row_counts(self, run_path: Path) -> tuple[int, ...]:
-        """Return current on-disk row counts for the five JSONL collections."""
+        """Return current on-disk row counts for the JSONL collections."""
         counts = []
         for name in (
             "nodes",
             "transitions",
-            "edges",
             "payloads",
             "views",
             "work_sessions",
@@ -98,11 +97,6 @@ class JsonlRunStore:
             lambda transition: transition.to_dict(),
         )
         self._append_jsonl(
-            run_path / "edges.jsonl",
-            list(run.run_graph.edges.values()),
-            lambda edge: edge.to_dict(),
-        )
-        self._append_jsonl(
             run_path / "payloads.jsonl",
             list(run.run_graph.payloads.values()),
             lambda payload: payload.to_dict(),
@@ -123,11 +117,9 @@ class JsonlRunStore:
             lambda e: e.to_dict(),
         )
 
-        # Update cache with the final row counts now on disk.
         row_counts = (
             len(run.run_graph.nodes),
             len(run.run_graph.transitions),
-            len(run.run_graph.edges),
             len(run.run_graph.payloads),
             len(run.run_graph.views),
             len(run.run_graph.work_sessions),
@@ -168,20 +160,11 @@ class JsonlRunStore:
         for row in self._read_jsonl(run_path / "transitions.jsonl"):
             transition = Transition(
                 transition_id=row["transition_id"],
+                input_node_ids=tuple(row.get("input_node_ids") or []),
+                output_node_id=str(row.get("output_node_id") or ""),
                 metadata=dict(row.get("metadata") or {}),
             )
             graph.add_transition(transition)
-
-        for row in self._read_jsonl(run_path / "edges.jsonl"):
-            edge = Edge(
-                edge_id=row["edge_id"],
-                from_kind=row["from_kind"],
-                from_id=row["from_id"],
-                to_kind=row["to_kind"],
-                to_id=row["to_id"],
-                metadata=dict(row.get("metadata") or {}),
-            )
-            graph.add_edge(edge)
 
         for row in self._read_jsonl(run_path / "payloads.jsonl"):
             payload = payload_from_dict(row)
@@ -217,7 +200,6 @@ class JsonlRunStore:
                 root_node_id=root_node_id,
             )
 
-        # Write cache so next load_run is fast.
         save_cache(run_path, row_counts, graph)
 
         return RunHandle(
@@ -229,11 +211,7 @@ class JsonlRunStore:
 
     @staticmethod
     def _append_jsonl(path: Path, records: list, to_dict) -> None:
-        """Append only new records to a JSONL file.
-
-        Counts the lines already on disk (N) and appends records[N:].
-        Raises RuntimeError if disk has more lines than memory records.
-        """
+        """Append only new records to a JSONL file."""
         disk_count = 0
         if path.exists():
             with path.open("r", encoding="utf-8") as f:

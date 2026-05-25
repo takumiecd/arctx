@@ -35,7 +35,7 @@ from stag.core.run_graph import RunGraph
 
 # Bump this whenever RunGraph or any Payload dataclass changes its fields in a
 # backward-incompatible way.
-CACHE_SCHEMA_VERSION: int = 3
+CACHE_SCHEMA_VERSION: int = 4
 
 _CACHE_FILENAME = "run.cache.pkl"
 

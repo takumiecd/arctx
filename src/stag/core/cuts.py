@@ -28,10 +28,10 @@ def _compute_inactive(graph: RunGraph) -> tuple[set[str], set[str]]:
     while frontier_nodes or frontier_transitions:
         while frontier_transitions:
             transition_id = frontier_transitions.pop()
-            for node_id in graph.transition_outputs(transition_id):
-                if node_id not in inactive_nodes:
-                    inactive_nodes.add(node_id)
-                    frontier_nodes.append(node_id)
+            out = graph.transition_output(transition_id)
+            if out and out not in inactive_nodes:
+                inactive_nodes.add(out)
+                frontier_nodes.append(out)
 
         while frontier_nodes:
             node_id = frontier_nodes.pop()

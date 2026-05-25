@@ -242,21 +242,6 @@ def _cli_git_finish(args) -> int:
     session_id = args.session_id
 
     if args.transition_id:
-        form_b_options_used = []
-        for opt in ("status", "summary", "artifact", "raw_output", "log", "metric", "error"):
-            val = getattr(args, opt, None)
-            if val:
-                form_b_options_used.append(f"--{opt.replace('_', '-')}")
-        if getattr(args, "matched_prediction_transition_id", None):
-            form_b_options_used.append("--matched-prediction")
-        if form_b_options_used:
-            print(
-                f"error: attach mode (--transition) does not accept: "
-                f"{', '.join(form_b_options_used)}",
-                file=sys.stderr,
-            )
-            return 1
-
         from stag.core.git.finish import git_finish_form_b
 
         try:
@@ -273,13 +258,6 @@ def _cli_git_finish(args) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
     else:
-        # Form A
-        try:
-            metrics = _parse_metrics(getattr(args, "metric", None))
-        except ValueError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return 1
-
         from stag.core.git.finish import git_finish_form_a
 
         try:
@@ -288,16 +266,8 @@ def _cli_git_finish(args) -> int:
                 handle,
                 run_dir,
                 session_id,
-                status=args.status if args.status is not None else "completed",
-                summary=args.summary,
-                artifacts=tuple(getattr(args, "artifact", None) or []),
-                raw_outputs=tuple(getattr(args, "raw_output", None) or []),
-                logs=tuple(getattr(args, "log", None) or []),
-                metrics=metrics,
-                errors_list=tuple(getattr(args, "error", None) or []),
-                matched_prediction_transition_id=getattr(
-                    args, "matched_prediction_transition_id", None
-                ),
+                status=getattr(args, "status", None) or "completed",
+                summary=getattr(args, "summary", None),
                 user_id=user_id,
                 work_session_id=work_session_id,
             )
@@ -373,7 +343,6 @@ def _cli_git_status(args) -> int:
                 "payload_id": latest.payload_id,
                 "transition_id": latest.target_id,
                 "branch": latest.branch,
-                "base_commit": latest.base_commit,
                 "head_commit": latest.head_commit,
             }
 

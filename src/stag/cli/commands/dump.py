@@ -35,6 +35,23 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     return parser
 
 
+def run_dump_command(
+    *,
+    run_id: str,
+    fmt: str = "outline",
+    store_dir: str = ".stag/runs",
+    node_id: str | None = None,
+    depth: int | None = None,
+    full_payloads: bool = False,
+) -> str:
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+    opts = DumpOptions(node_id=node_id, depth=depth, full_payloads=full_payloads)
+    return dump(handle, fmt, opts)
+
+
 def cli_dump(args) -> int:
     if args.observed_only and args.predicted_only:
         raise ValueError("--observed-only and --predicted-only are mutually exclusive")

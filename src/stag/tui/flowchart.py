@@ -187,13 +187,9 @@ def _build_markup_lines(
 
             else:  # transition
                 pl = plan_labels.get(rid, "?")
-                t_kind = graph.transition_kind(rid)
                 is_cut = rid in inactive_trans
-                marker = "→" if t_kind == "result" else "⇢" if t_kind == "prediction" else "◇"
-                color = "green" if t_kind == "result" else "cyan" if t_kind == "prediction" else "yellow"
-                if is_cut:
-                    color = "red"
-                text = f"{marker} {pl}"
+                color = "red" if is_cut else "cyan"
+                text = f"◇ {pl}"
                 band_rows[2][col_center] = f"[{color}]{text}[/{color}]"
 
         # Collapse each band row to a single string.

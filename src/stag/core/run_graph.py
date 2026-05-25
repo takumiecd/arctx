@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Literal
 
 from stag.core.graph_view import GraphView
-from stag.core.schema.graph import Edge, GraphRecordKind, GraphRef, Node, Transition
-from stag.core.schema.payloads import Payload, PredictionPayload, ResultPayload
+from stag.core.schema.graph import Node, Transition
+from stag.core.schema.payloads import PayloadBase
 from stag.core.schema.work import WorkEvent, WorkSession
 from stag.core.types import JSONValue, to_jsonable
 
@@ -19,17 +18,16 @@ class RunGraph:
 
     nodes: dict[str, Node] = field(default_factory=dict)
     transitions: dict[str, Transition] = field(default_factory=dict)
-    edges: dict[str, Edge] = field(default_factory=dict)
-    payloads: dict[str, Payload] = field(default_factory=dict)
+    payloads: dict[str, PayloadBase] = field(default_factory=dict)
     views: dict[str, GraphView] = field(default_factory=dict)
     work_sessions: dict[str, WorkSession] = field(default_factory=dict)
     work_events: list[WorkEvent] = field(default_factory=list)
 
+    # Reverse-lookup indices (not persisted; rebuilt on load).
+    transitions_by_input_node: dict[str, list[str]] = field(default_factory=dict)
+    transition_by_output_node: dict[str, str] = field(default_factory=dict)
     payloads_by_node: dict[str, list[str]] = field(default_factory=dict)
     payloads_by_transition: dict[str, list[str]] = field(default_factory=dict)
-
-    outgoing_edges: dict[str, list[str]] = field(default_factory=dict)
-    incoming_edges: dict[str, list[str]] = field(default_factory=dict)
 
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
@@ -70,20 +68,27 @@ class RunGraph:
     def add_transition(self, transition: Transition) -> None:
         if transition.transition_id in self.transitions:
             raise ValueError(f"duplicate transition_id: {transition.transition_id}")
+        # Validate output node exists.
+        if transition.output_node_id and transition.output_node_id not in self.nodes:
+            raise KeyError(f"unknown output_node_id: {transition.output_node_id}")
+        # Validate each input node exists.
+        for nid in transition.input_node_ids:
+            if nid not in self.nodes:
+                raise KeyError(f"unknown input_node_id: {nid}")
+        # Enforce uniqueness: output node must belong to exactly one transition.
+        if transition.output_node_id:
+            if transition.output_node_id in self.transition_by_output_node:
+                existing = self.transition_by_output_node[transition.output_node_id]
+                raise ValueError(
+                    f"output_node_id {transition.output_node_id!r} already used by "
+                    f"transition {existing!r}"
+                )
+            self.transition_by_output_node[transition.output_node_id] = transition.transition_id
+        for nid in transition.input_node_ids:
+            self.transitions_by_input_node.setdefault(nid, []).append(transition.transition_id)
         self.transitions[transition.transition_id] = transition
 
-    def add_edge(self, edge: Edge) -> None:
-        if edge.edge_id in self.edges:
-            raise ValueError(f"duplicate edge_id: {edge.edge_id}")
-        self._ensure_ref(edge.from_kind, edge.from_id)
-        self._ensure_ref(edge.to_kind, edge.to_id)
-        if edge.from_kind == edge.to_kind:
-            raise ValueError("edges must connect node -> transition or transition -> node")
-        self.edges[edge.edge_id] = edge
-        self.outgoing_edges.setdefault(edge.from_ref().key(), []).append(edge.edge_id)
-        self.incoming_edges.setdefault(edge.to_ref().key(), []).append(edge.edge_id)
-
-    def attach_payload(self, payload: Payload) -> None:
+    def attach_payload(self, payload: PayloadBase) -> None:
         if payload.payload_id in self.payloads:
             raise ValueError(f"duplicate payload_id: {payload.payload_id}")
         if payload.target_kind == "node":
@@ -100,31 +105,31 @@ class RunGraph:
 
     # ----- lookup ----------------------------------------------------------
 
-    def _ensure_ref(self, kind: GraphRecordKind, record_id: str) -> None:
-        if kind == "node":
-            if record_id not in self.nodes:
-                raise KeyError(f"unknown node_id: {record_id}")
-        elif kind == "transition":
-            if record_id not in self.transitions:
-                raise KeyError(f"unknown transition_id: {record_id}")
-        else:
-            raise ValueError(f"unknown graph record kind: {kind!r}")
+    def transitions_from_node(self, node_id: str) -> list[str]:
+        return list(self.transitions_by_input_node.get(node_id, ()))
 
-    def successors(self, kind: GraphRecordKind, record_id: str) -> list[GraphRef]:
-        self._ensure_ref(kind, record_id)
-        refs = []
-        for edge_id in self.outgoing_edges.get(GraphRef(kind, record_id).key(), ()):
-            refs.append(self.edges[edge_id].to_ref())
-        return refs
+    def transition_to_node(self, node_id: str) -> str | None:
+        return self.transition_by_output_node.get(node_id)
 
-    def predecessors(self, kind: GraphRecordKind, record_id: str) -> list[GraphRef]:
-        self._ensure_ref(kind, record_id)
-        refs = []
-        for edge_id in self.incoming_edges.get(GraphRef(kind, record_id).key(), ()):
-            refs.append(self.edges[edge_id].from_ref())
-        return refs
+    def transitions_to_node(self, node_id: str) -> list[str]:
+        t_id = self.transition_by_output_node.get(node_id)
+        return [t_id] if t_id is not None else []
 
-    def payloads_for_node(self, node_id: str, *, payload_type: str | None = None) -> list[Payload]:
+    def transition_inputs(self, transition_id: str) -> list[str]:
+        t = self.transitions.get(transition_id)
+        return list(t.input_node_ids) if t is not None else []
+
+    def transition_output(self, transition_id: str) -> str:
+        t = self.transitions.get(transition_id)
+        return t.output_node_id if t is not None else ""
+
+    def transition_outputs(self, transition_id: str) -> list[str]:
+        out = self.transition_output(transition_id)
+        return [out] if out else []
+
+    def payloads_for_node(
+        self, node_id: str, *, payload_type: str | None = None
+    ) -> list[PayloadBase]:
         ids = self.payloads_by_node.get(node_id, ())
         items = [self.payloads[pid] for pid in ids]
         return (
@@ -133,40 +138,12 @@ class RunGraph:
 
     def payloads_for_transition(
         self, transition_id: str, *, payload_type: str | None = None
-    ) -> list[Payload]:
+    ) -> list[PayloadBase]:
         ids = self.payloads_by_transition.get(transition_id, ())
         items = [self.payloads[pid] for pid in ids]
         return (
             items if payload_type is None else [p for p in items if p.payload_type == payload_type]
         )
-
-    def transition_inputs(self, transition_id: str) -> list[str]:
-        return [
-            ref.id for ref in self.predecessors("transition", transition_id) if ref.kind == "node"
-        ]
-
-    def transition_outputs(self, transition_id: str) -> list[str]:
-        return [
-            ref.id for ref in self.successors("transition", transition_id) if ref.kind == "node"
-        ]
-
-    def transitions_from_node(self, node_id: str) -> list[str]:
-        return [ref.id for ref in self.successors("node", node_id) if ref.kind == "transition"]
-
-    def transitions_to_node(self, node_id: str) -> list[str]:
-        return [ref.id for ref in self.predecessors("node", node_id) if ref.kind == "transition"]
-
-    # ----- classification --------------------------------------------------
-
-    def transition_kind(self, transition_id: str) -> Literal["prediction", "result", "unknown"]:
-        payloads = self.payloads_for_transition(transition_id)
-        has_result = any(isinstance(p, ResultPayload) for p in payloads)
-        has_prediction = any(isinstance(p, PredictionPayload) for p in payloads)
-        if has_result:
-            return "result"
-        if has_prediction:
-            return "prediction"
-        return "unknown"
 
     # ----- topology --------------------------------------------------------
 
@@ -177,30 +154,28 @@ class RunGraph:
         visited_nodes: set[str] = set()
         visited_transitions: set[str] = set()
 
-        queue: deque[GraphRef] = deque()
+        queue: deque[tuple[str, str]] = deque()
         if node_id in self.nodes and is_active_node(self, node_id):
-            queue.append(GraphRef("node", node_id))
+            queue.append(("node", node_id))
 
         while queue:
-            ref = queue.popleft()
-            if ref.kind == "node":
-                if ref.id in visited_nodes:
+            kind, rid = queue.popleft()
+            if kind == "node":
+                if rid in visited_nodes:
                     continue
-                visited_nodes.add(ref.id)
-                for next_ref in self.successors("node", ref.id):
-                    if next_ref.kind == "transition" and not is_inactive_transition(
-                        self, next_ref.id
-                    ):
-                        queue.append(next_ref)
+                visited_nodes.add(rid)
+                for t_id in self.transitions_from_node(rid):
+                    if not is_inactive_transition(self, t_id):
+                        queue.append(("transition", t_id))
             else:
-                if ref.id in visited_transitions:
+                if rid in visited_transitions:
                     continue
-                if is_inactive_transition(self, ref.id):
+                if is_inactive_transition(self, rid):
                     continue
-                visited_transitions.add(ref.id)
-                for next_ref in self.successors("transition", ref.id):
-                    if next_ref.kind == "node" and is_active_node(self, next_ref.id):
-                        queue.append(next_ref)
+                visited_transitions.add(rid)
+                out = self.transition_output(rid)
+                if out and is_active_node(self, out):
+                    queue.append(("node", out))
 
         payload_ids: set[str] = set()
         for nid in visited_nodes:
@@ -216,7 +191,7 @@ class RunGraph:
 
     def roots(self) -> list[str]:
         """Nodes with no incoming transition."""
-        return [nid for nid in self.nodes if not self.transitions_to_node(nid)]
+        return [nid for nid in self.nodes if nid not in self.transition_by_output_node]
 
     def to_dict(self) -> dict:
         return to_jsonable(self)  # type: ignore[return-value]

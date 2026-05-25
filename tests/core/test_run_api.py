@@ -1,18 +1,18 @@
-"""Tests for the RunHandle public verbs."""
+"""Tests for RunHandle public verbs (transition, attach, cut, trace, outcomes)."""
 
 from __future__ import annotations
 
 import pytest
 
 from stag import init
-from stag.core.cuts import is_active_node, is_inactive_transition
-from stag.core.schema.graph import Node, Transition
+from stag.core.cuts import is_active_node
+from stag.core.schema.graph import Transition
 from stag.core.schema.payloads import (
     CutPayload,
-    NotePayload,
-    PlanPayload,
-    PredictionPayload,
-    ResultPayload,
+    GitChangePayload,
+    DiffSummary,
+    NodePayload,
+    TransitionPayload,
 )
 from stag.core.schema.requirements import Requirement
 
@@ -21,169 +21,194 @@ def _req() -> Requirement:
     return Requirement(requirement_id="r", target_type="task", target_id="t")
 
 
-def _plan_payload(intent: str = "test") -> PlanPayload:
-    return PlanPayload(payload_id="pending", target_id="pending", intent=intent)
+def _tp(t_type: str = "experiment") -> TransitionPayload:
+    return TransitionPayload(payload_id="_", target_id="_", type=t_type)
 
 
-def _result(status: str = "completed") -> ResultPayload:
-    return ResultPayload(payload_id="pending", target_id="pending", status=status)
+def _np(text: str = "hello") -> NodePayload:
+    return NodePayload(payload_id="_", target_id="_", type="note", content={"text": text})
 
 
-def test_init_seeds_root_node_and_main_view():
-    run = init(_req(), run_id="t_init")
+# ---------------------------------------------------------------------------
+# init
+# ---------------------------------------------------------------------------
+
+
+def test_init_creates_root_node_and_main_view():
+    run = init(_req(), run_id="test_init")
     assert run.root_node_id.startswith("n_")
     assert run.root_node_id in run.run_graph.nodes
     assert "main" in run.run_graph.views
 
 
-def test_plan_creates_transition_with_plan_payload():
-    run = init(_req(), run_id="t_plan")
-    transition = run.plan([run.root_node_id], _plan_payload("x"))
-    assert isinstance(transition, Transition)
-    assert transition.transition_id in run.run_graph.transitions
-    assert run.run_graph.transition_inputs(transition.transition_id) == [run.root_node_id]
-    payloads = run.run_graph.payloads_for_transition(transition.transition_id)
-    assert any(isinstance(p, PlanPayload) for p in payloads)
+# ---------------------------------------------------------------------------
+# transition
+# ---------------------------------------------------------------------------
 
 
-def test_anchor_creates_scope_refinement_output_node():
-    run = init(_req(), run_id="t_anchor")
-    node = run.anchor(run.root_node_id, "common benchmark setup")
-    assert isinstance(node, Node)
-    assert node.node_id in run.run_graph.nodes
-
-    transition_id = run.run_graph.transitions_to_node(node.node_id)[0]
-    payloads = run.run_graph.payloads_for_transition(transition_id)
-    plan = next(p for p in payloads if isinstance(p, PlanPayload))
-    result = next(p for p in payloads if isinstance(p, ResultPayload))
-    assert plan.intent == "common benchmark setup"
-    assert plan.action_type == "scope_refinement"
-    assert result.status == "completed"
+def test_transition_max_outcomes_1():
+    run = init(_req())
+    transitions = run.transition([run.root_node_id], _tp("suggestion"))
+    assert len(transitions) == 1
+    t = transitions[0]
+    assert isinstance(t, Transition)
+    assert t.output_node_id in run.run_graph.nodes
+    assert t.input_node_ids == (run.root_node_id,)
+    payloads = run.run_graph.payloads_for_transition(t.transition_id)
+    assert any(isinstance(p, TransitionPayload) for p in payloads)
 
 
-def test_plan_multi_input_nodes():
-    run = init(_req(), run_id="t_plan_multi")
-    t1 = run.plan([run.root_node_id], _plan_payload())
-    second_node = run.observe(t1.transition_id, _result())
-    t2 = run.plan([run.root_node_id, second_node.node_id], _plan_payload("merge"))
-    assert run.run_graph.transition_inputs(t2.transition_id) == [
-        run.root_node_id,
-        second_node.node_id,
+def test_transition_max_outcomes_3():
+    run = init(_req())
+    transitions = run.transition([run.root_node_id], _tp(), max_outcomes=3)
+    assert len(transitions) == 3
+    output_nodes = {t.output_node_id for t in transitions}
+    assert len(output_nodes) == 3  # all distinct
+    for t in transitions:
+        assert t.input_node_ids == (run.root_node_id,)
+
+
+def test_transition_payload_cloned_per_outcome():
+    run = init(_req())
+    transitions = run.transition([run.root_node_id], _tp("exp"), max_outcomes=2)
+    ids = [
+        run.run_graph.payloads_for_transition(t.transition_id)[0].payload_id
+        for t in transitions
     ]
+    assert ids[0] != ids[1]  # distinct payload_ids
 
 
-def test_observe_creates_output_node_with_result_payload():
-    run = init(_req(), run_id="t_obs")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    node = run.observe(
-        transition.transition_id, ResultPayload("x", "x", "completed", metrics={"a": 1.0})
-    )
-    assert node.node_id in run.run_graph.nodes
-    assert node.node_id in run.run_graph.transition_outputs(transition.transition_id)
-    payloads = run.run_graph.payloads_for_transition(transition.transition_id)
-    assert any(isinstance(p, ResultPayload) for p in payloads)
+def test_transition_multi_input():
+    run = init(_req())
+    [t1] = run.transition([run.root_node_id], _tp())
+    n1 = t1.output_node_id
+    [t2] = run.transition([run.root_node_id], _tp())
+    n2 = t2.output_node_id
+
+    [join] = run.transition([n1, n2], _tp("join"))
+    assert set(join.input_node_ids) == {n1, n2}
 
 
-def test_predict_creates_prediction_output_nodes():
-    run = init(_req(), run_id="t_pred")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    nodes = run.predict(transition.transition_id, max_outcomes=3)
-    assert len(nodes) == 3
-    assert {n.node_id for n in nodes} == set(
-        run.run_graph.transition_outputs(transition.transition_id)
-    )
-    payloads = run.run_graph.payloads_for_transition(transition.transition_id)
-    assert any(isinstance(p, PredictionPayload) for p in payloads)
+def test_transition_rejects_node_targeting_payload():
+    run = init(_req())
+    np = NodePayload(payload_id="_", target_id="_", type="note")
+    with pytest.raises(ValueError, match="transition-targeting"):
+        run.transition([run.root_node_id], np)
 
 
-def test_note_attaches_to_node():
-    run = init(_req(), run_id="t_note")
-    note = run.note(run.root_node_id, "baseline setup", tags=["context"])
-    assert isinstance(note, NotePayload)
-    assert note.target_id == run.root_node_id
+def test_transition_rejects_unknown_node():
+    run = init(_req())
+    with pytest.raises(KeyError, match="unknown"):
+        run.transition(["n_bogus"], _tp())
 
 
-def test_cut_transition_cuts_transition_and_output_nodes():
-    run = init(_req(), run_id="t_cut_transition")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    node = run.observe(transition.transition_id, _result())
-    cut = run.cut(transition.transition_id, target_kind="transition", reason="undo")
+def test_transition_rejects_cut_node():
+    run = init(_req())
+    [t1] = run.transition([run.root_node_id], _tp())
+    n1 = t1.output_node_id
+    run.cut(n1, target_kind="node")
+    with pytest.raises(ValueError, match="cut"):
+        run.transition([n1], _tp())
+
+
+# ---------------------------------------------------------------------------
+# attach
+# ---------------------------------------------------------------------------
+
+
+def test_attach_node_payload():
+    run = init(_req())
+    returned = run.attach(run.root_node_id, _np("my note"))
+    assert isinstance(returned, NodePayload)
+    payloads = run.run_graph.payloads_for_node(run.root_node_id)
+    assert any(p.payload_id == returned.payload_id for p in payloads)
+
+
+def test_attach_rejects_transition_targeting_payload():
+    run = init(_req())
+    tp = _tp()
+    with pytest.raises(ValueError, match="node-targeting"):
+        run.attach(run.root_node_id, tp)
+
+
+def test_attach_rejects_unknown_node():
+    run = init(_req())
+    with pytest.raises(KeyError):
+        run.attach("n_bogus", _np())
+
+
+# ---------------------------------------------------------------------------
+# cut
+# ---------------------------------------------------------------------------
+
+
+def test_cut_node():
+    run = init(_req())
+    [t1] = run.transition([run.root_node_id], _tp())
+    n1 = t1.output_node_id
+    cut = run.cut(n1, target_kind="node", reason="stale")
     assert isinstance(cut, CutPayload)
-    assert cut.target_kind == "transition"
-    assert is_inactive_transition(run.run_graph, transition.transition_id)
-    assert not is_active_node(run.run_graph, node.node_id)
+    assert not is_active_node(run.run_graph, n1)
 
 
-def test_cut_node_cascades_forward():
-    run = init(_req(), run_id="t_cut_node")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    node = run.observe(transition.transition_id, _result())
-    run.cut(node.node_id, target_kind="node")
-    with pytest.raises(ValueError):
-        run.plan([node.node_id], _plan_payload())
+def test_cut_transition():
+    run = init(_req())
+    [t1] = run.transition([run.root_node_id], _tp())
+    cut = run.cut(t1.transition_id, target_kind="transition")
+    assert isinstance(cut, CutPayload)
 
 
-def test_cut_already_cut_raises():
-    run = init(_req(), run_id="t_cut_dup")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    run.cut(transition.transition_id, target_kind="transition")
-    with pytest.raises(ValueError):
-        run.cut(transition.transition_id, target_kind="transition")
+# ---------------------------------------------------------------------------
+# GitChangePayload on a transition
+# ---------------------------------------------------------------------------
 
 
-def test_trace_walks_backwards():
-    run = init(_req(), run_id="t_trace")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    node = run.observe(transition.transition_id, _result())
-    ctx = run.trace(node.node_id)
-    assert ctx.current_node_id == node.node_id
-    assert run.root_node_id in ctx.past_node_ids
-    assert transition.transition_id in ctx.transition_ids
-
-
-def test_trace_includes_predictions_when_requested():
-    run = init(_req(), run_id="t_trace_pred")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    run.predict(transition.transition_id, max_outcomes=2)
-    node = run.observe(transition.transition_id, _result())
-    ctx = run.trace(node.node_id, include_predictions=True)
-    assert ctx.prediction_payload_ids
-
-
-def test_view_reachable_from():
-    run = init(_req(), run_id="t_view_reach")
-    t1 = run.plan([run.root_node_id], _plan_payload())
-    node1 = run.observe(t1.transition_id, _result())
-    t2 = run.plan([node1.node_id], _plan_payload("branch"))
-    node2 = run.observe(t2.transition_id, _result())
-
-    reachable = run.run_graph.reachable_from(run.root_node_id)
-    assert reachable["node_ids"] == sorted([run.root_node_id, node1.node_id, node2.node_id])
-    assert reachable["transition_ids"] == sorted([t1.transition_id, t2.transition_id])
-
-
-def test_outcomes_returns_output_nodes():
-    run = init(_req(), run_id="t_outcomes")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    nodes = run.predict(transition.transition_id, max_outcomes=2)
-    out = run.outcomes(transition.transition_id)
-    assert out["transition_id"] == transition.transition_id
-    assert set(out["output_node_ids"]) == {node.node_id for node in nodes}
-
-
-def test_observe_matched_prediction_valid_passes():
-    run = init(_req(), run_id="t_mpid_valid")
-    transition = run.plan([run.root_node_id], _plan_payload())
-    run.predict(transition.transition_id, max_outcomes=1)
-
-    result = ResultPayload(
-        payload_id="r1",
-        target_id="r1",
-        status="completed",
-        matched_prediction_transition_id=transition.transition_id,
+def test_git_change_payload_on_transition():
+    run = init(_req())
+    transitions = run.transition([run.root_node_id], _tp())
+    t = transitions[0]
+    diff = DiffSummary(files_changed=1, insertions=5, deletions=2)
+    git_p = GitChangePayload(
+        payload_id="_",
+        target_id=t.transition_id,
+        branch="main",
+        head_commit="abc123",
+        diff_summary=diff,
     )
-    node = run.observe(transition.transition_id, result)
-    payloads = run.run_graph.payloads_for_transition(transition.transition_id)
-    rp = next(p for p in payloads if isinstance(p, ResultPayload))
-    assert node.node_id in run.run_graph.nodes
-    assert rp.matched_prediction_transition_id == transition.transition_id
+    run.run_graph.attach_payload(
+        GitChangePayload(
+            payload_id=run._next_id("pl"),
+            target_id=t.transition_id,
+            branch="main",
+            head_commit="abc123",
+            diff_summary=diff,
+        )
+    )
+    payloads = run.run_graph.payloads_for_transition(t.transition_id)
+    assert any(isinstance(p, GitChangePayload) for p in payloads)
+
+
+# ---------------------------------------------------------------------------
+# trace
+# ---------------------------------------------------------------------------
+
+
+def test_trace_returns_history():
+    run = init(_req())
+    [t1] = run.transition([run.root_node_id], _tp())
+    n1 = t1.output_node_id
+    ctx = run.trace(n1)
+    # Should include the transition that produced n1.
+    assert t1.transition_id in ctx.transition_ids
+
+
+# ---------------------------------------------------------------------------
+# outcomes
+# ---------------------------------------------------------------------------
+
+
+def test_outcomes_returns_output_node():
+    run = init(_req())
+    [t1] = run.transition([run.root_node_id], _tp())
+    result = run.outcomes(t1.transition_id)
+    assert result["output_node_ids"] == [t1.output_node_id]

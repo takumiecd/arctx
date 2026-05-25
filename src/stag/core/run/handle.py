@@ -44,7 +44,7 @@ class RunHandle:
         if not is_active_node(self.run_graph, node_id):
             raise ValueError(
                 f"node is in a cut (inactive) branch: {node_id}; "
-                "no new plans or observations can extend it"
+                "no new transitions can extend it"
             )
 
     def _get_view(self, name: str) -> GraphView:
@@ -141,12 +141,10 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 
 
 # Bind verb implementations.
-from stag.core.run.note import note_impl as _note_impl  # noqa: E402
+from stag.core.run.transition import transition_impl as _transition_impl  # noqa: E402
+from stag.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from stag.core.run.anchor import anchor_impl as _anchor_impl  # noqa: E402
-from stag.core.run.observe import observe_impl as _observe_impl  # noqa: E402
 from stag.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
-from stag.core.run.plan import plan_impl as _plan_impl  # noqa: E402
-from stag.core.run.predict import predict_impl as _predict_impl  # noqa: E402
 from stag.core.run.cut import cut_impl as _cut_impl  # noqa: E402
 from stag.core.run.trace import trace_impl as _trace_impl  # noqa: E402
 from stag.core.run.view import (  # noqa: E402
@@ -155,12 +153,9 @@ from stag.core.run.view import (  # noqa: E402
     view_show_impl as _view_show_impl,
 )
 
-RunHandle.plan = _plan_impl
+RunHandle.transition = _transition_impl
+RunHandle.attach = _attach_impl
 RunHandle.anchor = _anchor_impl
-RunHandle.note = _note_impl
-RunHandle.observe = _observe_impl
-RunHandle.result = _observe_impl
-RunHandle.predict = _predict_impl
 RunHandle.cut = _cut_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl

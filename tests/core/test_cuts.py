@@ -1,47 +1,98 @@
+"""Tests for cut cascade logic."""
+
+from __future__ import annotations
+
+import pytest
+
+from stag import init
 from stag.core.cuts import (
-    cut_node_ids,
-    cut_transition_ids,
     inactive_node_ids,
     inactive_transition_ids,
     is_active_node,
     is_inactive_transition,
 )
-from stag.core.run_graph import RunGraph
-from stag.core.schema.graph import Edge, Node, Transition
-from stag.core.schema.payloads import CutPayload
+from stag.core.schema.payloads import TransitionPayload
+from stag.core.schema.requirements import Requirement
 
 
-def _graph() -> RunGraph:
-    graph = RunGraph()
-    for node_id in ("n_a", "n_b", "n_c"):
-        graph.add_node(Node(node_id=node_id))
-    for transition_id in ("t_1", "t_2"):
-        graph.add_transition(Transition(transition_id=transition_id))
-    graph.add_edge(Edge("e_1", "node", "n_a", "transition", "t_1"))
-    graph.add_edge(Edge("e_2", "transition", "t_1", "node", "n_b"))
-    graph.add_edge(Edge("e_3", "node", "n_b", "transition", "t_2"))
-    graph.add_edge(Edge("e_4", "transition", "t_2", "node", "n_c"))
-    return graph
+def _req() -> Requirement:
+    return Requirement(requirement_id="r", target_type="task", target_id="t")
 
 
-def test_transition_cut_marks_downstream_inactive():
-    graph = _graph()
-    graph.attach_payload(
-        CutPayload("pl_cut", target_kind="transition", target_id="t_1", cut_at="now")
-    )
-
-    assert cut_transition_ids(graph) == {"t_1"}
-    assert inactive_transition_ids(graph) == {"t_1", "t_2"}
-    assert inactive_node_ids(graph) == {"n_b", "n_c"}
-    assert is_inactive_transition(graph, "t_1")
-    assert not is_active_node(graph, "n_b")
+def _tp(t_type: str = "experiment") -> TransitionPayload:
+    return TransitionPayload(payload_id="_", target_id="_", type=t_type)
 
 
-def test_node_cut_marks_downstream_inactive():
-    graph = _graph()
-    graph.attach_payload(CutPayload("pl_cut", target_kind="node", target_id="n_b", cut_at="now"))
+def _make_run_with_chain():
+    """root -t1-> n1 -t2-> n2"""
+    run = init(_req())
+    [t1] = run.transition([run.root_node_id], _tp())
+    n1 = t1.output_node_id
+    [t2] = run.transition([n1], _tp())
+    n2 = t2.output_node_id
+    return run, t1, n1, t2, n2
 
-    assert cut_node_ids(graph) == {"n_b"}
-    assert inactive_transition_ids(graph) == {"t_2"}
-    assert inactive_node_ids(graph) == {"n_b", "n_c"}
-    assert is_active_node(graph, "n_a")
+
+def test_no_cuts_all_active():
+    run, t1, n1, t2, n2 = _make_run_with_chain()
+    assert inactive_node_ids(run.run_graph) == set()
+    assert inactive_transition_ids(run.run_graph) == set()
+
+
+def test_cut_transition_cascades_to_output_node_and_downstream():
+    run, t1, n1, t2, n2 = _make_run_with_chain()
+    run.cut(t1.transition_id, target_kind="transition", reason="bad")
+
+    inactive_n = inactive_node_ids(run.run_graph)
+    inactive_t = inactive_transition_ids(run.run_graph)
+
+    # t1 is cut, n1 (output) and everything downstream should be inactive.
+    assert t1.transition_id in inactive_t
+    assert n1 in inactive_n
+    assert t2.transition_id in inactive_t
+    assert n2 in inactive_n
+    # Root should still be active.
+    assert run.root_node_id not in inactive_n
+
+
+def test_cut_node_cascades_forward():
+    run, t1, n1, t2, n2 = _make_run_with_chain()
+    run.cut(n1, target_kind="node", reason="stale")
+
+    inactive_n = inactive_node_ids(run.run_graph)
+    inactive_t = inactive_transition_ids(run.run_graph)
+
+    assert n1 in inactive_n
+    assert t2.transition_id in inactive_t
+    assert n2 in inactive_n
+    # t1 (the transition that produced n1) is NOT cut just because n1 is cut.
+    assert t1.transition_id not in inactive_t
+    assert run.root_node_id not in inactive_n
+
+
+def test_is_active_node():
+    run, t1, n1, t2, n2 = _make_run_with_chain()
+    assert is_active_node(run.run_graph, run.root_node_id)
+    run.cut(n1, target_kind="node")
+    assert not is_active_node(run.run_graph, n1)
+
+
+def test_is_inactive_transition():
+    run, t1, n1, t2, n2 = _make_run_with_chain()
+    assert not is_inactive_transition(run.run_graph, t1.transition_id)
+    run.cut(t1.transition_id, target_kind="transition")
+    assert is_inactive_transition(run.run_graph, t1.transition_id)
+
+
+def test_cut_already_cut_raises():
+    run, t1, n1, t2, n2 = _make_run_with_chain()
+    run.cut(t1.transition_id, target_kind="transition")
+    with pytest.raises(ValueError, match="already cut"):
+        run.cut(t1.transition_id, target_kind="transition")
+
+
+def test_transition_into_cut_node_blocked():
+    run, t1, n1, t2, n2 = _make_run_with_chain()
+    run.cut(n1, target_kind="node")
+    with pytest.raises(ValueError, match="cut"):
+        run.transition([n1], _tp())

@@ -1,4 +1,4 @@
-"""Trace context for observed history traversal."""
+"""Trace context for history traversal."""
 
 from __future__ import annotations
 
@@ -9,15 +9,12 @@ from stag.core.types import JSONValue, to_jsonable
 
 @dataclass(frozen=True)
 class TraceContext:
-    """Materialized view of observed history walking backwards from a node."""
+    """Materialized view of history walking backwards from a node."""
 
     current_node_id: str
     past_node_ids: tuple[str, ...] = ()
     transition_ids: tuple[str, ...] = ()
-    result_payload_ids: tuple[str, ...] = ()
-    prediction_payload_ids: tuple[str, ...] = ()
-    note_payload_ids: tuple[str, ...] = ()
-    artifact_refs: tuple[str, ...] = ()
+    payload_ids: tuple[str, ...] = ()
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, JSONValue]:

@@ -3,31 +3,24 @@
 A target may have multiple payloads attached.
 Payloads are immutable and append-only; CutPayload encodes cuts
 without ever deleting graph records.
+
+Built-in payload types:
+  - NodePayload: generic node payload with type + content dict
+  - TransitionPayload: generic transition payload with type + content dict
+  - CutPayload: append-only inactivity marker (node or transition)
+  - GitChangePayload: git commit/diff record (transition only)
+
+Users can register custom PayloadBase subclasses with register_payload_class().
+Unknown payload_type values fall back to the appropriate generic class.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Union
+from typing import Literal, Union
 
-from stag.core.types import (
-    ActionType,
-    JSONValue,
-    PayloadType,
-    ResultStatus,
-    TargetKind,
-    to_jsonable,
-)
-
-
-def _validate_probability(value: float | None, name: str) -> None:
-    if value is not None and not 0.0 <= value <= 1.0:
-        raise ValueError(f"{name} must be in [0, 1] or None, got {value}")
-
-
-def _opt_float(value: object) -> float | None:
-    return float(value) if value is not None else None
+from stag.core.types import JSONValue, to_jsonable
 
 
 class PayloadBase(ABC):
@@ -35,96 +28,72 @@ class PayloadBase(ABC):
 
     payload_id: str
     target_id: str
-    target_kind: TargetKind
-    payload_type: PayloadType
+    target_kind: Literal["node", "transition"]
+    payload_type: str
 
     @abstractmethod
     def to_dict(self) -> dict[str, JSONValue]:
         """Return a JSON-serializable representation."""
 
 
+# ---------------------------------------------------------------------------
+# Generic payloads
+# ---------------------------------------------------------------------------
+
+
 @dataclass(frozen=True)
-class NotePayload(PayloadBase):
-    """Lightweight memo attached to a node."""
+class NodePayload(PayloadBase):
+    """Generic node payload. Use the ``type`` field to distinguish purposes."""
 
     payload_id: str
     target_id: str
-    text: str
-    author: str | None = None
-    tags: tuple[str, ...] = ()
+    type: str
+    content: dict[str, JSONValue] = field(default_factory=dict)
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: TargetKind = field(default="node", init=False)
-    payload_type: PayloadType = field(default="note", init=False)
+    target_kind: Literal["node"] = field(default="node", init=False)
+    payload_type: str = field(default="node_payload", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
-class PlanPayload(PayloadBase):
-    """Operation intent attached to a Transition."""
+class TransitionPayload(PayloadBase):
+    """Generic transition payload. Use the ``type`` field to distinguish purposes."""
 
     payload_id: str
     target_id: str
-    intent: str
-    action_type: ActionType = "analysis"
-    inputs: dict[str, JSONValue] = field(default_factory=dict)
-    constraints: dict[str, JSONValue] = field(default_factory=dict)
-    assumptions: tuple[str, ...] = ()
-    safety_policy: dict[str, JSONValue] = field(default_factory=dict)
+    type: str
+    content: dict[str, JSONValue] = field(default_factory=dict)
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: TargetKind = field(default="transition", init=False)
-    payload_type: PayloadType = field(default="plan_payload", init=False)
+    target_kind: Literal["transition"] = field(default="transition", init=False)
+    payload_type: str = field(default="transition_payload", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
 
 
-@dataclass(frozen=True)
-class PredictionPayload(PayloadBase):
-    """Predicted outcome attached to a Transition."""
-
-    payload_id: str
-    target_id: str
-    predicted_artifacts: tuple[str, ...] = ()
-    predicted_metrics: dict[str, float] = field(default_factory=dict)
-    rationale: str | None = None
-    probability: float | None = None
-    confidence: float | None = None
-    predictor: str | None = None
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-    target_kind: TargetKind = field(default="transition", init=False)
-    payload_type: PayloadType = field(default="prediction", init=False)
-
-    def __post_init__(self) -> None:
-        _validate_probability(self.probability, "probability")
-        _validate_probability(self.confidence, "confidence")
-
-    def to_dict(self) -> dict[str, JSONValue]:
-        return to_jsonable(self)  # type: ignore[return-value]
+# ---------------------------------------------------------------------------
+# Built-in typed payloads
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class ResultPayload(PayloadBase):
-    """Actual execution result attached to a Transition."""
+class CutPayload(PayloadBase):
+    """Append-only cut marker on a Node or Transition.
+
+    Inactivity is computed at read time; graph records are never deleted.
+    """
 
     payload_id: str
     target_id: str
-    status: ResultStatus
-    artifacts: tuple[str, ...] = ()
-    raw_outputs: tuple[str, ...] = ()
-    logs: tuple[str, ...] = ()
-    metrics: dict[str, float] = field(default_factory=dict)
-    errors: tuple[str, ...] = ()
-    actual_cost: dict[str, JSONValue] = field(default_factory=dict)
-    matched_prediction_transition_id: str | None = None
+    target_kind: Literal["node", "transition"]
+    reason: str | None = None
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: TargetKind = field(default="transition", init=False)
-    payload_type: PayloadType = field(default="result", init=False)
+    payload_type: str = field(default="cut", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
@@ -161,29 +130,20 @@ class DiffSummary:
 
 @dataclass(frozen=True)
 class GitChangePayload(PayloadBase):
-    """Git repository change information attached to a Transition.
-
-    Captures the diff between base_commit..HEAD at the time stag git finish
-    was executed. Co-exists with ResultPayload on the same Transition.
-    """
+    """Git repository change information attached to a Transition."""
 
     payload_id: str
     target_id: str
-    repo_root: str
-    base_commit: str
-    head_commit: str
     branch: str
-    commits: tuple[str, ...] = ()
-    commit_log: tuple[CommitEntry, ...] = ()
+    head_commit: str
     diff_summary: DiffSummary = field(
         default_factory=lambda: DiffSummary(files_changed=0, insertions=0, deletions=0)
     )
-    changed_files: tuple[str, ...] = ()
-    patch_artifact: str | None = None
+    commit_log: tuple[CommitEntry, ...] = ()
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: TargetKind = field(default="transition", init=False)
-    payload_type: PayloadType = field(default="git_change", init=False)
+    target_kind: Literal["transition"] = field(default="transition", init=False)
+    payload_type: str = field(default="git_change", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return {
@@ -191,120 +151,119 @@ class GitChangePayload(PayloadBase):
             "payload_type": self.payload_type,
             "target_kind": self.target_kind,
             "target_id": self.target_id,
-            "repo_root": self.repo_root,
-            "base_commit": self.base_commit,
-            "head_commit": self.head_commit,
             "branch": self.branch,
-            "commits": list(self.commits),
-            "commit_log": [c.to_dict() for c in self.commit_log],
+            "head_commit": self.head_commit,
             "diff_summary": self.diff_summary.to_dict(),
-            "changed_files": list(self.changed_files),
-            "patch_artifact": self.patch_artifact,
+            "commit_log": [c.to_dict() for c in self.commit_log],
             "metadata": dict(self.metadata),
         }
 
 
-@dataclass(frozen=True)
-class CutPayload(PayloadBase):
-    """Append-only cut marker on a Node or Transition.
-    Inactivity is computed at read time; graph records are never deleted.
+# ---------------------------------------------------------------------------
+# Payload union type (for type annotations)
+# ---------------------------------------------------------------------------
+
+Payload = Union[NodePayload, TransitionPayload, CutPayload, GitChangePayload]
+
+
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
+
+_PAYLOAD_REGISTRY: dict[str, type[PayloadBase]] = {}
+
+
+def register_payload_class(cls: type[PayloadBase]) -> None:
+    """Register a custom PayloadBase subclass for deserialization dispatch.
+
+    The class must have a ``payload_type`` class-level attribute (a string).
+    Call this once at import time before loading any runs.
+
+    Example::
+
+        @dataclass(frozen=True)
+        class ExperimentResultPayload(PayloadBase):
+            ...
+            payload_type: str = field(default="experiment_result", init=False)
+
+        register_payload_class(ExperimentResultPayload)
     """
-
-    payload_id: str
-    target_id: str
-    target_kind: TargetKind
-    cut_at: str
-    reason: str | None = None
-    user_id: str | None = None
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-    payload_type: PayloadType = field(default="cut", init=False)
-
-    def to_dict(self) -> dict[str, JSONValue]:
-        return to_jsonable(self)  # type: ignore[return-value]
+    # Instantiate a sentinel to read payload_type — use a class-level attribute if available.
+    pt = getattr(cls, "payload_type", None)
+    if pt is None:
+        raise ValueError(f"{cls.__name__} must have a payload_type class attribute")
+    _PAYLOAD_REGISTRY[pt] = cls
 
 
-Payload = Union[
-    NotePayload,
-    PlanPayload,
-    PredictionPayload,
-    ResultPayload,
-    CutPayload,
-    GitChangePayload,
-]
+# Register built-ins.
+register_payload_class(NodePayload)
+register_payload_class(TransitionPayload)
+register_payload_class(CutPayload)
+register_payload_class(GitChangePayload)
 
 
-def payload_from_dict(data: dict[str, JSONValue]) -> Payload:
-    """Reconstruct a Payload subclass from its JSON dict form."""
+# ---------------------------------------------------------------------------
+# Deserialization
+# ---------------------------------------------------------------------------
+
+
+def payload_from_dict(data: dict[str, JSONValue]) -> PayloadBase:
+    """Reconstruct a PayloadBase subclass from its JSON dict form.
+
+    Dispatches by ``payload_type``. Falls back to NodePayload / TransitionPayload
+    for unknown types (preserving original payload_type as ``type`` and
+    original data as ``content``).
+    """
     payload_type = data.get("payload_type")
-    if payload_type == "note":
-        return _note_from_dict(data)
-    if payload_type == "plan_payload":
-        return _plan_payload_from_dict(data)
-    if payload_type == "prediction":
-        return _prediction_from_dict(data)
-    if payload_type == "result":
-        return _result_from_dict(data)
-    if payload_type == "cut":
+    cls = _PAYLOAD_REGISTRY.get(str(payload_type)) if payload_type is not None else None
+
+    if cls is NodePayload:
+        return _node_payload_from_dict(data)
+    if cls is TransitionPayload:
+        return _transition_payload_from_dict(data)
+    if cls is CutPayload:
         return _cut_from_dict(data)
-    if payload_type == "git_change":
+    if cls is GitChangePayload:
         return _git_change_from_dict(data)
-    raise ValueError(f"unknown payload_type: {payload_type!r}")
+    if cls is not None:
+        # Custom registered class — try constructor with all fields.
+        return _generic_custom_from_dict(cls, data)
 
-
-def _note_from_dict(data: dict[str, JSONValue]) -> NotePayload:
-    return NotePayload(
-        payload_id=str(data["payload_id"]),
-        target_id=str(data["target_id"]),
-        text=str(data["text"]),
-        author=data.get("author"),
-        tags=tuple(str(t) for t in (data.get("tags") or [])),
+    # Unknown payload_type: fall back to generic based on target_kind.
+    target_kind = data.get("target_kind", "node")
+    if target_kind == "transition":
+        return TransitionPayload(
+            payload_id=str(data.get("payload_id", "")),
+            target_id=str(data.get("target_id", "")),
+            type=str(payload_type or "unknown"),
+            content={k: v for k, v in data.items() if k not in ("payload_id", "target_id", "target_kind", "payload_type", "type", "content", "metadata")},
+            metadata=dict(data.get("metadata") or {}),
+        )
+    return NodePayload(
+        payload_id=str(data.get("payload_id", "")),
+        target_id=str(data.get("target_id", "")),
+        type=str(payload_type or "unknown"),
+        content={k: v for k, v in data.items() if k not in ("payload_id", "target_id", "target_kind", "payload_type", "type", "content", "metadata")},
         metadata=dict(data.get("metadata") or {}),
     )
 
 
-def _plan_payload_from_dict(data: dict[str, JSONValue]) -> PlanPayload:
-    return PlanPayload(
+def _node_payload_from_dict(data: dict[str, JSONValue]) -> NodePayload:
+    return NodePayload(
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
-        intent=str(data["intent"]),
-        action_type=data.get("action_type", "analysis"),  # type: ignore[arg-type]
-        inputs=dict(data.get("inputs") or {}),
-        constraints=dict(data.get("constraints") or {}),
-        assumptions=tuple(str(a) for a in (data.get("assumptions") or [])),
-        safety_policy=dict(data.get("safety_policy") or {}),
+        type=str(data.get("type", "")),
+        content=dict(data.get("content") or {}),
         metadata=dict(data.get("metadata") or {}),
     )
 
 
-def _prediction_from_dict(data: dict[str, JSONValue]) -> PredictionPayload:
-    return PredictionPayload(
+def _transition_payload_from_dict(data: dict[str, JSONValue]) -> TransitionPayload:
+    return TransitionPayload(
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
-        predicted_artifacts=tuple(str(a) for a in (data.get("predicted_artifacts") or [])),
-        predicted_metrics={
-            str(k): float(v) for k, v in (data.get("predicted_metrics") or {}).items()
-        },
-        rationale=data.get("rationale"),
-        probability=_opt_float(data.get("probability")),
-        confidence=_opt_float(data.get("confidence")),
-        predictor=data.get("predictor"),
-        metadata=dict(data.get("metadata") or {}),
-    )
-
-
-def _result_from_dict(data: dict[str, JSONValue]) -> ResultPayload:
-    return ResultPayload(
-        payload_id=str(data["payload_id"]),
-        target_id=str(data["target_id"]),
-        status=data["status"],  # type: ignore[arg-type]
-        artifacts=tuple(str(a) for a in (data.get("artifacts") or [])),
-        raw_outputs=tuple(str(r) for r in (data.get("raw_outputs") or [])),
-        logs=tuple(str(l) for l in (data.get("logs") or [])),
-        metrics={str(k): float(v) for k, v in (data.get("metrics") or {}).items()},
-        errors=tuple(str(e) for e in (data.get("errors") or [])),
-        actual_cost=dict(data.get("actual_cost") or {}),
-        matched_prediction_transition_id=data.get("matched_prediction_transition_id"),
+        type=str(data.get("type", "")),
+        content=dict(data.get("content") or {}),
         metadata=dict(data.get("metadata") or {}),
     )
 
@@ -314,9 +273,7 @@ def _cut_from_dict(data: dict[str, JSONValue]) -> CutPayload:
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
         target_kind=data["target_kind"],  # type: ignore[arg-type]
-        cut_at=str(data["cut_at"]),
         reason=data.get("reason"),
-        user_id=data.get("user_id"),
         metadata=dict(data.get("metadata") or {}),
     )
 
@@ -341,14 +298,23 @@ def _git_change_from_dict(data: dict[str, JSONValue]) -> GitChangePayload:
     return GitChangePayload(
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
-        repo_root=str(data["repo_root"]),
-        base_commit=str(data["base_commit"]),
-        head_commit=str(data["head_commit"]),
-        branch=str(data["branch"]),
-        commits=tuple(str(c) for c in (data.get("commits") or [c.sha for c in commit_log])),
-        commit_log=commit_log,
+        branch=str(data.get("branch", "")),
+        head_commit=str(data.get("head_commit", "")),
         diff_summary=diff_summary,
-        changed_files=tuple(str(f) for f in (data.get("changed_files") or [])),
-        patch_artifact=data.get("patch_artifact"),
+        commit_log=commit_log,
         metadata=dict(data.get("metadata") or {}),
     )
+
+
+def _generic_custom_from_dict(cls: type[PayloadBase], data: dict[str, JSONValue]) -> PayloadBase:
+    """Best-effort reconstruction for user-registered subclasses."""
+    import dataclasses
+    if dataclasses.is_dataclass(cls):
+        fields = {f.name for f in dataclasses.fields(cls) if f.init}  # type: ignore[arg-type]
+        kwargs = {k: v for k, v in data.items() if k in fields}
+        try:
+            return cls(**kwargs)  # type: ignore[return-value]
+        except Exception:
+            pass
+    # Fallback: generic node or transition payload.
+    return payload_from_dict({**data, "payload_type": None})

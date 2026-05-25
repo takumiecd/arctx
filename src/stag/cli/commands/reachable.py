@@ -58,7 +58,6 @@ def run_reachable_command(
         result["transitions"] = [
             g.transitions[tid].to_dict() for tid in reachable["transition_ids"]
         ]
-        result["edges"] = [edge.to_dict() for edge in g.edges.values()]
         result["payloads"] = [g.payloads[pl_id].to_dict() for pl_id in reachable["payload_ids"]]
 
     return result

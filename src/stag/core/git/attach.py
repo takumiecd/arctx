@@ -1,4 +1,4 @@
-"""Attach explicit Git commits to a result-bearing Transition."""
+"""Attach explicit Git commits to a Transition."""
 
 from __future__ import annotations
 
@@ -28,13 +28,6 @@ def attach_commits_to_transition(
     if is_inactive_transition(handle.run_graph, transition_id):
         raise ValueError(f"transition {transition_id} is inactive (cut)")
 
-    result_payloads = handle.run_graph.payloads_for_transition(transition_id, payload_type="result")
-    if not result_payloads:
-        raise ValueError(
-            f"transition {transition_id} has no ResultPayload. "
-            "Git commits can only be attached after an observed result."
-        )
-
     repo_root = git_repo.find_repo_root(Path("."))
     resolved = tuple(git_repo.resolve_commit(repo_root, c) for c in commits)
     branch = git_repo.current_branch(repo_root) or ""
@@ -53,7 +46,6 @@ def attach_commits_to_transition(
         insertions=stat["insertions"],
         deletions=stat["deletions"],
     )
-    changed_files = tuple(git_repo.diff_name_only_for_commits(repo_root, resolved))
     patch_text = git_repo.diff_patch_for_commits(repo_root, resolved)
 
     payload_id = handle._next_id("pl")
@@ -64,16 +56,11 @@ def attach_commits_to_transition(
     gcp = GitChangePayload(
         payload_id=payload_id,
         target_id=transition_id,
-        repo_root=str(repo_root),
-        base_commit="",
-        head_commit=resolved[-1],
         branch=branch,
-        commits=resolved,
-        commit_log=commit_log,
+        head_commit=resolved[-1],
         diff_summary=diff_summary,
-        changed_files=changed_files,
-        patch_artifact=patch_artifact,
-        metadata={"attached_by": user_id},
+        commit_log=commit_log,
+        metadata={"attached_by": user_id, "patch_artifact": patch_artifact or ""},
     )
     handle.run_graph.attach_payload(gcp)
     handle.record_work_event(

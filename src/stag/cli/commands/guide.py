@@ -11,69 +11,62 @@ TOPICS_EN: dict[str, str] = {
 
 stag records optimization and problem-solving work as an append-only RunGraph DAG.
 
-The graph skeleton has only three record types:
+The graph skeleton has two record types:
 
 - Node: a state or point in the work history.
-- Transition: an attempted step from one or more nodes.
-- Edge: connectivity only, either Node -> Transition or Transition -> Node.
+- Transition: a step from one or more input nodes to exactly one output node.
 
-Meaning is attached as payloads. PlanPayload, PredictionPayload, ResultPayload,
-GitChangePayload, NotePayload, and CutPayload explain what a node or transition
-means without changing the graph skeleton.
+Meaning is attached as payloads. TransitionPayload, NodePayload,
+GitChangePayload, and CutPayload explain what a node or transition means.
 
 Basic loop:
 
 ```text
-init -> plan -> predict (optional) -> external work -> observe -> dump
+init -> transition -> dump
 ```
 
 Common commands:
 
 ```bash
 stag init req_demo --run-id demo
-stag plan --run demo --input-node <node_id> --intent "try baseline"
-stag predict --run demo <transition_id> --max-outcomes 2
-stag observe --run demo <transition_id> --status completed
+stag transition --run demo --inputs <node_id> --type experiment --content '{"name": "baseline"}'
+stag attach --run demo --node <node_id> --type note --content '{"text": "context here"}'
 stag dump --run demo
 ```
 """,
     "agent": """\
 # Agent Rules
 
-- Treat Node and Transition IDs in the RunGraph as opaque.
-- Put domain meaning in payloads, not graph record fields.
-- Use `transition_id` for plan/predict/observe/outcomes/git operations.
+- Treat Node and Transition IDs as opaque.
+- Put domain meaning in payloads (TransitionPayload / NodePayload), not in graph fields.
+- Use `stag transition` to record attempts. Use `stag attach` for node annotations.
 - Use `stag dump` when you need broad context.
 - Use CutPayload through `stag cut` instead of deleting records.
 """,
     "dump": """\
 # Dump
 
-`stag dump` renders the active graph in outline or mermaid form. The graph is a
-simple DAG of Node and Transition records connected by Edge records. Payloads
-are shown as annotations, not as structural graph records. Result transitions
-render with `→`; prediction transitions render with `⇢`; cut records render with `✂`;
-revisited nodes may render with `↻`.
+`stag dump` renders the active graph in outline or mermaid form. Each Transition
+has exactly one output Node. Cut records render with `✂`; revisited nodes with `↻`.
 """,
     "record": """\
 # Record One Experiment
 
 ```bash
 stag init req_demo --run-id demo
-stag plan --run demo --input-node <root_node_id> --intent "run benchmark"
-stag observe --run demo <transition_id> --status completed --metric score=0.8
-stag show --run demo --transition <transition_id> --with-payloads --outputs
+stag transition --run demo --inputs <root_node_id> --type experiment --content '{"name": "run1"}'
+stag show --run demo --transition <transition_id> --with-payloads
 ```
 """,
     "payloads": """\
 # Payloads
 
-- PlanPayload attaches to a Transition.
-- PredictionPayload attaches to a Transition and may reference predicted output nodes in metadata.
-- ResultPayload attaches to a Transition and may reference the observed output node in metadata.
-- GitChangePayload attaches to a Transition with a ResultPayload.
-- NotePayload attaches to a Node.
-- CutPayload attaches to a Node or Transition.
+- TransitionPayload attaches to a Transition. Use `type` to describe the kind of step.
+- NodePayload attaches to a Node. Use `type` to describe the kind of annotation.
+- GitChangePayload attaches to a Transition with git commit / diff info.
+- CutPayload attaches to a Node or Transition to mark it inactive.
+
+Custom subclasses of PayloadBase can be registered with `register_payload_class()`.
 """,
     "cut": """\
 # Cut
@@ -82,10 +75,10 @@ stag show --run demo --transition <transition_id> --with-payloads --outputs
 an append-only CutPayload. Records are not deleted; inactive branches are computed at read time.
 """,
     "joins": """\
-# Joins
+# Joins (Multi-input Transitions)
 
-Pass multiple `--input-node` values to `stag plan` to create a Transition with
-multiple incoming Node -> Transition edges.
+Pass multiple `--inputs` values to `stag transition` to create a Transition with
+multiple input nodes but still exactly one output node.
 """,
     "git": """\
 # Git
@@ -94,7 +87,7 @@ Git sessions attach commit and diff information to a Transition.
 
 ```bash
 stag git start <transition_id>
-stag git finish <session_id> --status completed
+stag git finish <session_id>
 stag git diff --transition <transition_id>
 stag git log --transition <transition_id>
 ```
@@ -108,19 +101,18 @@ TOPICS_JA: dict[str, str] = {
 
 stag は作業履歴を append-only な DAG として記録します。
 
-グラフ骨格はこの 3 種類だけです。
+グラフ骨格はこの 2 種類だけです。
 
 - Node: 作業履歴上の状態や地点。
-- Transition: 1 つ以上の Node から試した作業。
-- Edge: 接続だけを表す。Node -> Transition または Transition -> Node。
+- Transition: 1 つ以上の Node から 1 つの output Node への作業ステップ。
 
-意味は payload に分離します。PlanPayload / PredictionPayload / ResultPayload /
-GitChangePayload / NotePayload / CutPayload が、Node や Transition に意味を付けます。
+意味は payload に分離します。TransitionPayload / NodePayload /
+GitChangePayload / CutPayload が、Node や Transition に意味を付けます。
 
 基本ループ:
 
 ```text
-init -> plan -> predict (任意) -> 外部で作業 -> observe -> dump
+init -> transition -> dump
 ```
 """,
     "agent": """\
@@ -128,7 +120,7 @@ init -> plan -> predict (任意) -> 外部で作業 -> observe -> dump
 
 - Node / Transition ID は opaque として扱う。
 - ドメイン上の意味は graph record ではなく payload に入れる。
-- plan/predict/observe/outcomes/git は `transition_id` を中心に扱う。
+- 作業の記録は `stag transition`、ノードへの注釈は `stag attach`。
 - 広い文脈確認は `stag dump` を使う。
 - 履歴は削除せず、`stag cut` で CutPayload を追加する。
 """,
@@ -179,11 +171,9 @@ def run_guide_list(lang: str = "en") -> dict:
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
-    """Register the ``guide`` subcommand parser."""
     parser = subparsers.add_parser(
         "guide",
         help="Show the stag concept and CLI workflow guide",
-        description="Show the stag concept, graph structure, and CLI workflow guide.",
     )
     parser.add_argument(
         "--lang",
@@ -207,7 +197,6 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 
 
 def cli_guide(args) -> int:
-    """Entry point for ``stag guide`` subcommand."""
     if args.list_topics:
         result = run_guide_list(lang=args.lang)
         for entry in result["topics"]:
