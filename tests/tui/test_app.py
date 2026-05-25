@@ -83,6 +83,61 @@ def test_build_detail_markdown_node_includes_incoming_section():
 
 
 # ---------------------------------------------------------------------------
+# editor.py
+# ---------------------------------------------------------------------------
+
+
+def test_editor_parse_json_object():
+    from stag.tui.editor import _parse_json_object
+
+    assert _parse_json_object('{"text":"hello"}') == {"text": "hello"}
+    assert _parse_json_object("") == {}
+
+
+def test_editor_parse_json_object_rejects_non_object():
+    from stag.tui.editor import _parse_json_object
+
+    with pytest.raises(ValueError):
+        _parse_json_object("[1, 2]")
+
+
+def test_app_has_editor_actions_bound():
+    import ast
+    import pathlib
+
+    src = pathlib.Path("src/stag/tui/app.py").read_text()
+    tree = ast.parse(src)
+    method_names = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    }
+
+    assert "action_create_transition" in method_names
+    assert "action_attach_payload" in method_names
+    assert "action_cut_selected" in method_names
+    assert '"t"' in src
+    assert '"p"' in src
+    assert '"c"' in src
+
+
+def test_editor_payload_type_options_are_target_compatible():
+    from stag.tui.editor import _payload_type_options
+
+    node_values = {value for _, value in _payload_type_options("node", include_cut=True)}
+    transition_values = {
+        value for _, value in _payload_type_options("transition", include_cut=True)
+    }
+    transition_create_values = {
+        value for _, value in _payload_type_options("transition", include_cut=False)
+    }
+
+    assert {"node_payload", "cut"} <= node_values
+    assert "transition_payload" not in node_values
+    assert {"transition_payload", "cut"} <= transition_values
+    assert "node_payload" not in transition_values
+    assert "cut" not in transition_create_values
+
+
+# ---------------------------------------------------------------------------
 # flowchart.py
 # ---------------------------------------------------------------------------
 

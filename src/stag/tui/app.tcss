@@ -82,3 +82,32 @@ ListView > ListItem {
 ListView > ListItem.--highlight {
     background: $accent 30%;
 }
+
+/* ---------- Editor dialogs ---------- */
+.editor-dialog {
+    width: 72;
+    height: auto;
+    margin: 2 4;
+    padding: 1 2;
+    background: $panel;
+    border: thick $accent;
+}
+
+.editor-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.editor-actions {
+    height: auto;
+    margin-top: 1;
+}
+
+.editor-actions Button {
+    margin-right: 1;
+}
+
+#form-error {
+    color: $error;
+    min-height: 1;
+}

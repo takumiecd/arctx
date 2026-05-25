@@ -11,7 +11,9 @@ from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import Footer, Label, ListItem, ListView, Markdown
 
+from stag.cli.payload_builder import build_payload
 from stag.tui.detail import build_detail_markdown
+from stag.tui.editor import PayloadForm, PayloadFormData, TransitionForm, TransitionFormData
 from stag.tui.flowchart_view import FlowchartItemClicked, FlowchartView
 from stag.tui.graph_html import render_graph_html
 
@@ -28,6 +30,9 @@ class StagApp(App):
         Binding("2", "focus_flowchart", "Flowchart"),
         Binding("3", "focus_detail", "Detail"),
         Binding("g", "open_browser_graph", "Graph"),
+        Binding("t", "create_transition", "Transition"),
+        Binding("p", "attach_payload", "Payload"),
+        Binding("c", "cut_selected", "Cut"),
         Binding("+", "depth_increase", "+Depth"),
         Binding("-", "depth_decrease", "-Depth"),
         Binding("0", "recenter_flowchart", "Recenter"),
@@ -123,6 +128,15 @@ class StagApp(App):
 
         self._set_markdown(build_detail_markdown(handle, None, state_labels, plan_labels))
 
+    def _reload_current_run(self, *, selected: tuple[str, str] | None = None) -> None:
+        if self._current_handle is None:
+            return
+        handle = self._store.load_run(self._current_handle.run_id)
+        self._current_handle = handle
+        self._load_run(handle)
+        if selected is not None:
+            self._select_item(*selected)
+
     # ------------------------------------------------------------------
     # Flowchart click handler
     # ------------------------------------------------------------------
@@ -144,6 +158,23 @@ class StagApp(App):
         fv = self.query_one("#flowchart-view", FlowchartView)
         # Keep the center stable on all clicks; just update selection highlight.
         fv.set_selected(event.kind, event.raw_id)
+
+    def _select_item(self, kind: str, raw_id: str) -> None:
+        if self._current_handle is None:
+            return
+        self._selected = (kind, raw_id)
+
+        node_data = {"type": kind, "id": raw_id}
+        md = build_detail_markdown(
+            self._current_handle,
+            node_data,
+            self._state_labels,
+            self._plan_labels,
+        )
+        self._set_markdown(md)
+
+        fv = self.query_one("#flowchart-view", FlowchartView)
+        fv.set_selected(kind, raw_id)
 
     # ------------------------------------------------------------------
     # Detail pane helpers
@@ -186,6 +217,90 @@ class StagApp(App):
             f.write(html)
             path = f.name
         webbrowser.open(f"file://{path}")
+
+    def action_create_transition(self) -> None:
+        if self._current_handle is None:
+            return
+        selected = self._selected
+        if selected is None:
+            node_id = self._current_handle.root_node_id
+        elif selected[0] == "node":
+            node_id = selected[1]
+        else:
+            node_id = self._current_handle.run_graph.transition_output(selected[1])
+        if not node_id:
+            return
+        self.push_screen(TransitionForm(default_node_id=node_id), self._create_transition)
+
+    def _create_transition(self, data: TransitionFormData | None) -> None:
+        if self._current_handle is None or data is None:
+            return
+        try:
+            field_data = {"type": data.payload_kind, **data.content}
+            payload = build_payload(
+                payload_type=data.payload_type,
+                target_kind="transition",
+                target_id="pending",
+                payload_id="pending",
+                field_data=field_data,
+            )
+            transition = self._current_handle.transition(list(data.input_node_ids), payload)
+            self._store.save_run(self._current_handle)
+            self._reload_current_run(selected=("transition", transition.transition_id))
+            self.notify(f"Created transition {transition.transition_id}")
+        except Exception as exc:
+            self.notify(str(exc), severity="error")
+
+    def action_attach_payload(self) -> None:
+        if self._current_handle is None or self._selected is None:
+            self.notify("Select a node or transition first", severity="warning")
+            return
+        kind, raw_id = self._selected
+        if kind not in ("node", "transition"):
+            return
+        self.push_screen(PayloadForm(target_kind=kind, target_id=raw_id), self._attach_payload)
+
+    def _attach_payload(self, data: PayloadFormData | None) -> None:
+        if self._current_handle is None or data is None:
+            return
+        try:
+            field_data = {"type": data.payload_kind, **data.content}
+            payload = build_payload(
+                payload_type=data.payload_type,
+                target_kind=data.target_kind,
+                target_id=data.target_id,
+                payload_id=(
+                    "pending"
+                    if data.target_kind == "node"
+                    else self._current_handle._next_id("pl")
+                ),
+                field_data=field_data,
+            )
+            if data.target_kind == "node":
+                attached = self._current_handle.attach(data.target_id, payload)
+            else:
+                self._current_handle.run_graph.attach_payload(payload)
+                attached = payload
+            self._store.save_run(self._current_handle)
+            self._reload_current_run(selected=(data.target_kind, data.target_id))
+            self.notify(f"Attached payload {attached.payload_id}")
+        except Exception as exc:
+            self.notify(str(exc), severity="error")
+
+    def action_cut_selected(self) -> None:
+        if self._current_handle is None or self._selected is None:
+            self.notify("Select a node or transition first", severity="warning")
+            return
+        kind, raw_id = self._selected
+        if kind not in ("node", "transition"):
+            return
+        try:
+            cut = self._current_handle.cut(raw_id, target_kind=kind)
+            self._store.save_run(self._current_handle)
+            self._reload_current_run(selected=(kind, raw_id))
+            self.notify(f"Cut {kind} {raw_id} with {cut.payload_id}")
+        except Exception as exc:
+            self.notify(str(exc), severity="error")
 
     def action_depth_increase(self) -> None:
         self.query_one("#flowchart-view", FlowchartView).adjust_depth(1)
