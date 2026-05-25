@@ -49,6 +49,12 @@ class PayloadFormData:
     content: dict[str, JSONValue]
 
 
+@dataclass(frozen=True)
+class GitPayloadFormData:
+    transition_id: str
+    commits: tuple[str, ...]
+
+
 def _parse_json_object(raw: str) -> dict[str, JSONValue]:
     text = raw.strip()
     if not text:
@@ -230,3 +236,30 @@ def _payload_type_options(
         label = labels.get(payload_type, payload_type)
         candidates.append((f"{label} ({payload_type})", payload_type))
     return tuple(candidates)
+
+
+class GitPayloadForm(_FormScreen):
+    """Attach Git commits to a transition as a GitChangePayload."""
+
+    def __init__(self, *, transition_id: str) -> None:
+        super().__init__()
+        self._transition_id = transition_id
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="editor-dialog"):
+            yield Label("Attach Git Payload", classes="editor-title")
+            yield Label(f"Transition: {self._transition_id}")
+            yield Label("Commits")
+            yield Input(placeholder="HEAD, abc123, ...", id="commits")
+            yield Static("", id="form-error")
+            with Horizontal(classes="editor-actions"):
+                yield Button("Cancel", id="cancel")
+                yield Button("Attach", id="submit", variant="primary")
+
+    def _submit(self) -> None:
+        raw = self._input_value("commits")
+        commits = tuple(part for part in raw.replace(",", " ").split() if part)
+        if not commits:
+            self._set_error("At least one commit is required")
+            return
+        self.dismiss(GitPayloadFormData(transition_id=self._transition_id, commits=commits))

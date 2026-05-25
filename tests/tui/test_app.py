@@ -114,9 +114,11 @@ def test_app_has_editor_actions_bound():
     assert "action_create_transition" in method_names
     assert "action_attach_payload" in method_names
     assert "action_cut_selected" in method_names
+    assert "action_attach_git_payload" in method_names
     assert '"t"' in src
     assert '"p"' in src
     assert '"c"' in src
+    assert '"shift+g"' in src
 
 
 def test_editor_payload_type_options_are_target_compatible():
@@ -135,6 +137,14 @@ def test_editor_payload_type_options_are_target_compatible():
     assert {"transition_payload", "cut"} <= transition_values
     assert "node_payload" not in transition_values
     assert "cut" not in transition_create_values
+
+
+def test_git_payload_form_data():
+    from stag.tui.editor import GitPayloadFormData
+
+    data = GitPayloadFormData(transition_id="t_1", commits=("HEAD", "abc123"))
+    assert data.transition_id == "t_1"
+    assert data.commits == ("HEAD", "abc123")
 
 
 # ---------------------------------------------------------------------------

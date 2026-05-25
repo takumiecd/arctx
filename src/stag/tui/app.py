@@ -13,7 +13,14 @@ from textual.widgets import Footer, Label, ListItem, ListView, Markdown
 
 from stag.cli.payload_builder import build_payload
 from stag.tui.detail import build_detail_markdown
-from stag.tui.editor import PayloadForm, PayloadFormData, TransitionForm, TransitionFormData
+from stag.tui.editor import (
+    GitPayloadForm,
+    GitPayloadFormData,
+    PayloadForm,
+    PayloadFormData,
+    TransitionForm,
+    TransitionFormData,
+)
 from stag.tui.flowchart_view import FlowchartItemClicked, FlowchartView
 from stag.tui.graph_html import render_graph_html
 
@@ -33,6 +40,7 @@ class StagApp(App):
         Binding("t", "create_transition", "Transition"),
         Binding("p", "attach_payload", "Payload"),
         Binding("c", "cut_selected", "Cut"),
+        Binding("shift+g", "attach_git_payload", "Git Payload"),
         Binding("+", "depth_increase", "+Depth"),
         Binding("-", "depth_decrease", "-Depth"),
         Binding("0", "recenter_flowchart", "Recenter"),
@@ -299,6 +307,35 @@ class StagApp(App):
             self._store.save_run(self._current_handle)
             self._reload_current_run(selected=(kind, raw_id))
             self.notify(f"Cut {kind} {raw_id} with {cut.payload_id}")
+        except Exception as exc:
+            self.notify(str(exc), severity="error")
+
+    def action_attach_git_payload(self) -> None:
+        if self._current_handle is None or self._selected is None:
+            self.notify("Select a transition first", severity="warning")
+            return
+        kind, raw_id = self._selected
+        if kind != "transition":
+            self.notify("Git payloads attach to transitions", severity="warning")
+            return
+        self.push_screen(GitPayloadForm(transition_id=raw_id), self._attach_git_payload)
+
+    def _attach_git_payload(self, data: GitPayloadFormData | None) -> None:
+        if self._current_handle is None or data is None:
+            return
+        try:
+            from stag.core.git.attach import attach_commits_to_transition
+
+            result = attach_commits_to_transition(
+                self._current_handle,
+                self._store.run_path(self._current_handle.run_id),
+                data.transition_id,
+                data.commits,
+            )
+            self._store.save_run(self._current_handle)
+            self._reload_current_run(selected=("transition", data.transition_id))
+            payload_id = result["created"]["git_change_payload_id"]
+            self.notify(f"Attached git payload {payload_id}")
         except Exception as exc:
             self.notify(str(exc), severity="error")
 
