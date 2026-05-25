@@ -26,6 +26,10 @@ from stag.cli.commands.transition import add_parser as add_transition_parser, cl
 from stag.cli.commands.use import add_parser as add_use_parser, cli_use
 from stag.cli.commands.tui import add_parser as add_tui_parser, cli_tui
 from stag.cli.commands.view import add_parser as add_view_parser, cli_view
+from stag.cli.commands.work_session import (
+    add_parser as add_work_session_parser,
+    cli_work_session,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -56,6 +60,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_transition_parser(subparsers)
     add_use_parser(subparsers)
     add_view_parser(subparsers)
+    add_work_session_parser(subparsers)
 
     return parser
 
@@ -112,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_use(args)
     if args.command == "view":
         return cli_view(args)
+    if args.command == "work-session":
+        return cli_work_session(args)
 
     return 1
 
