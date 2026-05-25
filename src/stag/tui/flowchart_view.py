@@ -31,7 +31,8 @@ class FlowchartView(ScrollableContainer, can_focus=True):
     wheel scrolling automatically. The Static child holds the rendered markup;
     its natural size drives the virtual content area.
 
-    - mouse wheel / arrow keys: scroll
+    - mouse wheel / scrollbar / left-button drag: scroll or pan
+    - arrow keys: move the selected node or transition
     - left-button drag: pan
     - left-button click (no drag): post FlowchartItemClicked on the hit region
     - 0 key (in app): recenter via recenter_to()
@@ -48,9 +49,10 @@ class FlowchartView(ScrollableContainer, can_focus=True):
     }
     """
 
-    # Arrow key scrolling handled in on_key for reliability (BINDINGS dispatch
-    # was not firing in practice — likely because ScrollableContainer or the
-    # focused Static child intercepts the keys before the action runs).
+    # ScrollableContainer inherits arrow-key BINDINGS that fire action_scroll_up
+    # / action_scroll_down / action_scroll_left / action_scroll_right. We
+    # override those actions below to move the selection instead of scrolling
+    # the viewport. Pan is still available via mouse drag and the scrollbar.
 
     def __init__(self, **kw) -> None:
         super().__init__(**kw)
@@ -170,7 +172,7 @@ class FlowchartView(ScrollableContainer, can_focus=True):
                 return
 
     # ------------------------------------------------------------------
-    # Keyboard scrolling
+    # Keyboard selection
     # ------------------------------------------------------------------
 
     def navigate(self, direction: str) -> None:
@@ -207,3 +209,18 @@ class FlowchartView(ScrollableContainer, can_focus=True):
         elif target_row > scroll_y + viewport_h - 3:
             self.scroll_to(self.scroll_x, target_row - viewport_h + 3, animate=False)
 
+    # ------------------------------------------------------------------
+    # Override inherited scroll actions so arrows move the selection.
+    # ------------------------------------------------------------------
+
+    def action_scroll_up(self) -> None:
+        self.navigate("up")
+
+    def action_scroll_down(self) -> None:
+        self.navigate("down")
+
+    def action_scroll_left(self) -> None:
+        self.navigate("left")
+
+    def action_scroll_right(self) -> None:
+        self.navigate("right")
