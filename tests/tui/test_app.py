@@ -31,6 +31,46 @@ def _make_handle():
 
 
 # ---------------------------------------------------------------------------
+# Minimal mock Tree for populate_dag_tree tests (no Textual install needed).
+# ---------------------------------------------------------------------------
+
+class _MockTreeNode:
+    """Mimics the subset of Textual TreeNode used by populate_dag_tree."""
+
+    def __init__(self, label: str = "", data=None):
+        self.label = label
+        self.data = data
+        self.children: list[_MockTreeNode] = []
+
+    def add(self, label: str, data=None) -> "_MockTreeNode":
+        child = _MockTreeNode(label, data)
+        self.children.append(child)
+        return child
+
+    def add_leaf(self, label: str, data=None) -> "_MockTreeNode":
+        child = _MockTreeNode(label, data)
+        self.children.append(child)
+        return child
+
+
+class _MockTree:
+    """Mimics the subset of Textual Tree used by populate_dag_tree."""
+
+    def __init__(self):
+        self.root = _MockTreeNode("root")
+
+    def clear(self):
+        self.root.children.clear()
+
+
+def _walk_tree(node: _MockTreeNode):
+    """Yield all nodes in the mock tree (depth-first)."""
+    yield node
+    for child in node.children:
+        yield from _walk_tree(child)
+
+
+# ---------------------------------------------------------------------------
 # detail.py
 # ---------------------------------------------------------------------------
 
@@ -49,12 +89,95 @@ def test_build_detail_markdown_no_data():
     assert "Run Overview" in md
 
 
-def test_build_detail_markdown_transition():
+def test_build_detail_markdown_transition_falls_back_to_overview():
+    """type=='transition' is no longer a selectable row; should fall through to overview."""
     from stag.tui.detail import build_detail_markdown
     handle = _make_handle()
     t_id = list(handle.run_graph.transitions)[0]
+    # 'transition' kind is no longer dispatched — falls back to _run_overview.
     md = build_detail_markdown(handle, {"type": "transition", "id": t_id}, {}, {})
-    assert "Transition" in md
+    assert "Run Overview" in md
+
+
+def test_build_detail_markdown_node_includes_incoming_section():
+    """Non-root node detail should contain an ## Incoming section with transition info."""
+    from stag.tui.detail import build_detail_markdown
+    from stag.tui.dag_tree import _build_labels
+    handle = _make_handle()
+    graph = handle.run_graph
+    # Pick the first non-root node.
+    t_id = list(graph.transitions)[0]
+    out_node_id = graph.transition_output(t_id)
+    state_labels, plan_labels = _build_labels(handle)
+
+    md = build_detail_markdown(
+        handle, {"type": "node", "id": out_node_id}, state_labels, plan_labels
+    )
+    assert "## Incoming" in md
+    # Should mention the plan label for the transition.
+    pl = plan_labels.get(t_id, "?")
+    assert pl in md
+
+
+# ---------------------------------------------------------------------------
+# dag_tree.py — new structure tests
+# ---------------------------------------------------------------------------
+
+
+def test_tree_no_standalone_transition_rows():
+    """After populate_dag_tree, no TreeNode should have data['type'] == 'transition'."""
+    from stag.tui.dag_tree import populate_dag_tree
+    handle = _make_handle()
+    mock_tree = _MockTree()
+    populate_dag_tree(mock_tree, handle)
+
+    for node in _walk_tree(mock_tree.root):
+        if node.data is not None:
+            assert node.data.get("type") != "transition", (
+                f"Found standalone transition row: {node.label!r} data={node.data}"
+            )
+
+
+def test_tree_includes_transition_label_in_node_row():
+    """Each non-root node row's label should contain the plan label (e.g. 'P1')."""
+    from stag.tui.dag_tree import populate_dag_tree, _build_labels
+    handle = _make_handle()
+    _, plan_labels = _build_labels(handle)
+
+    mock_tree = _MockTree()
+    populate_dag_tree(mock_tree, handle)
+
+    # Collect all node-type rows (excluding the virtual tree root wrapper).
+    node_rows = [
+        n for n in _walk_tree(mock_tree.root)
+        if n.data is not None and n.data.get("type") == "node"
+        and n.data.get("id") != handle.root_node_id
+    ]
+    assert node_rows, "Expected at least one non-root node row"
+
+    # Each non-root node row label should contain a plan label like 'P1'.
+    plan_label_values = set(plan_labels.values())
+    for row in node_rows:
+        label = row.label
+        found = any(pl in label for pl in plan_label_values)
+        assert found, f"Node row label {label!r} contains no plan label (expected one of {plan_label_values})"
+
+
+def test_tree_root_has_no_incoming_label():
+    """The root node row should say '(root)' and NOT contain '→'."""
+    from stag.tui.dag_tree import populate_dag_tree
+    handle = _make_handle()
+    mock_tree = _MockTree()
+    populate_dag_tree(mock_tree, handle)
+
+    root_rows = [
+        n for n in _walk_tree(mock_tree.root)
+        if n.data is not None and n.data.get("id") == handle.root_node_id
+    ]
+    assert root_rows, "Root node row not found"
+    root_label = root_rows[0].label
+    assert "root" in root_label
+    assert "→" not in root_label
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +198,21 @@ def test_render_flowchart_unknown_center_uses_root():
     handle = _make_handle()
     lines = render_flowchart(handle, "n_totally_bogus_id", depth=1)
     assert len(lines) > 0
+
+
+def test_flowchart_has_connectors():
+    """Flowchart for a 2-layer subgraph should contain connector chars (│ or ─)."""
+    from stag.tui.flowchart import render_flowchart
+    handle = _make_handle()
+    # depth=2 gives root → transition → child node (3 layers → connectors between them)
+    lines = render_flowchart(handle, handle.root_node_id, depth=2)
+    full_text = "\n".join(lines)
+    # Strip Rich markup tags to inspect plain chars.
+    import re
+    plain = re.sub(r"\[[^\]]*\]", "", full_text)
+    assert "│" in plain or "─" in plain, (
+        f"Expected connector chars in flowchart output but found none.\nPlain output:\n{plain}"
+    )
 
 
 # ---------------------------------------------------------------------------

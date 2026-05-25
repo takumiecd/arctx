@@ -41,6 +41,49 @@ def _transition_type(handle: RunHandle, transition_id: str) -> str | None:
     return None
 
 
+def _merged_node_label(
+    handle: RunHandle,
+    transition_id: str,
+    output_node_id: str,
+    state_labels: dict[str, str],
+    plan_labels: dict[str, str],
+    inactive_nodes: set[str],
+    inactive_trans: set[str],
+) -> str:
+    """Build a merged label: [extra_inputs] [Pk type] → Sk [✂].
+
+    This is the new style where the transition info is woven into the
+    output-node row, eliminating the standalone transition TreeNode.
+    """
+    graph = handle.run_graph
+    inputs = graph.transition_inputs(transition_id)
+    pl = plan_labels.get(transition_id, transition_id)
+    t_type = _transition_type(handle, transition_id) or ""
+    sl = state_labels.get(output_node_id, output_node_id)
+
+    is_node_cut = output_node_id in inactive_nodes
+    is_trans_cut = transition_id in inactive_trans
+    is_cut = is_node_cut or is_trans_cut
+
+    # Extra inputs (all except primary, which is inputs[0]).
+    extra_part = ""
+    if len(inputs) > 1:
+        others = " ".join(f"+{state_labels.get(n, n)}" for n in inputs[1:])
+        extra_part = f"[{others}] "
+
+    # Transition badge.
+    type_part = f" [yellow]{t_type}[/yellow]" if t_type else ""
+    plan_part = f"[bold]{pl}[/bold]{type_part}"
+
+    # Output node label.
+    if is_cut:
+        node_part = f"[red strike]{sl} ✂[/red strike]"
+    else:
+        node_part = sl
+
+    return f"{extra_part}[{plan_part}] → {node_part}"
+
+
 def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
     """Populate *tree* (a Textual Tree) with the run DAG.
 
@@ -48,8 +91,13 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
     to raw IDs without re-computing.
 
     Each tree node's .data is a dict with keys:
-      type: "node" | "transition" | "backref" | "forward_pointer" | "note" | "section"
+      type: "node" | "backref" | "forward_pointer" | "note" | "section"
       id:   raw graph ID (node_id or transition_id)
+
+    Note: transitions are no longer standalone TreeNodes. Each non-root node
+    row merges its incoming transition label into the node label. The node
+    data always points to the output Node.  Transition payload detail is
+    available in the detail pane under an "## Incoming" section.
     """
     graph = handle.run_graph
     state_labels, plan_labels = _build_labels(handle)
@@ -57,35 +105,12 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
     inactive_trans = inactive_transition_ids(graph)
 
     visited_nodes: set[str] = set()
-    visited_trans: set[str] = set()
 
-    def node_label(node_id: str) -> str:
+    def root_label(node_id: str) -> str:
         sl = state_labels.get(node_id, node_id)
-        is_root = node_id == handle.root_node_id
-        is_cut = node_id in inactive_nodes
+        return f"[bold]{sl} (root)[/bold]"
 
-        if is_cut:
-            return f"[red strike]{sl} ✂[/red strike]"
-        if is_root:
-            return f"[bold]{sl} (root)[/bold]"
-        return sl
-
-    def transition_label(transition_id: str) -> str:
-        pl = plan_labels.get(transition_id, transition_id)
-        is_cut = transition_id in inactive_trans
-        t_type = _transition_type(handle, transition_id) or ""
-        inputs = graph.transition_inputs(transition_id)
-
-        extra = ""
-        if len(inputs) > 1:
-            others = " ".join(f"(+{state_labels.get(n, n)})" for n in inputs[1:])
-            extra = f" {others}"
-
-        cut_marker = " ✂" if is_cut else ""
-        type_part = f" [yellow]{t_type}[/yellow]" if t_type else ""
-        return f"[bold]{pl}[/bold]{type_part}{extra}{cut_marker}"
-
-    def add_node(parent_tree_node, node_id: str, *, is_last: bool) -> None:
+    def add_node(parent_tree_node, node_id: str, incoming_transition_id: str | None) -> None:
         if node_id in visited_nodes:
             sl = state_labels.get(node_id, node_id)
             parent_tree_node.add_leaf(
@@ -95,7 +120,21 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
             return
 
         visited_nodes.add(node_id)
-        label = node_label(node_id)
+
+        if incoming_transition_id is None:
+            # Root node.
+            label = root_label(node_id)
+        else:
+            label = _merged_node_label(
+                handle,
+                incoming_transition_id,
+                node_id,
+                state_labels,
+                plan_labels,
+                inactive_nodes,
+                inactive_trans,
+            )
+
         tree_node = parent_tree_node.add(label, data={"type": "node", "id": node_id})
 
         # Attach note-type NodePayload leaves.
@@ -109,10 +148,12 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
                     data={"type": "note", "id": node_id},
                 )
 
+        # Recurse through outgoing transitions.
         out_trans = graph.transitions_from_node(node_id)
         for tid in out_trans:
             inputs = graph.transition_inputs(tid)
             if inputs and inputs[0] != node_id:
+                # This node is a secondary input; add a forward-pointer leaf.
                 pl = plan_labels.get(tid, tid)
                 primary = state_labels.get(inputs[0], inputs[0])
                 tree_node.add_leaf(
@@ -120,60 +161,13 @@ def populate_dag_tree(tree, handle: RunHandle) -> tuple[dict[str, str], dict[str
                     data={"type": "forward_pointer", "id": tid},
                 )
                 continue
-            add_transition(tree_node, tid)
-
-    def add_transition(parent_tree_node, transition_id: str) -> None:
-        if transition_id in visited_trans:
-            pl = plan_labels.get(transition_id, transition_id)
-            parent_tree_node.add_leaf(
-                f"↻{pl}",
-                data={"type": "backref", "id": transition_id},
-            )
-            return
-
-        visited_trans.add(transition_id)
-        label = transition_label(transition_id)
-        t_node = parent_tree_node.add(label, data={"type": "transition", "id": transition_id})
-
-        out_id = graph.transition_output(transition_id)
-        if out_id:
-            sl = state_labels.get(out_id, out_id)
-            is_cut = transition_id in inactive_trans
-            color = "red" if is_cut else "green"
-            child_label = f"[{color}]→ {sl}[/{color}]"
-            child = t_node.add(child_label, data={"type": "node", "id": out_id})
-            _recurse_from_node(child, out_id)
-
-    def _recurse_from_node(tree_node, node_id: str) -> None:
-        if node_id in visited_nodes:
-            return
-        visited_nodes.add(node_id)
-
-        for payload in graph.payloads_for_node(node_id):
-            if isinstance(payload, NodePayload) and payload.type == "note":
-                text = str(payload.content.get("text", ""))
-                if len(text) > 80:
-                    text = text[:79] + "…"
-                tree_node.add_leaf(
-                    f"[dim]{text}[/dim]",
-                    data={"type": "note", "id": node_id},
-                )
-
-        out_trans = graph.transitions_from_node(node_id)
-        for tid in out_trans:
-            inputs = graph.transition_inputs(tid)
-            if inputs and inputs[0] != node_id:
-                pl = plan_labels.get(tid, tid)
-                primary = state_labels.get(inputs[0], inputs[0])
-                tree_node.add_leaf(
-                    f"▸ feeds [bold]{pl}[/bold] (@{primary})",
-                    data={"type": "forward_pointer", "id": tid},
-                )
-                continue
-            add_transition(tree_node, tid)
+            # Primary input: add the output node merged with transition info.
+            out_id = graph.transition_output(tid)
+            if out_id:
+                add_node(tree_node, out_id, incoming_transition_id=tid)
 
     root_id = handle.root_node_id
     tree.clear()
-    add_node(tree.root, root_id, is_last=True)
+    add_node(tree.root, root_id, incoming_transition_id=None)
 
     return state_labels, plan_labels

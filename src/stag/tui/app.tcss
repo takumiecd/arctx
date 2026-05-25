@@ -43,6 +43,16 @@ Screen {
     overflow-y: auto;
 }
 
+#dag-tree > .tree--guides {
+    color: $accent 40%;
+}
+#dag-tree > .tree--guides-hover {
+    color: $accent 70%;
+}
+#dag-tree > .tree--guides-selected {
+    color: $accent;
+}
+
 /* ---------- Detail pane ---------- */
 #detail-pane {
     width: 1fr;
