@@ -32,16 +32,8 @@ def build_detail_markdown(
 
     if kind in ("node", "note"):
         return _node_detail(handle, raw_id, state_labels, plan_labels)
-    if kind == "backref":
-        if raw_id in handle.run_graph.nodes:
-            sl = state_labels.get(raw_id, "?")
-            return f"# Back-reference → {sl}\n\nThis state is referenced elsewhere in the tree.\n"
-        else:
-            pl = plan_labels.get(raw_id, "?")
-            return f"# Back-reference → {pl}\n\nThis transition is referenced elsewhere in the tree.\n"
-    if kind == "forward_pointer":
-        pl = plan_labels.get(raw_id, "?")
-        return f"# Forward Pointer → {pl}\n\nThis node feeds into {pl} as a secondary input.\n"
+    if kind == "transition":
+        return _transition_detail(handle, raw_id, state_labels, plan_labels)
 
     return _run_overview(handle)
 

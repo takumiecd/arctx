@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from stag import init
@@ -31,46 +33,6 @@ def _make_handle():
 
 
 # ---------------------------------------------------------------------------
-# Minimal mock Tree for populate_dag_tree tests (no Textual install needed).
-# ---------------------------------------------------------------------------
-
-class _MockTreeNode:
-    """Mimics the subset of Textual TreeNode used by populate_dag_tree."""
-
-    def __init__(self, label: str = "", data=None):
-        self.label = label
-        self.data = data
-        self.children: list[_MockTreeNode] = []
-
-    def add(self, label: str, data=None) -> "_MockTreeNode":
-        child = _MockTreeNode(label, data)
-        self.children.append(child)
-        return child
-
-    def add_leaf(self, label: str, data=None) -> "_MockTreeNode":
-        child = _MockTreeNode(label, data)
-        self.children.append(child)
-        return child
-
-
-class _MockTree:
-    """Mimics the subset of Textual Tree used by populate_dag_tree."""
-
-    def __init__(self):
-        self.root = _MockTreeNode("root")
-
-    def clear(self):
-        self.root.children.clear()
-
-
-def _walk_tree(node: _MockTreeNode):
-    """Yield all nodes in the mock tree (depth-first)."""
-    yield node
-    for child in node.children:
-        yield from _walk_tree(child)
-
-
-# ---------------------------------------------------------------------------
 # detail.py
 # ---------------------------------------------------------------------------
 
@@ -89,20 +51,21 @@ def test_build_detail_markdown_no_data():
     assert "Run Overview" in md
 
 
-def test_build_detail_markdown_transition_falls_back_to_overview():
-    """type=='transition' is no longer a selectable row; should fall through to overview."""
+def test_build_detail_markdown_transition():
+    """type=='transition' now renders transition detail from flowchart click."""
     from stag.tui.detail import build_detail_markdown
+    from stag.tui.flowchart import _build_labels
     handle = _make_handle()
     t_id = list(handle.run_graph.transitions)[0]
-    # 'transition' kind is no longer dispatched — falls back to _run_overview.
-    md = build_detail_markdown(handle, {"type": "transition", "id": t_id}, {}, {})
-    assert "Run Overview" in md
+    state_labels, plan_labels = _build_labels(handle)
+    md = build_detail_markdown(handle, {"type": "transition", "id": t_id}, state_labels, plan_labels)
+    assert "Transition" in md
 
 
 def test_build_detail_markdown_node_includes_incoming_section():
     """Non-root node detail should contain an ## Incoming section with transition info."""
     from stag.tui.detail import build_detail_markdown
-    from stag.tui.dag_tree import _build_labels
+    from stag.tui.flowchart import _build_labels
     handle = _make_handle()
     graph = handle.run_graph
     # Pick the first non-root node.
@@ -120,83 +83,26 @@ def test_build_detail_markdown_node_includes_incoming_section():
 
 
 # ---------------------------------------------------------------------------
-# dag_tree.py — new structure tests
-# ---------------------------------------------------------------------------
-
-
-def test_tree_no_standalone_transition_rows():
-    """After populate_dag_tree, no TreeNode should have data['type'] == 'transition'."""
-    from stag.tui.dag_tree import populate_dag_tree
-    handle = _make_handle()
-    mock_tree = _MockTree()
-    populate_dag_tree(mock_tree, handle)
-
-    for node in _walk_tree(mock_tree.root):
-        if node.data is not None:
-            assert node.data.get("type") != "transition", (
-                f"Found standalone transition row: {node.label!r} data={node.data}"
-            )
-
-
-def test_tree_includes_transition_label_in_node_row():
-    """Each non-root node row's label should contain the plan label (e.g. 'P1')."""
-    from stag.tui.dag_tree import populate_dag_tree, _build_labels
-    handle = _make_handle()
-    _, plan_labels = _build_labels(handle)
-
-    mock_tree = _MockTree()
-    populate_dag_tree(mock_tree, handle)
-
-    # Collect all node-type rows (excluding the virtual tree root wrapper).
-    node_rows = [
-        n for n in _walk_tree(mock_tree.root)
-        if n.data is not None and n.data.get("type") == "node"
-        and n.data.get("id") != handle.root_node_id
-    ]
-    assert node_rows, "Expected at least one non-root node row"
-
-    # Each non-root node row label should contain a plan label like 'P1'.
-    plan_label_values = set(plan_labels.values())
-    for row in node_rows:
-        label = row.label
-        found = any(pl in label for pl in plan_label_values)
-        assert found, f"Node row label {label!r} contains no plan label (expected one of {plan_label_values})"
-
-
-def test_tree_root_has_no_incoming_label():
-    """The root node row should say '(root)' and NOT contain '→'."""
-    from stag.tui.dag_tree import populate_dag_tree
-    handle = _make_handle()
-    mock_tree = _MockTree()
-    populate_dag_tree(mock_tree, handle)
-
-    root_rows = [
-        n for n in _walk_tree(mock_tree.root)
-        if n.data is not None and n.data.get("id") == handle.root_node_id
-    ]
-    assert root_rows, "Root node row not found"
-    root_label = root_rows[0].label
-    assert "root" in root_label
-    assert "→" not in root_label
-
-
-# ---------------------------------------------------------------------------
 # flowchart.py
 # ---------------------------------------------------------------------------
 
 
 def test_render_flowchart_returns_lines():
+    """render_flowchart now returns a tuple (lines, regions)."""
     from stag.tui.flowchart import render_flowchart
     handle = _make_handle()
-    lines = render_flowchart(handle, handle.root_node_id, depth=2)
+    result = render_flowchart(handle, handle.root_node_id, depth=2)
+    assert isinstance(result, tuple)
+    lines, regions = result
     assert isinstance(lines, list)
     assert len(lines) > 0
+    assert isinstance(regions, list)
 
 
 def test_render_flowchart_unknown_center_uses_root():
     from stag.tui.flowchart import render_flowchart
     handle = _make_handle()
-    lines = render_flowchart(handle, "n_totally_bogus_id", depth=1)
+    lines, regions = render_flowchart(handle, "n_totally_bogus_id", depth=1)
     assert len(lines) > 0
 
 
@@ -204,15 +110,69 @@ def test_flowchart_has_connectors():
     """Flowchart for a 2-layer subgraph should contain connector chars (│ or ─)."""
     from stag.tui.flowchart import render_flowchart
     handle = _make_handle()
-    # depth=2 gives root → transition → child node (3 layers → connectors between them)
-    lines = render_flowchart(handle, handle.root_node_id, depth=2)
+    lines, _ = render_flowchart(handle, handle.root_node_id, depth=2)
     full_text = "\n".join(lines)
-    # Strip Rich markup tags to inspect plain chars.
-    import re
     plain = re.sub(r"\[[^\]]*\]", "", full_text)
     assert "│" in plain or "─" in plain, (
         f"Expected connector chars in flowchart output but found none.\nPlain output:\n{plain}"
     )
+
+
+def test_flowchart_click_map_covers_nodes():
+    """render_flowchart returns click regions that include at least the root node."""
+    from stag.tui.flowchart import render_flowchart, ClickRegion
+    handle = _make_handle()
+    lines, regions = render_flowchart(handle, handle.root_node_id, depth=2)
+    assert len(regions) > 0, "Expected at least one click region"
+    node_regions = [r for r in regions if r.kind == "node"]
+    assert node_regions, "Expected at least one node click region"
+    # Root node should appear in the click map.
+    root_ids = {r.raw_id for r in node_regions}
+    assert handle.root_node_id in root_ids, (
+        f"Root node {handle.root_node_id!r} not found in click regions. "
+        f"Found: {root_ids}"
+    )
+
+
+def test_flowchart_click_map_covers_transitions():
+    """A graph with one transition has a click region for it."""
+    from stag.tui.flowchart import render_flowchart, ClickRegion
+    handle = _make_handle()
+    graph = handle.run_graph
+    t_id = list(graph.transitions)[0]
+    lines, regions = render_flowchart(handle, handle.root_node_id, depth=2)
+    trans_regions = [r for r in regions if r.kind == "transition"]
+    assert trans_regions, "Expected at least one transition click region"
+    trans_ids = {r.raw_id for r in trans_regions}
+    assert t_id in trans_ids, (
+        f"Transition {t_id!r} not found in click regions. Found: {trans_ids}"
+    )
+
+
+def test_flowchart_click_region_lookup():
+    """Simulate a region lookup by directly querying the click map."""
+    from stag.tui.flowchart import render_flowchart
+    handle = _make_handle()
+    lines, regions = render_flowchart(handle, handle.root_node_id, depth=2)
+
+    # Find the root node region and verify we can look it up by row/col.
+    node_regions = [r for r in regions if r.kind == "node" and r.raw_id == handle.root_node_id]
+    assert node_regions, "Root node region not found"
+
+    r = node_regions[0]
+    # Simulate a click at the center of this region.
+    click_x = (r.col_start + r.col_end) // 2
+    click_y = r.row
+
+    hit = None
+    for region in regions:
+        if region.row == click_y and region.col_start <= click_x <= region.col_end:
+            hit = region
+            break
+
+    assert hit is not None, f"No region matched click at ({click_x}, {click_y})"
+    assert hit.kind == "node"
+    assert hit.raw_id == handle.root_node_id
 
 
 # ---------------------------------------------------------------------------

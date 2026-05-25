@@ -24,13 +24,14 @@ Screen {
     height: 1fr;
 }
 
-/* ---------- DAG tree pane ---------- */
-#dag-pane {
+/* ---------- Flowchart pane (central) ---------- */
+#flowchart-pane {
     width: 2fr;
     border-right: solid $boost;
+    overflow: hidden;
 }
 
-#dag-pane-title {
+#flowchart-pane-title {
     background: $boost;
     color: $text;
     text-align: center;
@@ -38,19 +39,10 @@ Screen {
     height: 1;
 }
 
-#dag-tree {
+#flowchart-view {
     height: 1fr;
-    overflow-y: auto;
-}
-
-#dag-tree > .tree--guides {
-    color: $accent 40%;
-}
-#dag-tree > .tree--guides-hover {
-    color: $accent 70%;
-}
-#dag-tree > .tree--guides-selected {
-    color: $accent;
+    overflow: auto auto;
+    background: $surface;
 }
 
 /* ---------- Detail pane ---------- */
@@ -73,18 +65,12 @@ Screen {
     padding: 0 1;
 }
 
-#flowchart-view {
-    height: 1fr;
-    display: none;
-    overflow: auto auto;
-}
-
 /* ---------- Focus highlight ---------- */
 #sidebar:focus-within {
     border-right: solid $accent;
 }
 
-#dag-pane:focus-within {
+#flowchart-pane:focus-within {
     border-right: solid $accent;
 }
 

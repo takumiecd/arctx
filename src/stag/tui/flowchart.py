@@ -7,10 +7,10 @@ transitions in layered columns.  Layout rules:
   - Backward (incoming) transitions and input nodes get negative layer indices.
   - BFS up to *depth* hops; both nodes and transitions count as one hop each.
   - Nodes: box  ┌─────┐  │ Sk  │  └─────┘
-  - Transitions: diamond-ish  ◇ Pk  (single line)
+  - Transitions: diamond-ish  ◇ Pk type  (single line)
   - Edges: vertical/L-shape connector lines between layers.
 
-CELL_W = 12 chars per column; BAND_H = 5 rows per band.
+CELL_W = 14 chars per column; BAND_H = 5 rows per band.
 A GAP_H = 2 rows between bands is used for connectors.
 """
 
@@ -18,14 +18,25 @@ from __future__ import annotations
 
 import re
 from collections import deque
+from dataclasses import dataclass
+from typing import Literal
 
 from stag.core.cuts import inactive_node_ids, inactive_transition_ids
 from stag.core.run.handle import RunHandle
 
 
-CELL_W = 12
+CELL_W = 14
 BAND_H = 5   # rows per content band
 GAP_H = 2    # rows between bands (used for connectors)
+
+
+@dataclass
+class ClickRegion:
+    row: int         # 0-indexed line within the rendered output
+    col_start: int   # inclusive visible-char column
+    col_end: int     # inclusive visible-char column
+    kind: Literal["node", "transition"]
+    raw_id: str
 
 
 def _build_labels(handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
@@ -44,8 +55,25 @@ def _build_labels(handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
     return state_labels, plan_labels
 
 
-def render_flowchart(handle: RunHandle, center_node_id: str, depth: int = 2) -> list[str]:
-    """Return list of Rich-markup strings representing a flowchart subgraph.
+def _transition_type(handle: RunHandle, transition_id: str) -> str:
+    """Return the type string of the first TransitionPayload on this transition."""
+    from stag.core.schema.payloads import TransitionPayload
+    for p in handle.run_graph.payloads_for_transition(transition_id):
+        if isinstance(p, TransitionPayload):
+            s = p.type
+            return s if len(s) <= 20 else s[:19] + "…"
+    return ""
+
+
+def render_flowchart(
+    handle: RunHandle,
+    center_node_id: str,
+    depth: int = 2,
+) -> tuple[list[str], list[ClickRegion]]:
+    """Return (lines, click_regions) representing a flowchart subgraph.
+
+    lines: list of Rich-markup strings (one per rendered row).
+    click_regions: list of ClickRegion describing clickable areas in visible-char coords.
 
     The center node gets [reverse] highlight. Depth counts node+transition hops.
     Returns at least one line even for a single-node graph.
@@ -60,7 +88,6 @@ def render_flowchart(handle: RunHandle, center_node_id: str, depth: int = 2) -> 
     inactive_trans = inactive_transition_ids(graph)
 
     # BFS to assign layer indices.
-    # We store (kind, id) -> layer.
     layers: dict[tuple[str, str], int] = {}
     queue: deque[tuple[str, str, int]] = deque()
     queue.append(("node", center_node_id, 0))
@@ -75,24 +102,26 @@ def render_flowchart(handle: RunHandle, center_node_id: str, depth: int = 2) -> 
         layers[key] = layer
 
         if kind == "node":
-            # Forward: outgoing transitions at layer+1.
             for tid in graph.transitions_from_node(rid):
                 queue.append(("transition", tid, layer + 1))
-            # Backward: incoming transitions at layer-1.
             for tid in graph.transitions_to_node(rid):
                 queue.append(("transition", tid, layer - 1))
         else:  # transition
-            # Forward: output nodes at layer+1.
             for nid in graph.transition_outputs(rid):
                 queue.append(("node", nid, layer + 1))
-            # Backward: input nodes at layer-1.
             for nid in graph.transition_inputs(rid):
                 queue.append(("node", nid, layer - 1))
 
     if not layers:
-        # Nothing found; render single box.
         sl = state_labels.get(center_node_id, "S?")
-        return _single_node_box(sl, center=True)
+        lines = _single_node_box(sl, center=True)
+        # Emit click regions for the single-node box.
+        box_w = max(len(sl) // 2 + 1, 3) * 2 + 3
+        regions = [
+            ClickRegion(row=i, col_start=0, col_end=box_w - 1, kind="node", raw_id=center_node_id)
+            for i in range(len(lines))
+        ]
+        return lines, regions
 
     min_layer = min(layers.values())
     max_layer = max(layers.values())
@@ -101,8 +130,6 @@ def render_flowchart(handle: RunHandle, center_node_id: str, depth: int = 2) -> 
     for (kind, rid), layer in layers.items():
         by_layer.setdefault(layer, []).append((kind, rid))
 
-    # Assign column centers for each item in each layer.
-    # col_centers[(kind, rid)] = character column index of the item's center.
     max_items = max(len(v) for v in by_layer.values())
     total_cols = max(max_items * CELL_W, CELL_W)
 
@@ -114,7 +141,7 @@ def render_flowchart(handle: RunHandle, center_node_id: str, depth: int = 2) -> 
         for pos, item in enumerate(items):
             col_centers[item] = spacing * (pos + 1)
 
-    markup_lines = _build_markup_lines(
+    markup_lines, regions = _build_markup_lines(
         handle,
         by_layer,
         col_centers,
@@ -132,7 +159,11 @@ def render_flowchart(handle: RunHandle, center_node_id: str, depth: int = 2) -> 
     while markup_lines and not markup_lines[-1].strip():
         markup_lines.pop()
 
-    return markup_lines if markup_lines else [f"[bold]{state_labels.get(center_node_id, 'S?')}[/bold]"]
+    if not markup_lines:
+        sl = state_labels.get(center_node_id, "S?")
+        return [f"[bold]{sl}[/bold]"], []
+
+    return markup_lines, regions
 
 
 def _single_node_box(label: str, *, center: bool) -> list[str]:
@@ -164,26 +195,25 @@ def _build_markup_lines(
     min_layer,
     max_layer,
     total_cols,
-) -> list[str]:
-    """Build Rich markup lines with connector lines between layers."""
+) -> tuple[list[str], list[ClickRegion]]:
+    """Build Rich markup lines with connector lines between layers.
+
+    Also returns click regions (visible-char coords) for all nodes and transitions.
+    """
     graph = handle.run_graph
     output: list[str] = []
+    regions: list[ClickRegion] = []
 
-    n_layers = max_layer - min_layer + 1
-    # Total rows: each layer occupies BAND_H rows; gaps between layers get GAP_H rows.
-    # Layer i (0-indexed from min_layer) starts at row i * (BAND_H + GAP_H).
     def layer_start_row(layer_idx: int) -> int:
         return (layer_idx - min_layer) * (BAND_H + GAP_H)
 
     total_rows = layer_start_row(max_layer) + BAND_H
 
-    # Build a plain-text connector buffer (no markup, just box-drawing chars).
-    # We'll overlay it under the markup content.
+    # Build a plain-text connector buffer.
     conn_buf: list[list[str]] = [[" "] * total_cols for _ in range(total_rows)]
 
     def conn_set(r: int, c: int, ch: str) -> None:
         if 0 <= r < total_rows and 0 <= c < total_cols:
-            # Don't overwrite a non-space char with a space.
             if ch != " " or conn_buf[r][c] == " ":
                 conn_buf[r][c] = ch
 
@@ -192,15 +222,13 @@ def _build_markup_lines(
         upper_items = by_layer.get(layer_idx, [])
         lower_items = by_layer.get(layer_idx + 1, [])
 
-        upper_row_end = layer_start_row(layer_idx) + BAND_H - 1   # bottom of upper band
-        lower_row_start = layer_start_row(layer_idx + 1)            # top of lower band
-        # Gap rows are [upper_row_end+1 .. lower_row_start-1]
+        upper_row_end = layer_start_row(layer_idx) + BAND_H - 1
+        lower_row_start = layer_start_row(layer_idx + 1)
 
         for u_item in upper_items:
             u_kind, u_rid = u_item
             u_col = col_centers.get(u_item, 0)
 
-            # Find all lower items connected to this upper item.
             connected_lower: list[tuple[str, str]] = []
 
             for l_item in lower_items:
@@ -208,10 +236,8 @@ def _build_markup_lines(
                 connected = False
 
                 if u_kind == "node" and l_kind == "transition":
-                    # Edge if u_rid is an input of l_rid.
                     connected = u_rid in graph.transition_inputs(l_rid)
                 elif u_kind == "transition" and l_kind == "node":
-                    # Edge if l_rid is the output of u_rid.
                     connected = graph.transition_output(u_rid) == l_rid
 
                 if connected:
@@ -220,44 +246,26 @@ def _build_markup_lines(
             for l_item in connected_lower:
                 l_col = col_centers.get(l_item, 0)
 
-                # Draw a vertical segment from bottom of upper band down through
-                # the gap to the top of the lower band.  For non-vertical paths
-                # (where columns differ), draw an L-shape.
-
-                # Vertical segment downward from upper item's bottom.
                 for r in range(upper_row_end, lower_row_start + 1):
                     conn_set(r, u_col, "│")
 
                 if u_col != l_col:
-                    # Horizontal segment in the middle of the gap.
                     gap_mid = (upper_row_end + lower_row_start) // 2
-                    # Draw horizontal from u_col to l_col at gap_mid.
                     lo_col = min(u_col, l_col)
                     hi_col = max(u_col, l_col)
                     for c in range(lo_col, hi_col + 1):
                         conn_set(gap_mid, c, "─")
-                    # Corner at the turn.
                     if u_col < l_col:
                         conn_set(gap_mid, u_col, "└")
                     else:
                         conn_set(gap_mid, u_col, "┘")
-                    # Vertical from gap_mid down to lower_row_start.
                     for r in range(gap_mid, lower_row_start + 1):
                         conn_set(r, l_col, "│")
-                    # Erase any stray │ above gap_mid at u_col that are now
-                    # replaced by the L-corner (keep them for multi-fan cases).
 
-    # Now build the actual markup-augmented output by merging:
-    # - conn_buf rows (plain text, dim-colored)
-    # - band_rows (markup strings placed at specific columns within each band)
-    #
-    # Strategy: produce one output line per total_rows row.
-    # For content rows (within a band), overlay markup items on top of connector.
-    # For gap rows, emit connector only.
-
-    # First, accumulate per-row markup placements from the content bands.
-    # row_markup[r] = list of (col, markup_string) for items placed in that row.
-    row_markup: dict[int, list[tuple[int, str]]] = {}
+    # Accumulate per-row markup placements and click regions from content bands.
+    # row_markup[r] = list of (col, markup_string, visible_len, kind, raw_id)
+    # where kind/raw_id may be None for non-clickable overlays.
+    row_markup: dict[int, list[tuple[int, str, int, str | None, str | None]]] = {}
 
     for layer_idx in range(min_layer, max_layer + 1):
         items = by_layer.get(layer_idx, [])
@@ -285,24 +293,48 @@ def _build_markup_lines(
                 mid_str = "│" + " " * lpad + label + " " * (pad - lpad) + "│"
                 bot_str = "└" + "─" * (box_w - 2) + "┘"
 
-                row_markup.setdefault(band_start + 1, []).append(
-                    (left, f"{wrap_open}{top_str}{wrap_close}")
-                )
-                row_markup.setdefault(band_start + 2, []).append(
-                    (left, f"{wrap_open}{mid_str}{wrap_close}")
-                )
-                row_markup.setdefault(band_start + 3, []).append(
-                    (left, f"{wrap_open}{bot_str}{wrap_close}")
-                )
+                # Add 1-char padding around box for easier clicking.
+                click_left = max(0, left - 1)
+                click_right = left + box_w  # inclusive
+
+                for sub_row, box_str in [(1, top_str), (2, mid_str), (3, bot_str)]:
+                    abs_row = band_start + sub_row
+                    row_markup.setdefault(abs_row, []).append(
+                        (left, f"{wrap_open}{box_str}{wrap_close}", box_w, "node", rid)
+                    )
+                    regions.append(ClickRegion(
+                        row=abs_row,
+                        col_start=click_left,
+                        col_end=click_right,
+                        kind="node",
+                        raw_id=rid,
+                    ))
 
             else:  # transition
                 pl = plan_labels.get(rid, "?")
+                t_type = _transition_type(handle, rid)
                 is_cut = rid in inactive_trans
                 color = "red" if is_cut else "cyan"
-                text = f"◇ {pl}"
-                row_markup.setdefault(band_start + 2, []).append(
-                    (col_center, f"[{color}]{text}[/{color}]")
+                # Show: ◇ P1 experiment (truncated to fit cell width)
+                label_full = f"◇ {pl}"
+                if t_type:
+                    label_full = f"◇ {pl} {t_type}"
+                # Truncate to CELL_W - 1
+                if len(label_full) > CELL_W - 1:
+                    label_full = label_full[:CELL_W - 2] + "…"
+                text = label_full
+                visible_len = len(text)
+                abs_row = band_start + 2
+                row_markup.setdefault(abs_row, []).append(
+                    (col_center, f"[{color}]{text}[/{color}]", visible_len, "transition", rid)
                 )
+                regions.append(ClickRegion(
+                    row=abs_row,
+                    col_start=max(0, col_center - 1),
+                    col_end=col_center + visible_len,
+                    kind="transition",
+                    raw_id=rid,
+                ))
 
     # Render each row: connector background + markup overlay.
     for r in range(total_rows):
@@ -310,37 +342,27 @@ def _build_markup_lines(
         placements = row_markup.get(r, [])
 
         if not placements:
-            # Pure connector row.
             stripped = conn_row.rstrip()
             if stripped:
                 output.append(f"[$accent 50%]{stripped}[/$accent 50%]")
             else:
                 output.append("")
         else:
-            # Build output line by overlaying markup strings at their column
-            # positions onto the connector background.  We produce a list of
-            # segments, rendering connector chars as dim and markup items as-is.
-            # Sort placements by column.
             placements_sorted = sorted(placements, key=lambda x: x[0])
             segments: list[str] = []
             cursor = 0
-            for col, markup_str in placements_sorted:
+            for col, markup_str, visible_len, _kind, _rid in placements_sorted:
                 if col > cursor:
                     bg_slice = conn_row[cursor:col].rstrip(" ")
                     if bg_slice:
                         segments.append(f"[$accent 50%]{bg_slice}[/$accent 50%]")
-                    # Fill gap with spaces.
                     gap_spaces = col - cursor - len(bg_slice)
                     if gap_spaces > 0:
                         segments.append(" " * gap_spaces)
                 elif col < cursor:
-                    # Overlap: skip (markup takes priority).
                     pass
                 segments.append(markup_str)
-                # Advance cursor past a rough estimate of the markup string's
-                # visible width (strip Rich markup tags to count chars).
-                visible = re.sub(r"\[[^\]]*\]", "", markup_str)
-                cursor = col + len(visible)
+                cursor = col + visible_len
             output.append("".join(segments))
 
-    return output
+    return output, regions
