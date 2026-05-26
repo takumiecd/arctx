@@ -1,51 +1,119 @@
 # STAG
 
-### Parallel Work Sessions
+**An append-only graph for parallel optimization work.** Multiple AI agents, humans, and benchmark runners branch, revert, and merge against the same run — without losing a single attempt.
+
 ![STAG CLI Demo](examples/demo_cli.gif)
 
-### Interactive Visualization
+*Two AI agents (Claude and Codex) committing to the same repo in parallel. Each gets an isolated `work-session`; both branches land as sibling transitions in the same `RunGraph` — no race, no overwrite.*
+
 ![STAG TUI Demo](examples/demo_tui.gif)
 
-STAG is a Python library for recording the process of problem-solving and optimization as DAGs and JSONL.
+*Interactive 3-pane TUI walks the DAG: experiments, reverts, payload diffs, and full git history all in one view.*
 
-It aims to preserve not just final results, but also the plans made along the way, predictions before execution, and what actually happened. Currently at 0.1 alpha — model refinement is prioritized over backward compatibility. No guarantees for old run storage formats or legacy APIs.
+> 0.1 alpha — breaking changes expected. The model is being refined; old run storage formats are not migrated.
 
 *日本語版は [README.ja.md](README.ja.md) を参照してください。*
 
-## What It Builds
+---
 
-What STAG builds is an append-only history graph for the optimization process.
+## Why STAG?
 
-In code optimization, kernel optimization, experiments, and investigation, the final artifact alone is not enough — what you tried, what you predicted, and what actually happened are essential. STAG preserves that trial-and-error process as `RunGraph` and payloads.
+Real optimization work is messy. You try vectorization, hit a wall, try multithreading, deadlock, revert, try something else. Today these branches live in your head, your scratch notes, and a `git log --oneline` that doesn't say *why* anything was tried.
 
-The CLI and Python API are entry points for manipulating this history graph. `init` creates a run, `transition create` records the next graph transition and creates its output node, `payload add` attaches domain data, and `graph trace` / `show` read back the preserved decision-making process.
+STAG records all of it as one append-only DAG:
 
-STAG itself is not an executor or code generator. It is a foundation for structurally preserving the decisions and results made by humans, LLMs, scripts, benchmark runners, and executors — so they can be shared and reviewed later.
+- **Parallel agents, no conflict.** Claude and Codex can both `stag git commit` against the same run; each gets its own tracked work-session.
+- **Reverts stay in the graph.** A failed Rust rewrite isn't deleted, it's marked inactive via `CutPayload`. You can still see what was tried, and why.
+- **Domain payloads, not just commits.** Attach benchmark results, predictions, intent — anything. The DAG knows what each transition was *for*.
+- **Read-time activity.** Killed branches are filtered automatically; the graph stays clean without rewriting history.
 
-## Model
+STAG is *not* an executor, planner, or agent framework. It is the substrate for storing what they did.
 
-The center of 0.1 is `RunGraph`. `RunGraph` holds the DAG for the entire run, and `GraphView` represents a subset of it.
+---
 
-```text
-RunHandle
-  └── run_graph: RunGraph
+## When does STAG fit?
 
-RunGraph
-  ├── nodes
-  ├── transitions
-  ├── payloads
-  └── views
+- **Parallel AI agent orchestration** — Claude Code, Codex, custom agents all working on the same codebase. STAG keeps each attempt distinct and reviewable.
+- **Kernel / numeric optimization** — every "try tiled, try vectorized, try fused" experiment becomes a node. Reverts and merges are first-class.
+- **Investigation / debugging** — record hypotheses and observations as payloads; walk the trace backwards when you finally find the bug.
 
-GraphView
-  ├── view_id
-  └── root_node_id
+---
+
+## 30-second Quick Start
+
+```bash
+pip install -e .
+
+stag init my_task --extension git --run-id demo
+echo "def f(): pass" > work.py && git add work.py
+stag git commit -m "baseline"
+
+stag tui          # explore the DAG interactively
+stag dump         # or dump it as an LLM-friendly outline
 ```
 
-`Transition` connects many input nodes to exactly one output node. Domain meaning is attached separately through payloads. Generic `NodePayload` and `TransitionPayload` are flexible; `CutPayload` carries core invalidation semantics. Git-specific payloads such as `GitChangePayload` live in the standard `git` extension.
+Two AI agents on the same repo? Each gets an isolated work-session that doesn't touch the others' state:
 
-`RunGraph` is append-only. Once added, nodes / input transitions / output transitions / payloads are never deleted. Cancellation and invalidation are expressed through `CutPayload` and read-time computation.
+```bash
+# Claude's terminal
+eval $(stag work-session env --run demo --new --user claude)
+git checkout -b claude/vec
+# ...edits...
+git add . && stag git commit -m "Claude: vectorization"
 
-## Quick Start
+# Codex's terminal (running in parallel)
+eval $(stag work-session env --run demo --new --user codex)
+git checkout main && git checkout -b codex/map
+# ...edits...
+git add . && stag git commit -m "Codex: parallel map"
+```
+
+Both branches land in the same `RunGraph` as sibling transitions. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
+
+---
+
+## Concepts (one screen)
+
+The center of STAG is **`RunGraph`** — an append-only DAG. Pure graph records carry no domain data; everything domain-specific lives on **Payload** records.
+
+```text
+RunGraph
+  ├── Node         ← pure DAG node
+  ├── Transition   ← N input nodes → 1 output node
+  ├── Payload      ← annotation attached to a Node or Transition
+  └── GraphView    ← lightweight named scope (just a root_node_id)
+```
+
+- `NodePayload` / `TransitionPayload` — generic annotations, distinguished by a `type` string.
+- `CutPayload` — append-only invalidation. The target isn't deleted; it's filtered out at read time.
+- `GitChangePayload` — attached by the `git` extension on every `stag git commit`.
+
+Activity ("is this node still in scope?") is computed at read time from `RunGraph` + cut payloads. The store is never rewritten.
+
+---
+
+## CLI Essentials
+
+| Command | What it does |
+| --- | --- |
+| `stag init <req-id>` | Start a new run. Add `--extension git` for git integration. |
+| `stag git commit -m ...` | Drive a real `git commit` and record a `Transition` with `GitChangePayload`. |
+| `stag work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. |
+| `stag transition create` | Add a transition without git. |
+| `stag payload add` | Attach a payload to an existing Node / Transition. |
+| `stag dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
+| `stag dump --format mermaid` | Mermaid flowchart for humans / docs. |
+| `stag tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). |
+| `stag cut node <id>` | Mark a Node (and descendants) inactive — append-only. |
+| `stag guide` | Discover concepts interactively. `--lang ja` for Japanese. |
+
+Full reference: [docs/en/CLI.md](docs/en/CLI.md).
+
+Mutating commands resolve the target run in this order: `--run` flag → `STAG_RUN_ID` env → nearest git repo's `.stag-id`. User attribution: `--user` → `STAG_USER_ID` → `<STAG_HOME>/config.json` → `"user"`.
+
+---
+
+## Python API
 
 ```python
 import stag
@@ -87,129 +155,45 @@ run.save(store)
 loaded = store.load_run("demo")
 ```
 
-For isolated exploration, create a `GraphView`. `GraphView` holds only a `root_node_id` — its contents are computed at read-time via `RunGraph.reachable_from(root_node_id)`.
+For isolated exploration, a `GraphView` holds only a `root_node_id`; its contents are derived at read time via `RunGraph.reachable_from(root_node_id)`.
+
+---
 
 ## Install
 
-Python 3.10 or later is required.
-
-When working from a development checkout, do an editable install from the repo root:
+Python 3.10+ required.
 
 ```bash
-python3 -m pip install -e .
-```
+python3 -m pip install -e .            # editable install
+python3 -m pip install -e ".[dev]"     # + dev dependencies
 
-To also install dev dependencies:
-
-```bash
-python3 -m pip install -e ".[dev]"
-```
-
-Without installing, you can run as a module from the repo root:
-
-```bash
+# Or run without installing, from the repo root:
 PYTHONPATH=src python3 -m stag.cli.main ...
 ```
 
-## CLI Quick Start
+---
 
-To explore concepts and the basic loop from the CLI:
+## Storage Layout
 
-```bash
-stag guide
-```
-
-For Japanese output, use `stag guide --lang ja`.
-
-```bash
-stag init req_kernel \
-  --target-type kernel \
-  --target-id csc_linear \
-  --run-id demo
-
-stag transition create \
-  --run demo \
-  --from <root_node_id> \
-  --payload-type transition_payload \
-  --field type=experiment \
-  --field intent="run baseline benchmark"
-```
-
-For parallel terminals or child processes, split history by work session. Use
-explicit mode when you want every command to be self-contained:
-
-```bash
-stag transition create \
-  --run demo \
-  --work-session ws_a \
-  --from <root_node_id> \
-  --payload-type transition_payload \
-  --field type=experiment
-```
-
-Use fixed mode when a terminal or subprocess should keep using one session.
-This pins only shell environment variables and does not update shared
-`current.json` state:
-
-```bash
-eval "$(stag work-session env --run demo --new)"
-stag transition create --from <root_node_id> --payload-type transition_payload
-stag work-session spawn --run demo -- codex
-```
-
-```bash
-stag payload add \
-  --run demo \
-  --node <output_node_id> \
-  --payload-type node_payload \
-  --field type=result \
-  --field latency_ms=1.5
-
-stag graph trace --run demo <output_node_id>
-stag show --run demo
-```
-
-Git integration is a standard extension. Its canonical CLI namespace is
-`stag git ...`, while shortcuts such as `stag commit` and `stag verify` are
-default aliases for `stag git commit` and `stag git verify`:
-
-```bash
-stag init req_kernel --extension git --run-id demo
-stag git commit -m "run baseline benchmark"
-stag commit -m "try tiled kernel"
-stag git verify
-```
-
-If not installed, replace each command with `PYTHONPATH=src python3 -m stag.cli.main ...`.
-
-## Key Terms
-
-- `Requirement`: the goal of a run.
-- `RunGraph`: the overall DAG and global records for a run.
-- `GraphView`: a subset of `RunGraph`.
-- `Node`: a pure graph node.
-- `Transition`: a pure graph transition accepting multiple input nodes and producing one output node.
-- `NodePayload`: a generic payload attached to a node.
-- `TransitionPayload`: a generic payload attached to a transition.
-- `CutPayload`: an append-only payload that marks an input/output transition as inactive.
-- `GitChangePayload`: a git-extension payload attached to a transition.
-
-## Storage Format
-
-`JsonlRunStore` persists a run as a directory:
+`JsonlRunStore` persists each run as a directory:
 
 ```text
 <store-dir>/<run-id>/
   run.json
   graph.json
-  views.jsonl
   nodes.jsonl
-  input_transitions.jsonl
-  output_transitions.jsonl
+  transitions.jsonl
   payloads.jsonl
+  views.jsonl
+  work_sessions.jsonl
+  work_events.jsonl
 ```
 
-In 0.1 alpha, the storage format may change in breaking ways. Read compatibility with old `states.jsonl` / `execution_plans.jsonl` formats is not provided.
+`SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<STAG_HOME>/runs`.
+
+0.1 alpha schema may change in breaking ways; no migration from older formats.
+
+---
 
 ## Documentation
 
@@ -221,6 +205,8 @@ In 0.1 alpha, the storage format may change in breaking ways. Read compatibility
 - [Problem-Solving Loop](docs/en/AGENT_LOOP.md)
 
 日本語ドキュメントは [docs/ja/](docs/ja/) にあります。
+
+---
 
 ## Development
 

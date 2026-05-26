@@ -1,49 +1,119 @@
 # STAG
 
-### 並列ワークセッション (Parallel Work Sessions)
+**並列に進む最適化作業を、1つも取りこぼさない append-only グラフ。** 複数の AI agent / 人間 / benchmark runner が、同じ run に対して branch・revert・merge しても、試行は1つも失われません。
+
 ![STAG CLI Demo](examples/demo_cli.gif)
 
-### インタラクティブな可視化 (Interactive Visualization)
+*2つの AI agent (Claude と Codex) が同じ repo に並列で commit している様子。それぞれが独立した `work-session` を持ち、両方の branch は同じ `RunGraph` 内の sibling transition として記録されます。race condition も上書きも発生しません。*
+
 ![STAG TUI Demo](examples/demo_tui.gif)
 
-STAG は、問題解決や最適化の過程を DAG と JSONL で記録するための Python ライブラリです。
+*インタラクティブな 3-pane TUI で DAG を歩く: 各 experiment、revert、payload の diff、git の履歴が 1 画面で見渡せます。*
 
-最終成果だけでなく、途中で立てた plan、実行前の予測、実際に起きた結果を残すことを目的にしています。現在は 0.1 alpha で、後方互換よりもモデル整理を優先します。古い run 保存形式や旧 API との互換は保証しません。
+> 0.1 alpha — 破壊的変更があり得ます。モデル整理を優先しており、古い run 保存形式の移行サポートはありません。
 
-## 何を構築しているか
+*English version: see [README.md](README.md).*
 
-STAG が構築しているのは、最適化プロセスのための append-only な履歴グラフです。
+---
 
-コード最適化、カーネル最適化、実験、調査では、最終的な成果物だけでなく、途中で何を試し、どうなると予測し、実際に何が起きたかが重要になります。STAG は、その試行錯誤を `RunGraph` と payload の形で保存します。
+## なぜ STAG か
 
-CLI や Python API は、この履歴グラフを操作するための入口です。`init` で run を作り、`transition create` で次の transition と output node を記録し、`payload add` で domain data を attach します。`graph trace` や `show` は、保存された判断の過程を読み返すために使います。
+実際の最適化作業は混沌としています。vectorization を試し、行き詰まり、multithreading を試し、deadlock になり、revert し、別の手を試す。今日その分岐は、頭の中、scratch メモ、そして「なぜ試したか」を語らない `git log --oneline` の中にしか残りません。
 
-STAG 自体は executor や code generator ではありません。人間、LLM、script、benchmark runner、executor が行った判断や結果を、あとから共有・検証できる構造として残すための基盤です。
+STAG はそれら全てを 1 つの append-only DAG として記録します:
 
-## モデル
+- **並列 agent でも衝突しない。** Claude と Codex が同じ run に対して `stag git commit` できます。各々独立した work-session を持ちます。
+- **revert しても履歴は残る。** 失敗した Rust 書き換えは削除されず、`CutPayload` で inactive とマークされます。何を試したか・なぜ捨てたかをあとから辿れます。
+- **commit だけでなく domain payload を載せられる。** benchmark 結果、予測、意図 — 何でも attach できます。各 transition が「何のため」だったかを DAG が知っています。
+- **active かどうかは read-time に計算。** 切り捨てた branch は自動で filter されます。履歴を書き換えずに、グラフは綺麗に保たれます。
 
-0.1 の中心は `RunGraph` です。`RunGraph` が run 全体の DAG を持ち、`GraphView` がその部分集合を表します。
+STAG は executor / planner / agent framework ではありません。それらが「何をしたか」を保存するための基盤です。
 
-```text
-RunHandle
-  └── run_graph: RunGraph
+---
 
-RunGraph
-  ├── nodes
-  ├── transitions
-  ├── payloads
-  └── views
+## どんな時に使うか
 
-GraphView
-  ├── view_id
-  └── root_node_id
+- **並列 AI agent のオーケストレーション** — Claude Code、Codex、自作 agent が同じ codebase で作業する場合。各試行が区別され、あとからレビュー可能になります。
+- **kernel / 数値最適化** — 「tiled で試す、vectorize で試す、fuse で試す」がそれぞれ node になります。revert / merge は first-class。
+- **調査・デバッグ** — 仮説と観察結果を payload で記録し、原因にたどり着いた時点で trace を逆向きに歩けます。
+
+---
+
+## 30 秒で始める
+
+```bash
+pip install -e .
+
+stag init my_task --extension git --run-id demo
+echo "def f(): pass" > work.py && git add work.py
+stag git commit -m "baseline"
+
+stag tui          # DAG をインタラクティブに探索
+stag dump         # もしくは LLM 向け outline でダンプ
 ```
 
-`Transition` は複数 input node から必ず 1 つの output node へ接続します。domain-specific な意味は payload として attach します。汎用の `NodePayload` / `TransitionPayload` に加えて、core の無効化意味論は `CutPayload` で表します。`GitChangePayload` などの git 固有 payload は標準 `git` extension 側にあります。
+同じ repo で 2 つの AI agent を並列に動かしたい場合、それぞれに独立した work-session を発行できます:
 
-`RunGraph` は append-only です。一度追加した node / input transition / output transition / payload は削除せず、取り消しや無効化は `CutPayload` と read-time の計算で表します。
+```bash
+# Claude の端末
+eval $(stag work-session env --run demo --new --user claude)
+git checkout -b claude/vec
+# ...編集...
+git add . && stag git commit -m "Claude: vectorization"
 
-## Quick Start
+# Codex の端末 (同時に動いていてよい)
+eval $(stag work-session env --run demo --new --user codex)
+git checkout main && git checkout -b codex/map
+# ...編集...
+git add . && stag git commit -m "Codex: parallel map"
+```
+
+両方の branch は同じ `RunGraph` 内の sibling transition として記録されます。実際に動く VHS デモは `examples/demo_cli.tape` と `examples/demo_env.sh` を参照してください。
+
+---
+
+## 概念 (1 画面)
+
+STAG の中心は **`RunGraph`** — append-only な DAG です。pure な graph 記録は domain data を持たず、domain 固有の情報はすべて **Payload** 側に集約されます。
+
+```text
+RunGraph
+  ├── Node         ← pure な DAG node
+  ├── Transition   ← N 個の input node → 1 個の output node
+  ├── Payload      ← Node または Transition に attach する注釈
+  └── GraphView    ← 軽量な named scope (root_node_id のみ保持)
+```
+
+- `NodePayload` / `TransitionPayload` — 汎用の注釈。`type` 文字列で目的を区別します。
+- `CutPayload` — append-only な無効化マーカー。対象は削除されず、read-time に filter されます。
+- `GitChangePayload` — `git` extension が `stag git commit` のたびに attach する payload。
+
+「この node はまだ生きているか」という activity 判定は、read 時に `RunGraph` と CutPayload から計算されます。store は決して書き換えません。
+
+---
+
+## CLI の主なコマンド
+
+| コマンド | 用途 |
+| --- | --- |
+| `stag init <req-id>` | 新しい run を作成。`--extension git` で git 統合を有効化。 |
+| `stag git commit -m ...` | 実際の `git commit` を実行し、`Transition` と `GitChangePayload` を記録。 |
+| `stag work-session env --new --user <name>` | 端末/サブプロセス専用のシェル exports を出力。 |
+| `stag transition create` | git なしで transition を追加。 |
+| `stag payload add` | 既存 Node / Transition に payload を attach。 |
+| `stag dump --format outline` | LLM 向けの indented spanning-tree でダンプ。 |
+| `stag dump --format mermaid` | 人間/ドキュメント向け Mermaid flowchart。 |
+| `stag tui` | 3-pane (Runs / Flowchart / Detail) のインタラクティブ TUI。 |
+| `stag cut node <id>` | Node (とその下流) を inactive に。append-only。 |
+| `stag guide` | 概念をインタラクティブに学ぶ (`--lang ja` で日本語)。 |
+
+詳細リファレンス: [docs/ja/CLI.md](docs/ja/CLI.md)。
+
+mutating コマンドの run 解決順は `--run` → `STAG_RUN_ID` 環境変数 → カレント git repo の `.stag-id`。user attribution は `--user` → `STAG_USER_ID` → `<STAG_HOME>/config.json` → `"user"`。
+
+---
+
+## Python API
 
 ```python
 import stag
@@ -85,135 +155,58 @@ run.save(store)
 loaded = store.load_run("demo")
 ```
 
-隔離した探索をしたい場合は `GraphView` を作ります。`GraphView` は `root_node_id` だけを持ち、内容は read-time に `RunGraph.reachable_from(root_node_id)` で算出します。
+部分集合を切り出して探索したい場合は `GraphView` を作成します。`GraphView` は `root_node_id` のみを保持し、内容は read 時に `RunGraph.reachable_from(root_node_id)` で導出されます。
 
-## Install
+---
+
+## インストール
 
 Python 3.10 以上が必要です。
 
-開発中の checkout から使う場合は、repo root で editable install します。
-
 ```bash
-python3 -m pip install -e .
+python3 -m pip install -e .            # editable install
+python3 -m pip install -e ".[dev]"     # + 開発依存
+
+# インストールせずに repo root から実行する場合:
+PYTHONPATH=src python3 -m stag.cli.main ...
 ```
 
-開発用 dependency も入れる場合は次を使います。
+---
 
-```bash
-python3 -m pip install -e ".[dev]"
-```
+## ストレージレイアウト
 
-インストールせずに試す場合は、repo root で `PYTHONPATH=src python3 -m stag.cli.main ...` として実行できます。
-
-## CLI Quick Start
-
-CLI から概念と基本ループを確認するには、次を実行します。
-
-```bash
-stag guide
-```
-
-日本語で表示したい場合は `stag guide --lang ja` を使います。
-
-```bash
-stag init req_kernel \
-  --target-type kernel \
-  --target-id csc_linear \
-  --run-id demo
-
-stag transition create \
-  --run demo \
-  --from <root_node_id> \
-  --payload-type transition_payload \
-  --field type=experiment \
-  --field intent="run baseline benchmark"
-```
-
-並列ターミナルや子プロセスでは、work session で履歴を分けます。毎回明示モードでは、
-各 mutating command に `--run` と `--work-session` を渡します。
-
-```bash
-stag transition create \
-  --run demo \
-  --work-session ws_a \
-  --from <root_node_id> \
-  --payload-type transition_payload \
-  --field type=experiment
-```
-
-固定モードでは、共有の `current.json` ではなく、現在の shell 環境だけに run/session
-を固定します。
-
-```bash
-eval "$(stag work-session env --run demo --new)"
-stag transition create --from <root_node_id> --payload-type transition_payload
-stag work-session spawn --run demo -- codex
-```
-
-```bash
-stag payload add \
-  --run demo \
-  --node <output_node_id> \
-  --payload-type node_payload \
-  --field type=result \
-  --field latency_ms=1.5
-
-stag graph trace --run demo <output_node_id>
-stag show --run demo
-```
-
-git 連携は標準 extension です。正式な CLI namespace は `stag git ...` で、
-`stag commit` や `stag verify` はそれぞれ `stag git commit` / `stag git verify`
-への default alias として動きます。
-
-```bash
-stag init req_kernel --extension git --run-id demo
-stag git commit -m "run baseline benchmark"
-stag commit -m "try tiled kernel"
-stag git verify
-```
-
-未インストールで同じ操作をする場合は、各 command を `PYTHONPATH=src python3 -m stag.cli.main ...` に置き換えます。
-
-## 主な用語
-
-- `Requirement`: run の目的。
-- `RunGraph`: run 全体の DAG と global records。
-- `GraphView`: `RunGraph` の部分集合。
-- `Node`: pure graph node。
-- `Transition`: 複数 input node を受け取り、1 つの output node を作る pure graph transition。
-- `NodePayload`: node に attach される汎用 payload。
-- `TransitionPayload`: transition に attach される汎用 payload。
-- `CutPayload`: input / output transition の無効化を append-only に表す payload。
-- `GitChangePayload`: git extension が transition に attach する payload。
-
-## 保存形式
-
-`JsonlRunStore` は run をディレクトリとして保存します。
+`JsonlRunStore` は run を以下のディレクトリ構造で保存します:
 
 ```text
 <store-dir>/<run-id>/
   run.json
   graph.json
-  views.jsonl
   nodes.jsonl
-  input_transitions.jsonl
-  output_transitions.jsonl
+  transitions.jsonl
   payloads.jsonl
+  views.jsonl
+  work_sessions.jsonl
+  work_events.jsonl
 ```
 
-0.1 alpha では保存形式を破壊的に変える可能性があります。旧 `states.jsonl` / `execution_plans.jsonl` 形式との読み込み互換は持たせません。
+`SqliteRunStore` は同じ内容を per-run の `run.db` 1 ファイルにまとめます。デフォルトの store ディレクトリは `<STAG_HOME>/runs`。
+
+0.1 alpha のため、スキーマは破壊的に変わる可能性があります。古い形式からの自動移行はありません。
+
+---
 
 ## ドキュメント
 
 - [コンセプト](docs/ja/CONCEPT.md)
 - [プロジェクトの方向性](docs/ja/DIRECTION.md)
-- [状態モデル](docs/ja/STATE_MODEL.md)
+- [State モデル](docs/ja/STATE_MODEL.md)
 - [API](docs/ja/API.md)
 - [CLI](docs/ja/CLI.md)
 - [問題解決ループ](docs/ja/AGENT_LOOP.md)
 
-English documentation is also available under [docs/en/](docs/en/).
+English docs: see [docs/en/](docs/en/).
+
+---
 
 ## 開発
 
