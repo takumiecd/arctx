@@ -1,8 +1,9 @@
 from stag.ext.base import Extension, ExtensionBase, Violation, InitContext
 
 # Built-in extensions. (name -> "module:Class")
-# Populated as extensions are added in later slices.
-_BUILTIN: dict[str, str] = {}
+_BUILTIN: dict[str, str] = {
+    "git": "stag.ext.git:GitExtension",
+}
 
 
 def list_available() -> list[str]:
