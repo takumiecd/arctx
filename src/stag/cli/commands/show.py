@@ -18,6 +18,11 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--outputs", action="store_true", help="(with --transition) include output nodes"
     )
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help="(with --transition) show all GitChangePayload entries in append order",
+    )
     parser.add_argument("--store-dir", default=None)
     return parser
 
@@ -30,6 +35,7 @@ def run_show_command(
     payload_id: str | None,
     with_payloads: bool,
     outputs: bool,
+    history: bool = False,
     store_dir: str,
 ) -> dict:
     if outputs and transition_id is None:
@@ -66,6 +72,12 @@ def run_show_command(
             result["output_nodes"] = [
                 g.nodes[node_id].to_dict() for node_id in g.transition_outputs(transition_id)
             ]
+        # GitChangePayload display: --history shows all; default shows latest only.
+        git_payloads = g.payloads_for_transition(transition_id, payload_type="git_change")
+        if history:
+            result["git_change_history"] = [p.to_dict() for p in git_payloads]
+        else:
+            result["git_change"] = git_payloads[-1].to_dict() if git_payloads else None
         return result
 
     if payload_id is not None:
@@ -94,6 +106,7 @@ def cli_show(args) -> int:
         payload_id=args.payload_id,
         with_payloads=args.with_payloads,
         outputs=args.outputs,
+        history=args.history,
         store_dir=args.store_dir,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))

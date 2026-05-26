@@ -8,6 +8,7 @@ import sys
 from stag.cli.commands.anchor import add_parser as add_anchor_parser, cli_anchor
 from stag.cli.commands.branch import add_parser as add_branch_parser, cli_branch
 from stag.cli.commands.commit import add_parser as add_commit_parser, cli_commit
+from stag.cli.commands.hook import add_parser as add_hook_parser, cli_hook
 from stag.cli.commands.current import add_parser as add_current_parser, cli_current
 from stag.cli.commands.dump import add_parser as add_dump_parser, cli_dump
 from stag.cli.commands.git import add_parser as add_git_parser, cli_git
@@ -45,6 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_branch_parser(subparsers)
     add_commit_parser(subparsers)
     add_current_parser(subparsers)
+    add_hook_parser(subparsers)
     add_dump_parser(subparsers)
     add_git_parser(subparsers)
     add_graph_parser(subparsers)
@@ -93,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_git(args)
     if args.command == "graph":
         return cli_graph(args)
+    if args.command == "hook":
+        return cli_hook(args)
     if args.command == "guide":
         return cli_guide(args)
     if args.command == "init":

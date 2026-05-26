@@ -40,6 +40,11 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         action="store_true",
         help="Create .stag-id but skip suggesting git add (no-op flag for scripting)",
     )
+    parser.add_argument(
+        "--no-hooks",
+        action="store_true",
+        help="Skip installing git hooks (post-rewrite etc.)",
+    )
     return parser
 
 
@@ -50,6 +55,7 @@ def run_init_command(
     target_id: str | None,
     run_id: str | None,
     store_dir: str | None,
+    no_hooks: bool = False,
 ) -> dict[str, str]:
     """Create a new run and save it to disk.
 
@@ -66,6 +72,8 @@ def run_init_command(
     store_dir:
         Directory under which run directories are created.
         If None, defaults to ``<STAG_HOME>/runs``.
+    no_hooks:
+        If True, skip installing git hooks.
 
     Returns
     -------
@@ -104,11 +112,29 @@ def run_init_command(
         # Not inside a git repo — skip .stag-id creation silently.
         pass
 
+    # Install git hooks unless opted out.
+    installed_hook_path: str | None = None
+    hook_warning: str | None = None
+    if not no_hooks:
+        try:
+            repo_root_for_hooks = find_repo_root()
+            from stag.cli.commands.hook import run_hook_install  # noqa: PLC0415
+            hook_result = run_hook_install(repo_path=repo_root_for_hooks, force=False)
+            if hook_result["status"] == "installed":
+                installed_hook_path = hook_result["hook_path"]
+            elif hook_result["status"] == "skipped":
+                hook_warning = hook_result["message"]
+        except RuntimeError:
+            # Not inside a git repo — skip hook install silently.
+            pass
+
     return {
         "run_id": handle.run_id,
         "root_node_id": handle.root_node_id,
         "store_dir": resolved_store_dir,
         "stag_id_path": written_stag_id_path,
+        "hook_path": installed_hook_path,
+        "hook_warning": hook_warning,
     }
 
 
@@ -117,18 +143,27 @@ def cli_init(args) -> int:
 
     Prints the generated run_id to stdout on success.
     """
+    import sys
+
     result = run_init_command(
         requirement_id=args.requirement_id,
         target_type=args.target_type,
         target_id=args.target_id,
         run_id=args.run_id,
         store_dir=args.store_dir,
+        no_hooks=args.no_hooks,
     )
     print(result["run_id"])
     if result.get("stag_id_path"):
-        import sys
         print(
             f"hint: run 'git add {result['stag_id_path']}' to track this run in git",
             file=sys.stderr,
         )
+    if result.get("hook_path"):
+        print(
+            f"hint: git hook installed at {result['hook_path']}",
+            file=sys.stderr,
+        )
+    if result.get("hook_warning"):
+        print(f"warning: {result['hook_warning']}", file=sys.stderr)
     return 0

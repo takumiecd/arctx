@@ -11,6 +11,8 @@ from stag.core.schema.work import WorkEvent
 # Event type constants.
 SESSION_POINTER_EVENT = "session_pointer"
 BRANCH_TIP_EVENT = "branch_tip"
+AMEND_EVENT = "amend"
+REBASE_EVENT = "rebase"
 
 
 def make_session_pointer_event(
@@ -94,6 +96,99 @@ def make_branch_tip_event(
         data={
             "branch": branch,
             "tip_node_id": tip_node_id,
+        },
+    )
+
+
+def make_amend_event(
+    *,
+    event_id: str,
+    run_id: str,
+    work_session_id: str,
+    user_id: str,
+    transition_id: str,
+    old_sha: str,
+    new_sha: str,
+) -> WorkEvent:
+    """Build an AmendEvent as a WorkEvent.
+
+    Records an amend operation for audit. The caller is responsible for also
+    appending a new GitChangePayload to the affected transition.
+
+    Parameters
+    ----------
+    event_id:
+        Unique event identifier.
+    run_id:
+        Run this event belongs to.
+    work_session_id:
+        Session in which the amend occurred.
+    user_id:
+        User performing the amend.
+    transition_id:
+        The stag transition whose sha was amended.
+    old_sha:
+        The previous HEAD commit SHA (before amend).
+    new_sha:
+        The new HEAD commit SHA (after amend).
+    """
+    return WorkEvent(
+        event_id=event_id,
+        run_id=run_id,
+        work_session_id=work_session_id,
+        user_id=user_id,
+        event_type=AMEND_EVENT,
+        data={
+            "transition_id": transition_id,
+            "old_sha": old_sha,
+            "new_sha": new_sha,
+        },
+    )
+
+
+def make_rebase_event(
+    *,
+    event_id: str,
+    run_id: str,
+    work_session_id: str,
+    user_id: str,
+    sha_map: dict[str, str],
+    affected_transitions: tuple[str, ...],
+    onto: str,
+) -> WorkEvent:
+    """Build a RebaseEvent as a WorkEvent.
+
+    Records a rebase operation for audit (one event per rebase, covering all
+    affected transitions). The caller is responsible for appending new
+    GitChangePayloads to each affected transition.
+
+    Parameters
+    ----------
+    event_id:
+        Unique event identifier.
+    run_id:
+        Run this event belongs to.
+    work_session_id:
+        Session in which the rebase occurred.
+    user_id:
+        User performing the rebase.
+    sha_map:
+        Mapping of old_sha -> new_sha for each rewritten commit.
+    affected_transitions:
+        Transition IDs that had new GitChangePayloads appended.
+    onto:
+        The commit SHA that the branch was rebased onto.
+    """
+    return WorkEvent(
+        event_id=event_id,
+        run_id=run_id,
+        work_session_id=work_session_id,
+        user_id=user_id,
+        event_type=REBASE_EVENT,
+        data={
+            "sha_map": dict(sha_map),
+            "affected_transitions": list(affected_transitions),
+            "onto": onto,
         },
     )
 

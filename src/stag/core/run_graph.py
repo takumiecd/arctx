@@ -261,5 +261,45 @@ class RunGraph:
             return set()
         return self.ancestors_of(tip_node_id) | {tip_node_id}
 
+    def current_sha(self, transition_id: str) -> str | None:
+        """Return the head_commit of the latest GitChangePayload for *transition_id*.
+
+        "Latest" = last entry in payloads_by_transition append order.
+        Returns None if no GitChangePayload is attached.
+
+        Parameters
+        ----------
+        transition_id:
+            The transition to query.
+        """
+        from stag.core.schema.payloads import GitChangePayload  # noqa: PLC0415
+
+        git_payloads = self.payloads_for_transition(
+            transition_id, payload_type="git_change"
+        )
+        if not git_payloads:
+            return None
+        latest = git_payloads[-1]
+        assert isinstance(latest, GitChangePayload)
+        return latest.head_commit
+
+    def transition_by_sha(self, sha: str) -> str | None:
+        """Find the transition whose latest GitChangePayload.head_commit == sha.
+
+        Returns None if not found.  When multiple transitions match (unusual),
+        returns the most-recently-created one (last in ``self.transitions`` insertion
+        order, which matches append order).
+
+        Parameters
+        ----------
+        sha:
+            The git commit SHA to look up.
+        """
+        result: str | None = None
+        for t_id in self.transitions:
+            if self.current_sha(t_id) == sha:
+                result = t_id
+        return result
+
     def to_dict(self) -> dict:
         return to_jsonable(self)  # type: ignore[return-value]
