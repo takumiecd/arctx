@@ -240,6 +240,62 @@ class CherryPickPayload(PayloadBase):
         }
 
 
+@dataclass(frozen=True)
+class MergePayload(PayloadBase):
+    """Marks a transition as a git merge (multi-input, with common ancestor).
+
+    Attached to the new Transition that represents the merge commit.
+    Input node IDs are (current_tip, other_tip); the transition has 2+ inputs.
+    """
+
+    payload_id: str
+    target_id: str
+    merged_from: str   # branch name or node id of the merged-in branch
+    merged_into: str   # branch name or node id of the target (current) branch
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: Literal["transition"] = field(default="transition", init=False)
+    payload_type: str = field(default="merge", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return {
+            "payload_id": self.payload_id,
+            "payload_type": self.payload_type,
+            "target_kind": self.target_kind,
+            "target_id": self.target_id,
+            "merged_from": self.merged_from,
+            "merged_into": self.merged_into,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
+class JoinPayload(PayloadBase):
+    """Marks a transition as a stag-only join (multi-input, NO common ancestor).
+
+    Used to integrate independent DAGs that don't share a git history.
+    Unlike MergePayload, there is no corresponding git merge commit required.
+    """
+
+    payload_id: str
+    target_id: str
+    joined_views: tuple[str, ...]  # branch or view names being joined
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: Literal["transition"] = field(default="transition", init=False)
+    payload_type: str = field(default="join", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return {
+            "payload_id": self.payload_id,
+            "payload_type": self.payload_type,
+            "target_kind": self.target_kind,
+            "target_id": self.target_id,
+            "joined_views": list(self.joined_views),
+            "metadata": dict(self.metadata),
+        }
+
+
 # ---------------------------------------------------------------------------
 # Payload union type (for type annotations)
 # ---------------------------------------------------------------------------
@@ -252,6 +308,8 @@ Payload = Union[
     BranchPayload,
     RevertPayload,
     CherryPickPayload,
+    MergePayload,
+    JoinPayload,
 ]
 
 
@@ -292,6 +350,8 @@ register_payload_class(GitChangePayload)
 register_payload_class(BranchPayload)
 register_payload_class(RevertPayload)
 register_payload_class(CherryPickPayload)
+register_payload_class(MergePayload)
+register_payload_class(JoinPayload)
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +383,10 @@ def payload_from_dict(data: dict[str, JSONValue]) -> PayloadBase:
         return _revert_from_dict(data)
     if cls is CherryPickPayload:
         return _cherry_pick_from_dict(data)
+    if cls is MergePayload:
+        return _merge_from_dict(data)
+    if cls is JoinPayload:
+        return _join_from_dict(data)
     if cls is not None:
         # Custom registered class — try constructor with all fields.
         return _generic_custom_from_dict(cls, data)
@@ -431,6 +495,27 @@ def _cherry_pick_from_dict(data: dict[str, JSONValue]) -> CherryPickPayload:
         target_id=str(data["target_id"]),
         source_transition=source_transition,
         source_commit=str(data.get("source_commit", "")),
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
+def _merge_from_dict(data: dict[str, JSONValue]) -> MergePayload:
+    return MergePayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        merged_from=str(data.get("merged_from", "")),
+        merged_into=str(data.get("merged_into", "")),
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
+def _join_from_dict(data: dict[str, JSONValue]) -> JoinPayload:
+    raw_views = data.get("joined_views") or []
+    joined_views = tuple(str(v) for v in raw_views)
+    return JoinPayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        joined_views=joined_views,
         metadata=dict(data.get("metadata") or {}),
     )
 

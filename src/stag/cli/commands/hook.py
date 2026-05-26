@@ -31,6 +31,15 @@ _POST_COMMIT_HOOK = """\
 exec stag hook post-commit
 """
 
+_POST_MERGE_HOOK = """\
+#!/usr/bin/env bash
+# .git/hooks/post-merge — stag merge tracking
+# Detects a bare `git merge` (not driven by stag merge) and attempts to
+# adopt the merge commit into the stag graph.
+# argv: $1 = 1 if squash merge, 0 otherwise
+exec stag hook post-merge "$1"
+"""
+
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``hook`` subcommand parser."""
@@ -73,6 +82,25 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     post_commit_parser.add_argument("--run", default=None)
     post_commit_parser.add_argument("--store-dir", default=None)
     post_commit_parser.add_argument(
+        "--repo-path",
+        default=None,
+        help="Path to git repo root (default: cwd)",
+    )
+
+    # post-merge subcommand (called by the hook script)
+    post_merge_parser = hook_sub.add_parser(
+        "post-merge",
+        help="Process a post-merge hook invocation (adopt bare git merge)",
+    )
+    post_merge_parser.add_argument(
+        "squash",
+        nargs="?",
+        default="0",
+        help="1 if squash merge, 0 otherwise (passed by git)",
+    )
+    post_merge_parser.add_argument("--run", default=None)
+    post_merge_parser.add_argument("--store-dir", default=None)
+    post_merge_parser.add_argument(
         "--repo-path",
         default=None,
         help="Path to git repo root (default: cwd)",
@@ -133,6 +161,7 @@ def run_hook_install(
 
     post_rewrite_path = hooks_dir / "post-rewrite"
     post_commit_path = hooks_dir / "post-commit"
+    post_merge_path = hooks_dir / "post-merge"
 
     # Backward-compatible: if post-rewrite already exists and force=False, skip all.
     if post_rewrite_path.exists() and not force:
@@ -154,10 +183,15 @@ def run_hook_install(
         post_commit_path.write_text(_POST_COMMIT_HOOK, encoding="utf-8")
         post_commit_path.chmod(0o755)
 
+    # Install post-merge (best-effort; skip silently if it already exists and not force).
+    if not post_merge_path.exists() or force:
+        post_merge_path.write_text(_POST_MERGE_HOOK, encoding="utf-8")
+        post_merge_path.chmod(0o755)
+
     return {
         "status": "installed",
         "hook_path": str(post_rewrite_path),
-        "message": f"installed post-rewrite and post-commit hooks under {hooks_dir}",
+        "message": f"installed post-rewrite, post-commit, and post-merge hooks under {hooks_dir}",
     }
 
 
@@ -447,6 +481,174 @@ def run_hook_post_commit(
 
 
 # ---------------------------------------------------------------------------
+# post-merge
+# ---------------------------------------------------------------------------
+
+
+def run_hook_post_merge(
+    *,
+    run_id: str,
+    store_dir: str | None,
+    repo_path: Path | None = None,
+    squash: bool = False,
+    user_id: str | None = None,
+    work_session_id: str | None = None,
+    # Test injection: override HEAD info.
+    head_sha: str | None = None,
+) -> dict:
+    """Process a post-merge hook invocation.
+
+    Detects whether the newest commit is a merge commit that stag has not
+    yet recorded, and adopts it by calling ``handle.merge(dry_run=True)``.
+
+    Detection logic
+    ---------------
+    1. Read HEAD sha via ``git rev-parse HEAD``.
+    2. Check if HEAD sha is already known to stag.  If yes, skip (stag merge
+       already ran via ``stag merge`` or ``stag commit --merge``).
+    3. Check if HEAD has two parents (``git rev-parse HEAD^2`` succeeds).
+       If squash merge (squash=True), HEAD has only one parent but this hook
+       still fires — log a warning and skip.
+    4. If a real merge commit: call ``handle.merge(dry_run=True, ...)`` to
+       adopt it into the stag graph.
+
+    Returns
+    -------
+    dict with keys:
+        - action: "adopted", "skip", or "warn"
+        - transition_id: new stag transition ID (or None)
+        - message: human-readable description
+    """
+    import subprocess as _sp  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    from stag.cli.context import resolve_store  # noqa: PLC0415
+
+    resolved_repo_path: Path = repo_path or Path.cwd()
+
+    if user_id is None:
+        user_id = os.environ.get("STAG_USER_ID", "user")
+    if work_session_id is None:
+        work_session_id = os.environ.get("STAG_WORK_SESSION_ID", "session_hook")
+
+    # ------------------------------------------------------------------
+    # 1. Squash merge: cannot adopt automatically (no merge commit).
+    # ------------------------------------------------------------------
+    if squash:
+        return {
+            "action": "skip",
+            "transition_id": None,
+            "message": "post-merge: squash merge — skipping automatic adoption",
+        }
+
+    # ------------------------------------------------------------------
+    # 2. Read HEAD sha.
+    # ------------------------------------------------------------------
+    if head_sha is None:
+        try:
+            result = _sp.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(resolved_repo_path),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            head_sha = result.stdout.strip()
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "action": "warn",
+                "transition_id": None,
+                "message": f"post-merge: could not read HEAD sha: {exc}",
+            }
+
+    if not head_sha:
+        return {
+            "action": "skip",
+            "transition_id": None,
+            "message": "post-merge: no HEAD sha found",
+        }
+
+    # ------------------------------------------------------------------
+    # 3. Load run and check if already known.
+    # ------------------------------------------------------------------
+    store = resolve_store(store_dir)
+    try:
+        handle = store.load_run(run_id)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "action": "warn",
+            "transition_id": None,
+            "message": f"post-merge: could not load run: {exc}",
+        }
+
+    if handle.run_graph.transition_by_sha(head_sha) is not None:
+        return {
+            "action": "skip",
+            "transition_id": None,
+            "message": "post-merge: HEAD sha already recorded by stag",
+        }
+
+    # ------------------------------------------------------------------
+    # 4. Verify HEAD is actually a merge commit (has ^2 parent).
+    # ------------------------------------------------------------------
+    try:
+        p2_result = _sp.run(
+            ["git", "rev-parse", "--verify", "HEAD^2"],
+            cwd=str(resolved_repo_path),
+            capture_output=True,
+            text=True,
+        )
+        if p2_result.returncode != 0:
+            return {
+                "action": "skip",
+                "transition_id": None,
+                "message": "post-merge: HEAD is not a merge commit (no second parent)",
+            }
+        other_sha = p2_result.stdout.strip()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "action": "warn",
+            "transition_id": None,
+            "message": f"post-merge: could not verify merge parents: {exc}",
+        }
+
+    # ------------------------------------------------------------------
+    # 5. Adopt: call merge with dry_run=True (git already ran).
+    # ------------------------------------------------------------------
+    # Look up the other node by its sha, if known.
+    other_node_id: str | None = None
+    other_transition_id = handle.run_graph.transition_by_sha(other_sha)
+    if other_transition_id is not None:
+        other_t = handle.run_graph.transitions.get(other_transition_id)
+        if other_t is not None:
+            other_node_id = other_t.output_node_id
+
+    try:
+        transition = handle.merge(
+            other_node_id=other_node_id,
+            other_branch=None,  # branch unknown from hook context
+            head_commit=head_sha,
+            user_id=user_id,
+            work_session_id=work_session_id,
+            dry_run=True,  # git already merged
+        )
+        store.save_run(handle)
+        return {
+            "action": "adopted",
+            "transition_id": transition.transition_id,
+            "message": (
+                f"post-merge: adopted merge commit {head_sha[:12]} "
+                f"as {transition.transition_id}"
+            ),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "action": "warn",
+            "transition_id": None,
+            "message": f"post-merge: could not adopt merge: {exc}",
+        }
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatcher
 # ---------------------------------------------------------------------------
 
@@ -512,6 +714,35 @@ def cli_hook(args) -> int:
         )
         print(
             f"stag: post-commit: {result['action']}: {result['message']}",
+            file=sys.stderr,
+        )
+        return 0
+
+    if args.hook_command == "post-merge":
+        from stag.cli.context import resolve_run_id_from_args  # noqa: PLC0415
+        import os  # noqa: PLC0415
+
+        try:
+            run_id = resolve_run_id_from_args(args)
+        except Exception as exc:
+            print(f"stag hook post-merge: could not resolve run: {exc}", file=sys.stderr)
+            # Exit 0 so git continues even if stag can't find the run.
+            return 0
+
+        repo_path = Path(args.repo_path) if getattr(args, "repo_path", None) else None
+        squash_arg = getattr(args, "squash", "0")
+        squash = squash_arg == "1"
+
+        result = run_hook_post_merge(
+            run_id=run_id,
+            store_dir=args.store_dir,
+            repo_path=repo_path,
+            squash=squash,
+            user_id=os.environ.get("STAG_USER_ID"),
+            work_session_id=os.environ.get("STAG_WORK_SESSION_ID"),
+        )
+        print(
+            f"stag: post-merge: {result['action']}: {result['message']}",
             file=sys.stderr,
         )
         return 0
