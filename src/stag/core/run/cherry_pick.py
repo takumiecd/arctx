@@ -14,6 +14,7 @@ from stag.core.schema.graph import Node, Transition
 from stag.core.schema.payloads import BranchPayload, CherryPickPayload, GitChangePayload
 from stag.core.run._forward_transition import (
     capture_git_info,
+    check_branch_tip_consistency,
     resolve_current_branch,
     resolve_current_node_ids,
 )
@@ -94,6 +95,13 @@ def cherry_pick_impl(
         dry_run=dry_run,
         repo_path=resolved_repo_path,
     )
+
+    # ------------------------------------------------------------------
+    # 2b. Parallel-session guard (§7.2).
+    # Only enforced when a work session is tracked.
+    # ------------------------------------------------------------------
+    if work_session_id is not None:
+        check_branch_tip_consistency(self.run_graph, current_branch, current_node_ids)
 
     # ------------------------------------------------------------------
     # 3. Look up source transition (best-effort; None is OK for cross-repo).

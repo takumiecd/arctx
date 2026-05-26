@@ -18,6 +18,7 @@ from stag.core.schema.payloads import (
     PayloadBase,
 )
 from stag.core.schema.work_helpers import (
+    latest_branch_tip,
     latest_session_pointer,
     make_branch_tip_event,
     make_session_pointer_event,
@@ -25,6 +26,65 @@ from stag.core.schema.work_helpers import (
 
 if TYPE_CHECKING:
     from stag.core.run.handle import RunHandle
+    from stag.core.run_graph import RunGraph
+
+
+class ParallelSessionConflict(RuntimeError):
+    """Raised when a session tries to commit but another session moved the branch tip."""
+
+    def __init__(self, branch: str, expected_tip: str, current: tuple[str, ...]):
+        self.branch = branch
+        self.expected_tip = expected_tip
+        self.current = current
+        super().__init__(
+            f"non-fast-forward: branch {branch!r} tip is {expected_tip!r} "
+            f"but session current is {list(current)!r}. "
+            f"Pull or rebase before committing (stag pull is planned)."
+        )
+
+
+def check_branch_tip_consistency(
+    graph: "RunGraph",
+    branch: str,
+    current_node_ids: tuple[str, ...],
+) -> None:
+    """Raise ParallelSessionConflict if branch's latest tip is not in current_node_ids.
+
+    If no BranchTipEvent exists for ``branch`` yet (first commit on this branch),
+    skip the check (no conflict possible).
+
+    Parameters
+    ----------
+    graph:
+        The RunGraph to query.
+    branch:
+        The git branch name being committed to.
+    current_node_ids:
+        The session's current node IDs at commit time.
+
+    Raises
+    ------
+    ParallelSessionConflict
+        If the branch tip exists and is NOT in current_node_ids, indicating
+        another session has already advanced the branch.
+    """
+    tip_event = latest_branch_tip(graph, branch)
+    if tip_event is None:
+        # No BranchTipEvent yet — first commit on this branch, no conflict possible.
+        return
+
+    tip_node_id = tip_event.data.get("tip_node_id")
+    if tip_node_id is None:
+        # Malformed event — skip the check rather than blocking legitimate commits.
+        return
+
+    tip_node_id_str = str(tip_node_id)
+    if tip_node_id_str not in current_node_ids:
+        raise ParallelSessionConflict(
+            branch=branch,
+            expected_tip=tip_node_id_str,
+            current=current_node_ids,
+        )
 
 
 def resolve_current_node_ids(

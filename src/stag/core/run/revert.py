@@ -18,6 +18,7 @@ from stag.core.schema.graph import Transition
 from stag.core.schema.payloads import RevertPayload
 from stag.core.run._forward_transition import (
     capture_git_info,
+    check_branch_tip_consistency,
     record_forward_transition,
     resolve_current_branch,
     resolve_current_node_ids,
@@ -138,6 +139,13 @@ def revert_impl(
         dry_run=dry_run,
         repo_path=resolved_repo_path,
     )
+
+    # ------------------------------------------------------------------
+    # 3b. Parallel-session guard (§7.2).
+    # Only enforced when a work session is tracked.
+    # ------------------------------------------------------------------
+    if work_session_id is not None:
+        check_branch_tip_consistency(self.run_graph, current_branch, current_node_ids)
 
     # ------------------------------------------------------------------
     # 4. Run git revert (unless dry_run).

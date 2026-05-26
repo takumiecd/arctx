@@ -2,9 +2,6 @@
 
 Drives a git commit and records the corresponding stag Transition with
 BranchPayload, GitChangePayload, BranchTipEvent, and SessionPointerEvent.
-
-S2 scope: single-input commit only (merge / join is S7).
-Parallel-session guard (§7.2) is TODO for S9.
 """
 
 from __future__ import annotations
@@ -15,6 +12,7 @@ from pathlib import Path
 from stag.core.schema.graph import Transition
 from stag.core.run._forward_transition import (
     capture_git_info,
+    check_branch_tip_consistency,
     record_forward_transition,
     resolve_current_branch,
     resolve_current_node_ids,
@@ -73,9 +71,10 @@ def commit_impl(
 
     Notes
     -----
-    TODO (S9): Add parallel-session guard. Before committing, verify that
-    the latest BranchTipEvent.tip_node_id for current_branch is in
-    current_node_ids. If not, reject with a non-fast-forward error.
+    Multi-input commits (merge / join) are supported when current_node_ids
+    contains more than one node (set via ``stag use --add`` or resolved from
+    the session pointer). The caller is responsible for setting
+    current_node_ids appropriately before calling commit.
     """
     resolved_repo_path: Path = repo_path or Path.cwd()
 
@@ -83,13 +82,6 @@ def commit_impl(
     # 1. Resolve current_node_ids.
     # ------------------------------------------------------------------
     current_node_ids = resolve_current_node_ids(self, work_session_id)
-
-    # S2: single-input only. Multi-input is S7.
-    if len(current_node_ids) != 1:
-        raise NotImplementedError(
-            "S2 supports single-input commits only. "
-            "Multi-input (merge/join) is implemented in S7."
-        )
 
     for nid in current_node_ids:
         self._ensure_active_node(nid)
@@ -102,6 +94,14 @@ def commit_impl(
         dry_run=dry_run,
         repo_path=resolved_repo_path,
     )
+
+    # ------------------------------------------------------------------
+    # 2b. Parallel-session guard (§7.2).
+    # Only enforced when a work session is tracked; without session tracking
+    # there is no branch-tip event to compare against.
+    # ------------------------------------------------------------------
+    if work_session_id is not None:
+        check_branch_tip_consistency(self.run_graph, current_branch, current_node_ids)
 
     # ------------------------------------------------------------------
     # 3. Run git commit (unless dry_run).

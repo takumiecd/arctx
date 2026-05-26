@@ -124,6 +124,8 @@ def run_revert_command(
 
 def cli_revert(args) -> int:
     """Entry point for ``stag revert`` subcommand."""
+    from stag.core.run._forward_transition import ParallelSessionConflict  # noqa: PLC0415
+
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)
     work_session_id = resolve_work_session_id_from_args(args)
@@ -139,6 +141,14 @@ def cli_revert(args) -> int:
             user_id=user_id,
             work_session_id=work_session_id,
         )
+    except ParallelSessionConflict as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        print(
+            "hint: another session has advanced this branch. "
+            "Rebase / pull before committing.",
+            file=sys.stderr,
+        )
+        return 2
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)
         return 1

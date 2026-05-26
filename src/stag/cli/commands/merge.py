@@ -1,7 +1,12 @@
-"""stag CLI commit command.
+"""stag CLI merge command.
 
-Drives a git commit and records the corresponding stag Transition with
-BranchPayload, GitChangePayload, BranchTipEvent, and SessionPointerEvent.
+Drives a git merge (or stag-only join) and records a multi-input Transition
+with MergePayload or JoinPayload.
+
+Usage:
+  stag merge --other <ref> [-m <message>] [--join]
+  stag merge --other branch:<name> [--join]
+  stag merge --other node:<id> [--join]
 """
 
 from __future__ import annotations
@@ -19,34 +24,54 @@ from stag.cli.context import (
 )
 
 
+def _parse_merge_ref(ref: str) -> tuple[str | None, str | None]:
+    """Parse a merge ref into (other_branch, other_node_id).
+
+    Formats accepted:
+    - "branch:<name>"  → other_branch
+    - "node:<id>"      → other_node_id
+    - "<anything>"     → treated as branch name
+    """
+    if ref.startswith("branch:"):
+        return ref[len("branch:"):], None
+    if ref.startswith("node:"):
+        return None, ref[len("node:"):]
+    return ref, None
+
+
 def add_parser(subparsers) -> argparse.ArgumentParser:
-    """Register the ``commit`` subcommand parser."""
+    """Register the ``merge`` subcommand parser."""
     p = subparsers.add_parser(
-        "commit",
-        help="Drive a git commit and record a stag transition",
+        "merge",
+        help="Drive a git merge and record a multi-input stag transition",
     )
-    p.add_argument("-m", "--message", required=True, help="Commit message")
+    p.add_argument(
+        "--other",
+        required=True,
+        metavar="REF",
+        help=(
+            "The branch or node to merge in. Format: 'branch:<name>', "
+            "'node:<id>', or just '<name>' (auto-detected as branch name)."
+        ),
+    )
+    p.add_argument(
+        "-m",
+        "--message",
+        default=None,
+        help="Override the merge commit message",
+    )
     p.add_argument(
         "--branch",
         default=None,
-        help="Override branch name (default: current git branch)",
-    )
-    p.add_argument(
-        "--merge",
-        default=None,
-        metavar="REF",
-        help=(
-            "Merge target. Format: 'branch:<name>', 'node:<id>', or just '<name>' "
-            "(auto-detected as branch name). Drives git merge and records a "
-            "multi-input transition with MergePayload."
-        ),
+        help="Override the current branch name (default: inferred from git)",
     )
     p.add_argument(
         "--join",
         action="store_true",
         help=(
-            "Treat the merge as a stag-only join (no common ancestor). "
-            "Records JoinPayload instead of MergePayload. Only valid with --merge."
+            "Treat as a stag-only join (no common ancestor). "
+            "Records JoinPayload instead of MergePayload. "
+            "Does NOT run git merge."
         ),
     )
     p.add_argument("--run", default=None, help="Explicit run id")
@@ -56,44 +81,30 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     return p
 
 
-def _parse_merge_ref(ref: str) -> tuple[str | None, str | None]:
-    """Parse a merge ref string into (other_branch, other_node_id).
-
-    Formats accepted:
-    - "branch:<name>"  → branch name
-    - "node:<id>"      → node id
-    - "<anything>"     → treated as branch name (auto-detect)
-    """
-    if ref.startswith("branch:"):
-        return ref[len("branch:"):], None
-    if ref.startswith("node:"):
-        return None, ref[len("node:"):]
-    # Auto-detect: treat as branch name.
-    return ref, None
-
-
-def run_commit_command(
+def run_merge_command(
     *,
-    message: str,
+    other: str,
+    message: str | None,
     branch: str | None,
     run_id: str | None,
     store_dir: str | None,
     user_id: str | None,
     work_session_id: str | None,
-    merge: str | None = None,
     join: bool = False,
     # Test-only parameters; not exposed in the CLI parser.
     dry_run: bool = False,
     head_commit: str | None = None,
 ) -> dict:
-    """Execute a commit (or merge) and persist the resulting graph records.
+    """Execute a merge (or join) and persist the resulting graph records.
 
     Parameters
     ----------
+    other:
+        Merge target reference. Format: 'branch:<name>', 'node:<id>', or '<name>'.
     message:
-        Git commit message.
+        Override the merge commit message. If None, git uses its default.
     branch:
-        Branch name override (None → infer from git).
+        Current branch name override (None → infer from git).
     run_id:
         Explicit run id. If None, resolved from env / .stag-id.
     store_dir:
@@ -102,43 +113,32 @@ def run_commit_command(
         User id for work event attribution.
     work_session_id:
         Work session id.
-    merge:
-        If set, drive a merge instead of a plain commit. Format:
-        'branch:<name>', 'node:<id>', or '<name>' (branch auto-detect).
     join:
-        If True and merge is set, use JoinPayload instead of MergePayload.
+        If True, use JoinPayload instead of MergePayload.
 
     Returns
     -------
-    dict with transition_id, output_node_id, branch, head_commit.
+    dict with transition_id, output_node_id, branch, head_commit,
+    input_node_ids, merge_payload_type.
     """
+    other_branch, other_node_id = _parse_merge_ref(other)
+
     store = resolve_store(store_dir)
     handle = store.load_run(run_id)
 
     before = graph_counts(handle)
 
-    if merge is not None:
-        other_branch, other_node_id = _parse_merge_ref(merge)
-        transition = handle.merge(
-            other_branch=other_branch,
-            other_node_id=other_node_id,
-            message=message,
-            branch=branch,
-            user_id=user_id,
-            work_session_id=work_session_id,
-            join=join,
-            dry_run=dry_run,
-            head_commit=head_commit,
-        )
-    else:
-        transition = handle.commit(
-            message=message,
-            branch=branch,
-            user_id=user_id,
-            work_session_id=work_session_id,
-            dry_run=dry_run,
-            head_commit=head_commit,
-        )
+    transition = handle.merge(
+        other_branch=other_branch,
+        other_node_id=other_node_id,
+        message=message,
+        branch=branch,
+        user_id=user_id,
+        work_session_id=work_session_id,
+        join=join,
+        dry_run=dry_run,
+        head_commit=head_commit,
+    )
 
     maybe_append_or_save(
         store=store,
@@ -148,7 +148,6 @@ def run_commit_command(
         before=before,
     )
 
-    # Extract GitChangePayload info for the result.
     git_payloads = handle.run_graph.payloads_for_transition(
         transition.transition_id, payload_type="git_change"
     )
@@ -158,20 +157,20 @@ def run_commit_command(
     )
     resolved_branch = branch_payloads[-1].branch if branch_payloads else ""
 
-    result: dict = {
+    payload_type = "join" if join else "merge"
+
+    return {
         "transition_id": transition.transition_id,
         "output_node_id": transition.output_node_id,
+        "input_node_ids": list(transition.input_node_ids),
         "branch": resolved_branch,
         "head_commit": head_commit,
+        "merge_payload_type": payload_type,
     }
-    if merge is not None:
-        result["merge"] = merge
-        result["join"] = join
-    return result
 
 
-def cli_commit(args) -> int:
-    """Entry point for ``stag commit`` subcommand."""
+def cli_merge(args) -> int:
+    """Entry point for ``stag merge`` subcommand."""
     from stag.core.run._forward_transition import ParallelSessionConflict  # noqa: PLC0415
 
     run_id = resolve_run_id_from_args(args)
@@ -179,15 +178,15 @@ def cli_commit(args) -> int:
     work_session_id = resolve_work_session_id_from_args(args)
 
     try:
-        result = run_commit_command(
+        result = run_merge_command(
+            other=args.other,
             message=args.message,
             branch=args.branch,
             run_id=run_id,
             store_dir=args.store_dir,
             user_id=user_id,
             work_session_id=work_session_id,
-            merge=getattr(args, "merge", None),
-            join=getattr(args, "join", False),
+            join=args.join,
         )
     except ParallelSessionConflict as exc:
         print(f"error: {exc}", file=sys.stderr)
