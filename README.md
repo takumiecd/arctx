@@ -1,5 +1,7 @@
 # STAG
 
+![STAG Demo Video](examples/demo.gif)
+
 STAG is a Python library for recording the process of problem-solving and optimization as DAGs and JSONL.
 
 It aims to preserve not just final results, but also the plans made along the way, predictions before execution, and what actually happened. Currently at 0.1 alpha — model refinement is prioritized over backward compatibility. No guarantees for old run storage formats or legacy APIs.

@@ -1,5 +1,7 @@
 # STAG
 
+![STAG Demo Video](examples/demo.gif)
+
 STAG は、問題解決や最適化の過程を DAG と JSONL で記録するための Python ライブラリです。
 
 最終成果だけでなく、途中で立てた plan、実行前の予測、実際に起きた結果を残すことを目的にしています。現在は 0.1 alpha で、後方互換よりもモデル整理を優先します。古い run 保存形式や旧 API との互換は保証しません。
