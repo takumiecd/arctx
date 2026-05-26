@@ -1,6 +1,10 @@
 # STAG
 
-![STAG Demo Video](examples/demo.gif)
+### 並列ワークセッション (Parallel Work Sessions)
+![STAG CLI Demo](examples/demo_cli.gif)
+
+### インタラクティブな可視化 (Interactive Visualization)
+![STAG TUI Demo](examples/demo_tui.gif)
 
 STAG は、問題解決や最適化の過程を DAG と JSONL で記録するための Python ライブラリです。
 

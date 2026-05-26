@@ -1,6 +1,10 @@
 # STAG
 
-![STAG Demo Video](examples/demo.gif)
+### Parallel Work Sessions
+![STAG CLI Demo](examples/demo_cli.gif)
+
+### Interactive Visualization
+![STAG TUI Demo](examples/demo_tui.gif)
 
 STAG is a Python library for recording the process of problem-solving and optimization as DAGs and JSONL.
 
