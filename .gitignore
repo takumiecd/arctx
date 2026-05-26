@@ -12,6 +12,7 @@ htmlcov/
 runs/
 stag_output/
 .stag/
+.stag-id
 state_round_*.json
 request_*.json
 attempts.jsonl
