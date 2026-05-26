@@ -129,6 +129,33 @@ class DiffSummary:
 
 
 @dataclass(frozen=True)
+class BranchPayload(PayloadBase):
+    """Branch where a transition was created. Historical, immutable.
+
+    Attached to a Transition at commit time. Records the git branch name
+    on which the transition originated. Not updated on merge/rebase.
+    """
+
+    payload_id: str
+    target_id: str
+    branch: str
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: Literal["transition"] = field(default="transition", init=False)
+    payload_type: str = field(default="branch", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return {
+            "payload_id": self.payload_id,
+            "payload_type": self.payload_type,
+            "target_kind": self.target_kind,
+            "target_id": self.target_id,
+            "branch": self.branch,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
 class GitChangePayload(PayloadBase):
     """Git repository change information attached to a Transition."""
 
@@ -163,7 +190,7 @@ class GitChangePayload(PayloadBase):
 # Payload union type (for type annotations)
 # ---------------------------------------------------------------------------
 
-Payload = Union[NodePayload, TransitionPayload, CutPayload, GitChangePayload]
+Payload = Union[NodePayload, TransitionPayload, CutPayload, GitChangePayload, BranchPayload]
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +227,7 @@ register_payload_class(NodePayload)
 register_payload_class(TransitionPayload)
 register_payload_class(CutPayload)
 register_payload_class(GitChangePayload)
+register_payload_class(BranchPayload)
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +253,8 @@ def payload_from_dict(data: dict[str, JSONValue]) -> PayloadBase:
         return _cut_from_dict(data)
     if cls is GitChangePayload:
         return _git_change_from_dict(data)
+    if cls is BranchPayload:
+        return _branch_payload_from_dict(data)
     if cls is not None:
         # Custom registered class — try constructor with all fields.
         return _generic_custom_from_dict(cls, data)
@@ -302,6 +332,15 @@ def _git_change_from_dict(data: dict[str, JSONValue]) -> GitChangePayload:
         head_commit=str(data.get("head_commit", "")),
         diff_summary=diff_summary,
         commit_log=commit_log,
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
+def _branch_payload_from_dict(data: dict[str, JSONValue]) -> BranchPayload:
+    return BranchPayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        branch=str(data.get("branch", "")),
         metadata=dict(data.get("metadata") or {}),
     )
 

@@ -193,5 +193,73 @@ class RunGraph:
         """Nodes with no incoming transition."""
         return [nid for nid in self.nodes if nid not in self.transition_by_output_node]
 
+    # ----- ancestry --------------------------------------------------------
+
+    def ancestors_of(self, node_id: str) -> set[str]:
+        """Return all ancestor node IDs (excluding *node_id* itself).
+
+        Walks backwards through the DAG via ``transition_by_output_node``,
+        collecting the input nodes of each incoming transition. The walk is
+        BFS and includes all ancestors regardless of cut status.
+
+        Parameters
+        ----------
+        node_id:
+            The node whose ancestors are requested.
+
+        Returns
+        -------
+        Set of node IDs that are ancestors of *node_id* (i.e. lie on any
+        path leading *to* it).
+        """
+        ancestors: set[str] = set()
+        queue: deque[str] = deque()
+
+        # Seed with the direct parents of node_id.
+        t_id = self.transition_by_output_node.get(node_id)
+        if t_id is not None:
+            transition = self.transitions[t_id]
+            for parent in transition.input_node_ids:
+                if parent not in ancestors:
+                    ancestors.add(parent)
+                    queue.append(parent)
+
+        while queue:
+            current = queue.popleft()
+            t_id = self.transition_by_output_node.get(current)
+            if t_id is None:
+                continue
+            transition = self.transitions[t_id]
+            for parent in transition.input_node_ids:
+                if parent not in ancestors:
+                    ancestors.add(parent)
+                    queue.append(parent)
+
+        return ancestors
+
+    def branch_members(self, branch: str) -> set[str]:
+        """Return node IDs reachable as ancestors of the latest branch tip.
+
+        Uses the latest ``BranchTipEvent`` for *branch* to find the tip node,
+        then returns ``ancestors_of(tip) | {tip}``.
+
+        Returns an empty set if no ``BranchTipEvent`` has been recorded for
+        *branch*.
+
+        Parameters
+        ----------
+        branch:
+            Git branch name.
+        """
+        from stag.core.schema.work_helpers import latest_branch_tip  # noqa: PLC0415
+
+        tip_event = latest_branch_tip(self, branch)
+        if tip_event is None:
+            return set()
+        tip_node_id = str(tip_event.data.get("tip_node_id", ""))
+        if not tip_node_id or tip_node_id not in self.nodes:
+            return set()
+        return self.ancestors_of(tip_node_id) | {tip_node_id}
+
     def to_dict(self) -> dict:
         return to_jsonable(self)  # type: ignore[return-value]

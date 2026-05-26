@@ -152,6 +152,7 @@ from stag.core.run.view import (  # noqa: E402
     view_list_impl as _view_list_impl,
     view_show_impl as _view_show_impl,
 )
+from stag.core.run.commit import commit_impl as _commit_impl  # noqa: E402
 
 RunHandle.transition = _transition_impl
 RunHandle.attach = _attach_impl
@@ -163,3 +164,4 @@ RunHandle.outcomes = _outcomes_impl
 RunHandle.view_create = _view_create_impl
 RunHandle.view_list = _view_list_impl
 RunHandle.view_show = _view_show_impl
+RunHandle.commit = _commit_impl
