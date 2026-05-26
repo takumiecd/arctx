@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Literal
 
 from stag.core.cuts import cut_transition_ids
 from stag.core.schema.work_helpers import (
-    RESET_EVENT,
     latest_session_pointer,
     make_reset_event,
     make_session_pointer_event,

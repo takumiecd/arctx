@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Literal
 from stag.core.schema.payloads import DiffSummary, GitChangePayload
 from stag.core.schema.work_helpers import (
     AMEND_EVENT,
-    REBASE_EVENT,
     make_amend_event,
     make_rebase_event,
 )
