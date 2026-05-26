@@ -45,3 +45,19 @@ def test_extension_base_defaults():
     ext = ExtensionBase()
     assert ext.default_aliases() == {}
     assert ext.validate(handle=None) == []  # type: ignore[arg-type]
+
+
+def test_third_party_discovery():
+    from unittest.mock import patch, MagicMock
+
+    mock_ep = MagicMock()
+    mock_ep.name = "myext"
+    mock_ep.load.return_value = MagicMock(return_value="MyExtInstance")
+
+    with patch("stag.ext._get_entry_points", return_value={"myext": mock_ep}):
+        avail = list_available()
+        assert "myext" in avail
+        assert "git" in avail
+
+        ext = load_extension("myext")
+        assert ext == "MyExtInstance"
