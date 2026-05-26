@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from stag.cli.commands.alias_cmd import add_parser as add_alias_parser, cli_alias
 from stag.cli.commands.anchor import add_parser as add_anchor_parser, cli_anchor
 from stag.cli.commands.branch import add_parser as add_branch_parser, cli_branch
 from stag.cli.commands.cherry_pick import add_parser as add_cherry_pick_parser, cli_cherry_pick
@@ -12,6 +13,7 @@ from stag.cli.commands.commit import add_parser as add_commit_parser, cli_commit
 from stag.cli.commands.hook import add_parser as add_hook_parser, cli_hook
 from stag.cli.commands.current import add_parser as add_current_parser, cli_current
 from stag.cli.commands.dump import add_parser as add_dump_parser, cli_dump
+from stag.cli.commands.ext import add_parser as add_ext_parser, cli_ext
 from stag.cli.commands.git import add_parser as add_git_parser, cli_git
 from stag.cli.commands.graph import add_parser as add_graph_parser, cli_graph
 from stag.cli.commands.guide import add_parser as add_guide_parser, cli_guide
@@ -47,11 +49,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    add_alias_parser(subparsers)
     add_anchor_parser(subparsers)
     add_branch_parser(subparsers)
     add_cherry_pick_parser(subparsers)
     add_commit_parser(subparsers)
     add_current_parser(subparsers)
+    add_ext_parser(subparsers)
     add_hook_parser(subparsers)
     add_dump_parser(subparsers)
     add_git_parser(subparsers)
@@ -81,6 +85,74 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_run_dir_for_alias(tokens: list[str]) -> str | None:
+    """Best-effort resolution of run_dir for alias loading.
+
+    Reads ``--run`` / ``STAG_RUN_ID`` / ``.stag-id``.  Returns None if no
+    run can be resolved without side-effects.
+    """
+    import os
+    from pathlib import Path
+
+    # Look for --run <id> in tokens
+    run_id: str | None = None
+    store_dir: str | None = None
+    for i, tok in enumerate(tokens):
+        if tok == "--run" and i + 1 < len(tokens):
+            run_id = tokens[i + 1]
+        if tok == "--store-dir" and i + 1 < len(tokens):
+            store_dir = tokens[i + 1]
+        if tok.startswith("--run="):
+            run_id = tok[6:]
+        if tok.startswith("--store-dir="):
+            store_dir = tok[12:]
+
+    if run_id is None:
+        run_id = os.environ.get("STAG_RUN_ID")
+
+    if run_id is None:
+        # Try .stag-id
+        try:
+            from stag.cli.paths import find_repo_root, read_stag_id  # noqa: PLC0415
+
+            repo_root = find_repo_root()
+            run_id = read_stag_id(repo_root)
+        except Exception:  # noqa: BLE001
+            pass
+
+    if run_id is None:
+        return None
+
+    if store_dir is None:
+        try:
+            from stag.cli.paths import resolve_store_dir  # noqa: PLC0415
+
+            store_dir = resolve_store_dir()
+        except Exception:  # noqa: BLE001
+            return None
+
+    candidate = Path(store_dir) / run_id
+    return str(candidate) if candidate.is_dir() else None
+
+
+def _collect_ext_default_aliases(run_dir: str | None) -> list[dict[str, str]]:
+    """Load default_aliases from enabled extensions; ignore failures."""
+    if run_dir is None:
+        return []
+
+    from stag.ext import load_extension  # noqa: PLC0415
+    from stag.ext.enabled import load_enabled  # noqa: PLC0415
+
+    ext_aliases: list[dict[str, str]] = []
+    for ee in load_enabled(run_dir):
+        try:
+            ext = load_extension(ee.name)
+            ext_aliases.append(ext.default_aliases())
+        except (KeyError, ImportError):
+            continue
+    return ext_aliases
+
+
 def parse_args(argv: list[str] | None = None):
     """Parse CLI arguments."""
     parser = _build_parser()
@@ -89,8 +161,24 @@ def parse_args(argv: list[str] | None = None):
 
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
-    args = parse_args(argv)
+    tokens: list[str] = list(argv if argv is not None else sys.argv[1:])
 
+    # --- Alias resolution (one level only) ---
+    run_dir = _resolve_run_dir_for_alias(tokens)
+    ext_aliases = _collect_ext_default_aliases(run_dir)
+    from stag.cli.alias import load_alias_table, resolve_alias  # noqa: PLC0415
+
+    alias_table = load_alias_table(
+        run_dir=run_dir,
+        extensions_default_aliases=ext_aliases,
+    )
+    tokens = resolve_alias(alias_table, tokens)
+    # ---
+
+    args = parse_args(tokens)
+
+    if args.command == "alias":
+        return cli_alias(args)
     if args.command == "anchor":
         return cli_anchor(args)
     if args.command == "branch":
@@ -103,6 +191,8 @@ def main(argv: list[str] | None = None) -> int:
         return cli_current(args)
     if args.command == "dump":
         return cli_dump(args)
+    if args.command == "ext":
+        return cli_ext(args)
     if args.command == "git":
         return cli_git(args)
     if args.command == "graph":

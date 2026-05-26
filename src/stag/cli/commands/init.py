@@ -45,6 +45,26 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         action="store_true",
         help="Skip installing git hooks (post-rewrite etc.)",
     )
+    parser.add_argument(
+        "--extension",
+        action="append",
+        default=[],
+        dest="extension",
+        metavar="NAME",
+        help="Enable extension by name (may be repeated)",
+    )
+
+    # Pre-register init options from all built-in extensions so that
+    # extension-specific flags (e.g. --dummy-flag) are accepted at parse time.
+    from stag.ext import list_available, load_extension  # noqa: PLC0415
+
+    for ext_name in list_available():
+        try:
+            ext = load_extension(ext_name)
+            ext.register_init_options(parser)
+        except Exception:  # noqa: BLE001
+            continue
+
     return parser
 
 
@@ -56,6 +76,8 @@ def run_init_command(
     run_id: str | None,
     store_dir: str | None,
     no_hooks: bool = False,
+    extensions: list[str] | None = None,
+    extension_options: dict[str, object] | None = None,
 ) -> dict[str, str]:
     """Create a new run and save it to disk.
 
@@ -74,6 +96,12 @@ def run_init_command(
         If None, defaults to ``<STAG_HOME>/runs``.
     no_hooks:
         If True, skip installing git hooks.
+    extensions:
+        Names of extensions to enable.  Each extension's ``on_init`` is called
+        and the extension is recorded in ``<run_dir>/extensions.json``.
+    extension_options:
+        Flat dict of parsed argparse values for extension-specific options,
+        keyed by their ``dest`` names (e.g. ``ext__dummy_dummy_flag``).
 
     Returns
     -------
@@ -84,6 +112,8 @@ def run_init_command(
     ------
     FileExistsError
         If the run directory already exists.
+    KeyError
+        If an extension name is not in the built-in registry.
     """
     resolved_store_dir = store_dir if store_dir is not None else resolve_store_dir()
 
@@ -128,6 +158,25 @@ def run_init_command(
             # Not inside a git repo — skip hook install silently.
             pass
 
+    # Activate requested extensions.
+    enabled_extensions: list[str] = []
+    if extensions:
+        from stag.ext import load_extension  # noqa: PLC0415
+        from stag.ext.base import InitContext  # noqa: PLC0415
+        from stag.ext.enabled import EnabledExtension, add_enabled  # noqa: PLC0415
+
+        for ext_name in extensions:
+            ext = load_extension(ext_name)  # raises KeyError for unknown names
+            opts = dict(extension_options or {})
+            ctx = InitContext(
+                run_id=handle.run_id,
+                run_dir=str(run_path),
+                options=opts,
+            )
+            ext.on_init(ctx)
+            add_enabled(run_path, EnabledExtension(name=ext.name, version=ext.version, config={}))
+            enabled_extensions.append(ext_name)
+
     return {
         "run_id": handle.run_id,
         "root_node_id": handle.root_node_id,
@@ -135,6 +184,7 @@ def run_init_command(
         "stag_id_path": written_stag_id_path,
         "hook_path": installed_hook_path,
         "hook_warning": hook_warning,
+        "enabled_extensions": enabled_extensions,
     }
 
 
@@ -145,14 +195,20 @@ def cli_init(args) -> int:
     """
     import sys
 
-    result = run_init_command(
-        requirement_id=args.requirement_id,
-        target_type=args.target_type,
-        target_id=args.target_id,
-        run_id=args.run_id,
-        store_dir=args.store_dir,
-        no_hooks=args.no_hooks,
-    )
+    try:
+        result = run_init_command(
+            requirement_id=args.requirement_id,
+            target_type=args.target_type,
+            target_id=args.target_id,
+            run_id=args.run_id,
+            store_dir=args.store_dir,
+            no_hooks=args.no_hooks,
+            extensions=list(args.extension or []),
+            extension_options=vars(args),
+        )
+    except KeyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     print(result["run_id"])
     if result.get("stag_id_path"):
         print(
