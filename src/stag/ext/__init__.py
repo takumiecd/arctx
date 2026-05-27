@@ -62,14 +62,14 @@ def attach_extensions(handle, names: Iterable[str]):
 
 def register_extension_cli(subparsers, names: Iterable[str]) -> None:
     """Register CLI namespaces provided by enabled extensions."""
+    from stag.cli.commands import register_cli_commands
+
     seen: set[str] = set()
     for name in names:
         if name in seen:
             continue
         ext = load_extension(name)
-        for command in ext.cli_commands():
-            parser = command.add_parser(subparsers)
-            parser.set_defaults(_stag_handler=command.handler)
+        register_cli_commands(subparsers, ext.cli_commands())
         seen.add(ext.name)
 
 

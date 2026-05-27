@@ -5,56 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from stag.cli.commands.alias_cmd import add_parser as add_alias_parser
-from stag.cli.commands.alias_cmd import cli_alias
-from stag.cli.commands.anchor import add_parser as add_anchor_parser
-from stag.cli.commands.anchor import cli_anchor
-from stag.cli.commands.current import add_parser as add_current_parser
-from stag.cli.commands.current import cli_current
-from stag.cli.commands.cut import add_parser as add_cut_parser
-from stag.cli.commands.cut import cli_cut
-from stag.cli.commands.dump import add_parser as add_dump_parser
-from stag.cli.commands.dump import cli_dump
-from stag.cli.commands.ext import add_parser as add_ext_parser
-from stag.cli.commands.ext import cli_ext
-from stag.cli.commands.graph import add_parser as add_graph_parser
-from stag.cli.commands.graph import cli_graph
-from stag.cli.commands.guide import add_parser as add_guide_parser
-from stag.cli.commands.guide import cli_guide
-from stag.cli.commands.init import add_parser as add_init_parser
-from stag.cli.commands.init import cli_init
-from stag.cli.commands.list import add_parser as add_list_parser
-from stag.cli.commands.list import cli_list
-from stag.cli.commands.migrate import add_parser as add_migrate_parser
-from stag.cli.commands.migrate import cli_migrate
-from stag.cli.commands.node import add_parser as add_node_parser
-from stag.cli.commands.node import cli_node
-from stag.cli.commands.outcomes import add_parser as add_outcomes_parser
-from stag.cli.commands.outcomes import cli_outcomes
-from stag.cli.commands.payload import add_parser as add_payload_parser
-from stag.cli.commands.payload import cli_payload
-from stag.cli.commands.reachable import add_parser as add_reachable_parser
-from stag.cli.commands.reachable import cli_reachable
-from stag.cli.commands.show import add_parser as add_show_parser
-from stag.cli.commands.show import cli_show
-from stag.cli.commands.sync import add_parser as add_sync_parser
-from stag.cli.commands.sync import cli_sync
-from stag.cli.commands.trace import add_parser as add_trace_parser
-from stag.cli.commands.trace import cli_trace
-from stag.cli.commands.transition import add_parser as add_transition_parser
-from stag.cli.commands.transition import cli_transition
-from stag.cli.commands.tui import add_parser as add_tui_parser
-from stag.cli.commands.tui import cli_tui
-from stag.cli.commands.use import add_parser as add_use_parser
-from stag.cli.commands.use import cli_use
-from stag.cli.commands.view import add_parser as add_view_parser
-from stag.cli.commands.view import cli_view
-from stag.cli.commands.work_session import (
-    add_parser as add_work_session_parser,
-)
-from stag.cli.commands.work_session import (
-    cli_work_session,
-)
+from stag.cli.commands import core_cli_commands, register_cli_commands
 
 
 def _build_parser(*, run_dir: str | None = None) -> argparse.ArgumentParser:
@@ -64,29 +15,7 @@ def _build_parser(*, run_dir: str | None = None) -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    add_alias_parser(subparsers)
-    add_anchor_parser(subparsers)
-    add_current_parser(subparsers)
-    add_ext_parser(subparsers)
-    add_dump_parser(subparsers)
-    add_graph_parser(subparsers)
-    add_guide_parser(subparsers)
-    add_init_parser(subparsers)
-    add_list_parser(subparsers)
-    add_migrate_parser(subparsers)
-    add_node_parser(subparsers)
-    add_outcomes_parser(subparsers)
-    add_payload_parser(subparsers)
-    add_reachable_parser(subparsers)
-    add_cut_parser(subparsers)
-    add_show_parser(subparsers)
-    add_sync_parser(subparsers)
-    add_tui_parser(subparsers)
-    add_trace_parser(subparsers)
-    add_transition_parser(subparsers)
-    add_use_parser(subparsers)
-    add_view_parser(subparsers)
-    add_work_session_parser(subparsers)
+    register_cli_commands(subparsers, core_cli_commands())
 
     from stag.ext import register_enabled_cli  # noqa: PLC0415
 
@@ -196,53 +125,6 @@ def main(argv: list[str] | None = None) -> int:
     handler = getattr(args, "_stag_handler", None)
     if handler is not None:
         return handler(args)
-
-    if args.command == "alias":
-        return cli_alias(args)
-    if args.command == "anchor":
-        return cli_anchor(args)
-    if args.command == "current":
-        return cli_current(args)
-    if args.command == "dump":
-        return cli_dump(args)
-    if args.command == "ext":
-        return cli_ext(args)
-    if args.command == "graph":
-        return cli_graph(args)
-    if args.command == "guide":
-        return cli_guide(args)
-    if args.command == "init":
-        return cli_init(args)
-    if args.command == "list":
-        return cli_list(args)
-    if args.command == "migrate":
-        return cli_migrate(args)
-    if args.command == "node":
-        return cli_node(args)
-    if args.command == "outcomes":
-        return cli_outcomes(args)
-    if args.command == "payload":
-        return cli_payload(args)
-    if args.command == "reachable":
-        return cli_reachable(args)
-    if args.command == "cut":
-        return cli_cut(args)
-    if args.command == "show":
-        return cli_show(args)
-    if args.command == "sync":
-        return cli_sync(args)
-    if args.command == "tui":
-        return cli_tui(args)
-    if args.command == "trace":
-        return cli_trace(args)
-    if args.command == "transition":
-        return cli_transition(args)
-    if args.command == "use":
-        return cli_use(args)
-    if args.command == "view":
-        return cli_view(args)
-    if args.command == "work-session":
-        return cli_work_session(args)
 
     return 1
 
