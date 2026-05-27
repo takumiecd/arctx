@@ -1,5 +1,24 @@
 # STAG
 
+## Packages
+
+This repository distributes two packages:
+
+| Package | Install | Import | Purpose |
+|---------|---------|--------|---------|
+| `stag-api` | `pip install stag-api` | `import stag_api` | Core API, storage, extensions (no CLI deps) |
+| `stag-cli` | `pip install stag-cli` | `import stag_cli` | `stag` command, TUI, CLI commands |
+
+`stag-cli` depends on `stag-api`. Install `stag-cli` to get everything including the `stag` command.
+
+```python
+import stag_api as stag
+
+handle = stag.init(stag.Requirement(requirement_id="r", target_type="code", target_id="r"))
+```
+
+---
+
 **STAG is an append-only graph for thought, work context, and parallel exploration.**
 
 Git tracks how files changed.
@@ -55,7 +74,7 @@ STAG is *not* an executor, planner, or agent framework. It is the substrate for 
 From inside a git repository:
 
 ```bash
-pip install -e .
+pip install stag-cli
 
 stag init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py

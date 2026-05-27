@@ -2,54 +2,8 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[project]
-name = "stag"
-version = "0.2.0b1"
-description = "STAG: an append-only graph for thought, work context, and parallel exploration"
-readme = "README.md"
-requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [
-    {name = "Takumi Ishida"},
-]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
-dependencies = [
-    "typing-extensions>=4.0.0",
-]
-
-[project.optional-dependencies]
-fast = [
-    "orjson>=3.9",
-]
-dev = [
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21",
-    "black>=23.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0",
-]
-kernel = [
-    "torch>=2.0",
-    "numpy>=1.24",
-]
-
-[project.scripts]
-stag = "stag.cli.main:main"
-
-[project.urls]
-Homepage = "https://github.com/takumiecd/stag"
-Repository = "https://github.com/takumiecd/stag"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/stag"]
+# Root pyproject.toml — dev tooling only.
+# Distributable packages are in packages/stag-api/ and packages/stag-cli/.
 
 [tool.black]
 line-length = 100

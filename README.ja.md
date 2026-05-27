@@ -1,5 +1,24 @@
 # STAG
 
+## パッケージ構成
+
+このリポジトリは 2 つのパッケージを配布します：
+
+| パッケージ | インストール | インポート | 用途 |
+|-----------|------------|----------|------|
+| `stag-api` | `pip install stag-api` | `import stag_api` | コア API・ストレージ・拡張 (CLI 依存なし) |
+| `stag-cli` | `pip install stag-cli` | `import stag_cli` | `stag` コマンド・TUI・CLI コマンド |
+
+`stag-cli` は `stag-api` に依存します。`stag` コマンドを使うには `stag-cli` をインストールしてください。
+
+```python
+import stag_api as stag
+
+handle = stag.init(stag.Requirement(requirement_id="r", target_type="code", target_id="r"))
+```
+
+---
+
 **STAG は、思考・作業文脈・並列探索を記録する append-only graph です。**
 
 Git はファイルがどう変わったかを追います。
