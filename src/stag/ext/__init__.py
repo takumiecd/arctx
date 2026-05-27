@@ -6,6 +6,7 @@ from stag.ext.base import CliCommand, Extension, ExtensionBase, InitContext, Vio
 
 # Built-in extensions. (name -> "module:Class")
 _BUILTIN: dict[str, str] = {
+    "command": "stag.ext.command:CommandExtension",
     "git": "stag.ext.git:GitExtension",
 }
 

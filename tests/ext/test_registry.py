@@ -2,15 +2,23 @@
 
 import pytest
 
-from stag.ext import Extension, ExtensionBase, list_available, load_extension
-from stag.core.schema.requirements import Requirement
 from stag.core.run import init
+from stag.core.schema.requirements import Requirement
+from stag.ext import Extension, ExtensionBase, list_available, load_extension
 
 
 def test_registry_starts_empty_or_minimal():
     avail = list_available()
     assert isinstance(avail, list)
+    assert "command" in avail
     assert "git" in avail
+
+
+def test_load_command_extension():
+    ext = load_extension("command")
+    assert ext.name == "command"
+    assert ext.version == "0.1"
+    assert ext.default_aliases()["cmd"] == "command run"
 
 
 def test_load_git_extension():
@@ -48,7 +56,7 @@ def test_extension_base_defaults():
 
 
 def test_third_party_discovery():
-    from unittest.mock import patch, MagicMock
+    from unittest.mock import MagicMock, patch
 
     mock_ep = MagicMock()
     mock_ep.name = "myext"

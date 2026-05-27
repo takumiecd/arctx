@@ -19,10 +19,16 @@ class ExtensionAwareStore:
         return getattr(self._store, name)
 
     def load_run(self, run_id: str):
+        from stag.ext import load_extension
+        from stag.ext.enabled import load_enabled
+
+        run_path = self._store.run_path(run_id)
+        for item in load_enabled(run_path):
+            load_extension(item.name).register_schema()
         handle = self._store.load_run(run_id)
         from stag.ext import attach_enabled_extensions
 
-        attach_enabled_extensions(handle, self._store.run_path(run_id))
+        attach_enabled_extensions(handle, run_path)
         return handle
 
 
