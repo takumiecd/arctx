@@ -66,6 +66,13 @@ def attach_standard_extensions(handle):
     return attach_extensions(handle, _STANDARD_EXTENSIONS)
 
 
+def register_standard_cli(subparsers) -> None:
+    """Register CLI namespaces provided by standard extensions."""
+    for name in _STANDARD_EXTENSIONS:
+        ext = load_extension(name)
+        ext.register_cli(subparsers)
+
+
 def attach_enabled_extensions(handle, run_dir: str | Path):
     """Attach extensions recorded in a run directory's extensions.json."""
     from stag.ext.enabled import load_enabled
@@ -83,4 +90,5 @@ __all__ = [
     "attach_standard_extensions",
     "load_extension",
     "list_available",
+    "register_standard_cli",
 ]

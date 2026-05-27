@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import stag.cli.alias as alias_mod
-import stag.cli.main as main_mod
+import stag.cli.commands.git as git_cmd_mod
 from stag.cli.main import main, parse_args
 
 
@@ -24,7 +24,7 @@ def test_git_commit_shortcut_alias_routes_to_canonical_namespace(tmp_path):
 
     with (
         patch.object(alias_mod, "_user_alias_path", return_value=user_toml),
-        patch.object(main_mod, "cli_git", return_value=0) as cli_git,
+        patch.object(git_cmd_mod, "cli_git", return_value=0) as cli_git,
     ):
         rc = main(["commit", "-m", "msg"])
 

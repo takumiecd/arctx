@@ -92,8 +92,10 @@ class GitExtension(ExtensionBase):
         setattr(handle, self.name, GitNamespace(handle))
 
     def register_cli(self, subparsers: "argparse._SubParsersAction") -> None:
-        # Canonical ``stag git ...`` is registered by the core CLI dispatcher.
-        del subparsers
+        from stag.cli.commands.git import add_parser, cli_git
+
+        parser = add_parser(subparsers)
+        parser.set_defaults(_stag_handler=cli_git)
 
     def default_aliases(self) -> dict[str, str]:
         return {

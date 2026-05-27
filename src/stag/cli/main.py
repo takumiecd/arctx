@@ -17,8 +17,6 @@ from stag.cli.commands.dump import add_parser as add_dump_parser
 from stag.cli.commands.dump import cli_dump
 from stag.cli.commands.ext import add_parser as add_ext_parser
 from stag.cli.commands.ext import cli_ext
-from stag.cli.commands.git import add_parser as add_git_parser
-from stag.cli.commands.git import cli_git
 from stag.cli.commands.graph import add_parser as add_graph_parser
 from stag.cli.commands.graph import cli_graph
 from stag.cli.commands.guide import add_parser as add_guide_parser
@@ -71,7 +69,6 @@ def _build_parser() -> argparse.ArgumentParser:
     add_current_parser(subparsers)
     add_ext_parser(subparsers)
     add_dump_parser(subparsers)
-    add_git_parser(subparsers)
     add_graph_parser(subparsers)
     add_guide_parser(subparsers)
     add_init_parser(subparsers)
@@ -90,6 +87,10 @@ def _build_parser() -> argparse.ArgumentParser:
     add_use_parser(subparsers)
     add_view_parser(subparsers)
     add_work_session_parser(subparsers)
+
+    from stag.ext import register_standard_cli  # noqa: PLC0415
+
+    register_standard_cli(subparsers)
 
     return parser
 
@@ -197,6 +198,9 @@ def main(argv: list[str] | None = None) -> int:
     # ---
 
     args = parse_args(tokens)
+    handler = getattr(args, "_stag_handler", None)
+    if handler is not None:
+        return handler(args)
 
     if args.command == "alias":
         return cli_alias(args)
@@ -208,8 +212,6 @@ def main(argv: list[str] | None = None) -> int:
         return cli_dump(args)
     if args.command == "ext":
         return cli_ext(args)
-    if args.command == "git":
-        return cli_git(args)
     if args.command == "graph":
         return cli_graph(args)
     if args.command == "guide":
