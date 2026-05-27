@@ -20,6 +20,10 @@ findings.jsonl
 requirements.json
 run.json
 
+# Package build artifacts
+dist/
+*.egg-info/
+
 # IDE / Agent state directories
 .claude/
 .antigravitycli/
