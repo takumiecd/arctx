@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from stag.cli.commands.init import run_init_command
-from stag.ext.git.cli.hook import run_hook_install, run_hook_post_merge
 from stag.cli.context import resolve_store
+from stag.ext.git.cli.hook import run_hook_install, run_hook_post_merge
 
 
 def _store_dir(tmp_path: Path) -> str:
@@ -56,7 +54,7 @@ class TestHookInstallPostMerge:
         result = run_hook_install(repo_path=repo, force=True)
         assert result["status"] == "installed"
         content = (hooks_dir / "post-merge").read_text()
-        assert "stag hook post-merge" in content
+        assert "stag git hook post-merge" in content
 
 
 class TestRunHookPostMerge:
@@ -75,13 +73,12 @@ class TestRunHookPostMerge:
     def test_skip_already_known_sha(self, tmp_path):
         """If HEAD sha is already in stag, action is skip."""
         from stag.ext.git.cli.commit import run_commit_command
-        from stag.core.schema.work_helpers import make_session_pointer_event
 
         _init_stag(tmp_path, run_id="run_pm_known")
         sd = _store_dir(tmp_path)
 
         # Record a commit in stag with a known sha.
-        r = run_commit_command(
+        run_commit_command(
             message="known",
             branch="main",
             run_id="run_pm_known",
@@ -103,16 +100,15 @@ class TestRunHookPostMerge:
 
     def test_adopt_merge_when_other_node_known(self, tmp_path):
         """When ^2 parent sha is already in stag, adopt creates multi-input transition."""
-        from stag.ext.git.cli.commit import run_commit_command
-        from stag.ext.git.payloads import MergePayload
         from stag.core.schema.work import WorkSession
         from stag.core.schema.work_helpers import make_session_pointer_event
+        from stag.ext.git.cli.commit import run_commit_command
 
         _init_stag(tmp_path, run_id="run_pm_adopt")
         sd = _store_dir(tmp_path)
 
         # Build two branches in stag.
-        r_main = run_commit_command(
+        run_commit_command(
             message="main",
             branch="main",
             run_id="run_pm_adopt",
@@ -140,7 +136,7 @@ class TestRunHookPostMerge:
         handle.run_graph.add_work_event(sp)
         store.save_run(handle)
 
-        r_feat = run_commit_command(
+        run_commit_command(
             message="feat",
             branch="feature",
             run_id="run_pm_adopt",

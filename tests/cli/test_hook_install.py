@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import subprocess
 import stat
+import subprocess
 from pathlib import Path
-
-import pytest
 
 from stag.ext.git.cli.hook import run_hook_install
 
@@ -42,7 +40,7 @@ class TestHookInstall:
         hook_path = Path(result["hook_path"])
         content = hook_path.read_text(encoding="utf-8")
         assert "post-rewrite" in content
-        assert "stag hook post-rewrite" in content
+        assert "stag git hook post-rewrite" in content
 
     def test_skip_when_hook_already_exists(self, tmp_path):
         repo = _init_git_repo(tmp_path / "repo")
@@ -64,7 +62,7 @@ class TestHookInstall:
 
         assert result["status"] == "installed"
         content = hook_path.read_text(encoding="utf-8")
-        assert "stag hook post-rewrite" in content
+        assert "stag git hook post-rewrite" in content
 
     def test_error_when_not_a_git_repo(self, tmp_path):
         non_repo = tmp_path / "not_a_repo"
@@ -82,7 +80,7 @@ class TestHookInstall:
         post_commit_path = repo / ".git" / "hooks" / "post-commit"
         assert post_commit_path.exists()
         content = post_commit_path.read_text(encoding="utf-8")
-        assert "stag hook post-commit" in content
+        assert "stag git hook post-commit" in content
 
     def test_post_commit_hook_is_executable(self, tmp_path):
         repo = _init_git_repo(tmp_path / "repo")

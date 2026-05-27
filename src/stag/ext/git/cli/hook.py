@@ -1,8 +1,8 @@
 """stag CLI hook commands.
 
 Subcommands:
-  stag hook install [--force]  — Install .git/hooks/post-rewrite
-  stag hook post-rewrite <mode> — Process stdin sha_map and call adopt_rewrite
+  stag git hook install [--force]  — Install .git/hooks/post-rewrite
+  stag git hook post-rewrite <mode> — Process stdin sha_map and call adopt_rewrite
 """
 
 from __future__ import annotations
@@ -23,14 +23,14 @@ _POST_REWRITE_HOOK = """\
 # .git/hooks/post-rewrite — stag amend/rebase tracking
 # argv: $1 = "amend" | "rebase"
 # stdin: one line per rewrite: "<old_sha> <new_sha>"
-exec stag hook post-rewrite "$1"
+exec stag git hook post-rewrite "$1"
 """
 
 _POST_COMMIT_HOOK = """\
 #!/usr/bin/env bash
 # .git/hooks/post-commit — stag revert/cherry-pick fallback tracking
 # Detects bare git revert / cherry-pick and records a stag transition.
-exec stag hook post-commit
+exec stag git hook post-commit
 """
 
 _POST_MERGE_HOOK = """\
@@ -39,7 +39,7 @@ _POST_MERGE_HOOK = """\
 # Detects a bare `git merge` (not driven by stag merge) and attempts to
 # adopt the merge commit into the stag graph.
 # argv: $1 = 1 if squash merge, 0 otherwise
-exec stag hook post-merge "$1"
+exec stag git hook post-merge "$1"
 """
 
 
