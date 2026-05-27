@@ -43,10 +43,7 @@ def _config_path() -> Path:
     return resolve_stag_home() / "config.json"
 
 
-def resolve_run_id(
-    run_id: str | None,
-    store_dir: str,
-) -> str:
+def resolve_run_id(run_id: str | None) -> str:
     """Resolve a run identifier using the canonical fallback chain.
 
     1. Explicit *run_id* if provided.
@@ -78,7 +75,7 @@ def resolve_run_id(
     )
 
 
-def resolve_user_id(user_id: str | None, store_dir: str) -> str:
+def resolve_user_id(user_id: str | None) -> str:
     """Resolve user attribution for mutating commands."""
     if user_id:
         return user_id
@@ -94,7 +91,7 @@ def resolve_user_id(user_id: str | None, store_dir: str) -> str:
     return "user"
 
 
-def resolve_work_session_id(work_session_id: str | None, store_dir: str) -> str:
+def resolve_work_session_id(work_session_id: str | None) -> str:
     """Resolve work-session attribution for mutating commands."""
     if work_session_id:
         return work_session_id

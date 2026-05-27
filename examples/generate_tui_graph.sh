@@ -50,4 +50,4 @@ stag git commit --run "$RUN_ID" -m "Exp C: Optimize cache hits" > /dev/null
 write_change optimize.py "# attempt: final polish"
 stag git commit --run "$RUN_ID" -m "Exp C: Final Polish (10x speedup!)" > /dev/null
 
-echo "Graph generation complete! Run 'stag tui --run demo_tui' to view it."
+echo "Graph generation complete! Run 'stag-tui --run demo_tui' to view it."

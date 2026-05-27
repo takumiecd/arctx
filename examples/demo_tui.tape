@@ -26,7 +26,7 @@ Enter
 
 Type "# 2. Open the TUI to visualize the graph"
 Enter
-Type "stag tui"
+Type "stag-tui"
 Enter
 Sleep 2.5s
 

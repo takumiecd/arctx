@@ -105,7 +105,7 @@ def test_resolve_run_id_from_stag_id(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
     monkeypatch.delenv("STAG_RUN_ID", raising=False)
 
-    result = resolve_run_id(None, _store_dir(tmp_path))
+    result = resolve_run_id(None)
     assert result == "run_from_stag_id"
 
 
@@ -115,7 +115,7 @@ def test_resolve_run_id_explicit_takes_priority(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
     monkeypatch.delenv("STAG_RUN_ID", raising=False)
 
-    result = resolve_run_id("explicit_run", _store_dir(tmp_path))
+    result = resolve_run_id("explicit_run")
     assert result == "explicit_run"
 
 
@@ -125,7 +125,7 @@ def test_resolve_run_id_env_takes_priority_over_stag_id(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
     monkeypatch.setenv("STAG_RUN_ID", "run_from_env")
 
-    result = resolve_run_id(None, _store_dir(tmp_path))
+    result = resolve_run_id(None)
     assert result == "run_from_env"
 
 
@@ -135,7 +135,7 @@ def test_resolve_run_id_raises_when_no_stag_id(tmp_path, monkeypatch):
     monkeypatch.delenv("STAG_RUN_ID", raising=False)
 
     with pytest.raises(RuntimeError, match="no current run set"):
-        resolve_run_id(None, _store_dir(tmp_path))
+        resolve_run_id(None)
 
 
 # ---------------------------------------------------------------------------

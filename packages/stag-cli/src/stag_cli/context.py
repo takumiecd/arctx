@@ -25,14 +25,14 @@ def resolve_run_id_from_args(args) -> str:
     Reads the ``--run`` flag and falls back to the env var and the
     ``<gitdir>/stag-id`` pointer.
     """
-    return resolve_run_id(getattr(args, "run", None), args.store_dir)
+    return resolve_run_id(getattr(args, "run", None))
 
 
 def resolve_user_id_from_args(args) -> str:
     """Resolve user attribution from parsed CLI args."""
-    return resolve_user_id(getattr(args, "user", None), args.store_dir)
+    return resolve_user_id(getattr(args, "user", None))
 
 
 def resolve_work_session_id_from_args(args) -> str:
     """Resolve work-session attribution from parsed CLI args."""
-    return resolve_work_session_id(getattr(args, "work_session", None), args.store_dir)
+    return resolve_work_session_id(getattr(args, "work_session", None))
