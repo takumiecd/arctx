@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "arctx-api"
+name = "arctx"
 version = "0.2.0b2"
-description = "ARCTX API: core + storage + ext for optimization and problem-solving workflows"
+description = "ARCTX: append-only DAG for thought, work context, and parallel exploration"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

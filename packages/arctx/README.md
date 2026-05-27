@@ -1,11 +1,11 @@
-# arctx-api
+# arctx
 
 Python API for ARCTX (Arc + Context) — records the process of optimization and problem-solving.
 
 ## Installation
 
 ```bash
-pip install arctx-api
+pip install arctx
 ```
 
 ## Usage

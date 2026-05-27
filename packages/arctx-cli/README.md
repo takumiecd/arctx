@@ -8,7 +8,7 @@ Command-line interface and TUI for ARCTX (Arc + Context).
 pip install arctx-cli
 ```
 
-This also installs `arctx-api` as a dependency.
+This also installs `arctx` as a dependency.
 
 ## Usage
 
@@ -20,4 +20,4 @@ arctx dump
 
 ## Package layout
 
-This package provides the `arctx` CLI command and TUI. The core API is in the separate `arctx-api` package.
+This package provides the `arctx` CLI command and TUI. The core API is in the separate `arctx` package.

@@ -7,4 +7,4 @@ pip install arctx-tui
 arctx-tui --help
 ```
 
-Depends on `arctx-api` and `textual`. Does not require `arctx-cli`.
+Depends on `arctx` and `textual`. Does not require `arctx-cli`.

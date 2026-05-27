@@ -159,7 +159,7 @@ register_payload_decoder("myext_experiment", _experiment_from_dict)
 [project]
 name = "my-arctx-ext"
 version = "0.1.0"
-dependencies = ["arctx-api>=0.2"]
+dependencies = ["arctx>=0.2"]
 
 [project.entry-points."arctx.extensions"]
 myext = "my_arctx_ext.extension:MyExtension"

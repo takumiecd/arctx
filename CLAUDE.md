@@ -4,18 +4,18 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## Commands
 
-The packages are usually not installed during local development. Use `PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src:packages/arctx-tui/src`.
+The packages are usually not installed during local development. Use `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src`.
 
 This repo contains three packages:
-- `arctx-api` (import name `arctx`) — core API, payloads, extensions. See `packages/arctx-api/`.
-- `arctx-cli` (import name `arctx_cli`, provides the `arctx` command) — argparse CLI. See `packages/arctx-cli/`. Depends only on `arctx-api`.
-- `arctx-tui` (import name `arctx_tui`, provides the `arctx-tui` command) — Textual TUI. See `packages/arctx-tui/`. Depends only on `arctx-api` and `textual`. Install separately: `pip install arctx-tui`.
+- `arctx` (import name `arctx`) — core API, payloads, extensions. See `packages/arctx/`.
+- `arctx-cli` (import name `arctx_cli`, provides the `arctx` command) — argparse CLI. See `packages/arctx-cli/`. Depends only on `arctx`.
+- `arctx-tui` (import name `arctx_tui`, provides the `arctx-tui` command) — Textual TUI. See `packages/arctx-tui/`. Depends only on `arctx` and `textual`. Install separately: `pip install arctx-tui`.
 
-- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src:packages/arctx-tui/src python3 -m pytest packages/arctx-api/tests packages/arctx-cli/tests packages/arctx-tui/tests --import-mode=importlib -q`
-- Run one test file: `PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src python3 -m pytest packages/arctx-api/tests/core/test_run_api.py -q`
-- CLI: `PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src python3 -m arctx_cli.main <subcommand> ...`
-- TUI (requires textual installed): `PYTHONPATH=packages/arctx-api/src:packages/arctx-tui/src python3 -m arctx_tui.main`
-- Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/arctx-api/src packages/arctx-cli/src packages/arctx-tui/src`
+- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src python3 -m pytest packages/arctx/tests packages/arctx-cli/tests packages/arctx-tui/tests --import-mode=importlib -q`
+- Run one test file: `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m pytest packages/arctx/tests/core/test_run_api.py -q`
+- CLI: `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m arctx_cli.main <subcommand> ...`
+- TUI (requires textual installed): `PYTHONPATH=packages/arctx/src:packages/arctx-tui/src python3 -m arctx_tui.main`
+- Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/arctx/src packages/arctx-cli/src packages/arctx-tui/src`
 
 Docs are Japanese-first and should match the current implementation:
 
@@ -33,14 +33,14 @@ This project is `0.2.0b2` beta. Breaking changes are acceptable and expected. Do
 
 ARCTX records the process of optimization/problem-solving. It is not a planner, executor, benchmark runner, or general agent framework.
 
-The current core model is **a single RunGraph plus attached payloads**. Pure graph records carry no domain data; everything domain-specific is on Payload records. Core is standalone; git integration is the standard extension in `packages/arctx-api/src/arctx/ext/git/`.
+The current core model is **a single RunGraph plus attached payloads**. Pure graph records carry no domain data; everything domain-specific is on Payload records. Core is standalone; git integration is the standard extension in `packages/arctx/src/arctx/ext/git/`.
 
-Pure graph records (`packages/arctx-api/src/arctx/core/schema/graph.py`):
+Pure graph records (`packages/arctx/src/arctx/core/schema/graph.py`):
 
 - `Node`: pure DAG node
 - `Transition`: connects many input nodes to exactly one output node (`input_node_ids: tuple[str, ...]`, `output_node_id: str`). Fan-out is represented as sibling Transitions sharing the same input nodes.
 
-Container (`packages/arctx-api/src/arctx/core/run_graph.py`):
+Container (`packages/arctx/src/arctx/core/run_graph.py`):
 
 - `RunGraph`: holds all nodes / transitions / payloads / views, plus reverse-lookup indices
 - `GraphView`: lightweight named label anchored to a root node; contents derived at read time via reachability
@@ -51,7 +51,7 @@ Avoid reintroducing `Dag`, `StateNode`, `ExecutionPlan`, `PredictionPlan`, `Obse
 
 ## Payloads
 
-Two-tier design. Core payloads live under `packages/arctx-api/src/arctx/core/schema/payloads.py`; extension payloads live with their extension.
+Two-tier design. Core payloads live under `packages/arctx/src/arctx/core/schema/payloads.py`; extension payloads live with their extension.
 
 **Generic payloads** (use `type` string to distinguish purpose):
 - `NodePayload(payload_id, target_id, type, content={}, metadata={})` — any node annotation
@@ -61,7 +61,7 @@ Two-tier design. Core payloads live under `packages/arctx-api/src/arctx/core/sch
 - `CutPayload(payload_id, target_id, target_kind, reason=None)` — append-only cut marker
 - `JoinPayload(payload_id, target_id, joined_views)` — transition-targeting marker for a multi-input transition that joins independent histories with no common ancestor (extension-agnostic; `target_kind="transition"`)
 
-**Git extension payloads** (`packages/arctx-api/src/arctx/ext/git/payloads.py`):
+**Git extension payloads** (`packages/arctx/src/arctx/ext/git/payloads.py`):
 - `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=())` — git record on a Transition
 - `BranchPayload`, `MergePayload`, `RevertPayload`, `CherryPickPayload`
 
@@ -73,9 +73,9 @@ Old payload types `PlanPayload`, `PredictionPayload`, `ResultPayload`, `NotePayl
 
 ## RunHandle
 
-`RunHandle` is defined in `packages/arctx-api/src/arctx/core/run/handle.py` and binds verb implementations from sibling modules.
+`RunHandle` is defined in `packages/arctx/src/arctx/core/run/handle.py` and binds verb implementations from sibling modules.
 
-Public verbs (each implemented in `packages/arctx-api/src/arctx/core/run/<verb>.py`):
+Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`):
 
 - `transition(input_node_ids, payload, *, user_id=None, work_session_id=None) -> Transition` — create one Transition and one output Node from input nodes; `payload` must be transition-targeting
 - `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
@@ -94,7 +94,7 @@ Git verbs are extension verbs under `handle.git`: `handle.git.commit(...)`,
 `handle.git.reset(...)`, `handle.git.merge(...)`, and `handle.git.verify(...)`.
 Do not add top-level `handle.commit` / `handle.verify` compatibility shims.
 
-When adding a new RunHandle method, implement it in a focused `packages/arctx-api/src/arctx/core/run/<verb>.py` module and bind it in `handle.py`.
+When adding a new RunHandle method, implement it in a focused `packages/arctx/src/arctx/core/run/<verb>.py` module and bind it in `handle.py`.
 
 ## CLI
 
@@ -150,7 +150,7 @@ The `workflows/`, `domains/`, `execution/`, and `search/` packages are scaffoldi
 
 Useful flags: `--node`, `--depth`, `--full-payloads`.
 
-Renderer code: `packages/arctx-api/src/arctx/core/run/dump.py`. Tests: `packages/arctx-api/tests/core/test_dump.py`.
+Renderer code: `packages/arctx/src/arctx/core/run/dump.py`. Tests: `packages/arctx/tests/core/test_dump.py`.
 
 ## IDs
 
@@ -171,7 +171,7 @@ IDs are opaque and collision-resistant (`n_<uuid>`, `t_<uuid>`, `pl_<uuid>`). Do
 
 Cut is append-only. It attaches a `CutPayload` to a Node or Transition; it does not delete records.
 
-Activity is computed at read time in `packages/arctx-api/src/arctx/core/cuts.py`:
+Activity is computed at read time in `packages/arctx/src/arctx/core/cuts.py`:
 
 - A `CutPayload` on a Node makes that node and all downstream Transitions and Nodes inactive.
 - A `CutPayload` on a Transition makes that Transition and its output Node (and descendants) inactive.

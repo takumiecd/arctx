@@ -21,7 +21,7 @@ fi
 cat > "$DEMO_HOME/.bashrc" <<BASHRC
 export PS1=\$'\[\e[1;36m\]~/arctx-demo\[\e[0m\] \[\e[1;32m\]❯\[\e[0m\] '
 export PROMPT_COMMAND=''
-export PYTHONPATH=$ARCTX_PROJECT_ROOT/packages/arctx-api/src:$ARCTX_PROJECT_ROOT/packages/arctx-cli/src:$ARCTX_PROJECT_ROOT/packages/arctx-tui/src
+export PYTHONPATH=$ARCTX_PROJECT_ROOT/packages/arctx/src:$ARCTX_PROJECT_ROOT/packages/arctx-cli/src:$ARCTX_PROJECT_ROOT/packages/arctx-tui/src
 export ARCTX_HOME=$DEMO_HOME/.arctx
 export PATH="$PATH"
 cd "$DEMO_HOME/scratch" 2>/dev/null || true
@@ -29,7 +29,7 @@ BASHRC
 
 export HOME="$DEMO_HOME"
 export ARCTX_HOME="$DEMO_HOME/.arctx"
-export PYTHONPATH="$ARCTX_PROJECT_ROOT/packages/arctx-api/src:$ARCTX_PROJECT_ROOT/packages/arctx-cli/src:$ARCTX_PROJECT_ROOT/packages/arctx-tui/src"
+export PYTHONPATH="$ARCTX_PROJECT_ROOT/packages/arctx/src:$ARCTX_PROJECT_ROOT/packages/arctx-cli/src:$ARCTX_PROJECT_ROOT/packages/arctx-tui/src"
 export PS1=$'\[\e[1;36m\]~/arctx-demo\[\e[0m\] \[\e[1;32m\]❯\[\e[0m\] '
 export PROMPT_COMMAND=''
 unset VIRTUAL_ENV_PROMPT

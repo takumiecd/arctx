@@ -6,11 +6,11 @@
 
 | パッケージ | インストール | インポート | 用途 |
 |-----------|------------|----------|------|
-| `arctx-api` | `pip install arctx-api` | `import arctx` | コア API・ストレージ・拡張 (CLI/TUI 依存なし) |
+| `arctx` | `pip install arctx` | `import arctx` | コア API・ストレージ・拡張 (CLI/TUI 依存なし) |
 | `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` コマンド・argparse CLI |
 | `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | `arctx-tui` コマンド・Textual TUI |
 
-`arctx-cli` と `arctx-tui` はそれぞれ `arctx-api` に依存しますが、互いには依存しません。必要なものだけインストールしてください。
+`arctx-cli` と `arctx-tui` はそれぞれ `arctx` に依存しますが、互いには依存しません。必要なものだけインストールしてください。
 
 ```python
 import arctx as arctx

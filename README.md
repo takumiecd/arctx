@@ -6,11 +6,11 @@ This repository distributes three packages:
 
 | Package | Install | Import | Purpose |
 |---------|---------|--------|---------|
-| `arctx-api` | `pip install arctx-api` | `import arctx` | Core API, storage, extensions (no CLI/TUI deps) |
+| `arctx` | `pip install arctx` | `import arctx` | Core API, storage, extensions (no CLI/TUI deps) |
 | `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` command, argparse CLI |
 | `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | `arctx-tui` command, Textual TUI |
 
-`arctx-cli` and `arctx-tui` both depend on `arctx-api` but not on each other. Install only what you need.
+`arctx-cli` and `arctx-tui` both depend on `arctx` but not on each other. Install only what you need.
 
 ```python
 import arctx as arctx

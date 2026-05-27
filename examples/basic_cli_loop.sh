@@ -7,7 +7,7 @@
 set -euo pipefail
 
 export PYTHONDONTWRITEBYTECODE=1
-export PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src:packages/arctx-tui/src
+export PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src
 
 RUN_ID="demo_loop"
 STORE_DIR="${STORE_DIR:-/tmp/arctx_demo_runs}"
