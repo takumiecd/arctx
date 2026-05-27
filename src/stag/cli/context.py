@@ -9,6 +9,24 @@ from pathlib import Path
 from stag.cli.paths import find_repo_root, read_stag_id, resolve_stag_home
 
 
+class ExtensionAwareStore:
+    """Store adapter that attaches extension namespaces after loading a run."""
+
+    def __init__(self, store):
+        self._store = store
+
+    def __getattr__(self, name: str):
+        return getattr(self._store, name)
+
+    def load_run(self, run_id: str):
+        handle = self._store.load_run(run_id)
+        from stag.ext import attach_enabled_extensions, attach_standard_extensions
+
+        attach_standard_extensions(handle)
+        attach_enabled_extensions(handle, self._store.run_path(run_id))
+        return handle
+
+
 def resolve_run_id(
     run_id: str | None,
     store_dir: str,
@@ -130,8 +148,8 @@ def resolve_store(store_dir: str | None):
 
     if backend == "jsonl":
         from stag.storage.jsonl import JsonlRunStore  # noqa: PLC0415
-        return JsonlRunStore(store_dir)
+        return ExtensionAwareStore(JsonlRunStore(store_dir))
     if backend == "sqlite":
         from stag.storage.sqlite import SqliteRunStore  # noqa: PLC0415
-        return SqliteRunStore(store_dir)
+        return ExtensionAwareStore(SqliteRunStore(store_dir))
     raise RuntimeError(f"unknown store backend: {backend!r}. Expected 'jsonl' or 'sqlite'.")

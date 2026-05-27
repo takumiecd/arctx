@@ -1,10 +1,14 @@
 import importlib.metadata
+from pathlib import Path
+from typing import Iterable
 
-from stag.ext.base import Extension, ExtensionBase, Violation, InitContext
+from stag.ext.base import Extension, ExtensionBase, InitContext, Violation
+
 # Built-in extensions. (name -> "module:Class")
 _BUILTIN: dict[str, str] = {
     "git": "stag.ext.git:GitExtension",
 }
+_STANDARD_EXTENSIONS: tuple[str, ...] = ("git",)
 
 def _get_entry_points() -> dict[str, importlib.metadata.EntryPoint]:
     try:
@@ -44,11 +48,39 @@ def load_extension(name: str) -> Extension:
     raise KeyError(f"unknown extension: {name!r}. Available: {list_available()}")
 
 
+def attach_extensions(handle, names: Iterable[str]):
+    """Register extension schemas and verb namespaces on a handle."""
+    seen: set[str] = set()
+    for name in names:
+        if name in seen:
+            continue
+        ext = load_extension(name)
+        ext.register_schema()
+        ext.register_verbs(handle)
+        seen.add(ext.name)
+    return handle
+
+
+def attach_standard_extensions(handle):
+    """Attach built-in extensions that ship as part of the default package API."""
+    return attach_extensions(handle, _STANDARD_EXTENSIONS)
+
+
+def attach_enabled_extensions(handle, run_dir: str | Path):
+    """Attach extensions recorded in a run directory's extensions.json."""
+    from stag.ext.enabled import load_enabled
+
+    return attach_extensions(handle, (item.name for item in load_enabled(run_dir)))
+
+
 __all__ = [
     "Extension",
     "ExtensionBase",
     "Violation",
     "InitContext",
+    "attach_enabled_extensions",
+    "attach_extensions",
+    "attach_standard_extensions",
     "load_extension",
     "list_available",
 ]

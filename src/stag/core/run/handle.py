@@ -141,18 +141,15 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 
 
 # Bind verb implementations.
-from stag.core.run.transition import transition_impl as _transition_impl  # noqa: E402
-from stag.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from stag.core.run.anchor import anchor_impl as _anchor_impl  # noqa: E402
-from stag.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
+from stag.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from stag.core.run.cut import cut_impl as _cut_impl  # noqa: E402
+from stag.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from stag.core.run.trace import trace_impl as _trace_impl  # noqa: E402
-from stag.core.run.view import (  # noqa: E402
-    view_create_impl as _view_create_impl,
-    view_list_impl as _view_list_impl,
-    view_show_impl as _view_show_impl,
-)
-from stag.ext.git import GitNamespace  # noqa: E402
+from stag.core.run.transition import transition_impl as _transition_impl  # noqa: E402
+from stag.core.run.view import view_create_impl as _view_create_impl  # noqa: E402
+from stag.core.run.view import view_list_impl as _view_list_impl  # noqa: E402
+from stag.core.run.view import view_show_impl as _view_show_impl  # noqa: E402
 
 RunHandle.transition = _transition_impl
 RunHandle.attach = _attach_impl
@@ -164,4 +161,3 @@ RunHandle.outcomes = _outcomes_impl
 RunHandle.view_create = _view_create_impl
 RunHandle.view_list = _view_list_impl
 RunHandle.view_show = _view_show_impl
-RunHandle.git = property(lambda self: GitNamespace(self))  # type: ignore[attr-defined]
