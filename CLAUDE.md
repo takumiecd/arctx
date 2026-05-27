@@ -4,14 +4,18 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## Commands
 
-The packages are usually not installed during local development. Use `PYTHONPATH=packages/stag-api/src:packages/stag-cli/src`.
+The packages are usually not installed during local development. Use `PYTHONPATH=packages/stag-api/src:packages/stag-cli/src:packages/stag-tui/src`.
 
-This repo contains two packages: `stag-api` (import name `stag_api`) and `stag-cli` (import name `stag_cli`, provides the `stag` command). See `packages/stag-api/` and `packages/stag-cli/`.
+This repo contains three packages:
+- `stag-api` (import name `stag_api`) — core API, payloads, extensions. See `packages/stag-api/`.
+- `stag-cli` (import name `stag_cli`, provides the `stag` command) — argparse CLI. See `packages/stag-cli/`. Depends only on `stag-api`.
+- `stag-tui` (import name `stag_tui`, provides the `stag-tui` command) — Textual TUI. See `packages/stag-tui/`. Depends only on `stag-api` and `textual`. Install separately: `pip install stag-tui`.
 
-- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/stag-api/src:packages/stag-cli/src python3 -m pytest packages/stag-api/tests packages/stag-cli/tests -q`
+- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/stag-api/src:packages/stag-cli/src:packages/stag-tui/src python3 -m pytest packages/stag-api/tests packages/stag-cli/tests packages/stag-tui/tests --import-mode=importlib -q`
 - Run one test file: `PYTHONPATH=packages/stag-api/src:packages/stag-cli/src python3 -m pytest packages/stag-api/tests/core/test_run_api.py -q`
 - CLI: `PYTHONPATH=packages/stag-api/src:packages/stag-cli/src python3 -m stag_cli.main <subcommand> ...`
-- Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/stag-api/src packages/stag-cli/src`
+- TUI (requires textual installed): `PYTHONPATH=packages/stag-api/src:packages/stag-tui/src python3 -m stag_tui.main`
+- Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/stag-api/src packages/stag-cli/src packages/stag-tui/src`
 
 Docs are Japanese-first and should match the current implementation:
 
@@ -115,7 +119,7 @@ Current commands:
 - `migrate` — convert a jsonl run dir to sqlite
 - `sync` — sync helpers
 
-Deleted commands: `plan`, `predict`, `observe`, `note`.
+Deleted commands: `plan`, `predict`, `observe`, `note`, `tui` (moved to standalone `stag-tui` command).
 
 Git shortcut commands such as `stag commit`, `stag verify`, `stag branch`,
 `stag reset`, and `stag hook` are alias-layer shortcuts that resolve to

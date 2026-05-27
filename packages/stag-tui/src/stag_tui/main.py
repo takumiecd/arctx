@@ -1,16 +1,15 @@
-"""stag CLI tui command."""
+"""stag-tui command entry point."""
 
 from __future__ import annotations
 
 import argparse
-import importlib.util
-import sys
 
-from stag_cli.context import resolve_store
+from stag_api.session import resolve_store
+from stag_tui.app import StagApp
 
 
-def add_parser(subparsers) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("tui", help="Launch the Textual UI")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="stag-tui", description="Launch the STAG TUI")
     parser.add_argument("--store-dir", default=None)
     parser.add_argument(
         "--watch-interval",
@@ -23,16 +22,12 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         action="store_true",
         help="Disable automatic refresh checks",
     )
-    return parser
-
-
-def cli_tui(args) -> int:
-    if importlib.util.find_spec("textual") is None:
-        print("Error: 'textual' required. pip install textual", file=sys.stderr)
-        return 1
-    from stag_cli.tui.app import StagApp
-
+    args = parser.parse_args(argv)
     store = resolve_store(args.store_dir)
     watch_interval = None if args.no_watch else args.watch_interval
     StagApp(store=store, watch_interval=watch_interval).run()
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

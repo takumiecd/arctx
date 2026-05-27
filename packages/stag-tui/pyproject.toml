@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "stag-cli"
+name = "stag-tui"
 version = "0.2.0b1"
-description = "STAG CLI: command-line interface for stag-api"
+description = "STAG TUI: Textual interface for stag-api"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "stag-api>=0.2.0b1",
+    "textual>=0.80",
 ]
 
 [project.optional-dependencies]
@@ -35,14 +36,14 @@ dev = [
 ]
 
 [project.scripts]
-stag = "stag_cli.main:main"
+stag-tui = "stag_tui.main:main"
 
 [project.urls]
 Homepage = "https://github.com/takumiecd/stag"
 Repository = "https://github.com/takumiecd/stag"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/stag_cli"]
+packages = ["src/stag_tui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

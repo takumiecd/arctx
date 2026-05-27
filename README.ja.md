@@ -2,14 +2,15 @@
 
 ## パッケージ構成
 
-このリポジトリは 2 つのパッケージを配布します：
+このリポジトリは 3 つのパッケージを配布します：
 
 | パッケージ | インストール | インポート | 用途 |
 |-----------|------------|----------|------|
-| `stag-api` | `pip install stag-api` | `import stag_api` | コア API・ストレージ・拡張 (CLI 依存なし) |
-| `stag-cli` | `pip install stag-cli` | `import stag_cli` | `stag` コマンド・TUI・CLI コマンド |
+| `stag-api` | `pip install stag-api` | `import stag_api` | コア API・ストレージ・拡張 (CLI/TUI 依存なし) |
+| `stag-cli` | `pip install stag-cli` | `import stag_cli` | `stag` コマンド・argparse CLI |
+| `stag-tui` | `pip install stag-tui` | `import stag_tui` | `stag-tui` コマンド・Textual TUI |
 
-`stag-cli` は `stag-api` に依存します。`stag` コマンドを使うには `stag-cli` をインストールしてください。
+`stag-cli` と `stag-tui` はそれぞれ `stag-api` に依存しますが、互いには依存しません。必要なものだけインストールしてください。
 
 ```python
 import stag_api as stag
@@ -80,7 +81,7 @@ stag init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py
 stag git commit -m "baseline"
 
-stag tui                              # DAG をインタラクティブに探索
+stag-tui                              # DAG をインタラクティブに探索 (stag-tui が必要)
 stag graph dump --format outline      # もしくは LLM 向け outline でダンプ
 ```
 
@@ -164,7 +165,7 @@ RunGraph
 | `stag payload add` | 既存 Node / Transition に payload を attach。 |
 | `stag graph dump --format outline` | LLM 向けの indented spanning-tree でダンプ。 |
 | `stag graph dump --format mermaid` | 人間/ドキュメント向け Mermaid flowchart。 |
-| `stag tui` | 3-pane (Runs / Flowchart / Detail) のインタラクティブ TUI。 |
+| `stag-tui` | 3-pane (Runs / Flowchart / Detail) のインタラクティブ TUI。`pip install stag-tui` で追加。 |
 | `stag cut node <id>` | Node (とその下流) を inactive に。append-only。 |
 | `stag guide` | 概念をインタラクティブに学ぶ (`--lang ja` で日本語)。 |
 

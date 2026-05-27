@@ -2,14 +2,15 @@
 
 ## Packages
 
-This repository distributes two packages:
+This repository distributes three packages:
 
 | Package | Install | Import | Purpose |
 |---------|---------|--------|---------|
-| `stag-api` | `pip install stag-api` | `import stag_api` | Core API, storage, extensions (no CLI deps) |
-| `stag-cli` | `pip install stag-cli` | `import stag_cli` | `stag` command, TUI, CLI commands |
+| `stag-api` | `pip install stag-api` | `import stag_api` | Core API, storage, extensions (no CLI/TUI deps) |
+| `stag-cli` | `pip install stag-cli` | `import stag_cli` | `stag` command, argparse CLI |
+| `stag-tui` | `pip install stag-tui` | `import stag_tui` | `stag-tui` command, Textual TUI |
 
-`stag-cli` depends on `stag-api`. Install `stag-cli` to get everything including the `stag` command.
+`stag-cli` and `stag-tui` both depend on `stag-api` but not on each other. Install only what you need.
 
 ```python
 import stag_api as stag
@@ -75,12 +76,13 @@ From inside a git repository:
 
 ```bash
 pip install stag-cli
+pip install stag-tui          # optional: adds standalone stag-tui command
 
 stag init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py
 stag git commit -m "baseline"
 
-stag tui                              # explore the DAG interactively
+stag-tui                              # explore the DAG interactively (requires stag-tui)
 stag graph dump --format outline      # or dump it as an LLM-friendly outline
 ```
 
@@ -164,7 +166,7 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `stag payload add` | Attach a payload to an existing Node / Transition. |
 | `stag graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
 | `stag graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
-| `stag tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). |
+| `stag-tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). Standalone command from `pip install stag-tui`. |
 | `stag cut node <id>` | Mark a Node (and descendants) inactive — append-only. |
 | `stag guide` | Discover concepts interactively. `--lang ja` for Japanese. |
 

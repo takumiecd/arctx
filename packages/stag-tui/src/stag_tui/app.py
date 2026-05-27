@@ -11,9 +11,9 @@ from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import Footer, Label, ListItem, ListView, Markdown
 
-from stag_cli.payload_builder import build_payload
-from stag_cli.tui.detail import build_detail_markdown
-from stag_cli.tui.editor import (
+from stag_api.payload_builder import build_payload
+from stag_tui.detail import build_detail_markdown
+from stag_tui.editor import (
     GitPayloadForm,
     GitPayloadFormData,
     PayloadForm,
@@ -21,8 +21,8 @@ from stag_cli.tui.editor import (
     TransitionForm,
     TransitionFormData,
 )
-from stag_cli.tui.flowchart_view import FlowchartItemClicked, FlowchartView
-from stag_cli.tui.graph_html import render_graph_html
+from stag_tui.flowchart_view import FlowchartItemClicked, FlowchartView
+from stag_tui.graph_html import render_graph_html
 
 
 class StagApp(App):
@@ -134,7 +134,7 @@ class StagApp(App):
 
     def _load_run(self, handle) -> None:
         """Initialize flowchart and detail for a freshly loaded run."""
-        from stag_cli.tui.flowchart import _build_labels
+        from stag_tui.flowchart import _build_labels
         state_labels, plan_labels = _build_labels(handle)
         self._state_labels = state_labels
         self._plan_labels = plan_labels

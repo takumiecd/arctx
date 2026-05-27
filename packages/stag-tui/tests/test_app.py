@@ -38,14 +38,14 @@ def _make_handle():
 
 
 def test_build_detail_markdown_node():
-    from stag_cli.tui.detail import build_detail_markdown
+    from stag_tui.detail import build_detail_markdown
     handle = _make_handle()
     md = build_detail_markdown(handle, {"type": "node", "id": handle.root_node_id}, {}, {})
     assert "Node" in md or "root" in md
 
 
 def test_build_detail_markdown_no_data():
-    from stag_cli.tui.detail import build_detail_markdown
+    from stag_tui.detail import build_detail_markdown
     handle = _make_handle()
     md = build_detail_markdown(handle, None, {}, {})
     assert "Run Overview" in md
@@ -53,8 +53,8 @@ def test_build_detail_markdown_no_data():
 
 def test_build_detail_markdown_transition():
     """type=='transition' now renders transition detail from flowchart click."""
-    from stag_cli.tui.detail import build_detail_markdown
-    from stag_cli.tui.flowchart import _build_labels
+    from stag_tui.detail import build_detail_markdown
+    from stag_tui.flowchart import _build_labels
     handle = _make_handle()
     t_id = list(handle.run_graph.transitions)[0]
     state_labels, plan_labels = _build_labels(handle)
@@ -64,8 +64,8 @@ def test_build_detail_markdown_transition():
 
 def test_build_detail_markdown_node_includes_incoming_section():
     """Non-root node detail should contain an ## Incoming section with transition info."""
-    from stag_cli.tui.detail import build_detail_markdown
-    from stag_cli.tui.flowchart import _build_labels
+    from stag_tui.detail import build_detail_markdown
+    from stag_tui.flowchart import _build_labels
     handle = _make_handle()
     graph = handle.run_graph
     # Pick the first non-root node.
@@ -88,14 +88,14 @@ def test_build_detail_markdown_node_includes_incoming_section():
 
 
 def test_editor_parse_json_object():
-    from stag_cli.tui.editor import _parse_json_object
+    from stag_tui.editor import _parse_json_object
 
     assert _parse_json_object('{"text":"hello"}') == {"text": "hello"}
     assert _parse_json_object("") == {}
 
 
 def test_editor_parse_json_object_rejects_non_object():
-    from stag_cli.tui.editor import _parse_json_object
+    from stag_tui.editor import _parse_json_object
 
     with pytest.raises(ValueError):
         _parse_json_object("[1, 2]")
@@ -105,7 +105,7 @@ def test_app_has_editor_actions_bound():
     import ast
     import pathlib
 
-    src = (pathlib.Path(__file__).parent.parent.parent / "src/stag_cli/tui/app.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src/stag_tui/app.py").read_text()
     tree = ast.parse(src)
     method_names = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
@@ -125,7 +125,7 @@ def test_app_has_auto_refresh_watch_methods():
     import ast
     import pathlib
 
-    src = (pathlib.Path(__file__).parent.parent.parent / "src/stag_cli/tui/app.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src/stag_tui/app.py").read_text()
     tree = ast.parse(src)
     method_names = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
@@ -139,17 +139,17 @@ def test_app_has_auto_refresh_watch_methods():
     assert "watch_interval" in src
 
 
-def test_tui_cli_exposes_watch_flags():
+def test_tui_main_exposes_watch_flags():
     import pathlib
 
-    src = (pathlib.Path(__file__).parent.parent.parent / "src/stag_cli/commands/tui.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src/stag_tui/main.py").read_text()
 
     assert "--watch-interval" in src
     assert "--no-watch" in src
 
 
 def test_editor_payload_type_options_are_target_compatible():
-    from stag_cli.tui.editor import _payload_type_options
+    from stag_tui.editor import _payload_type_options
 
     node_values = {value for _, value in _payload_type_options("node", include_cut=True)}
     transition_values = {
@@ -167,7 +167,7 @@ def test_editor_payload_type_options_are_target_compatible():
 
 
 def test_git_payload_form_data():
-    from stag_cli.tui.editor import GitPayloadFormData
+    from stag_tui.editor import GitPayloadFormData
 
     data = GitPayloadFormData(transition_id="t_1", commits=("HEAD", "abc123"))
     assert data.transition_id == "t_1"
@@ -176,7 +176,7 @@ def test_git_payload_form_data():
 
 @pytest.mark.asyncio
 async def test_git_payload_shortcut_uses_uppercase_g_key():
-    from stag_cli.tui.app import StagApp
+    from stag_tui.app import StagApp
 
     class EmptyStore:
         def list_runs(self):
@@ -204,7 +204,7 @@ async def test_git_payload_shortcut_uses_uppercase_g_key():
 
 def test_render_flowchart_returns_lines():
     """render_flowchart now returns a tuple (lines, regions)."""
-    from stag_cli.tui.flowchart import render_flowchart
+    from stag_tui.flowchart import render_flowchart
     handle = _make_handle()
     result = render_flowchart(handle, handle.root_node_id, depth=2)
     assert isinstance(result, tuple)
@@ -215,7 +215,7 @@ def test_render_flowchart_returns_lines():
 
 
 def test_render_flowchart_unknown_center_uses_root():
-    from stag_cli.tui.flowchart import render_flowchart
+    from stag_tui.flowchart import render_flowchart
     handle = _make_handle()
     lines, regions = render_flowchart(handle, "n_totally_bogus_id", depth=1)
     assert len(lines) > 0
@@ -223,7 +223,7 @@ def test_render_flowchart_unknown_center_uses_root():
 
 def test_flowchart_has_connectors():
     """Flowchart for a 2-layer subgraph should contain connector chars (│ or ─)."""
-    from stag_cli.tui.flowchart import render_flowchart
+    from stag_tui.flowchart import render_flowchart
     handle = _make_handle()
     lines, _ = render_flowchart(handle, handle.root_node_id, depth=2)
     full_text = "\n".join(lines)
@@ -235,7 +235,7 @@ def test_flowchart_has_connectors():
 
 def test_flowchart_click_map_covers_nodes():
     """render_flowchart returns click regions that include at least the root node."""
-    from stag_cli.tui.flowchart import render_flowchart, ClickRegion
+    from stag_tui.flowchart import render_flowchart, ClickRegion
     handle = _make_handle()
     lines, regions = render_flowchart(handle, handle.root_node_id, depth=2)
     assert len(regions) > 0, "Expected at least one click region"
@@ -251,7 +251,7 @@ def test_flowchart_click_map_covers_nodes():
 
 def test_flowchart_click_map_covers_transitions():
     """A graph with one transition has a click region for it."""
-    from stag_cli.tui.flowchart import render_flowchart, ClickRegion
+    from stag_tui.flowchart import render_flowchart, ClickRegion
     handle = _make_handle()
     graph = handle.run_graph
     t_id = list(graph.transitions)[0]
@@ -266,7 +266,7 @@ def test_flowchart_click_map_covers_transitions():
 
 def test_flowchart_click_region_lookup():
     """Simulate a region lookup by directly querying the click map."""
-    from stag_cli.tui.flowchart import render_flowchart
+    from stag_tui.flowchart import render_flowchart
     handle = _make_handle()
     lines, regions = render_flowchart(handle, handle.root_node_id, depth=2)
 
@@ -296,7 +296,7 @@ def test_flowchart_click_region_lookup():
 
 
 def test_render_graph_html():
-    from stag_cli.tui.graph_html import render_graph_html
+    from stag_tui.graph_html import render_graph_html
     handle = _make_handle()
     html = render_graph_html(handle)
     assert "<!DOCTYPE html>" in html
@@ -338,7 +338,7 @@ def test_node_click_calls_set_selected_not_show():
     import ast
     import pathlib
 
-    src = (pathlib.Path(__file__).parent.parent.parent / "src/stag_cli/tui/app.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src/stag_tui/app.py").read_text()
     tree = ast.parse(src)
 
     # Find on_flowchart_item_clicked method body.
@@ -387,7 +387,7 @@ def _make_branching_handle():
 
 def test_flowchart_junctions_use_proper_glyphs():
     """When a node fans out to two transitions, connector junction must use ┴/┬/┌/┐, not └/┘ mid-line."""
-    from stag_cli.tui.flowchart import render_flowchart
+    from stag_tui.flowchart import render_flowchart
 
     handle = _make_branching_handle()
     lines, _ = render_flowchart(handle, handle.root_node_id, depth=2)

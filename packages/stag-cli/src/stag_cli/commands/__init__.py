@@ -45,8 +45,6 @@ def core_cli_commands() -> list[CliCommand]:
     from stag_cli.commands.trace import cli_trace
     from stag_cli.commands.transition import add_parser as add_transition_parser
     from stag_cli.commands.transition import cli_transition
-    from stag_cli.commands.tui import add_parser as add_tui_parser
-    from stag_cli.commands.tui import cli_tui
     from stag_cli.commands.use import add_parser as add_use_parser
     from stag_cli.commands.use import cli_use
     from stag_cli.commands.view import add_parser as add_view_parser
@@ -72,7 +70,6 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("cut", add_cut_parser, cli_cut),
         CliCommand("show", add_show_parser, cli_show),
         CliCommand("sync", add_sync_parser, cli_sync),
-        CliCommand("tui", add_tui_parser, cli_tui),
         CliCommand("trace", add_trace_parser, cli_trace),
         CliCommand("transition", add_transition_parser, cli_transition),
         CliCommand("use", add_use_parser, cli_use),

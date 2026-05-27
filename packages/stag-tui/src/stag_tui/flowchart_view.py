@@ -8,7 +8,7 @@ from textual.widgets import Static
 from textual.message import Message
 from textual.events import Click, MouseDown, MouseMove, MouseUp
 
-from stag_cli.tui.flowchart import ClickRegion, navigate_selection, render_flowchart
+from stag_tui.flowchart import ClickRegion, navigate_selection, render_flowchart
 
 
 class FlowchartItemClicked(Message):
@@ -113,7 +113,7 @@ class FlowchartView(ScrollableContainer, can_focus=True):
 
     def _auto_depth(self) -> int:
         h = self.size.height or 24
-        from stag_cli.tui.flowchart import BAND_H
+        from stag_tui.flowchart import BAND_H
         return max(1, min(4, (h // BAND_H) - 1))
 
     def _refresh_lines(self) -> None:

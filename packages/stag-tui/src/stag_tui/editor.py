@@ -11,7 +11,7 @@ from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select, Static
 
-from stag_cli.payload_builder import payload_type_names
+from stag_api.payload_builder import payload_type_names
 from stag_api.core.types import JSONValue
 
 
