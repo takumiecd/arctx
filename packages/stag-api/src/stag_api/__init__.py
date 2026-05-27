@@ -20,7 +20,7 @@ from stag_api.core.types import (
     TargetKind,
 )
 
-__version__ = "0.2.0b1"
+__version__ = "0.2.0b2"
 
 
 def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stag-api"
-version = "0.2.0b1"
+version = "0.2.0b2"
 description = "STAG API: core + storage + ext for optimization and problem-solving workflows"
 readme = "README.md"
 requires-python = ">=3.10"

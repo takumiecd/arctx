@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stag-cli"
-version = "0.2.0b1"
+version = "0.2.0b2"
 description = "STAG CLI: command-line interface for stag-api"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,7 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "stag-api>=0.2.0b1",
+    "stag-api>=0.2.0b2",
 ]
 
 [project.optional-dependencies]
