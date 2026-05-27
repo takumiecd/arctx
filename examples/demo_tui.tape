@@ -17,7 +17,7 @@ Show
 
 Type "# 1. Automatically generating a complex DAG for the demo..."
 Enter
-Type "bash $STAG_PROJECT_ROOT/examples/generate_tui_graph.sh"
+Type "bash $ARCTX_PROJECT_ROOT/examples/generate_tui_graph.sh"
 Enter
 Sleep 3s
 
@@ -26,7 +26,7 @@ Enter
 
 Type "# 2. Open the TUI to visualize the graph"
 Enter
-Type "stag-tui"
+Type "arctx-tui"
 Enter
 Sleep 2.5s
 

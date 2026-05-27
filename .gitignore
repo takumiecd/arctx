@@ -8,10 +8,10 @@ __pycache__/
 .coverage
 htmlcov/
 
-# STAG generated run/output files
+# ARCTX generated run/output files
 runs/
-stag_output/
-.stag/
+arctx_output/
+.arctx/
 state_round_*.json
 request_*.json
 attempts.jsonl

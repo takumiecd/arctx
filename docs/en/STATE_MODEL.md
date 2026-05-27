@@ -20,7 +20,7 @@ Topology indexes are derived from transition endpoints:
 
 Core payloads are generic `NodePayload` / `TransitionPayload` plus `CutPayload`.
 Git state is extension state: `GitChangePayload`, branch payloads, and git work
-events are registered by `stag.ext.git`.
+events are registered by `arctx.ext.git`.
 
 Persistence uses `nodes.jsonl`, `transitions.jsonl`, `payloads.jsonl`,
 `views.jsonl`, `work_sessions.jsonl`, and `work_events.jsonl` for JSONL storage,

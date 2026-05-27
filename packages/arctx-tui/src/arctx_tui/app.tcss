@@ -1,0 +1,113 @@
+/* ARCTX TUI stylesheet */
+
+Screen {
+    layout: horizontal;
+}
+
+/* ---------- Sidebar (runs list) ---------- */
+#sidebar {
+    width: 28;
+    border-right: solid $boost;
+    overflow-y: auto;
+}
+
+#sidebar-title {
+    background: $boost;
+    color: $text;
+    text-align: center;
+    padding: 0 1;
+    height: 1;
+}
+
+#runs-list {
+    overflow-y: auto;
+    height: 1fr;
+}
+
+/* ---------- Flowchart pane (central) ---------- */
+#flowchart-pane {
+    width: 2fr;
+    border-right: solid $boost;
+    overflow: hidden;
+}
+
+#flowchart-pane-title {
+    background: $boost;
+    color: $text;
+    text-align: center;
+    padding: 0 1;
+    height: 1;
+}
+
+#flowchart-view {
+    height: 1fr;
+    overflow: auto auto;
+    background: $surface;
+}
+
+/* ---------- Detail pane ---------- */
+#detail-pane {
+    width: 1fr;
+    overflow: hidden;
+}
+
+#detail-pane-title {
+    background: $boost;
+    color: $text;
+    text-align: center;
+    padding: 0 1;
+    height: 1;
+}
+
+#detail-markdown {
+    height: 1fr;
+    overflow-y: auto;
+    padding: 0 1;
+}
+
+/* ---------- Focus highlight ---------- */
+#sidebar:focus-within {
+    border-right: solid $accent;
+}
+
+#flowchart-pane:focus-within {
+    border-right: solid $accent;
+}
+
+/* ---------- List items ---------- */
+ListView > ListItem {
+    padding: 0 1;
+}
+
+ListView > ListItem.--highlight {
+    background: $accent 30%;
+}
+
+/* ---------- Editor dialogs ---------- */
+.editor-dialog {
+    width: 72;
+    height: auto;
+    margin: 2 4;
+    padding: 1 2;
+    background: $panel;
+    border: thick $accent;
+}
+
+.editor-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.editor-actions {
+    height: auto;
+    margin-top: 1;
+}
+
+.editor-actions Button {
+    margin-right: 1;
+}
+
+#form-error {
+    color: $error;
+    min-height: 1;
+}

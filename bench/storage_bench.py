@@ -1,4 +1,4 @@
-"""Storage backend benchmark for STAG.
+"""Storage backend benchmark for ARCTX.
 
 Measures real-wall-clock performance of JsonlRunStore and SqliteRunStore
 across four graph sizes: 100, 1000, 10000, 100000 nodes.
@@ -27,11 +27,11 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from stag.core.run import RunHandle, init
-from stag.core.schema.payloads import PlanPayload, ResultPayload
-from stag.core.schema.requirements import Requirement
-from stag.storage.jsonl import JsonlRunStore
-from stag.storage.sqlite import SqliteRunStore
+from arctx.core.run import RunHandle, init
+from arctx.core.schema.payloads import PlanPayload, ResultPayload
+from arctx.core.schema.requirements import Requirement
+from arctx.storage.jsonl import JsonlRunStore
+from arctx.storage.sqlite import SqliteRunStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -209,7 +209,7 @@ def _req() -> Requirement:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="STAG storage benchmark")
+    parser = argparse.ArgumentParser(description="ARCTX storage benchmark")
     parser.add_argument(
         "--max-n",
         type=int,

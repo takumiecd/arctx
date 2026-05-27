@@ -3,11 +3,11 @@
 ## 基本形
 
 ```python
-import stag
-from stag import Requirement, TransitionPayload, NodePayload
+import arctx as arctx
+from arctx import Requirement, TransitionPayload, NodePayload
 
 req = Requirement("req_1", "task", "my_task")
-run = stag.init(req, run_id="my-run")
+run = arctx.init(req, run_id="my-run")
 
 # Transition を作る。常に 1 つの output node も作られる。
 t1 = run.transition(
@@ -68,12 +68,12 @@ violations = run.git.verify()
 
 旧 `run.commit(...)`, `run.revert(...)`, `run.verify(...)` のような top-level
 method は削除済みです。core の `RunHandle` は git を知らず、git payload / event /
-verb は `stag.ext.git` が提供します。
+verb は `arctx.ext.git` が提供します。
 
 ## Payload 登録
 
 ```python
-from stag import register_payload_class, PayloadBase
+from arctx import register_payload_class, PayloadBase
 from dataclasses import dataclass, field
 from typing import Literal
 

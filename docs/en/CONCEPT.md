@@ -1,6 +1,6 @@
 # Concept
 
-stag records work as an append-only RunGraph.
+arctx records work as an append-only RunGraph.
 
 The graph skeleton is intentionally small:
 

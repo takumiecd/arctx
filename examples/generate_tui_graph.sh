@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Generates a complex STAG graph for the TUI demo video.
+# Generates a complex ARCTX graph for the TUI demo video.
 # Assumes the caller has already sourced examples/demo_env.sh,
-# so $PWD is a fresh scratch git repo (with PATH/STAG_HOME set).
+# so $PWD is a fresh scratch git repo (with PATH/ARCTX_HOME set).
 
 set -euo pipefail
 
@@ -16,38 +16,38 @@ write_change() {
 }
 
 # 1. Init
-stag init req_tui_demo --extension git --run-id "$RUN_ID" > /dev/null
+arctx init req_tui_demo --extension git --run-id "$RUN_ID" > /dev/null
 
 # 2. Baseline
 write_change optimize.py "# baseline: simple loop"
-stag git commit --run "$RUN_ID" -m "Baseline: Simple loop" > /dev/null
+arctx git commit --run "$RUN_ID" -m "Baseline: Simple loop" > /dev/null
 
 # 3. Branch A (Fails)
 git checkout -q -b exp/multithreading
-eval "$(stag work-session env --run $RUN_ID --new --user exp_a)"
+eval "$(arctx work-session env --run $RUN_ID --new --user exp_a)"
 write_change optimize.py "# attempt: threading"
-stag git commit --run "$RUN_ID" -m "Exp A: Multithreading" > /dev/null
+arctx git commit --run "$RUN_ID" -m "Exp A: Multithreading" > /dev/null
 write_change optimize.py "# attempt: mutex locks"
-stag git commit --run "$RUN_ID" -m "Exp A: Add mutex locks" > /dev/null
-stag git revert --run "$RUN_ID" --sha "$(git rev-parse HEAD)" -m "Revert Exp A (Deadlock encountered)" > /dev/null
+arctx git commit --run "$RUN_ID" -m "Exp A: Add mutex locks" > /dev/null
+arctx git revert --run "$RUN_ID" --sha "$(git rev-parse HEAD)" -m "Revert Exp A (Deadlock encountered)" > /dev/null
 
 # 4. Branch B (Fails)
 git checkout -q main
 git checkout -q -b exp/rust
-eval "$(stag work-session env --run $RUN_ID --new --user exp_b)"
+eval "$(arctx work-session env --run $RUN_ID --new --user exp_b)"
 write_change optimize.py "# attempt: rewrite in rust"
-stag git commit --run "$RUN_ID" -m "Exp B: Rewrite in Rust" > /dev/null
-stag git revert --run "$RUN_ID" --sha "$(git rev-parse HEAD)" -m "Revert Exp B (Too complex)" > /dev/null
+arctx git commit --run "$RUN_ID" -m "Exp B: Rewrite in Rust" > /dev/null
+arctx git revert --run "$RUN_ID" --sha "$(git rev-parse HEAD)" -m "Revert Exp B (Too complex)" > /dev/null
 
 # 5. Branch C (Succeeds)
 git checkout -q main
 git checkout -q -b exp/vectorization
-eval "$(stag work-session env --run $RUN_ID --new --user exp_c)"
+eval "$(arctx work-session env --run $RUN_ID --new --user exp_c)"
 write_change optimize.py "# attempt: vectorization"
-stag git commit --run "$RUN_ID" -m "Exp C: Vectorization" > /dev/null
+arctx git commit --run "$RUN_ID" -m "Exp C: Vectorization" > /dev/null
 write_change optimize.py "# attempt: cache hits"
-stag git commit --run "$RUN_ID" -m "Exp C: Optimize cache hits" > /dev/null
+arctx git commit --run "$RUN_ID" -m "Exp C: Optimize cache hits" > /dev/null
 write_change optimize.py "# attempt: final polish"
-stag git commit --run "$RUN_ID" -m "Exp C: Final Polish (10x speedup!)" > /dev/null
+arctx git commit --run "$RUN_ID" -m "Exp C: Final Polish (10x speedup!)" > /dev/null
 
-echo "Graph generation complete! Run 'stag-tui --run demo_tui' to view it."
+echo "Graph generation complete! Run 'arctx-tui --run demo_tui' to view it."

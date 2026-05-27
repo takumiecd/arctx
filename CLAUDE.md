@@ -4,18 +4,18 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## Commands
 
-The packages are usually not installed during local development. Use `PYTHONPATH=packages/stag-api/src:packages/stag-cli/src:packages/stag-tui/src`.
+The packages are usually not installed during local development. Use `PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src:packages/arctx-tui/src`.
 
 This repo contains three packages:
-- `stag-api` (import name `stag_api`) — core API, payloads, extensions. See `packages/stag-api/`.
-- `stag-cli` (import name `stag_cli`, provides the `stag` command) — argparse CLI. See `packages/stag-cli/`. Depends only on `stag-api`.
-- `stag-tui` (import name `stag_tui`, provides the `stag-tui` command) — Textual TUI. See `packages/stag-tui/`. Depends only on `stag-api` and `textual`. Install separately: `pip install stag-tui`.
+- `arctx-api` (import name `arctx`) — core API, payloads, extensions. See `packages/arctx-api/`.
+- `arctx-cli` (import name `arctx_cli`, provides the `arctx` command) — argparse CLI. See `packages/arctx-cli/`. Depends only on `arctx-api`.
+- `arctx-tui` (import name `arctx_tui`, provides the `arctx-tui` command) — Textual TUI. See `packages/arctx-tui/`. Depends only on `arctx-api` and `textual`. Install separately: `pip install arctx-tui`.
 
-- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/stag-api/src:packages/stag-cli/src:packages/stag-tui/src python3 -m pytest packages/stag-api/tests packages/stag-cli/tests packages/stag-tui/tests --import-mode=importlib -q`
-- Run one test file: `PYTHONPATH=packages/stag-api/src:packages/stag-cli/src python3 -m pytest packages/stag-api/tests/core/test_run_api.py -q`
-- CLI: `PYTHONPATH=packages/stag-api/src:packages/stag-cli/src python3 -m stag_cli.main <subcommand> ...`
-- TUI (requires textual installed): `PYTHONPATH=packages/stag-api/src:packages/stag-tui/src python3 -m stag_tui.main`
-- Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/stag-api/src packages/stag-cli/src packages/stag-tui/src`
+- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src:packages/arctx-tui/src python3 -m pytest packages/arctx-api/tests packages/arctx-cli/tests packages/arctx-tui/tests --import-mode=importlib -q`
+- Run one test file: `PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src python3 -m pytest packages/arctx-api/tests/core/test_run_api.py -q`
+- CLI: `PYTHONPATH=packages/arctx-api/src:packages/arctx-cli/src python3 -m arctx_cli.main <subcommand> ...`
+- TUI (requires textual installed): `PYTHONPATH=packages/arctx-api/src:packages/arctx-tui/src python3 -m arctx_tui.main`
+- Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/arctx-api/src packages/arctx-cli/src packages/arctx-tui/src`
 
 Docs are Japanese-first and should match the current implementation:
 
@@ -31,16 +31,16 @@ This project is `0.2.0b2` beta. Breaking changes are acceptable and expected. Do
 
 ## Architecture
 
-STAG records the process of optimization/problem-solving. It is not a planner, executor, benchmark runner, or general agent framework.
+ARCTX records the process of optimization/problem-solving. It is not a planner, executor, benchmark runner, or general agent framework.
 
-The current core model is **a single RunGraph plus attached payloads**. Pure graph records carry no domain data; everything domain-specific is on Payload records. Core is standalone; git integration is the standard extension in `packages/stag-api/src/stag_api/ext/git/`.
+The current core model is **a single RunGraph plus attached payloads**. Pure graph records carry no domain data; everything domain-specific is on Payload records. Core is standalone; git integration is the standard extension in `packages/arctx-api/src/arctx/ext/git/`.
 
-Pure graph records (`packages/stag-api/src/stag_api/core/schema/graph.py`):
+Pure graph records (`packages/arctx-api/src/arctx/core/schema/graph.py`):
 
 - `Node`: pure DAG node
 - `Transition`: connects many input nodes to exactly one output node (`input_node_ids: tuple[str, ...]`, `output_node_id: str`). Fan-out is represented as sibling Transitions sharing the same input nodes.
 
-Container (`packages/stag-api/src/stag_api/core/run_graph.py`):
+Container (`packages/arctx-api/src/arctx/core/run_graph.py`):
 
 - `RunGraph`: holds all nodes / transitions / payloads / views, plus reverse-lookup indices
 - `GraphView`: lightweight named label anchored to a root node; contents derived at read time via reachability
@@ -51,7 +51,7 @@ Avoid reintroducing `Dag`, `StateNode`, `ExecutionPlan`, `PredictionPlan`, `Obse
 
 ## Payloads
 
-Two-tier design. Core payloads live under `packages/stag-api/src/stag_api/core/schema/payloads.py`; extension payloads live with their extension.
+Two-tier design. Core payloads live under `packages/arctx-api/src/arctx/core/schema/payloads.py`; extension payloads live with their extension.
 
 **Generic payloads** (use `type` string to distinguish purpose):
 - `NodePayload(payload_id, target_id, type, content={}, metadata={})` — any node annotation
@@ -61,7 +61,7 @@ Two-tier design. Core payloads live under `packages/stag-api/src/stag_api/core/s
 - `CutPayload(payload_id, target_id, target_kind, reason=None)` — append-only cut marker
 - `JoinPayload(payload_id, target_id, joined_views)` — transition-targeting marker for a multi-input transition that joins independent histories with no common ancestor (extension-agnostic; `target_kind="transition"`)
 
-**Git extension payloads** (`packages/stag-api/src/stag_api/ext/git/payloads.py`):
+**Git extension payloads** (`packages/arctx-api/src/arctx/ext/git/payloads.py`):
 - `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=())` — git record on a Transition
 - `BranchPayload`, `MergePayload`, `RevertPayload`, `CherryPickPayload`
 
@@ -73,9 +73,9 @@ Old payload types `PlanPayload`, `PredictionPayload`, `ResultPayload`, `NotePayl
 
 ## RunHandle
 
-`RunHandle` is defined in `packages/stag-api/src/stag_api/core/run/handle.py` and binds verb implementations from sibling modules.
+`RunHandle` is defined in `packages/arctx-api/src/arctx/core/run/handle.py` and binds verb implementations from sibling modules.
 
-Public verbs (each implemented in `packages/stag-api/src/stag_api/core/run/<verb>.py`):
+Public verbs (each implemented in `packages/arctx-api/src/arctx/core/run/<verb>.py`):
 
 - `transition(input_node_ids, payload, *, user_id=None, work_session_id=None) -> Transition` — create one Transition and one output Node from input nodes; `payload` must be transition-targeting
 - `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
@@ -94,11 +94,11 @@ Git verbs are extension verbs under `handle.git`: `handle.git.commit(...)`,
 `handle.git.reset(...)`, `handle.git.merge(...)`, and `handle.git.verify(...)`.
 Do not add top-level `handle.commit` / `handle.verify` compatibility shims.
 
-When adding a new RunHandle method, implement it in a focused `packages/stag-api/src/stag_api/core/run/<verb>.py` module and bind it in `handle.py`.
+When adding a new RunHandle method, implement it in a focused `packages/arctx-api/src/arctx/core/run/<verb>.py` module and bind it in `handle.py`.
 
 ## CLI
 
-`packages/stag-cli/src/stag_cli/main.py` dispatches to `packages/stag-cli/src/stag_cli/commands/<name>.py`.
+`packages/arctx-cli/src/arctx_cli/main.py` dispatches to `packages/arctx-cli/src/arctx_cli/commands/<name>.py`.
 
 Current commands:
 
@@ -119,38 +119,38 @@ Current commands:
 - `migrate` — convert a jsonl run dir to sqlite
 - `sync` — sync helpers
 
-Deleted commands: `plan`, `predict`, `observe`, `note`, `tui` (moved to standalone `stag-tui` command).
+Deleted commands: `plan`, `predict`, `observe`, `note`, `tui` (moved to standalone `arctx-tui` command).
 
-Git shortcut commands such as `stag commit`, `stag verify`, `stag branch`,
-`stag reset`, and `stag hook` are alias-layer shortcuts that resolve to
-`stag git ...`. Register new git CLI surface under the canonical `git`
+Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
+`arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to
+`arctx git ...`. Register new git CLI surface under the canonical `git`
 namespace first.
 
 Commands resolve the target run in this order:
 
 1. `--run`
-2. `STAG_RUN_ID`
-3. nearest git repo `.stag-id`
+2. `ARCTX_RUN_ID`
+3. nearest git repo `.arctx-id`
 
 Mutating commands resolve user attribution in this order:
 
 1. `--user`
-2. `STAG_USER_ID`
-3. `<STAG_HOME>/config.json` `user.id`
+2. `ARCTX_USER_ID`
+3. `<ARCTX_HOME>/config.json` `user.id`
 4. `"user"`
 
 The `workflows/`, `domains/`, `execution/`, and `search/` packages are scaffolding unless the task explicitly wires them.
 
-## `stag dump` — render the run
+## `arctx dump` — render the run
 
-`stag dump` is the single command for getting the whole run structure in one shot. Two formats:
+`arctx dump` is the single command for getting the whole run structure in one shot. Two formats:
 
 - `--format outline` (default): LLM-optimized indented spanning tree. Each node and transition rendered exactly once. Multi-input transitions anchored under `input_node_ids[0]`; additional inputs shown inline as `(+n_X)`; non-primary parents show `▸ feeds t_X (@n_primary)`. Back-references use `↻n_X`. Cuts show `✂`. When ≥3 multi-input transitions exist, a top-level `joins:` index is emitted.
 - `--format mermaid`: human/visual format. Renders a `flowchart TD` mermaid block. Each Transition becomes labeled edges from each input to the single output.
 
 Useful flags: `--node`, `--depth`, `--full-payloads`.
 
-Renderer code: `packages/stag-api/src/stag_api/core/run/dump.py`. Tests: `packages/stag-api/tests/core/test_dump.py`.
+Renderer code: `packages/arctx-api/src/arctx/core/run/dump.py`. Tests: `packages/arctx-api/tests/core/test_dump.py`.
 
 ## IDs
 
@@ -171,7 +171,7 @@ IDs are opaque and collision-resistant (`n_<uuid>`, `t_<uuid>`, `pl_<uuid>`). Do
 
 Cut is append-only. It attaches a `CutPayload` to a Node or Transition; it does not delete records.
 
-Activity is computed at read time in `packages/stag-api/src/stag_api/core/cuts.py`:
+Activity is computed at read time in `packages/arctx-api/src/arctx/core/cuts.py`:
 
 - A `CutPayload` on a Node makes that node and all downstream Transitions and Nodes inactive.
 - A `CutPayload` on a Transition makes that Transition and its output Node (and descendants) inactive.

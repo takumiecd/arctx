@@ -3,7 +3,7 @@
 Core API shape:
 
 ```python
-from stag import Requirement, TransitionPayload, NodePayload, init
+from arctx import Requirement, TransitionPayload, NodePayload, init
 
 run = init(Requirement("req_1", "task", "my_task"), run_id="my-run")
 
@@ -52,4 +52,4 @@ violations = run.git.verify()
 
 The old top-level methods such as `run.commit(...)`, `run.revert(...)`, and
 `run.verify(...)` are removed. Core `RunHandle` stays git-agnostic; git payloads,
-events, and verbs are provided by `stag.ext.git`.
+events, and verbs are provided by `arctx.ext.git`.

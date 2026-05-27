@@ -1,6 +1,6 @@
 # Concept
 
-stag は作業履歴を append-only な RunGraph として記録します。
+arctx は作業履歴を append-only な RunGraph として記録します。
 
 グラフ骨格は小さく保ちます。
 

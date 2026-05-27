@@ -17,22 +17,22 @@ Type "clear"
 Enter
 Show
 
-Type "tmux new -s stag_vhs"
+Type "tmux new -s arctx_vhs"
 Enter
 Sleep 1.5s
 
-Type "# 1. Initialize a new STAG run"
+Type "# 1. Initialize a new ARCTX run"
 Enter
-Type "stag init req_parallel --extension git --run-id ws_demo"
+Type "arctx init req_parallel --extension git --run-id ws_demo"
 Enter
 Sleep 1.5s
 
 Type "# 2. Give each agent its own git worktree (separate checkouts)"
 Enter
-Type "stag git worktree add ../wt-claude claude/vec"
+Type "arctx git worktree add ../wt-claude claude/vec"
 Enter
 Sleep 1s
-Type "stag git worktree add ../wt-codex  codex/map"
+Type "arctx git worktree add ../wt-codex  codex/map"
 Enter
 Sleep 1.2s
 
@@ -50,7 +50,7 @@ Type "# [Claude's Terminal — ../wt-claude]"
 Enter
 Type "cd ../wt-claude"
 Enter
-Type `eval $(stag work-session env --run ws_demo --new --user claude --worktree .)`
+Type `eval $(arctx work-session env --run ws_demo --new --user claude --worktree .)`
 Enter
 Sleep 800ms
 
@@ -58,7 +58,7 @@ Type "echo 'def claude_vec(xs): return [x*2 for x in xs]' > claude.py"
 Enter
 Type "git add claude.py"
 Enter
-Type "stag git commit -m 'Claude: vectorization approach'"
+Type "arctx git commit -m 'Claude: vectorization approach'"
 Enter
 Sleep 1.8s
 
@@ -74,7 +74,7 @@ Type "# [Codex's Terminal — ../wt-codex]"
 Enter
 Type "cd ../wt-codex"
 Enter
-Type `eval $(stag work-session env --run ws_demo --new --user codex --worktree .)`
+Type `eval $(arctx work-session env --run ws_demo --new --user codex --worktree .)`
 Enter
 Sleep 800ms
 
@@ -82,7 +82,7 @@ Type "echo 'def codex_map(xs): return list(map(lambda x: x*2, xs))' > codex.py"
 Enter
 Type "git add codex.py"
 Enter
-Type "stag git commit -m 'Codex: parallel map implementation'"
+Type "arctx git commit -m 'Codex: parallel map implementation'"
 Enter
 Sleep 1.8s
 
@@ -90,7 +90,7 @@ Type "# Separate checkouts, no shared working tree — both branches"
 Enter
 Type "# land as sibling transitions in the same RunGraph."
 Enter
-Type "stag graph dump --run ws_demo --format outline"
+Type "arctx graph dump --run ws_demo --format outline"
 Enter
 Sleep 5s
 

@@ -1,4 +1,4 @@
-"""Seed `.stag/runs` with sample runs for TUI exploration.
+"""Seed `.arctx/runs` with sample runs for TUI exploration.
 
 Usage:
     PYTHONPATH=src python3 scripts/seed_sample_runs.py
@@ -9,18 +9,18 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-import stag
-from stag import (
+import arctx as arctx
+from arctx import (
     NodePayload,
     Requirement,
     TransitionPayload,
 )
-from stag.core.ids import opaque_id
-from stag.ext.git.payloads import CommitEntry, DiffSummary, GitChangePayload
-from stag.storage.jsonl import JsonlRunStore
+from arctx.core.ids import opaque_id
+from arctx.ext.git.payloads import CommitEntry, DiffSummary, GitChangePayload
+from arctx.storage.jsonl import JsonlRunStore
 
 
-STORE_DIR = Path(".stag/runs")
+STORE_DIR = Path(".arctx/runs")
 
 
 def _wipe() -> None:
@@ -44,7 +44,7 @@ def _np(text: str) -> NodePayload:
 def _scheduling_run(store: JsonlRunStore) -> None:
     """A scheduling optimization: baseline -> two variant branches."""
     req = Requirement("req_sched", "demo", "job_scheduling")
-    run = stag.init(req, run_id="scheduling-demo")
+    run = arctx.init(req, run_id="scheduling-demo")
 
     # Baseline experiment.
     t_baseline = run.transition(
@@ -86,7 +86,7 @@ def _scheduling_run(store: JsonlRunStore) -> None:
 def _kernel_run(store: JsonlRunStore) -> None:
     """A kernel optimization run exercising GitChangePayload."""
     req = Requirement("req_kern", "demo", "conv_kernel")
-    run = stag.init(req, run_id="kernel-opt-demo")
+    run = arctx.init(req, run_id="kernel-opt-demo")
 
     # First suggestion.
     t1 = run.transition(
@@ -139,7 +139,7 @@ def _kernel_run(store: JsonlRunStore) -> None:
 def _synthesis_run(store: JsonlRunStore) -> None:
     """Two separate analyses joined into a synthesis transition."""
     req = Requirement("req_synth", "demo", "code_review")
-    run = stag.init(req, run_id="synthesis-demo")
+    run = arctx.init(req, run_id="synthesis-demo")
 
     # Branch A: performance analysis.
     ta = run.transition(

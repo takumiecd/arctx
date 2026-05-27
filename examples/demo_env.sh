@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
 # Source this from a VHS tape's `Hide` block to enter a clean, reproducible
-# demo environment. Isolates HOME / STAG_HOME, sets up a fresh scratch git
+# demo environment. Isolates HOME / ARCTX_HOME, sets up a fresh scratch git
 # repo with an initial commit, and installs a minimal prompt so recordings
 # look like a normal user shell on any machine.
 
 set -e
 
-export STAG_PROJECT_ROOT="$PWD"
-export DEMO_HOME="${DEMO_HOME:-/tmp/stag_demo_home}"
+export ARCTX_PROJECT_ROOT="$PWD"
+export DEMO_HOME="${DEMO_HOME:-/tmp/arctx_demo_home}"
 rm -rf "$DEMO_HOME"
 mkdir -p "$DEMO_HOME"
 
-# Ensure the project's venv is on PATH so `stag` resolves in sub-shells.
-if [ -x "$STAG_PROJECT_ROOT/.venv/bin/stag" ]; then
-  export PATH="$STAG_PROJECT_ROOT/.venv/bin:$PATH"
+# Ensure the project's venv is on PATH so `arctx` resolves in sub-shells.
+if [ -x "$ARCTX_PROJECT_ROOT/.venv/bin/arctx" ]; then
+  export PATH="$ARCTX_PROJECT_ROOT/.venv/bin:$PATH"
 fi
 
 # Sub-shells launched by tmux/etc inherit HOME and will read this bashrc,
-# so the prompt and stag stay consistent across panes.
+# so the prompt and arctx stay consistent across panes.
 cat > "$DEMO_HOME/.bashrc" <<BASHRC
-export PS1=\$'\[\e[1;36m\]~/stag-demo\[\e[0m\] \[\e[1;32m\]❯\[\e[0m\] '
+export PS1=\$'\[\e[1;36m\]~/arctx-demo\[\e[0m\] \[\e[1;32m\]❯\[\e[0m\] '
 export PROMPT_COMMAND=''
-export PYTHONPATH=$STAG_PROJECT_ROOT/packages/stag-api/src:$STAG_PROJECT_ROOT/packages/stag-cli/src:$STAG_PROJECT_ROOT/packages/stag-tui/src
-export STAG_HOME=$DEMO_HOME/.stag
+export PYTHONPATH=$ARCTX_PROJECT_ROOT/packages/arctx-api/src:$ARCTX_PROJECT_ROOT/packages/arctx-cli/src:$ARCTX_PROJECT_ROOT/packages/arctx-tui/src
+export ARCTX_HOME=$DEMO_HOME/.arctx
 export PATH="$PATH"
 cd "$DEMO_HOME/scratch" 2>/dev/null || true
 BASHRC
 
 export HOME="$DEMO_HOME"
-export STAG_HOME="$DEMO_HOME/.stag"
-export PYTHONPATH="$STAG_PROJECT_ROOT/packages/stag-api/src:$STAG_PROJECT_ROOT/packages/stag-cli/src:$STAG_PROJECT_ROOT/packages/stag-tui/src"
-export PS1=$'\[\e[1;36m\]~/stag-demo\[\e[0m\] \[\e[1;32m\]❯\[\e[0m\] '
+export ARCTX_HOME="$DEMO_HOME/.arctx"
+export PYTHONPATH="$ARCTX_PROJECT_ROOT/packages/arctx-api/src:$ARCTX_PROJECT_ROOT/packages/arctx-cli/src:$ARCTX_PROJECT_ROOT/packages/arctx-tui/src"
+export PS1=$'\[\e[1;36m\]~/arctx-demo\[\e[0m\] \[\e[1;32m\]❯\[\e[0m\] '
 export PROMPT_COMMAND=''
 unset VIRTUAL_ENV_PROMPT
 
@@ -49,7 +49,7 @@ TMUXCONF
 mkdir -p "$DEMO_HOME/scratch"
 cd "$DEMO_HOME/scratch"
 git init -q -b main
-git config user.email "demo@stag.dev"
+git config user.email "demo@arctx.dev"
 git config user.name "Demo User"
 cat > optimize.py <<'PY'
 def run(xs):

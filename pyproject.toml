@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 # Root pyproject.toml — dev tooling only.
-# Distributable packages are in packages/stag-api/ and packages/stag-cli/.
+# Distributable packages are in packages/arctx-api/ and packages/arctx-cli/.
 
 [tool.black]
 line-length = 100

@@ -12,7 +12,7 @@
 
 core payload は汎用 `NodePayload` / `TransitionPayload` と `CutPayload` です。
 `GitChangePayload`、branch payload、git 関連 WorkEvent は標準 `git` extension
-(`stag.ext.git`) が登録します。
+(`arctx.ext.git`) が登録します。
 
 ## 逆引きインデックス（永続化せず、ロード時に再構築）
 

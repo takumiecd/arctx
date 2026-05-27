@@ -1,4 +1,4 @@
-# STAG
+# ARCTX
 
 ## Packages
 
@@ -6,33 +6,33 @@ This repository distributes three packages:
 
 | Package | Install | Import | Purpose |
 |---------|---------|--------|---------|
-| `stag-api` | `pip install stag-api` | `import stag_api` | Core API, storage, extensions (no CLI/TUI deps) |
-| `stag-cli` | `pip install stag-cli` | `import stag_cli` | `stag` command, argparse CLI |
-| `stag-tui` | `pip install stag-tui` | `import stag_tui` | `stag-tui` command, Textual TUI |
+| `arctx-api` | `pip install arctx-api` | `import arctx` | Core API, storage, extensions (no CLI/TUI deps) |
+| `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` command, argparse CLI |
+| `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | `arctx-tui` command, Textual TUI |
 
-`stag-cli` and `stag-tui` both depend on `stag-api` but not on each other. Install only what you need.
+`arctx-cli` and `arctx-tui` both depend on `arctx-api` but not on each other. Install only what you need.
 
 ```python
-import stag_api as stag
+import arctx as arctx
 
-handle = stag.init(stag.Requirement(requirement_id="r", target_type="code", target_id="r"))
+handle = arctx.init(arctx.Requirement(requirement_id="r", target_type="code", target_id="r"))
 ```
 
 ---
 
-**STAG is an append-only graph for thought, work context, and parallel exploration.**
+**ARCTX is an append-only graph for thought, work context, and parallel exploration.**
 
 Git tracks how files changed.
-STAG tracks how work moved: what was tried, why it was tried, what happened, and which branches were later abandoned or merged.
+ARCTX tracks how work moved: what was tried, why it was tried, what happened, and which branches were later abandoned or merged.
 
 It is not an agent framework, planner, or executor.
 It is the graph layer underneath them.
 
-![STAG CLI Demo](examples/demo_cli.gif)
+![ARCTX CLI Demo](examples/demo_cli.gif)
 
 *Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `work-session`; both branches land as sibling transitions in the same `RunGraph` — no race, no overwrite.*
 
-![STAG TUI Demo](examples/demo_tui.gif)
+![ARCTX TUI Demo](examples/demo_tui.gif)
 
 *Interactive 3-pane TUI walks the DAG: attempts, reverts, payload diffs, and full git history all in one view.*
 
@@ -42,27 +42,27 @@ It is the graph layer underneath them.
 
 ---
 
-## Why STAG?
+## Why ARCTX?
 
 Real work is not a straight line. You form a hypothesis, try it, observe what happened, drop one branch, take another, and later need to reconstruct *why* you ended up where you did.
 
 - Git is **file history** — what bytes changed in which commit.
-- STAG is **reasoning / action / decision history** — which hypothesis was tested, which result it produced, and which branches were cut.
+- ARCTX is **reasoning / action / decision history** — which hypothesis was tested, which result it produced, and which branches were cut.
 
-STAG records all of it as one append-only DAG:
+ARCTX records all of it as one append-only DAG:
 
 - **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked work-session and their attempts become sibling transitions.
 - **Reverts stay in the graph.** A failed rewrite isn't deleted, it's marked inactive via `CutPayload`. You can still see what was tried, and why.
 - **Domain payloads, not just commits.** Attach benchmark results, predictions, intent — anything. The DAG knows what each transition was *for*.
 - **Read-time activity.** Killed branches are filtered automatically; the graph stays clean without rewriting history.
 
-STAG is *not* an executor, planner, or agent framework. It is the substrate for storing what they did and why.
+ARCTX is *not* an executor, planner, or agent framework. It is the substrate for storing what they did and why.
 
 ---
 
-## When does STAG fit?
+## When does ARCTX fit?
 
-- **Multi-agent software work** — Claude Code, Codex, custom agents and humans working on the same codebase. STAG keeps each attempt distinct and reviewable.
+- **Multi-agent software work** — Claude Code, Codex, custom agents and humans working on the same codebase. ARCTX keeps each attempt distinct and reviewable.
 - **Research and design exploration** — branch hypotheses, capture results as payloads, keep the dropped branches around as evidence.
 - **Debugging and investigation** — record hypotheses and observations as payloads; walk the trace backwards when you finally find the bug.
 - **Benchmark-driven engineering** — every "try variant A, try variant B" lands as a transition with its measurement attached.
@@ -75,56 +75,56 @@ STAG is *not* an executor, planner, or agent framework. It is the substrate for 
 From inside a git repository:
 
 ```bash
-pip install stag-cli
-pip install stag-tui          # optional: adds standalone stag-tui command
+pip install arctx-cli
+pip install arctx-tui          # optional: adds standalone arctx-tui command
 
-stag init my_task --extension git --run-id demo
+arctx init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py
-stag git commit -m "baseline"
+arctx git commit -m "baseline"
 
-stag-tui                              # explore the DAG interactively (requires stag-tui)
-stag graph dump --format outline      # or dump it as an LLM-friendly outline
+arctx-tui                              # explore the DAG interactively (requires arctx-tui)
+arctx graph dump --format outline      # or dump it as an LLM-friendly outline
 ```
 
-`stag dump` is kept as a compatibility shortcut for `stag graph dump`.
+`arctx dump` is kept as a compatibility shortcut for `arctx graph dump`.
 
 Two agents on the same repo? Each gets an isolated work-session that doesn't touch the others' attribution:
 
 ```bash
 # Claude's terminal
-eval $(stag work-session env --run demo --new --user claude)
+eval $(arctx work-session env --run demo --new --user claude)
 git checkout -b claude/vec
 # ...edits...
-git add . && stag git commit -m "Claude: vectorization"
+git add . && arctx git commit -m "Claude: vectorization"
 
 # Codex's terminal (running in parallel)
-eval $(stag work-session env --run demo --new --user codex)
+eval $(arctx work-session env --run demo --new --user codex)
 git checkout main && git checkout -b codex/map
 # ...edits...
-git add . && stag git commit -m "Codex: parallel map"
+git add . && arctx git commit -m "Codex: parallel map"
 ```
 
 Both branches land in the same `RunGraph` as sibling transitions. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
 
-> **Note on isolation.** A STAG `work-session` isolates STAG run/session attribution (who did what, in which session). It does **not** isolate the Git working tree by itself — both terminals above share the same checkout unless you attach each session to its own `git worktree`. See the next section for the worktree-aware variant.
+> **Note on isolation.** A ARCTX `work-session` isolates ARCTX run/session attribution (who did what, in which session). It does **not** isolate the Git working tree by itself — both terminals above share the same checkout unless you attach each session to its own `git worktree`. See the next section for the worktree-aware variant.
 
 ### Parallel agents in separate worktrees
 
-`stag` can pin each agent to a dedicated `git worktree` so two terminals
+`arctx` can pin each agent to a dedicated `git worktree` so two terminals
 can edit, stage, and commit without trampling each other:
 
 ```bash
 # Set up two worktrees on independent branches.
-stag git worktree add ../wt-claude claude/vec
-stag git worktree add ../wt-codex  codex/map
+arctx git worktree add ../wt-claude claude/vec
+arctx git worktree add ../wt-codex  codex/map
 
 # Each agent attaches its work-session to one worktree.
-# This exports STAG_RUN_ID / STAG_WORK_SESSION_ID / STAG_USER_ID *and*
-# STAG_GIT_WORKTREE, so subsequent `stag git commit` runs inside that
+# This exports ARCTX_RUN_ID / ARCTX_WORK_SESSION_ID / ARCTX_USER_ID *and*
+# ARCTX_GIT_WORKTREE, so subsequent `arctx git commit` runs inside that
 # worktree only.
-eval $(stag work-session env --run demo --new --user claude \
+eval $(arctx work-session env --run demo --new --user claude \
         --worktree ../wt-claude)
-eval $(stag work-session env --run demo --new --user codex \
+eval $(arctx work-session env --run demo --new --user codex \
         --worktree ../wt-codex)
 ```
 
@@ -135,7 +135,7 @@ Both agents still land their commits as sibling transitions in the same
 
 ## Concepts (one screen)
 
-The center of STAG is **`RunGraph`** — an append-only DAG. Pure graph records carry no domain data; everything domain-specific lives on **Payload** records.
+The center of ARCTX is **`RunGraph`** — an append-only DAG. Pure graph records carry no domain data; everything domain-specific lives on **Payload** records.
 
 ```text
 RunGraph
@@ -148,7 +148,7 @@ RunGraph
 - Each **attempt / experiment / action is recorded as a transition**, producing an output node that represents the resulting state.
 - `NodePayload` / `TransitionPayload` — generic annotations, distinguished by a `type` string.
 - `CutPayload` — append-only invalidation. The target isn't deleted; it's filtered out at read time.
-- `GitChangePayload` — attached by the `git` extension on every `stag git commit`.
+- `GitChangePayload` — attached by the `git` extension on every `arctx git commit`.
 
 Activity ("is this node still in scope?") is computed at read time from `RunGraph` + cut payloads. The store is never rewritten.
 
@@ -158,32 +158,32 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 
 | Command | What it does |
 | --- | --- |
-| `stag init <req-id>` | Start a new run. Add `--extension git` for git integration. |
-| `stag git commit -m ...` | Drive a real `git commit` and record a `Transition` with `GitChangePayload`. |
-| `stag work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
-| `stag git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
-| `stag transition create` | Add a transition without git. |
-| `stag payload add` | Attach a payload to an existing Node / Transition. |
-| `stag graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
-| `stag graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
-| `stag-tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). Standalone command from `pip install stag-tui`. |
-| `stag cut node <id>` | Mark a Node (and descendants) inactive — append-only. |
-| `stag guide` | Discover concepts interactively. `--lang ja` for Japanese. |
+| `arctx init <req-id>` | Start a new run. Add `--extension git` for git integration. |
+| `arctx git commit -m ...` | Drive a real `git commit` and record a `Transition` with `GitChangePayload`. |
+| `arctx work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
+| `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
+| `arctx transition create` | Add a transition without git. |
+| `arctx payload add` | Attach a payload to an existing Node / Transition. |
+| `arctx graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
+| `arctx graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
+| `arctx-tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). Standalone command from `pip install arctx-tui`. |
+| `arctx cut node <id>` | Mark a Node (and descendants) inactive — append-only. |
+| `arctx guide` | Discover concepts interactively. `--lang ja` for Japanese. |
 
-`stag dump ...` is retained as a compatibility shortcut for `stag graph dump ...`.
+`arctx dump ...` is retained as a compatibility shortcut for `arctx graph dump ...`.
 
 Full reference: [docs/en/CLI.md](docs/en/CLI.md).
 
-Mutating commands resolve the target run in this order: `--run` flag → `STAG_RUN_ID` env → nearest git repo's `.stag-id`. User attribution: `--user` → `STAG_USER_ID` → `<STAG_HOME>/config.json` → `"user"`.
+Mutating commands resolve the target run in this order: `--run` flag → `ARCTX_RUN_ID` env → nearest git repo's `.arctx-id`. User attribution: `--user` → `ARCTX_USER_ID` → `<ARCTX_HOME>/config.json` → `"user"`.
 
 ---
 
 ## Python API
 
 ```python
-import stag
-from stag import NodePayload, Requirement, TransitionPayload
-from stag.storage import JsonlRunStore
+import arctx as arctx
+from arctx import NodePayload, Requirement, TransitionPayload
+from arctx.storage import JsonlRunStore
 
 requirement = Requirement(
     requirement_id="req_demo",
@@ -191,7 +191,7 @@ requirement = Requirement(
     target_id="explore_idea",
 )
 
-run = stag.init(requirement, run_id="demo")
+run = arctx.init(requirement, run_id="demo")
 
 transition = run.transition(
     [run.root_node_id],
@@ -233,7 +233,7 @@ python3 -m pip install -e .            # editable install
 python3 -m pip install -e ".[dev]"     # + dev dependencies
 
 # Or run without installing, from the repo root:
-PYTHONPATH=src python3 -m stag.cli.main ...
+PYTHONPATH=src python3 -m arctx_cli.main ...
 ```
 
 ---
@@ -254,7 +254,7 @@ PYTHONPATH=src python3 -m stag.cli.main ...
   work_events.jsonl
 ```
 
-`SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<STAG_HOME>/runs`.
+`SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<ARCTX_HOME>/runs`.
 
 The 0.2.x storage format is maintained within the 0.2 series. Breaking changes will require an explicit migration note.
 
