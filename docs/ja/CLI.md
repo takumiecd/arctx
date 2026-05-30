@@ -64,6 +64,21 @@ git 連携は標準 extension です。正式な command namespace は `arctx gi
 - `arctx git worktree list` — `git worktree list --porcelain` を JSON にパースして表示。
 - `arctx git worktree remove <path> [--force]` — `git worktree remove` の薄いラッパ。
 
+### Work session（並列・複数 agent）
+
+複数の agent / 端末が同じ run を共有するときの作業単位。同時書き込みはロック付き
+差分追記で安全に直列化されます。運用の詳細は `docs/ja/AGENT_LOOP.md` を参照。
+
+- `arctx work-session start [--user U] [--work-session WS]` — work session を作成して id を表示
+- `arctx work-session env [--new] [--run R] [--user U]` — `eval "$(...)"` 用に `ARCTX_RUN_ID` / `ARCTX_WORK_SESSION_ID` / `ARCTX_USER_ID` の export を出力（シェル単位の固定モード）
+- `arctx work-session spawn [--user U] -- <cmd>` — 子プロセスだけに一意な work session を渡して `<cmd>`（codex / claude 等）を起動
+- `arctx work-session list` / `arctx work-session show <ws_id>` — work session 一覧 / 表示
+
+属性の解決順:
+
+- user: `--user` → `ARCTX_USER_ID` → `<ARCTX_HOME>/config.json` の `user.id` → `user`
+- work session: `--work-session` → `ARCTX_WORK_SESSION_ID` → `config.json` の `work_session.id` → `default`
+
 ### Worktree attachment
 
 - `arctx work-session start --worktree PATH` / `arctx work-session env --new --worktree PATH` / `arctx work-session spawn --worktree PATH -- <cmd>` — 解決済み worktree path (＋ current branch / `git --git-common-dir`) を `WorkSession.metadata["worktree"]` に記録し、`ARCTX_GIT_WORKTREE=PATH` を export する。
