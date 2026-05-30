@@ -1,5 +1,9 @@
 # ARCTX
 
+> **Git は「何が変わったか」を追う。ARCTX は「なぜ変えたか」と「なぜやめたか」を追う。**
+>
+> Append-only DAG for reasoning history, parallel agent collaboration, and abandoned branches that stay in the graph.
+
 ## パッケージ構成
 
 このリポジトリは 3 つのパッケージを配布します：
@@ -13,17 +17,12 @@
 `arctx-cli` と `arctx-tui` はそれぞれ `arctx` に依存しますが、互いには依存しません。必要なものだけインストールしてください。
 
 ```python
-import arctx as arctx
+import arctx
 
 handle = arctx.init(arctx.Requirement(requirement_id="r", target_type="code", target_id="r"))
 ```
 
 ---
-
-**ARCTX は、思考・作業文脈・並列探索を記録する append-only graph です。**
-
-Git はファイルがどう変わったかを追います。
-ARCTX は作業がどう進んだかを追います。何を試したのか、なぜ試したのか、何が起きたのか、どの分岐を捨てたり合流したりしたのかを記録します。
 
 ARCTX は agent framework / planner / executor ではありません。
 それらの下に置かれる graph layer です。
@@ -67,6 +66,123 @@ ARCTX は executor / planner / agent framework ではありません。それら
 - **調査・デバッグ** — 仮説と観察結果を payload で記録し、原因にたどり着いた時点で trace を逆向きに歩けます。
 - **ベンチマーク駆動の開発** — 「variant A を試す / variant B を試す」が、計測値が attach された transition として記録されます。
 - **kernel / 数値最適化** — 上記の一具体例。tiled / vectorize / fuse の試行が sibling transition になり、revert / merge は first-class。
+
+---
+
+### 具体例 1: ベンチマーク駆動最適化
+
+variant A を試す → 遅くなる。variant B を試す → 速くなる。3 ヶ月後「なぜ A を捨てたのか」を説明する必要が出てきた。
+
+```bash
+# 1. ベースライン
+arctx init optimize --extension git --run-id bench
+arctx git commit -m "baseline: naive loop"
+
+# 2. 仮説 A — キャッシュ層を追加
+git checkout -b feat/cache
+# ...編集...
+git add . && arctx git commit -m "add cache (仮説 A)"
+arctx payload add --target transition:latest \
+  --payload-type benchmark \
+  --field elapsed_ms=1200 \
+  --field note="baseline より遅い"
+
+# 3. A を破棄 — グラフから消えない、ただ inactive マークがつく
+arctx cut transition $(arctx show --latest transition)
+
+# 4. 仮説 B — ベクトル化
+git checkout main && git checkout -b feat/vectorize
+# ...編集...
+git add . && arctx git commit -m "vectorize (仮説 B)"
+arctx payload add --target transition:latest \
+  --payload-type benchmark \
+  --field elapsed_ms=180 \
+  --field note="baseline の 5 倍速"
+```
+
+結果として出てくる graph は、すべての経緯を語ります：
+
+```text
+n_root
+└─ t_baseline ── n_1
+   ├─ t_cache_hypothesis_A ── n_2 ✂
+   │     payload: benchmark {elapsed_ms: 1200, note: "baseline より遅い"}
+   └─ t_vectorize_hypothesis_B ── n_3
+         payload: benchmark {elapsed_ms: 180, note: "baseline の 5 倍速"}
+```
+
+スプレッドシートも、古びた Confluence ページも不要 — *推論* は *コード* の隣に生き続けます。
+
+---
+
+### 具体例 2: マルチエージェント並列作業
+
+Claude と Codex が同じ run を、お互いを踏み合わずに進めます。
+
+```bash
+# 端末 1 — Claude
+eval $(arctx work-session env --run demo --new --user claude)
+git checkout -b claude/vec
+# ...編集...
+git add . && arctx git commit -m "Claude: vectorize inner loop"
+
+# 端末 2 — Codex (同時に動いていてよい)
+eval $(arctx work-session env --run demo --new --user codex)
+git checkout main && git checkout -b codex/map
+# ...編集...
+git add . && arctx git commit -m "Codex: parallel map"
+```
+
+両方の attempt は同じ `RunGraph` の sibling transition として記録されます：
+
+```text
+n_root
+└─ t_baseline ── n_1
+   ├─ t_claude_vectorize_inner_loop ── n_2
+   │     work-session: claude / ws_xxx
+   └─ t_codex_parallel_map ── n_3
+         work-session: codex / ws_yyy
+```
+
+グラフ内での merge conflict はありません。両方の attempt は永遠にレビュー可能です。
+
+---
+
+### 具体例 3: デバッグの trace
+
+バグを追う間、すべての仮説を記録しておく。原因にたどり着いたら、trace を逆向きに歩けます。
+
+```bash
+arctx init debug --extension git --run-id bug-42
+arctx git commit -m "reproduction script"
+
+# 仮説: cache の race condition
+git checkout -b try/race-fix
+# ...編集...
+arctx git commit -m "fix: add lock around cache"
+arctx payload add --target transition:latest \
+  --payload-type observation \
+  --field result="まだ flaky"
+
+# 仮説: index の off-by-one
+git checkout main && git checkout -b try/index-fix
+# ...編集...
+arctx git commit -m "fix: correct loop bound"
+arctx payload add --target transition:latest \
+  --payload-type observation \
+  --field result="バグ消滅 — 3 回連続 green"
+```
+
+```text
+n_root
+└─ t_reproduction_script ── n_1
+   ├─ t_fix_add_lock_around_cache ── n_2
+   │     payload: observation {result: "まだ flaky"}
+   └─ t_fix_correct_loop_bound ── n_3
+         payload: observation {result: "バグ消滅 — 3 回連続 green"}
+```
+
+「なぜ loop bound だと分かったのか」と聞かれたら、graph が代わりに答えます。
 
 ---
 
