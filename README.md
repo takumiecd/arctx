@@ -17,7 +17,7 @@ This repository distributes three packages:
 `arctx-cli` and `arctx-tui` both depend on `arctx` but not on each other. Install only what you need.
 
 ```python
-import arctx as arctx
+import arctx
 
 handle = arctx.init(arctx.Requirement(requirement_id="r", target_type="code", target_id="r"))
 ```
