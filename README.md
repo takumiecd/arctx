@@ -115,6 +115,77 @@ No spreadsheet, no stale Confluence page — the *reasoning* lives next to the *
 
 ---
 
+### Example 2: Multi-agent parallel work
+
+Claude and Codex drive the same run without stepping on each other.
+
+```bash
+# Terminal 1 — Claude
+eval $(arctx work-session env --run demo --new --user claude)
+git checkout -b claude/vec
+# ...edits...
+git add . && arctx git commit -m "Claude: vectorize inner loop"
+
+# Terminal 2 — Codex (running at the same time)
+eval $(arctx work-session env --run demo --new --user codex)
+git checkout main && git checkout -b codex/map
+# ...edits...
+git add . && arctx git commit -m "Codex: parallel map"
+```
+
+Both land in the same `RunGraph` as sibling transitions:
+
+```text
+n_root
+└─ t_baseline ── n_1
+   ├─ t_claude_vectorize_inner_loop ── n_2
+   │     work-session: claude / ws_xxx
+   └─ t_codex_parallel_map ── n_3
+         work-session: codex / ws_yyy
+```
+
+No merge conflicts in the graph. Both attempts stay reviewable forever.
+
+---
+
+### Example 3: Debugging trace
+
+Record every hypothesis as you chase a bug; walk it backwards once you find the cause.
+
+```bash
+arctx init debug --extension git --run-id bug-42
+arctx git commit -m "reproduction script"
+
+# Hypothesis: race condition in cache
+git checkout -b try/race-fix
+# ...edit...
+arctx git commit -m "fix: add lock around cache"
+arctx payload add --target transition:latest \
+  --payload-type observation \
+  --field result="still flaky"
+
+# Hypothesis: off-by-one in index
+git checkout main && git checkout -b try/index-fix
+# ...edit...
+arctx git commit -m "fix: correct loop bound"
+arctx payload add --target transition:latest \
+  --payload-type observation \
+  --field result="bug gone — 3 runs green"
+```
+
+```text
+n_root
+└─ t_reproduction_script ── n_1
+   ├─ t_fix_add_lock_around_cache ── n_2
+   │     payload: observation {result: "still flaky"}
+   └─ t_fix_correct_loop_bound ── n_3
+         payload: observation {result: "bug gone — 3 runs green"}
+```
+
+When your colleague asks *"how did you know it was the loop bound?"*, the graph answers for you.
+
+---
+
 ## 30-second Quick Start
 
 From inside a git repository:
