@@ -4,6 +4,15 @@
 >
 > An append-only DAG for reasoning history, parallel agent collaboration, and abandoned branches that stay in the graph.
 
+**See it in 30 seconds** — one command spins up a throwaway repo where two agents
+try the same task two ways, one dead end gets cut *with its reason*, and the whole
+story exports as a shareable document:
+
+```bash
+git clone https://github.com/takumiecd/arctx && cd arctx
+./examples/quickstart_demo.sh      # prints the graph + writes a shareable HTML
+```
+
 ## Packages
 
 This repository distributes three packages:
