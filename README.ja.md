@@ -394,6 +394,10 @@ English docs: see [docs/en/](docs/en/).
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m pytest tests -q
 ```
 
+## リリース
+
+maintainer 向けの release 手順は [CONTRIBUTING.md](CONTRIBUTING.md#release-process) にあります。
+
 ## License
 
 MIT

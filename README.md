@@ -395,6 +395,10 @@ The 0.2.x storage format is maintained within the 0.2 series. Breaking changes w
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m pytest tests -q
 ```
 
+## Release
+
+Maintainer release steps are documented in [CONTRIBUTING.md](CONTRIBUTING.md#release-process).
+
 ## License
 
 MIT

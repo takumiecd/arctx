@@ -105,6 +105,40 @@ We don't enforce a strict format, but please:
 - Start with a module prefix when obvious (`docs:`, `cli:`, `core:`, `git:`)
 - Explain the "why" in the body if the change is non-obvious
 
+## Release Process
+
+PyPI versions come from the package metadata, not from Git tags. Update the
+version first, commit that change, then tag the release commit. Do not reuse a
+version that has already been uploaded to PyPI.
+
+From the repository root:
+
+```bash
+# Bump all package versions, clear old dist files, build, and validate.
+.venv/bin/python scripts/release.py 0.2.0b4 --build --check
+
+# Review and commit the release bump.
+git diff
+git add packages/arctx/pyproject.toml \
+  packages/arctx-cli/pyproject.toml \
+  packages/arctx-tui/pyproject.toml \
+  packages/arctx/src/arctx/__init__.py
+git commit -m "release: prepare 0.2.0b4"
+
+# Tag the commit that contains the matching pyproject.toml versions.
+git tag -a v0.2.0b4 -m "Release v0.2.0b4"
+git push origin main --tags
+
+# Upload the validated distributions.
+.venv/bin/python -m twine upload packages/*/dist/*
+```
+
+To build and upload in one command after choosing the version:
+
+```bash
+.venv/bin/python scripts/release.py 0.2.0b4 --build --check --upload
+```
+
 ## Questions?
 
 - For usage questions → [GitHub Discussions](https://github.com/takumiecd/arctx/discussions)
