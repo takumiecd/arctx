@@ -26,12 +26,23 @@ def commit_impl(
     user_id: str | None = None,
     work_session_id: str | None = None,
     head_commit: str | None = None,
+    from_node_ids: tuple[str, ...] | None = None,
     dry_run: bool = False,
 ) -> Transition:
-    """Drive a git commit and record the corresponding arctx Transition."""
+    """Drive a git commit and record the corresponding arctx Transition.
+
+    ``from_node_ids`` explicitly anchors the new transition's input node(s),
+    branching the experiment off a chosen node instead of the session/branch
+    tip. This is how sibling experiments fan out from a shared baseline.
+    """
     resolved_repo_path: Path = resolve_worktree_path(repo_path)
 
-    current_node_ids = resolve_current_node_ids(self, work_session_id)
+    explicit_from = from_node_ids is not None
+    current_node_ids = (
+        tuple(from_node_ids)
+        if explicit_from
+        else resolve_current_node_ids(self, work_session_id)
+    )
 
     for nid in current_node_ids:
         self._ensure_active_node(nid)
@@ -44,7 +55,9 @@ def commit_impl(
 
     repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
 
-    if work_session_id is not None:
+    # When the caller explicitly branches from a chosen node, that intent
+    # overrides the branch-tip fast-forward guard.
+    if work_session_id is not None and not explicit_from:
         check_branch_tip_consistency(
             self.run_graph, current_branch, current_node_ids, repo_id
         )

@@ -146,3 +146,61 @@ class TestCommitCLIIntegration:
 
         t2 = handle.run_graph.transitions[r2["transition_id"]]
         assert r1["output_node_id"] in t2.input_node_ids
+
+    def test_from_branches_siblings_off_baseline(self, tmp_path, monkeypatch):
+        """--from anchors the input node, so experiments fan out from a baseline."""
+        repo = _init_git_repo(tmp_path / "repo")
+        monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
+        monkeypatch.chdir(repo)
+
+        _init_arctx(repo, tmp_path, run_id="run_from")
+
+        from arctx_cli.ext.git.commit import run_commit_command
+
+        # Baseline commit.
+        (repo / "base.txt").write_text("base\n")
+        subprocess.run(["git", "add", "base.txt"], cwd=str(repo), check=True, capture_output=True)
+        base = run_commit_command(
+            message="baseline",
+            branch="main",
+            run_id="run_from",
+            store_dir=_store_dir(tmp_path),
+            user_id="user",
+            work_session_id="ws_a",
+        )
+        base_node = base["output_node_id"]
+
+        # Two experiments, each explicitly branched off the baseline node.
+        (repo / "exp.txt").write_text("a\n")
+        subprocess.run(["git", "add", "exp.txt"], cwd=str(repo), check=True, capture_output=True)
+        a = run_commit_command(
+            message="hypothesis A",
+            branch="try/a",
+            run_id="run_from",
+            store_dir=_store_dir(tmp_path),
+            user_id="user",
+            work_session_id="ws_a",
+            from_node_ids=(base_node,),
+        )
+
+        (repo / "exp.txt").write_text("b\n")
+        subprocess.run(["git", "add", "exp.txt"], cwd=str(repo), check=True, capture_output=True)
+        b = run_commit_command(
+            message="hypothesis B",
+            branch="try/b",
+            run_id="run_from",
+            store_dir=_store_dir(tmp_path),
+            user_id="user",
+            work_session_id="ws_a",
+            from_node_ids=(base_node,),
+        )
+
+        store = resolve_store(_store_dir(tmp_path))
+        handle = store.load_run("run_from")
+
+        ta = handle.run_graph.transitions[a["transition_id"]]
+        tb = handle.run_graph.transitions[b["transition_id"]]
+        # Both experiments hang off the same baseline node — true siblings.
+        assert ta.input_node_ids == (base_node,)
+        assert tb.input_node_ids == (base_node,)
+        assert a["output_node_id"] != b["output_node_id"]

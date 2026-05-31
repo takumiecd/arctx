@@ -58,27 +58,59 @@ def _truncate(s: str | None, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def _node_summary(graph: RunGraph, node_id: str) -> str | None:
+def _content_str(content: dict, full: bool) -> str:
+    """Render a payload's content. ``text`` wins; otherwise a JSON blob.
+
+    The point of an export is to carry the *why*, so this never drops content
+    silently: ``text`` is shown verbatim, and any other content is serialized.
+    ``full`` only controls how aggressively the JSON is truncated.
+    """
+    import json
+
+    text = content.get("text")
+    if isinstance(text, str) and text:
+        return text
+    blob = json.dumps(content, ensure_ascii=False)
+    return blob if full else _truncate(blob, 80)
+
+
+def _cut_reason(payload: CutPayload) -> str:
+    reason = getattr(payload, "reason", None)
+    return f"cut: {reason}" if reason else "cut"
+
+
+def _node_summary(graph: RunGraph, node_id: str, full: bool = False) -> str | None:
+    parts: list[str] = []
     for payload in graph.payloads_for_node(node_id):
-        if isinstance(payload, NodePayload):
-            text = payload.content.get("text")
-            if isinstance(text, str) and text:
-                return text
-            return payload.type
-    return None
+        # Repo registry entries get their own section; don't echo them on nodes.
+        if payload.payload_type == "repo":
+            continue
+        if isinstance(payload, CutPayload):
+            parts.append(_cut_reason(payload))
+        elif isinstance(payload, NodePayload):
+            if payload.content:
+                rendered = _content_str(payload.content, full)
+                # Prefix with the type unless the content already is the text.
+                if rendered == payload.content.get("text"):
+                    parts.append(rendered)
+                else:
+                    parts.append(f"{payload.type} {rendered}")
+            else:
+                parts.append(payload.type)
+        else:
+            parts.append(payload.payload_type)
+    return " · ".join(parts) if parts else None
 
 
 def _transition_summary(graph: RunGraph, transition_id: str, full: bool) -> str:
     parts: list[str] = []
     for payload in graph.payloads_for_transition(transition_id):
         if isinstance(payload, CutPayload):
-            parts.append("cut")
+            parts.append(_cut_reason(payload))
         elif isinstance(payload, TransitionPayload):
             parts.append(payload.type)
             if full and payload.content:
-                import json
-
-                parts.append(json.dumps(payload.content)[:60])
+                parts.append(_content_str(payload.content, full))
         else:
             parts.append(payload.payload_type)
     return " ".join(parts) if parts else "transition"
@@ -123,8 +155,9 @@ def _walk(handle: RunHandle, opts: ExportOptions) -> list[_Row]:
             rows.append(_Row(depth, "ref", node_id, f"↻ {node_id}", cut))
             return
         visited_nodes.add(node_id)
-        note = _node_summary(graph, node_id)
-        label = node_id if not note else f"{node_id} — {_truncate(note, 80)}"
+        note = _node_summary(graph, node_id, opts.full_payloads)
+        shown = note if opts.full_payloads else _truncate(note, 80) if note else note
+        label = node_id if not note else f"{node_id} — {shown}"
         rows.append(_Row(depth, "node", node_id, label, cut))
         if opts.depth is not None and depth >= opts.depth:
             return
