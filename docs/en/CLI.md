@@ -1,6 +1,60 @@
 # CLI
 
-Basic flow:
+## Quick Start
+
+For a normal git-backed run in one repository:
+
+```bash
+cd ~/dev/my-repo
+arctx init req_demo --run-id demo --extension git
+arctx git init
+arctx current
+arctx git commit -m "implement first step"
+arctx graph dump --format outline
+```
+
+What those setup commands do:
+
+- `arctx init <req_id>` creates a run under `<ARCTX_HOME>/runs`.
+- `arctx init ... --extension git` also enables the git extension for that run.
+  When run inside a git repo, it writes this repo's `<gitdir>/arctx-id` and
+  installs hooks unless `--no-hooks` / `--git-no-hooks` is used.
+- `arctx git init` registers the current repo in the run's repo registry,
+  writes the repo pointer, writes the `.arctx-repo` marker, and installs hooks.
+  Run it once per repo you want to bind explicitly to the current run.
+- `arctx use <run_id>` switches the current repo to an existing run by writing
+  `<gitdir>/arctx-id`.
+- `eval "$(arctx use <run_id> --shell)"` switches only the current terminal by
+  exporting `ARCTX_RUN_ID`; it writes no files.
+
+There is no global per-machine current run.
+
+## Current Run Resolution
+
+Most read and write commands accept `--run`. If it is omitted, ARCTX resolves
+the target run in this order:
+
+```text
+--run <id>            one command only (highest priority)
+ARCTX_RUN_ID          current shell / process tree
+<gitdir>/arctx-id     persistent default for this git checkout
+```
+
+Use the modes deliberately:
+
+- **One-off command:** pass `--run <id>`.
+- **Stay in one repo:** run `arctx use <run_id>` once in that repo.
+- **Move across several repos in one terminal:** run
+  `eval "$(arctx use <run_id> --shell)"`; the environment variable wins over
+  each repo's pointer.
+- **Parallel agents:** prefer `arctx work-session env` or
+  `arctx work-session spawn`, which pins both the run and the work-session in
+  process-local environment variables.
+
+`arctx current` reads the repo pointer (`<gitdir>/arctx-id`) and prints that
+repo's persistent default. It does not report an `ARCTX_RUN_ID` override.
+
+## Basic Graph Flow
 
 ```bash
 arctx init req_demo --run-id demo
@@ -12,36 +66,20 @@ arctx graph dump --run demo --format outline
 
 Core commands:
 
-- `arctx init <req_id>`: create a run
-- `arctx list`: list runs
-- `arctx use <run_id>` / `arctx current`: manage the active run pointer
-- `arctx export [--format md|tex|html]`: render the run as a shareable document
+- `arctx init <req_id>`: create a run.
+- `arctx list`: list runs.
+- `arctx current`: show the repo-scoped current run pointer.
+- `arctx use <run_id>`: write the repo-scoped current run pointer.
+- `arctx use <run_id> --shell`: print an `ARCTX_RUN_ID` export for shell-local
+  pinning.
+- `arctx export [--format md|tex|html]`: render a run as a shareable document.
 
-Resolving the current run:
-
-Mutating/read commands pick the target run in this order:
-
-```
---run <id>            one-off (highest priority)
-ARCTX_RUN_ID          per terminal (shell)
-<gitdir>/arctx-id     persistent per-repo default
-```
-
-- `arctx use <run_id>`: writes `<gitdir>/arctx-id` (**repo-scoped, persistent**;
-  every terminal entering that repo sees it).
-- `arctx use <run_id> --shell`: writes nothing and prints
-  `export ARCTX_RUN_ID=<run>`. Use `eval "$(arctx use <run_id> --shell)"` to pin
-  the run for the **current terminal only** — handy when following one run that
-  spans several repos (env beats the repo pointer).
-
-There is no global (per-PC) current pointer.
-
-Node:
+## Node
 
 - `arctx node show <node_id>`
 - `arctx node payloads <node_id>`
 
-Transition:
+## Transition
 
 - `arctx transition create --from NODE --payload-type TYPE --field key=value`
 - `arctx transition show <transition_id>`
@@ -49,9 +87,11 @@ Transition:
 - `arctx transition inputs <transition_id>`
 - `arctx transition payloads <transition_id>`
 
-Each transition has exactly one output node. Create multiple sibling transitions by running `transition create` multiple times from the same input node.
+Each transition has exactly one output node. Create fan-out by running
+`transition create` multiple times from the same input node. Create a
+multi-input join by passing repeated `--from` flags.
 
-Payload:
+## Payload
 
 - `arctx payload types`
 - `arctx payload schema <payload_type>`
@@ -60,17 +100,39 @@ Payload:
 - `arctx payload list --node NODE` / `arctx payload list --transition TRANSITION`
 - `arctx payload show <payload_id>`
 
-Cut / Git:
+## Cut
 
-- `arctx cut node <node_id>` / `arctx cut transition <transition_id>`
+- `arctx cut node <node_id>`
+- `arctx cut transition <transition_id>`
+
+Cutting records an inactive branch. It does not delete history.
+
+## Git Integration
 
 Git integration is a standard extension. The canonical command namespace is
 `arctx git ...`; shortcut aliases such as `arctx commit` are kept for daily use.
 
-- `arctx init <req_id> --extension git`: enable the git extension for a run
-- `arctx git init`: register the cwd repo into the current run's registry and
-  install hooks (wraps `git repo add`; the entry point for binding the first
-  repo to an existing run)
+Extension command namespaces are loaded from the resolved current run. If
+`arctx git ...` is not visible, first make sure the command can resolve a run
+that was created with `--extension git`: pass `--run <id>`, set
+`ARCTX_RUN_ID`, or run from a repo that has `<gitdir>/arctx-id`.
+
+Setup commands:
+
+- `arctx init <req_id> --extension git`: create a run and enable the git
+  extension. Inside a git repo, this also writes `<gitdir>/arctx-id` and
+  installs hooks, but use `arctx git init` when you want to explicitly register
+  the repo in the run registry.
+- `arctx git init [--repo-path P] [--slug USER/REPO] [--no-hooks]`: register a
+  repo into the current run and install hooks. This is the preferred "bind this
+  checkout to this run" command.
+- `arctx git repo add [--repo-path P] [--slug USER/REPO] [--no-hooks]`: same
+  registration primitive, useful when joining another repo to an existing run.
+- `arctx git repo list`: list registered repos as JSON.
+- `arctx git repo show [--repo-id ID | --repo-path P]`: show one registry entry.
+
+Daily git verbs:
+
 - `arctx git commit -m "message"` / `arctx commit -m "message"`
 - `arctx git branch list` / `arctx branch list`
 - `arctx git branch show <name>` / `arctx branch show <name>`
@@ -80,65 +142,129 @@ Git integration is a standard extension. The canonical command namespace is
 - `arctx git reset --node NODE --mode hard` / `arctx reset --node NODE --mode hard`
 - `arctx git verify` / `arctx verify`
 - `arctx git hook install` / `arctx hook install`
-- `arctx git add --transition T --commit SHA` — attach commit hashes to a
-  Transition (distinct from `git repo add`)
+
+Commit attachment commands:
+
+- `arctx git add --transition T --commit SHA`: attach commit hashes to a
+  transition. This is different from `arctx git repo add`.
 - `arctx git list --transition T`
 - `arctx git show --transition T`
-- `arctx git worktree add <path> [branch] [--base REF] [--existing-branch]` — thin wrapper over `git worktree add`. Creates a new branch named after the path leaf when `branch` is omitted.
-- `arctx git worktree list` — JSON-parsed `git worktree list --porcelain` output.
-- `arctx git worktree remove <path> [--force]` — wrapper over `git worktree remove`.
 
-Multiple repos (the repo registry):
+Worktree helpers:
 
-One run can span several git repos. The run holds a **registry** of repos
-(`RepoPayload`); git payloads reference a repo by `repo_id` only. Core stays
-repo-agnostic.
+- `arctx git worktree add <path> [branch] [--base REF] [--existing-branch]`:
+  thin wrapper over `git worktree add`. Creates a new branch named after the
+  path leaf when `branch` is omitted.
+- `arctx git worktree list`: JSON-parsed `git worktree list --porcelain`.
+- `arctx git worktree remove <path> [--force]`: wrapper over
+  `git worktree remove`.
 
-- `arctx git repo add [--repo-path P] [--slug USER/REPO] [--no-hooks]` — register
-  a repo into the current run (the "join an existing run" verb). Adds a
-  `RepoPayload`, writes that repo's `.arctx-id` pointing at the current run, and
-  writes a `.arctx-repo` marker. Idempotent.
-- `arctx git repo list` — list the registry as JSON.
-- `arctx git repo show [--repo-id ID | --repo-path P]` — show one entry;
-  resolves via the cwd `.arctx-repo` marker when `--repo-id` is omitted.
+## Multiple Repos
 
-Registry entry: `repo_id` (opaque primary key) / `slug` (USER/REPO display name)
-/ `remotes` (every URL form, ssh + https) / `canonical` (normalized key matching
-ssh and https) / `local_path` (this machine's checkout). `local_path` is
-environment-specific and is stripped on export/share; `repo list` / `repo show`
-are local-inspection commands and show it.
+One ARCTX run can span several git repos. The run stores a repo registry
+(`RepoPayload`), and git payloads reference repos by `repo_id`. Core graph
+records remain repo-agnostic.
 
-Joining a second repo:
+Typical flow:
 
 ```bash
-cd ~/dev/frontend && arctx init "feature X" --run-id run_x --extension git
-arctx git init                           # register frontend
-cd ~/dev/backend  && arctx git repo add --run run_x   # join the same run
-# commit in either repo; tips are keyed by (repo_id, branch), so two mains never collide
+cd ~/dev/frontend
+arctx init "feature X" --run-id run_x --extension git
+arctx git init
+
+cd ~/dev/backend
+arctx git repo add --run run_x
 ```
 
-Export (shareable document):
+After that, commits from either repo land in the same run. Branch tips are
+keyed by `(repo_id, branch)`, so `frontend/main` and `backend/main` do not
+collide.
 
-`arctx export` is distinct from `dump` (inspection / LLM): it produces an
-artifact to hand to people.
+Registry entry fields:
+
+- `repo_id`: opaque primary key stored in the run.
+- `slug`: display name such as `USER/REPO`.
+- `remotes`: every discovered remote URL form.
+- `canonical`: normalized remote key, matching SSH and HTTPS forms.
+- `local_path`: this machine's checkout path.
+
+`local_path` is environment-specific. `arctx export` strips it by default;
+`arctx git repo list` and `arctx git repo show` keep it because they are local
+inspection commands.
+
+## Work Sessions
+
+A work session is the attribution unit for parallel agents or terminals working
+in the same run. Mutating CLI commands append under a lock, so concurrent
+writers serialize their new records instead of overwriting existing history.
+
+- `arctx work-session start [--user U] [--work-session WS]`: create a work
+  session and print its id.
+- `arctx work-session env [--new] [--run R] [--user U]`: print shell exports
+  for `ARCTX_RUN_ID`, `ARCTX_WORK_SESSION_ID`, and `ARCTX_USER_ID`.
+- `arctx work-session spawn [--user U] -- <cmd>`: run a child command with a
+  child-only work session.
+- `arctx work-session list` / `arctx work-session show <ws_id>`: inspect work
+  sessions.
+
+Fixed-mode example:
+
+```bash
+eval "$(arctx work-session env --run run_x --new --user codex)"
+arctx transition create --from NODE_ID --payload-type transition_payload --field type=suggestion
+```
+
+Spawn example:
+
+```bash
+arctx work-session spawn --run run_x --user codex -- codex
+arctx work-session spawn --run run_x --user claude-code -- claude
+```
+
+Attribution resolution:
+
+- user: `--user` -> `ARCTX_USER_ID` -> `<ARCTX_HOME>/config.json` `user.id` -> `user`
+- work session: `--work-session` -> `ARCTX_WORK_SESSION_ID` ->
+  `<ARCTX_HOME>/config.json` `work_session.id` -> `default`
+
+## Worktree Attachment
+
+- `arctx work-session start --worktree PATH`
+- `arctx work-session env --new --worktree PATH`
+- `arctx work-session spawn --worktree PATH -- <cmd>`
+
+These commands record the resolved worktree path on
+`WorkSession.metadata["worktree"]` and export `ARCTX_GIT_WORKTREE=PATH`.
+
+When `ARCTX_GIT_WORKTREE` is set, git verbs (`arctx git commit`, `revert`,
+`cherry-pick`, `merge`, `reset`, `verify`, and the post-rewrite hook) run their
+git subprocesses with `cwd=$ARCTX_GIT_WORKTREE` instead of the shell cwd. Use
+this with `arctx git worktree add` to give each agent an isolated checkout
+while sharing one ARCTX run.
+
+## Export
+
+`arctx export` is distinct from `dump`: `dump` is for inspection and LLM
+context, while `export` produces an artifact to hand to people.
 
 - `--format md|tex|html` (default `md`)
-- `--exclude-cut` — drop cut (inactive) nodes/transitions (kept by default)
-- `--include-local` — include repo `local_path` (stripped by default)
-- `--node` / `--depth` / `--full-payloads` — same traversal options as `dump`
-- `--output PATH` / `-o PATH` — write to a file (default stdout)
+- `--exclude-cut`: drop cut nodes/transitions.
+- `--include-local`: include repo `local_path` values.
+- `--node` / `--depth` / `--full-payloads`: traversal options shared with
+  `dump`.
+- `--output PATH` / `-o PATH`: write to a file instead of stdout.
 
-When repos are registered, a Repos section is included.
+When repos are registered, export includes a Repos section.
 
-Worktree attachment:
-
-- `arctx work-session start --worktree PATH` / `arctx work-session env --new --worktree PATH` / `arctx work-session spawn --worktree PATH -- <cmd>` — record the resolved worktree path (plus current branch and `git --git-common-dir`) on `WorkSession.metadata["worktree"]` and export `ARCTX_GIT_WORKTREE=PATH`.
-- `ARCTX_GIT_WORKTREE` env var — when set, every git verb (`arctx git commit / revert / cherry-pick / merge / reset / verify` and the post-rewrite hook) runs its `git` subprocess with `cwd=$ARCTX_GIT_WORKTREE` instead of the shell cwd. Combine with `arctx git worktree add` to give each agent an isolated checkout while still sharing one ARCTX run.
-
-Graph:
+## Graph
 
 - `arctx graph dump [--format outline|mermaid]`
 - `arctx graph trace <node_id>`
 - `arctx graph reachable <node_id>`
 
-Compatibility commands such as `arctx show`, `arctx dump`, `arctx trace`, `arctx reachable`, and `arctx outcomes` still exist. Prefer the `node`, `transition`, `payload`, and `graph` namespaces for new usage.
+Compatibility commands such as `arctx show`, `arctx dump`, `arctx trace`,
+`arctx reachable`, and `arctx outcomes` still exist. Prefer the `node`,
+`transition`, `payload`, and `graph` namespaces for new usage.
+
+Removed commands: `arctx plan`, `arctx predict`, `arctx observe`, and
+`arctx note`.
