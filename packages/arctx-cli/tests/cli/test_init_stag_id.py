@@ -182,6 +182,58 @@ def test_use_raises_for_unknown_run(tmp_path, monkeypatch):
         run_use_command(run_id="no_such_run", store_dir=_store_dir(tmp_path))
 
 
+def test_use_shell_emits_export_without_writing_pointer(tmp_path, monkeypatch):
+    repo = _fake_git_repo(tmp_path)
+    monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
+    monkeypatch.chdir(repo)
+    run_init_command(
+        requirement_id="req1", target_type="task", target_id="t",
+        run_id="run_a", store_dir=_store_dir(tmp_path),
+    )
+    run_init_command(
+        requirement_id="req2", target_type="task", target_id="t",
+        run_id="run_b", store_dir=_store_dir(tmp_path),
+    )
+    # After the two inits the repo pointer is run_b.
+    assert read_arctx_id(repo) == "run_b"
+
+    result = run_use_command(
+        run_id="run_a", store_dir=_store_dir(tmp_path), shell=True
+    )
+
+    # Shell mode emits an export line for eval and leaves the repo pointer
+    # untouched (terminal-scoped, not repo-scoped).
+    assert result["export"] == "export ARCTX_RUN_ID=run_a"
+    assert read_arctx_id(repo) == "run_b"
+
+
+def test_use_shell_validates_run_exists(tmp_path, monkeypatch):
+    repo = _fake_git_repo(tmp_path)
+    monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
+    monkeypatch.chdir(repo)
+
+    with pytest.raises(KeyError, match="unknown run_id"):
+        run_use_command(run_id="nope", store_dir=_store_dir(tmp_path), shell=True)
+
+
+def test_use_shell_works_outside_git_repo(tmp_path, monkeypatch):
+    # No .git here: shell mode must not require a repo (it writes no pointer).
+    monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
+    monkeypatch.chdir(tmp_path)
+    run_init_command(
+        requirement_id="req1",
+        target_type="task",
+        target_id="t",
+        run_id="run_a",
+        store_dir=_store_dir(tmp_path),
+    )
+
+    result = run_use_command(
+        run_id="run_a", store_dir=_store_dir(tmp_path), shell=True
+    )
+    assert result["export"] == "export ARCTX_RUN_ID=run_a"
+
+
 # ---------------------------------------------------------------------------
 # ARCTX_HOME env overrides run storage location end-to-end
 # ---------------------------------------------------------------------------
