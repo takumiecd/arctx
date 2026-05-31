@@ -53,7 +53,8 @@ git config user.name "ARCTX demo"
 echo "==> sandbox: $WORK"
 echo
 
-# --- Starting point: a naive implementation, committed at the run root ------
+# --- Baseline: a naive implementation. Capture its node id so both agents ---
+# --- branch their experiments off the same baseline. ------------------------
 ARCTX init optimize --extension git --run-id quickstart >/dev/null 2>&1
 cat > work.py <<'PY'
 def sum_list(data):
@@ -63,8 +64,8 @@ def sum_list(data):
     return total
 PY
 git add work.py
-git commit -q -m "starting point: naive python loop"
-echo "[1/4] starting point committed"
+BASE="$(ARCTX git commit -m "baseline: naive python loop" | node_id)"
+echo "[1/4] baseline committed"
 
 # --- Agent 1 (Claude): memoization cache — a dead end -----------------------
 eval "$(ARCTX work-session env --run quickstart --new --user claude 2>/dev/null)"
@@ -79,7 +80,7 @@ def sum_list(data):
     return _cache[key]
 PY
 git add work.py
-CACHE_NODE="$(ARCTX git commit -m "Claude: memoization cache" | node_id)"
+CACHE_NODE="$(ARCTX git commit -m "Claude: memoization cache" --from "$BASE" | node_id)"
 ARCTX payload add --node "$CACHE_NODE" \
   --payload-type node_payload \
   --field type=benchmark \
@@ -95,7 +96,7 @@ def sum_list(data):
     return sum(data)
 PY
 git add work.py
-WIN_NODE="$(ARCTX git commit -m "Codex: builtin sum()" | node_id)"
+WIN_NODE="$(ARCTX git commit -m "Codex: builtin sum()" --from "$BASE" | node_id)"
 ARCTX payload add --node "$WIN_NODE" \
   --payload-type node_payload \
   --field type=benchmark \
