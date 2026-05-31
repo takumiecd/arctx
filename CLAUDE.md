@@ -62,8 +62,9 @@ Two-tier design. Core payloads live under `packages/arctx/src/arctx/core/schema/
 - `JoinPayload(payload_id, target_id, joined_views)` — transition-targeting marker for a multi-input transition that joins independent histories with no common ancestor (extension-agnostic; `target_kind="transition"`)
 
 **Git extension payloads** (`packages/arctx/src/arctx/ext/git/payloads.py`):
-- `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=())` — git record on a Transition
-- `BranchPayload`, `MergePayload`, `RevertPayload`, `CherryPickPayload`
+- `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=(), repo_id="")` — git record on a Transition
+- `BranchPayload(..., repo_id="")`, `MergePayload`, `RevertPayload`, `CherryPickPayload`
+- `RepoPayload(payload_id, target_id, repo_id, slug, remotes, canonical, local_path)` — run-scoped repo registry entry (the 対応表), attached to the run root node. `RemoteRef(kind, url)` holds each known remote URL form. git payloads reference a repo by `repo_id` only. `local_path` is environment-specific and is stripped on export/share (`RepoPayload.shareable()`). Registry/resolution helpers live in `packages/arctx/src/arctx/ext/git/registry.py` (`resolve_repo_id`, `list_repos`, `normalize_remote_url`). Branch tip events are keyed by `(repo_id, branch)`.
 
 **User subclasses**: inherit `PayloadBase`, set `payload_type` as a class-level `field(default="...", init=False)`, register with `register_payload_class(MyClass)`.
 
@@ -102,18 +103,21 @@ When adding a new RunHandle method, implement it in a focused `packages/arctx/sr
 
 Current commands:
 
-- `current` / `use` — manage the active run pointer
+- `current` / `use` — manage the active run pointer. `use <run> --shell` prints
+  `export ARCTX_RUN_ID=<run>` for `eval` (terminal-scoped) instead of writing the
+  repo pointer.
 - `init` / `list` — create / list runs
 - `transition create` — create one Transition and one output Node (`--from NODE --payload-type TYPE --field key=value`)
 - `node` — inspect Nodes and their payloads
 - `payload` — list payload types/schemas and attach payloads to Nodes or Transitions
 - `cut` — cut a Node or Transition (`cut node NODE_ID` or `cut transition T_ID`)
-- `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, plus `git add/list/show`)
+- `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Transition.
 - `show` — inspect a node / transition / payload as JSON
 - `graph` — dump / trace / reachable graph queries
 - `trace` / `outcomes` / `reachable` — compatibility derived queries
 - `view` — manage `GraphView`s
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
+- `export` — render the run as a shareable document: `md` (default) / `tex` / `html`. `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `anchor` — create a scope anchor node
 - `guide` — print usage hints
 - `migrate` — convert a jsonl run dir to sqlite
