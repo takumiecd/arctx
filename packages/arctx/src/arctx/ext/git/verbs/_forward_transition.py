@@ -49,9 +49,14 @@ def check_branch_tip_consistency(
     graph: "RunGraph",
     branch: str,
     current_node_ids: tuple[str, ...],
+    repo_id: str = "",
 ) -> None:
-    """Raise ParallelSessionConflict if branch's latest tip is not in current_node_ids."""
-    tip_event = latest_branch_tip(graph, branch)
+    """Raise ParallelSessionConflict if branch's latest tip is not in current_node_ids.
+
+    Keyed by ``(repo_id, branch)`` so a ``main`` in one repo does not gate
+    commits to a ``main`` in another repo sharing the run.
+    """
+    tip_event = latest_branch_tip(graph, branch, repo_id)
     if tip_event is None:
         return
 
@@ -166,6 +171,7 @@ def record_forward_transition(
     event_data: dict,
     user_id: str | None,
     work_session_id: str | None,
+    repo_id: str = "",
 ) -> Transition:
     """Append node, transition, standard payloads + extra payloads, and work events."""
     if user_id is not None and work_session_id is not None:
@@ -186,6 +192,7 @@ def record_forward_transition(
         payload_id=self._next_id("pl"),
         target_id=transition_id,
         branch=current_branch,
+        repo_id=repo_id,
     )
     self.run_graph.attach_payload(branch_payload)
 
@@ -196,6 +203,7 @@ def record_forward_transition(
         head_commit=head_commit,
         diff_summary=diff_summary,
         commit_log=commit_log,
+        repo_id=repo_id,
     )
     self.run_graph.attach_payload(git_payload)
 
@@ -210,6 +218,7 @@ def record_forward_transition(
             user_id=user_id,
             branch=current_branch,
             tip_node_id=output_node.node_id,
+            repo_id=repo_id,
         )
         self.run_graph.add_work_event(tip_event)
 

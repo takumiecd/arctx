@@ -1,0 +1,326 @@
+"""Export a run as a human-facing document: markdown, LaTeX, or HTML.
+
+``dump`` renders the run for inspection / LLM consumption; ``export`` produces
+a standalone artifact to hand to people. It reuses the same spanning-tree walk
+as ``dump`` but emits a document with a title, an optional repo registry
+section, and a nested outline of the run.
+
+Two filters, both opt-in and with opposite defaults by intent:
+
+- ``exclude_cut`` (default False): drop cut (inactive) nodes/transitions. Cut
+  is just history noise, so it is kept unless asked to be removed.
+- ``include_local`` (default False): include each repo's ``local_path`` in the
+  registry section. local paths are environment-specific (and can leak a
+  username), so they are stripped by default — this is the single outlet that
+  keeps shared/exported artifacts free of machine-local data.
+
+This module stays repo-agnostic: it never imports the git extension. Repo
+registry entries and per-transition repo ids are read generically through
+``payload_type`` and ``to_dict()`` so a run with no git payloads exports fine.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from arctx.core.cuts import inactive_node_ids, inactive_transition_ids
+from arctx.core.run.handle import RunHandle
+from arctx.core.run_graph import RunGraph
+from arctx.core.schema.payloads import CutPayload, NodePayload, TransitionPayload
+
+
+@dataclass
+class ExportOptions:
+    node_id: str | None = None
+    depth: int | None = None
+    full_payloads: bool = False
+    exclude_cut: bool = False
+    include_local: bool = False
+
+
+@dataclass
+class _Row:
+    depth: int
+    kind: str  # "node" | "transition" | "ref"
+    ident: str
+    label: str
+    cut: bool
+
+
+# ---------------------------------------------------------------------------
+# Summaries (mirror dump.py so outputs stay consistent)
+# ---------------------------------------------------------------------------
+
+
+def _truncate(s: str | None, n: int) -> str:
+    if not s:
+        return ""
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _node_summary(graph: RunGraph, node_id: str) -> str | None:
+    for payload in graph.payloads_for_node(node_id):
+        if isinstance(payload, NodePayload):
+            text = payload.content.get("text")
+            if isinstance(text, str) and text:
+                return text
+            return payload.type
+    return None
+
+
+def _transition_summary(graph: RunGraph, transition_id: str, full: bool) -> str:
+    parts: list[str] = []
+    for payload in graph.payloads_for_transition(transition_id):
+        if isinstance(payload, CutPayload):
+            parts.append("cut")
+        elif isinstance(payload, TransitionPayload):
+            parts.append(payload.type)
+            if full and payload.content:
+                import json
+
+                parts.append(json.dumps(payload.content)[:60])
+        else:
+            parts.append(payload.payload_type)
+    return " ".join(parts) if parts else "transition"
+
+
+# ---------------------------------------------------------------------------
+# Repo registry (read generically; no git import)
+# ---------------------------------------------------------------------------
+
+
+def _repo_entries(graph: RunGraph) -> list[dict]:
+    """Return RepoPayload entries as plain dicts, sorted by slug/repo_id."""
+    entries = [
+        p.to_dict()
+        for p in graph.payloads.values()
+        if p.payload_type == "repo"
+    ]
+    entries.sort(key=lambda e: str(e.get("slug") or e.get("repo_id") or ""))
+    return entries
+
+
+# ---------------------------------------------------------------------------
+# Spanning-tree walk -> rows
+# ---------------------------------------------------------------------------
+
+
+def _walk(handle: RunHandle, opts: ExportOptions) -> list[_Row]:
+    graph = handle.run_graph
+    inactive_nodes = inactive_node_ids(graph)
+    inactive_trans = inactive_transition_ids(graph)
+    root_id = opts.node_id or handle.root_node_id
+
+    rows: list[_Row] = []
+    visited_nodes: set[str] = set()
+    visited_transitions: set[str] = set()
+
+    def emit_node(node_id: str, depth: int) -> None:
+        cut = node_id in inactive_nodes
+        if opts.exclude_cut and cut:
+            return
+        if node_id in visited_nodes:
+            rows.append(_Row(depth, "ref", node_id, f"↻ {node_id}", cut))
+            return
+        visited_nodes.add(node_id)
+        note = _node_summary(graph, node_id)
+        label = node_id if not note else f"{node_id} — {_truncate(note, 80)}"
+        rows.append(_Row(depth, "node", node_id, label, cut))
+        if opts.depth is not None and depth >= opts.depth:
+            return
+        for transition_id in graph.transitions_from_node(node_id):
+            t = graph.transitions[transition_id]
+            if t.input_node_ids and t.input_node_ids[0] != node_id:
+                # Non-primary parent of a multi-input transition.
+                if not (opts.exclude_cut and transition_id in inactive_trans):
+                    rows.append(
+                        _Row(
+                            depth + 1,
+                            "ref",
+                            transition_id,
+                            f"▸ feeds {transition_id}",
+                            transition_id in inactive_trans,
+                        )
+                    )
+                continue
+            emit_transition(transition_id, depth + 1)
+
+    def emit_transition(transition_id: str, depth: int) -> None:
+        cut = transition_id in inactive_trans
+        if opts.exclude_cut and cut:
+            return
+        t = graph.transitions[transition_id]
+        summary = _transition_summary(graph, transition_id, opts.full_payloads)
+        extras = ""
+        if len(t.input_node_ids) > 1:
+            extras = " " + " ".join(f"(+{n})" for n in t.input_node_ids[1:])
+        if transition_id in visited_transitions:
+            rows.append(_Row(depth, "ref", transition_id, f"↻ {transition_id}", cut))
+            return
+        visited_transitions.add(transition_id)
+        label = f"→ {transition_id}{extras}  {summary}"
+        rows.append(_Row(depth, "transition", transition_id, label, cut))
+        if t.output_node_id:
+            emit_node(t.output_node_id, depth + 1)
+
+    emit_node(root_id, 0)
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Format renderers
+# ---------------------------------------------------------------------------
+
+
+def _cut_tag(fmt: str, row: _Row) -> str:
+    if not row.cut:
+        return ""
+    return {"md": " *(cut)*", "tex": r" \emph{(cut)}", "html": ' <em>(cut)</em>'}[fmt]
+
+
+def _esc_html(s: str) -> str:
+    return (
+        s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    )
+
+
+def _esc_tex(s: str) -> str:
+    for a, b in (("\\", r"\textbackslash{}"), ("&", r"\&"), ("%", r"\%"),
+                 ("$", r"\$"), ("#", r"\#"), ("_", r"\_"), ("{", r"\{"),
+                 ("}", r"\}"), ("~", r"\textasciitilde{}"), ("^", r"\textasciicircum{}")):
+        s = s.replace(a, b)
+    return s
+
+
+def _render_repos_md(entries: list[dict], include_local: bool) -> list[str]:
+    if not entries:
+        return []
+    out = ["## Repos", ""]
+    for e in entries:
+        slug = e.get("slug") or e.get("repo_id")
+        out.append(f"- **{slug}** (`{e.get('repo_id')}`)")
+        if e.get("canonical"):
+            out.append(f"  - canonical: `{e['canonical']}`")
+        for r in e.get("remotes") or []:
+            out.append(f"  - remote ({r.get('kind')}): `{r.get('url')}`")
+        if include_local and e.get("local_path"):
+            out.append(f"  - local: `{e['local_path']}`")
+    out.append("")
+    return out
+
+
+def render_markdown(handle: RunHandle, opts: ExportOptions) -> str:
+    graph = handle.run_graph
+    lines = [
+        f"# Run `{handle.run_id}`",
+        "",
+        f"- nodes: {len(graph.nodes)}",
+        f"- transitions: {len(graph.transitions)}",
+        "",
+    ]
+    lines += _render_repos_md(_repo_entries(graph), opts.include_local)
+    lines += ["## Graph", ""]
+    for row in _walk(handle, opts):
+        indent = "  " * row.depth
+        lines.append(f"{indent}- {row.label}{_cut_tag('md', row)}")
+    return "\n".join(lines) + "\n"
+
+
+def render_html(handle: RunHandle, opts: ExportOptions) -> str:
+    graph = handle.run_graph
+    parts = [
+        "<!doctype html>",
+        '<html lang="en"><head><meta charset="utf-8">',
+        f"<title>Run {_esc_html(handle.run_id)}</title>",
+        "<style>body{font-family:system-ui,sans-serif;margin:2rem;}"
+        ".cut{color:#999;}li{margin:.1rem 0;}code{background:#f3f3f3;padding:0 .2em;}"
+        "</style></head><body>",
+        f"<h1>Run <code>{_esc_html(handle.run_id)}</code></h1>",
+        f"<p>nodes: {len(graph.nodes)} &middot; transitions: {len(graph.transitions)}</p>",
+    ]
+    entries = _repo_entries(graph)
+    if entries:
+        parts.append("<h2>Repos</h2><ul>")
+        for e in entries:
+            slug = _esc_html(str(e.get("slug") or e.get("repo_id")))
+            parts.append(f"<li><strong>{slug}</strong> <code>{_esc_html(str(e.get('repo_id')))}</code><ul>")
+            if e.get("canonical"):
+                parts.append(f"<li>canonical: <code>{_esc_html(str(e['canonical']))}</code></li>")
+            for r in e.get("remotes") or []:
+                parts.append(
+                    f"<li>remote ({_esc_html(str(r.get('kind')))}): "
+                    f"<code>{_esc_html(str(r.get('url')))}</code></li>"
+                )
+            if opts.include_local and e.get("local_path"):
+                parts.append(f"<li>local: <code>{_esc_html(str(e['local_path']))}</code></li>")
+            parts.append("</ul></li>")
+        parts.append("</ul>")
+    parts.append("<h2>Graph</h2>")
+    prev_depth = -1
+    for row in _walk(handle, opts):
+        while prev_depth < row.depth:
+            parts.append("<ul>")
+            prev_depth += 1
+        while prev_depth > row.depth:
+            parts.append("</ul>")
+            prev_depth -= 1
+        cls = ' class="cut"' if row.cut else ""
+        parts.append(f"<li{cls}>{_esc_html(row.label)}</li>")
+    while prev_depth >= 0:
+        parts.append("</ul>")
+        prev_depth -= 1
+    parts.append("</body></html>")
+    return "\n".join(parts) + "\n"
+
+
+def render_latex(handle: RunHandle, opts: ExportOptions) -> str:
+    graph = handle.run_graph
+    lines = [
+        r"\documentclass{article}",
+        r"\usepackage[T1]{fontenc}",
+        r"\begin{document}",
+        rf"\section*{{Run \texttt{{{_esc_tex(handle.run_id)}}}}}",
+        rf"nodes: {len(graph.nodes)}, transitions: {len(graph.transitions)}",
+        "",
+    ]
+    entries = _repo_entries(graph)
+    if entries:
+        lines.append(r"\subsection*{Repos}")
+        lines.append(r"\begin{itemize}")
+        for e in entries:
+            slug = _esc_tex(str(e.get("slug") or e.get("repo_id")))
+            lines.append(rf"\item \textbf{{{slug}}} (\texttt{{{_esc_tex(str(e.get('repo_id')))}}})")
+            sub = []
+            if e.get("canonical"):
+                sub.append(rf"\item canonical: \texttt{{{_esc_tex(str(e['canonical']))}}}")
+            for r in e.get("remotes") or []:
+                sub.append(
+                    rf"\item remote ({_esc_tex(str(r.get('kind')))}): "
+                    rf"\texttt{{{_esc_tex(str(r.get('url')))}}}"
+                )
+            if opts.include_local and e.get("local_path"):
+                sub.append(rf"\item local: \texttt{{{_esc_tex(str(e['local_path']))}}}")
+            if sub:
+                lines.append(r"\begin{itemize}")
+                lines += sub
+                lines.append(r"\end{itemize}")
+        lines.append(r"\end{itemize}")
+    lines.append(r"\subsection*{Graph}")
+    # Flat list with manual indentation keeps nesting depth unbounded-safe.
+    lines.append(r"\begin{itemize}")
+    for row in _walk(handle, opts):
+        indent = r"\hspace*{" + str(row.depth) + r"em}" if row.depth else ""
+        lines.append(rf"\item {indent}{_esc_tex(row.label)}{_cut_tag('tex', row)}")
+    lines.append(r"\end{itemize}")
+    lines.append(r"\end{document}")
+    return "\n".join(lines) + "\n"
+
+
+def export(handle: RunHandle, fmt: str, opts: ExportOptions) -> str:
+    if fmt in ("md", "markdown"):
+        return render_markdown(handle, opts)
+    if fmt == "html":
+        return render_html(handle, opts)
+    if fmt in ("tex", "latex"):
+        return render_latex(handle, opts)
+    raise ValueError(f"unknown export format: {fmt!r}")

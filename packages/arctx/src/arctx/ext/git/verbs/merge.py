@@ -17,6 +17,7 @@ from arctx.ext.git.verbs._forward_transition import (
     resolve_current_node_ids,
 )
 from arctx.ext.git.events import latest_branch_tip
+from arctx.ext.git.registry import resolve_repo_id
 
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,7 @@ def _resolve_other_node_id(
     other_node_id: str | None,
     other_branch: str | None,
     work_session_id: str | None,
+    repo_id: str = "",
 ) -> str:
     if other_node_id is not None:
         return other_node_id
@@ -39,7 +41,7 @@ def _resolve_other_node_id(
             "merge_impl requires either other_node_id or other_branch"
         )
 
-    tip_event = latest_branch_tip(self.run_graph, other_branch)
+    tip_event = latest_branch_tip(self.run_graph, other_branch, repo_id)
     if tip_event is not None:
         tip_id = tip_event.data.get("tip_node_id")
         if tip_id:
@@ -68,6 +70,8 @@ def merge_impl(
     """Drive ``git merge <other>`` and record a multi-input Transition."""
     resolved_repo_path: Path = resolve_worktree_path(repo_path)
 
+    repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
+
     current_node_ids = resolve_current_node_ids(self, work_session_id)
 
     for nid in current_node_ids:
@@ -78,6 +82,7 @@ def merge_impl(
         other_node_id=other_node_id,
         other_branch=other_branch,
         work_session_id=work_session_id,
+        repo_id=repo_id,
     )
     self._ensure_active_node(resolved_other_node_id)
 
@@ -96,7 +101,9 @@ def merge_impl(
     )
 
     if work_session_id is not None:
-        check_branch_tip_consistency(self.run_graph, current_branch, current_node_ids)
+        check_branch_tip_consistency(
+            self.run_graph, current_branch, current_node_ids, repo_id
+        )
 
     if not dry_run:
         merge_target = other_branch or resolved_other_node_id
@@ -157,6 +164,7 @@ def merge_impl(
         },
         user_id=user_id,
         work_session_id=work_session_id,
+        repo_id=repo_id,
     )
 
     if join:

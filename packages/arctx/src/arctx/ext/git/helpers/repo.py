@@ -97,6 +97,39 @@ def find_repo_root(cwd: str | Path | None = None) -> Path:
     return Path(raw).resolve()
 
 
+def remotes(repo_root: str | Path) -> list[tuple[str, str]]:
+    """Return ``(kind, url)`` pairs for the repo's configured fetch remotes.
+
+    ``kind`` is inferred from the URL form: ``ssh``, ``https``, ``git``, or
+    ``file``. Returns an empty list when the repo has no remotes (a purely
+    local repo), which callers treat as "register by opaque id only".
+    """
+    try:
+        raw = _git(["remote", "-v"], repo_root)
+    except subprocess.CalledProcessError:
+        return []
+    urls: list[str] = []
+    for line in raw.splitlines():
+        if "(fetch)" not in line:
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] not in urls:
+            urls.append(parts[1])
+    return [(_remote_kind(url), url) for url in urls]
+
+
+def _remote_kind(url: str) -> str:
+    if url.startswith(("https://", "http://")):
+        return "https"
+    if url.startswith("ssh://") or ("@" in url and ":" in url.split("@", 1)[1]):
+        return "ssh"
+    if url.startswith("git://"):
+        return "git"
+    if url.startswith("file://") or url.startswith("/"):
+        return "file"
+    return "other"
+
+
 def current_commit(repo_root: str | Path) -> str:
     """Return the full SHA of HEAD."""
     return _git(["rev-parse", "HEAD"], repo_root)

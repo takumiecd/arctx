@@ -9,6 +9,7 @@ from arctx.core.schema.graph import Transition
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.payloads import RevertPayload
 from arctx.ext.git.queries import current_sha, transition_by_sha
+from arctx.ext.git.registry import resolve_repo_id
 from arctx.ext.git.verbs._forward_transition import (
     capture_git_info,
     check_branch_tip_consistency,
@@ -78,8 +79,12 @@ def revert_impl(
         repo_path=resolved_repo_path,
     )
 
+    repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
+
     if work_session_id is not None:
-        check_branch_tip_consistency(self.run_graph, current_branch, current_node_ids)
+        check_branch_tip_consistency(
+            self.run_graph, current_branch, current_node_ids, repo_id
+        )
 
     if not dry_run:
         cmd = ["git", "revert", "--no-edit", reverted_commit]
@@ -138,6 +143,7 @@ def revert_impl(
         payload_id=self._next_id("pl"),
         target_id=transition_id,
         branch=current_branch,
+        repo_id=repo_id,
     )
     self.run_graph.attach_payload(branch_payload)
 
@@ -148,6 +154,7 @@ def revert_impl(
         head_commit=head_commit,
         diff_summary=diff_summary,
         commit_log=commit_log,
+        repo_id=repo_id,
     )
     self.run_graph.attach_payload(git_payload)
 
@@ -167,6 +174,7 @@ def revert_impl(
             user_id=user_id,
             branch=current_branch,
             tip_node_id=output_node.node_id,
+            repo_id=repo_id,
         )
         self.run_graph.add_work_event(tip_event)
 

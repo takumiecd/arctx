@@ -57,6 +57,80 @@ class DiffSummary:
 
 
 @dataclass(frozen=True)
+class RemoteRef:
+    """One git remote in a repo registry entry.
+
+    A repo commonly exposes the same upstream as several URL forms (ssh vs
+    https). All known forms are kept so resolution can match on any of them;
+    ``canonical`` on the owning ``RepoPayload`` is the normalized key derived
+    from these.
+    """
+
+    kind: str  # "ssh" | "https" | "git" | ...
+    url: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"kind": self.kind, "url": self.url}
+
+
+@dataclass(frozen=True)
+class RepoPayload(PayloadBase):
+    """Registry entry mapping one git repo into the run (the repo 対応表).
+
+    Run-scoped: attached to the run root node. git payloads reference a repo
+    by ``repo_id`` only; this entry is the single source of truth for what
+    that repo is.
+
+    Identity (shared, environment-independent): ``repo_id`` (opaque primary
+    key), ``slug`` (USER/REPO display name), ``remotes`` (all known URL forms),
+    ``canonical`` (normalized key for same-repo matching).
+
+    ``local_path`` is this machine's checkout location. It is environment
+    specific and MUST be stripped before the run leaves this machine (export /
+    hub push); see ``to_shareable``.
+    """
+
+    payload_id: str
+    target_id: str
+    repo_id: str
+    slug: str | None = None
+    remotes: tuple[RemoteRef, ...] = ()
+    canonical: str | None = None
+    local_path: str | None = None
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: Literal["node"] = field(default="node", init=False)
+    payload_type: str = field(default="repo", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return {
+            "payload_id": self.payload_id,
+            "payload_type": self.payload_type,
+            "target_kind": self.target_kind,
+            "target_id": self.target_id,
+            "repo_id": self.repo_id,
+            "slug": self.slug,
+            "remotes": [r.to_dict() for r in self.remotes],
+            "canonical": self.canonical,
+            "local_path": self.local_path,
+            "metadata": dict(self.metadata),
+        }
+
+    def shareable(self) -> "RepoPayload":
+        """Return a copy with environment-specific fields stripped."""
+        return RepoPayload(
+            payload_id=self.payload_id,
+            target_id=self.target_id,
+            repo_id=self.repo_id,
+            slug=self.slug,
+            remotes=self.remotes,
+            canonical=self.canonical,
+            local_path=None,
+            metadata=dict(self.metadata),
+        )
+
+
+@dataclass(frozen=True)
 class BranchPayload(PayloadBase):
     """Branch where a transition was created. Historical, immutable.
 
@@ -67,6 +141,7 @@ class BranchPayload(PayloadBase):
     payload_id: str
     target_id: str
     branch: str
+    repo_id: str = ""
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     target_kind: Literal["transition"] = field(default="transition", init=False)
@@ -79,6 +154,7 @@ class BranchPayload(PayloadBase):
             "target_kind": self.target_kind,
             "target_id": self.target_id,
             "branch": self.branch,
+            "repo_id": self.repo_id,
             "metadata": dict(self.metadata),
         }
 
@@ -95,6 +171,7 @@ class GitChangePayload(PayloadBase):
         default_factory=lambda: DiffSummary(files_changed=0, insertions=0, deletions=0)
     )
     commit_log: tuple[CommitEntry, ...] = ()
+    repo_id: str = ""
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     target_kind: Literal["transition"] = field(default="transition", init=False)
@@ -110,6 +187,7 @@ class GitChangePayload(PayloadBase):
             "head_commit": self.head_commit,
             "diff_summary": self.diff_summary.to_dict(),
             "commit_log": [c.to_dict() for c in self.commit_log],
+            "repo_id": self.repo_id,
             "metadata": dict(self.metadata),
         }
 
@@ -226,6 +304,7 @@ def _git_change_from_dict(data: dict[str, JSONValue]) -> GitChangePayload:
         head_commit=str(data.get("head_commit", "")),
         diff_summary=diff_summary,
         commit_log=commit_log,
+        repo_id=str(data.get("repo_id", "")),
         metadata=dict(data.get("metadata") or {}),
     )
 
@@ -235,6 +314,28 @@ def _branch_payload_from_dict(data: dict[str, JSONValue]) -> BranchPayload:
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
         branch=str(data.get("branch", "")),
+        repo_id=str(data.get("repo_id", "")),
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
+def _repo_payload_from_dict(data: dict[str, JSONValue]) -> RepoPayload:
+    raw_remotes = data.get("remotes") or []
+    remotes = tuple(
+        RemoteRef(kind=str(r.get("kind", "")), url=str(r.get("url", "")))
+        for r in raw_remotes
+    )
+    raw_slug = data.get("slug")
+    raw_canonical = data.get("canonical")
+    raw_local = data.get("local_path")
+    return RepoPayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        repo_id=str(data["repo_id"]),
+        slug=str(raw_slug) if raw_slug is not None else None,
+        remotes=remotes,
+        canonical=str(raw_canonical) if raw_canonical is not None else None,
+        local_path=str(raw_local) if raw_local is not None else None,
         metadata=dict(data.get("metadata") or {}),
     )
 
@@ -277,12 +378,14 @@ def _merge_from_dict(data: dict[str, JSONValue]) -> MergePayload:
 
 register_payload_class(GitChangePayload)
 register_payload_class(BranchPayload)
+register_payload_class(RepoPayload)
 register_payload_class(RevertPayload)
 register_payload_class(CherryPickPayload)
 register_payload_class(MergePayload)
 
 register_payload_decoder("git_change", _git_change_from_dict)
 register_payload_decoder("branch", _branch_payload_from_dict)
+register_payload_decoder("repo", _repo_payload_from_dict)
 register_payload_decoder("revert", _revert_from_dict)
 register_payload_decoder("cherry_pick", _cherry_pick_from_dict)
 register_payload_decoder("merge", _merge_from_dict)

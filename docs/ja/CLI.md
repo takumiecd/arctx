@@ -1,6 +1,58 @@
 # CLI
 
-## 基本フロー
+## クイックスタート
+
+1つの git repo で通常の git 連携 run を始める場合:
+
+```bash
+cd ~/dev/my-repo
+arctx init req_demo --run-id demo --extension git
+arctx git init
+arctx current
+arctx git commit -m "implement first step"
+arctx graph dump --format outline
+```
+
+セットアップ系コマンドの役割:
+
+- `arctx init <req_id>` は `<ARCTX_HOME>/runs` に run を作成する。
+- `arctx init ... --extension git` は、その run で git extension も有効化する。
+  git repo 内で実行した場合は、この repo の `<gitdir>/arctx-id` を書き、さらに
+  `--no-hooks` / `--git-no-hooks` がなければ hooks を install する。
+- `arctx git init` は current run の repo registry に current repo を登録し、
+  repo pointer、`.arctx-repo` marker、hooks を設定する。run に明示的に紐づけたい
+  repo ごとに1回実行する。
+- `arctx use <run_id>` は、既存 run をこの repo の current run にするため
+  `<gitdir>/arctx-id` を書く。
+- `eval "$(arctx use <run_id> --shell)"` は、ファイルを書かずに
+  `ARCTX_RUN_ID` を export して、この端末だけ current run を切り替える。
+
+グローバル、つまりPC単位の current run は存在しない。
+
+## current run の解決
+
+多くの参照/変更コマンドは `--run` を受け取る。省略した場合、ARCTX は対象 run を
+次の順で解決する:
+
+```text
+--run <id>            そのコマンドだけ（最優先）
+ARCTX_RUN_ID          current shell / process tree
+<gitdir>/arctx-id     この git checkout の永続デフォルト
+```
+
+使い分け:
+
+- **その場限り:** `--run <id>` を渡す。
+- **1つの repo に留まる:** その repo で `arctx use <run_id>` を1回実行する。
+- **1つの端末で複数 repo を移動する:** `eval "$(arctx use <run_id> --shell)"` を使う。
+  環境変数は各 repo の pointer より優先される。
+- **複数 agent / 並列作業:** `arctx work-session env` または
+  `arctx work-session spawn` で run と work-session を process-local な環境変数に固定する。
+
+`arctx current` は repo pointer（`<gitdir>/arctx-id`）を読んで、その repo の永続
+デフォルトを表示する。`ARCTX_RUN_ID` による上書きは表示しない。
+
+## 基本 graph フロー
 
 ```bash
 arctx init req_demo --run-id demo
@@ -10,90 +62,194 @@ arctx cut node <node_id> --run demo --reason "不採用"
 arctx graph dump --run demo --format outline
 ```
 
-## コマンド一覧
+基本コマンド:
 
-- `arctx init <req_id>` — 新規 run 作成
-- `arctx list` — run 一覧
-- `arctx use <run_id>` / `arctx current` — active run ポインタ管理
+- `arctx init <req_id>`: run を作成。
+- `arctx list`: run 一覧。
+- `arctx current`: repo-scoped な current run pointer を表示。
+- `arctx use <run_id>`: repo-scoped な current run pointer を書く。
+- `arctx use <run_id> --shell`: shell-local 固定用の `ARCTX_RUN_ID` export を表示。
+- `arctx export [--format md|tex|html]`: run を共有用ドキュメントとして出力。
 
-### Node
+## Node
 
-- `arctx node show <node_id>` — Node を表示
-- `arctx node payloads <node_id>` — Node の payload を表示
+- `arctx node show <node_id>`
+- `arctx node payloads <node_id>`
 
-### Transition
+## Transition
 
-- `arctx transition create --from NODE --payload-type TYPE --field key=value` — 1 Transition と 1 output Node を作成
-- `arctx transition show <transition_id>` — Transition を表示
-- `arctx transition output <transition_id>` — output Node を表示
-- `arctx transition inputs <transition_id>` — input Node IDs を表示
-- `arctx transition payloads <transition_id>` — Transition の payload を表示
+- `arctx transition create --from NODE --payload-type TYPE --field key=value`
+- `arctx transition show <transition_id>`
+- `arctx transition output <transition_id>`
+- `arctx transition inputs <transition_id>`
+- `arctx transition payloads <transition_id>`
 
-複数案を作る場合は、同じ input node から `transition create` を複数回実行します。
+各 transition は必ず1つの output node を持つ。fan-out は同じ input node から
+`transition create` を複数回実行して作る。multi-input join は `--from` を複数回渡す。
 
-### Payload
+## Payload
 
-- `arctx payload types` — 登録済み `payload_type` を表示
-- `arctx payload schema <payload_type>` — payload type の入力 field を表示
-- `arctx payload add --node NODE --payload-type TYPE --field key=value` — Node に payload を追加
-- `arctx payload add --transition TRANSITION --payload-type TYPE --field key=value` — Transition に payload を追加
-- `arctx payload list --node NODE` / `arctx payload list --transition TRANSITION` — payload 一覧
-- `arctx payload show <payload_id>` — payload を表示
+- `arctx payload types`
+- `arctx payload schema <payload_type>`
+- `arctx payload add --node NODE --payload-type TYPE --field key=value`
+- `arctx payload add --transition TRANSITION --payload-type TYPE --field key=value`
+- `arctx payload list --node NODE` / `arctx payload list --transition TRANSITION`
+- `arctx payload show <payload_id>`
 
-### Cut / Git
+## Cut
 
-- `arctx cut node <node_id>` / `arctx cut transition <transition_id>` — CutPayload を追加
+- `arctx cut node <node_id>`
+- `arctx cut transition <transition_id>`
 
-git 連携は標準 extension です。正式な command namespace は `arctx git ...` で、
-日常用の `arctx commit` などは default alias として残ります。
+cut は無効な枝を記録する。履歴は削除しない。
 
-- `arctx init <req_id> --extension git` — run で git extension を有効化
-- `arctx git commit -m "message"` / `arctx commit -m "message"` — git commit を駆動して Transition を記録
-- `arctx git branch list` / `arctx branch list` — 記録済み branch 一覧
-- `arctx git branch show <name>` / `arctx branch show <name>` — branch tip と member を表示
-- `arctx git revert --sha SHA` / `arctx revert --sha SHA` — revert を駆動して記録
-- `arctx git cherry-pick --sha SHA` / `arctx cherry-pick --sha SHA` — cherry-pick を駆動して記録
-- `arctx git merge --other branch:<name>` / `arctx merge --other branch:<name>` — merge を駆動して記録
-- `arctx git reset --node NODE --mode hard` / `arctx reset --node NODE --mode hard` — reset と current 移動を記録
-- `arctx git verify` / `arctx verify` — git descendant 制約を検証
-- `arctx git hook install` / `arctx hook install` — git hooks を install
-- `arctx git add --transition T --commit SHA` — Transition に commit hash を紐づける
-- `arctx git list --transition T` — 紐づいた commit hash を表示
-- `arctx git show --transition T` — GitChangePayload を表示
-- `arctx git worktree add <path> [branch] [--base REF] [--existing-branch]` — `git worktree add` の薄いラッパ。`branch` 省略時はパス末尾の名前で新規 branch を作成。
-- `arctx git worktree list` — `git worktree list --porcelain` を JSON にパースして表示。
-- `arctx git worktree remove <path> [--force]` — `git worktree remove` の薄いラッパ。
+## Git 連携
 
-### Work session（並列・複数 agent）
+git 連携は標準 extension。正式な command namespace は `arctx git ...` で、
+日常用の `arctx commit` などは shortcut alias として残る。
 
-複数の agent / 端末が同じ run を共有するときの作業単位。同時書き込みはロック付き
-差分追記で安全に直列化されます。運用の詳細は `docs/ja/AGENT_LOOP.md` を参照。
+extension の command namespace は、解決された current run から読み込まれる。
+`arctx git ...` が見えない場合は、まず `--extension git` で作成された run を解決できる
+状態にする。方法は `--run <id>` を渡す、`ARCTX_RUN_ID` を設定する、または
+`<gitdir>/arctx-id` がある repo から実行する、のいずれか。
 
-- `arctx work-session start [--user U] [--work-session WS]` — work session を作成して id を表示
-- `arctx work-session env [--new] [--run R] [--user U]` — `eval "$(...)"` 用に `ARCTX_RUN_ID` / `ARCTX_WORK_SESSION_ID` / `ARCTX_USER_ID` の export を出力（シェル単位の固定モード）
-- `arctx work-session spawn [--user U] -- <cmd>` — 子プロセスだけに一意な work session を渡して `<cmd>`（codex / claude 等）を起動
-- `arctx work-session list` / `arctx work-session show <ws_id>` — work session 一覧 / 表示
+セットアップ:
 
-属性の解決順:
+- `arctx init <req_id> --extension git`: run を作成し git extension を有効化する。
+  git repo 内なら `<gitdir>/arctx-id` と hooks も設定する。ただし repo registry に
+  明示登録したい場合は `arctx git init` を使う。
+- `arctx git init [--repo-path P] [--slug USER/REPO] [--no-hooks]`: current run に
+  repo を登録し hooks を install する。「この checkout をこの run に紐づける」
+  推奨コマンド。
+- `arctx git repo add [--repo-path P] [--slug USER/REPO] [--no-hooks]`: 同じ登録処理の
+  primitive。別 repo を既存 run に参加させるときに使う。
+- `arctx git repo list`: 登録 repo を JSON で一覧。
+- `arctx git repo show [--repo-id ID | --repo-path P]`: repo registry の1件を表示。
 
-- user: `--user` → `ARCTX_USER_ID` → `<ARCTX_HOME>/config.json` の `user.id` → `user`
-- work session: `--work-session` → `ARCTX_WORK_SESSION_ID` → `config.json` の `work_session.id` → `default`
+日常の git verbs:
 
-### Worktree attachment
+- `arctx git commit -m "message"` / `arctx commit -m "message"`
+- `arctx git branch list` / `arctx branch list`
+- `arctx git branch show <name>` / `arctx branch show <name>`
+- `arctx git revert --sha SHA` / `arctx revert --sha SHA`
+- `arctx git cherry-pick --sha SHA` / `arctx cherry-pick --sha SHA`
+- `arctx git merge --other branch:<name>` / `arctx merge --other branch:<name>`
+- `arctx git reset --node NODE --mode hard` / `arctx reset --node NODE --mode hard`
+- `arctx git verify` / `arctx verify`
+- `arctx git hook install` / `arctx hook install`
 
-- `arctx work-session start --worktree PATH` / `arctx work-session env --new --worktree PATH` / `arctx work-session spawn --worktree PATH -- <cmd>` — 解決済み worktree path (＋ current branch / `git --git-common-dir`) を `WorkSession.metadata["worktree"]` に記録し、`ARCTX_GIT_WORKTREE=PATH` を export する。
-- `ARCTX_GIT_WORKTREE` 環境変数 — セットされていると、すべての git verb (`arctx git commit / revert / cherry-pick / merge / reset / verify` と post-rewrite hook) は git サブプロセスを `cwd=$ARCTX_GIT_WORKTREE` で実行する。`arctx git worktree add` と組み合わせることで、同じ ARCTX run を共有しつつ各 agent に独立した checkout を渡せる。
+commit 紐づけ:
 
-### Graph
+- `arctx git add --transition T --commit SHA`: commit hash を transition に貼る。
+  `arctx git repo add` とは別物。
+- `arctx git list --transition T`
+- `arctx git show --transition T`
 
-- `arctx graph dump [--format outline|mermaid]` — graph を描画
-- `arctx graph trace <node_id>` — 履歴を遡る
-- `arctx graph reachable <node_id>` — active subgraph を表示
+worktree helpers:
 
-## 互換コマンド
+- `arctx git worktree add <path> [branch] [--base REF] [--existing-branch]`:
+  `git worktree add` の薄い wrapper。`branch` 省略時は path 末尾の名前で新規 branch を作る。
+- `arctx git worktree list`: `git worktree list --porcelain` を JSON に parse。
+- `arctx git worktree remove <path> [--force]`: `git worktree remove` の wrapper。
 
-`arctx show`, `arctx dump`, `arctx trace`, `arctx reachable`, `arctx outcomes` は残っていますが、新しい CLI では `node` / `transition` / `payload` / `graph` namespace を優先します。
+## 複数 repo
 
-## 廃止コマンド
+1つの ARCTX run は複数の git repo にまたがれる。run は repo registry
+（`RepoPayload`）を持ち、git payload は `repo_id` で repo を参照する。core graph
+record は repo 非依存のまま。
 
-`arctx plan`, `arctx predict`, `arctx observe`, `arctx note` は削除済みです。
+典型フロー:
+
+```bash
+cd ~/dev/frontend
+arctx init "機能X" --run-id run_x --extension git
+arctx git init
+
+cd ~/dev/backend
+arctx git repo add --run run_x
+```
+
+以後、どちらの repo の commit も同じ run に積まれる。branch tip は
+`(repo_id, branch)` で管理されるため、`frontend/main` と `backend/main` は衝突しない。
+
+registry entry の fields:
+
+- `repo_id`: run に保存される opaque primary key。
+- `slug`: `USER/REPO` のような表示名。
+- `remotes`: 検出された remote URL 全形式。
+- `canonical`: SSH / HTTPS 形式を同一視する正規化 remote key。
+- `local_path`: このマシン上の checkout path。
+
+`local_path` は環境依存。`arctx export` ではデフォルトで落とす。
+`arctx git repo list` と `arctx git repo show` はローカル確認用なので表示する。
+
+## Work Sessions
+
+work session は、同じ run で並列作業する agent / terminal の attribution 単位。
+変更系CLIコマンドは lock 下で append するため、同時 writer は既存履歴を上書きせず、
+新規 record の追記として直列化される。
+
+- `arctx work-session start [--user U] [--work-session WS]`: work session を作成して id を表示。
+- `arctx work-session env [--new] [--run R] [--user U]`: `ARCTX_RUN_ID`,
+  `ARCTX_WORK_SESSION_ID`, `ARCTX_USER_ID` の shell exports を表示。
+- `arctx work-session spawn [--user U] -- <cmd>`: child-only な work session で子コマンドを実行。
+- `arctx work-session list` / `arctx work-session show <ws_id>`: work session を確認。
+
+固定モードの例:
+
+```bash
+eval "$(arctx work-session env --run run_x --new --user codex)"
+arctx transition create --from NODE_ID --payload-type transition_payload --field type=suggestion
+```
+
+spawn の例:
+
+```bash
+arctx work-session spawn --run run_x --user codex -- codex
+arctx work-session spawn --run run_x --user claude-code -- claude
+```
+
+attribution の解決順:
+
+- user: `--user` -> `ARCTX_USER_ID` -> `<ARCTX_HOME>/config.json` の `user.id` -> `user`
+- work session: `--work-session` -> `ARCTX_WORK_SESSION_ID` ->
+  `<ARCTX_HOME>/config.json` の `work_session.id` -> `default`
+
+## Worktree attachment
+
+- `arctx work-session start --worktree PATH`
+- `arctx work-session env --new --worktree PATH`
+- `arctx work-session spawn --worktree PATH -- <cmd>`
+
+これらは解決済み worktree path を `WorkSession.metadata["worktree"]` に記録し、
+`ARCTX_GIT_WORKTREE=PATH` を export する。
+
+`ARCTX_GIT_WORKTREE` が set されている場合、git verbs（`arctx git commit`, `revert`,
+`cherry-pick`, `merge`, `reset`, `verify`, post-rewrite hook）は shell cwd ではなく
+`cwd=$ARCTX_GIT_WORKTREE` で git subprocess を実行する。`arctx git worktree add` と
+組み合わせると、各 agent に独立 checkout を渡しつつ、1つの ARCTX run を共有できる。
+
+## Export
+
+`arctx export` は `dump` とは別物。`dump` は検査 / LLM context 用で、`export` は人に
+渡す artifact を作る。
+
+- `--format md|tex|html`（既定 `md`）
+- `--exclude-cut`: cut 済み node / transition を落とす。
+- `--include-local`: repo の `local_path` を含める。
+- `--node` / `--depth` / `--full-payloads`: `dump` と同じ traversal options。
+- `--output PATH` / `-o PATH`: stdout ではなくファイルへ書く。
+
+repo が登録されている場合、export には Repos section が含まれる。
+
+## Graph
+
+- `arctx graph dump [--format outline|mermaid]`
+- `arctx graph trace <node_id>`
+- `arctx graph reachable <node_id>`
+
+互換コマンドとして `arctx show`, `arctx dump`, `arctx trace`, `arctx reachable`,
+`arctx outcomes` は残っている。新しい使い方では `node`, `transition`, `payload`,
+`graph` namespace を優先する。
+
+削除済みコマンド: `arctx plan`, `arctx predict`, `arctx observe`, `arctx note`。

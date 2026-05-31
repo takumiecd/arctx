@@ -23,12 +23,14 @@ def make_branch_tip_event(
     user_id: str,
     branch: str,
     tip_node_id: str,
+    repo_id: str = "",
 ) -> WorkEvent:
     """Build a BranchTipEvent as a WorkEvent.
 
-    Records the current tip node for a branch. The latest such event per
-    branch is authoritative (``branch_members`` uses this tip for ancestry
-    queries).
+    Records the current tip node for a branch within a repo. The latest such
+    event per ``(repo_id, branch)`` is authoritative (``branch_members`` uses
+    this tip for ancestry queries). ``repo_id`` keeps same-named branches in
+    different repos (e.g. two ``main``s) from colliding.
     """
     return WorkEvent(
         event_id=event_id,
@@ -39,6 +41,7 @@ def make_branch_tip_event(
         data={
             "branch": branch,
             "tip_node_id": tip_node_id,
+            "repo_id": repo_id,
         },
     )
 
@@ -120,13 +123,18 @@ def make_reset_event(
     )
 
 
-def latest_branch_tip(graph, branch: str) -> WorkEvent | None:
-    """Return the latest BranchTipEvent for the given branch."""
+def latest_branch_tip(graph, branch: str, repo_id: str | None = None) -> WorkEvent | None:
+    """Return the latest BranchTipEvent for the given branch.
+
+    When *repo_id* is given, only events for that repo match, so same-named
+    branches in different repos stay distinct. ``repo_id=None`` matches any
+    repo (legacy / single-repo callers).
+    """
     result: WorkEvent | None = None
     for event in graph.work_events:
-        if (
-            event.event_type == BRANCH_TIP_EVENT
-            and event.data.get("branch") == branch
-        ):
-            result = event
+        if event.event_type != BRANCH_TIP_EVENT or event.data.get("branch") != branch:
+            continue
+        if repo_id is not None and event.data.get("repo_id", "") != repo_id:
+            continue
+        result = event
     return result

@@ -31,6 +31,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     from arctx_cli.ext.git.hook import add_parser as add_hook_parser
     from arctx_cli.ext.git.merge import add_parser as add_merge_parser
     from arctx_cli.ext.git.reset import add_parser as add_reset_parser
+    from arctx_cli.ext.git.repo import add_init_parser, add_repo_parser
     from arctx_cli.ext.git.revert import add_parser as add_revert_parser
     from arctx_cli.ext.git.verify import add_parser as add_verify_parser
     from arctx_cli.ext.git.worktree import add_parser as add_worktree_parser
@@ -39,7 +40,9 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     add_cherry_pick_parser(git_sub)
     add_commit_parser(git_sub)
     add_hook_parser(git_sub)
+    add_init_parser(git_sub)
     add_merge_parser(git_sub)
+    add_repo_parser(git_sub)
     add_reset_parser(git_sub)
     add_revert_parser(git_sub)
     add_verify_parser(git_sub)
@@ -100,10 +103,18 @@ def cli_git(args) -> int:
         return cli_commit(args)
     if args.git_command == "hook":
         return cli_hook(args)
+    if args.git_command == "init":
+        from arctx_cli.ext.git.repo import cli_git_init  # noqa: PLC0415
+
+        return cli_git_init(args)
     if args.git_command == "list":
         return _cli_git_list(args)
     if args.git_command == "merge":
         return cli_merge(args)
+    if args.git_command == "repo":
+        from arctx_cli.ext.git.repo import cli_repo  # noqa: PLC0415
+
+        return cli_repo(args)
     if args.git_command == "reset":
         return cli_reset(args)
     if args.git_command == "revert":

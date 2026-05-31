@@ -7,6 +7,7 @@ from pathlib import Path
 
 from arctx.core.schema.graph import Transition
 from arctx.ext.git.helpers.repo import resolve_worktree_path
+from arctx.ext.git.registry import resolve_repo_id
 from arctx.ext.git.verbs._forward_transition import (
     capture_git_info,
     check_branch_tip_consistency,
@@ -41,8 +42,12 @@ def commit_impl(
         repo_path=resolved_repo_path,
     )
 
+    repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
+
     if work_session_id is not None:
-        check_branch_tip_consistency(self.run_graph, current_branch, current_node_ids)
+        check_branch_tip_consistency(
+            self.run_graph, current_branch, current_node_ids, repo_id
+        )
 
     if not dry_run:
         result = subprocess.run(
@@ -89,4 +94,5 @@ def commit_impl(
         },
         user_id=user_id,
         work_session_id=work_session_id,
+        repo_id=repo_id,
     )

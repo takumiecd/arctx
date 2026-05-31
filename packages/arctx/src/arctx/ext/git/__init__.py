@@ -59,6 +59,18 @@ class GitNamespace:
 
         return verify_impl(self.handle, **kwargs)
 
+    def repo_add(self, **kwargs: Any) -> object:
+        from arctx.ext.git.helpers.repo import resolve_worktree_path
+        from arctx.ext.git.registry import resolve_repo_id
+
+        repo_path = resolve_worktree_path(kwargs.get("repo_path"))
+        return resolve_repo_id(self.handle, repo_path, slug=kwargs.get("slug"))
+
+    def repos(self) -> list:
+        from arctx.ext.git.registry import list_repos
+
+        return list_repos(self.handle.run_graph)
+
     def branch_members(self, branch: str) -> set[str]:
         from arctx.ext.git.queries import branch_members
 
