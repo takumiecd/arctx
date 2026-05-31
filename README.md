@@ -1,5 +1,7 @@
 # ARCTX
 
+[![CI](https://github.com/takumiecd/arctx/actions/workflows/ci.yml/badge.svg)](https://github.com/takumiecd/arctx/actions/workflows/ci.yml)
+
 > **Git tracks what changed. ARCTX tracks why you changed it — and what you decided not to.**
 >
 > An append-only DAG for reasoning history, parallel agent collaboration, and abandoned branches that stay in the graph.
