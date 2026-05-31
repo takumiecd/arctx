@@ -23,6 +23,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Configure git
+        # The git-integration tests create throwaway repos and assume the
+        # initial branch is `main`. CI runners default to `master`, so pin it
+        # (and set an identity for the commits those tests make).
+        run: |
+          git config --global init.defaultBranch main
+          git config --global user.email "ci@arctx.dev"
+          git config --global user.name "ARCTX CI"
       - name: Install test dependencies
         # Packages run from source via PYTHONPATH, mirroring the documented
         # dev workflow. We only need the runtime deps (typing-extensions for
