@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arctx"
-version = "0.2.0b3"
+version = "0.2.0b4"
 description = "Append-only DAG for reasoning history, parallel agent collaboration, and thought tracking"
 readme = "README.md"
 requires-python = ">=3.10"
