@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref (saves CI minutes on rapid pushes).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install test dependencies
+        # Packages run from source via PYTHONPATH, mirroring the documented
+        # dev workflow. We only need the runtime deps (typing-extensions for
+        # arctx, textual for arctx-tui) plus the test runner.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "typing-extensions>=4.0.0" \
+            "textual>=0.80" \
+            "pytest>=7.0" \
+            "pytest-asyncio>=0.21"
+      - name: Run tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONPATH: packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src
+        run: |
+          python -m pytest \
+            packages/arctx/tests \
+            packages/arctx-cli/tests \
+            packages/arctx-tui/tests \
+            --import-mode=importlib -q
+
+  build:
+    name: build & twine check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip build twine
+      - name: Build all three packages
+        run: |
+          for pkg in arctx arctx-cli arctx-tui; do
+            python -m build "packages/$pkg"
+          done
+      - name: twine check
+        run: python -m twine check packages/*/dist/*
+
+  lint:
+    name: lint (informational)
+    runs-on: ubuntu-latest
+    # Non-blocking for now: the codebase predates ruff/black enforcement, so
+    # these steps report findings without failing CI. To enforce later, run
+    # `ruff check --fix .` and `black .` to clean the tree, then remove the
+    # per-step `continue-on-error`.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip "ruff>=0.1.0" "black>=23.0"
+      - name: ruff check
+        continue-on-error: true
+        run: ruff check .
+      - name: black --check
+        continue-on-error: true
+        run: black --check .
