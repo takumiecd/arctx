@@ -83,41 +83,44 @@ ARCTX is *not* an executor, planner, or agent framework. It is the substrate for
 You try variant A, it gets slower. You try variant B, it gets faster. Three months later you need to explain *why* variant A was abandoned.
 
 ```bash
-# 1. Baseline
+# 1. Baseline. Capture its node id so the experiments can branch off it.
 arctx init optimize --extension git --run-id bench
-arctx git commit -m "baseline: naive loop"
+echo "def f(): pass" > work.py && git add work.py
+BASE=$(arctx git commit -m "baseline: naive loop" | jq -r .output_node_id)
 
-# 2. Hypothesis A — add a cache layer
+# 2. Hypothesis A — add a cache layer, branched off the baseline node.
 git checkout -b feat/cache
 # ...edit...
-git add . && arctx git commit -m "add cache (hypothesis A)"
-arctx payload add --target transition:latest \
-  --payload-type benchmark \
-  --field elapsed_ms=1200 \
-  --field note="slower than baseline"
+git add .
+A=$(arctx git commit -m "add cache (hypothesis A)" --from "$BASE" | jq -r .output_node_id)
+arctx payload add --node "$A" --payload-type node_payload \
+  --field type=benchmark \
+  --field 'content={"elapsed_ms": 1200, "note": "slower than baseline"}'
 
-# 3. Abandon A — it stays in the graph, just marked inactive
-arctx cut transition $(arctx show --latest transition)
+# 3. Abandon A — it stays in the graph, just marked inactive, with a reason.
+arctx cut node "$A" --reason "slower than baseline"
 
-# 4. Hypothesis B — vectorize
+# 4. Hypothesis B — vectorize, also branched off the same baseline node.
 git checkout main && git checkout -b feat/vectorize
 # ...edit...
-git add . && arctx git commit -m "vectorize (hypothesis B)"
-arctx payload add --target transition:latest \
-  --payload-type benchmark \
-  --field elapsed_ms=180 \
-  --field note="5x faster than baseline"
+git add .
+B=$(arctx git commit -m "vectorize (hypothesis B)" --from "$BASE" | jq -r .output_node_id)
+arctx payload add --node "$B" --payload-type node_payload \
+  --field type=benchmark \
+  --field 'content={"elapsed_ms": 180, "note": "5x faster than baseline"}'
 ```
 
-The resulting graph tells the whole story:
+`--from "$BASE"` anchors both experiments to the baseline node, so they fan out as
+true siblings (instead of chaining, where cutting A would also kill B). The
+resulting graph tells the whole story — run `arctx export --format md --full-payloads`:
 
 ```text
 n_root
-└─ t_baseline ── n_1
-   ├─ t_cache_hypothesis_A ── n_2 ✂
-   │     payload: benchmark {elapsed_ms: 1200, note: "slower than baseline"}
-   └─ t_vectorize_hypothesis_B ── n_3
-         payload: benchmark {elapsed_ms: 180, note: "5x faster than baseline"}
+└─ baseline ── n_baseline
+   ├─ add cache (hypothesis A) ── n_A ✂
+   │     benchmark {"elapsed_ms": 1200, "note": "slower than baseline"} · cut: slower than baseline
+   └─ vectorize (hypothesis B) ── n_B
+         benchmark {"elapsed_ms": 180, "note": "5x faster than baseline"}
 ```
 
 No spreadsheet, no stale Confluence page — the *reasoning* lives next to the *code*.
@@ -129,28 +132,31 @@ No spreadsheet, no stale Confluence page — the *reasoning* lives next to the *
 Claude and Codex drive the same run without stepping on each other.
 
 ```bash
+# Shared baseline. Both agents branch their work off this node id.
+BASE=$(arctx git commit -m "baseline" --run demo | jq -r .output_node_id)
+
 # Terminal 1 — Claude
 eval $(arctx work-session env --run demo --new --user claude)
 git checkout -b claude/vec
 # ...edits...
-git add . && arctx git commit -m "Claude: vectorize inner loop"
+git add . && arctx git commit -m "Claude: vectorize inner loop" --from "$BASE"
 
 # Terminal 2 — Codex (running at the same time)
 eval $(arctx work-session env --run demo --new --user codex)
 git checkout main && git checkout -b codex/map
 # ...edits...
-git add . && arctx git commit -m "Codex: parallel map"
+git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 ```
 
-Both land in the same `RunGraph` as sibling transitions:
+Both land in the same `RunGraph` as sibling transitions off the baseline. Each
+agent has its own work-session, and `--from "$BASE"` keeps them independent —
+no fast-forward conflict, no overwrite:
 
 ```text
 n_root
-└─ t_baseline ── n_1
-   ├─ t_claude_vectorize_inner_loop ── n_2
-   │     work-session: claude / ws_xxx
-   └─ t_codex_parallel_map ── n_3
-         work-session: codex / ws_yyy
+└─ baseline ── n_baseline
+   ├─ Claude: vectorize inner loop ── n_2   (work-session: claude / ws_xxx)
+   └─ Codex: parallel map           ── n_3   (work-session: codex / ws_yyy)
 ```
 
 No merge conflicts in the graph. Both attempts stay reviewable forever.
@@ -163,32 +169,35 @@ Record every hypothesis as you chase a bug; walk it backwards once you find the 
 
 ```bash
 arctx init debug --extension git --run-id bug-42
-arctx git commit -m "reproduction script"
+echo "# repro" > repro.py && git add repro.py
+REPRO=$(arctx git commit -m "reproduction script" | jq -r .output_node_id)
 
 # Hypothesis: race condition in cache
 git checkout -b try/race-fix
 # ...edit...
-arctx git commit -m "fix: add lock around cache"
-arctx payload add --target transition:latest \
-  --payload-type observation \
-  --field result="still flaky"
+git add .
+R=$(arctx git commit -m "fix: add lock around cache" --from "$REPRO" | jq -r .output_node_id)
+arctx payload add --node "$R" --payload-type node_payload \
+  --field type=observation --field 'content={"result": "still flaky"}'
 
 # Hypothesis: off-by-one in index
 git checkout main && git checkout -b try/index-fix
 # ...edit...
-arctx git commit -m "fix: correct loop bound"
-arctx payload add --target transition:latest \
-  --payload-type observation \
-  --field result="bug gone — 3 runs green"
+git add .
+I=$(arctx git commit -m "fix: correct loop bound" --from "$REPRO" | jq -r .output_node_id)
+arctx payload add --node "$I" --payload-type node_payload \
+  --field type=observation --field 'content={"result": "bug gone — 3 runs green"}'
 ```
+
+Both hypotheses branch off the reproduction node, so they stay independent and comparable:
 
 ```text
 n_root
-└─ t_reproduction_script ── n_1
-   ├─ t_fix_add_lock_around_cache ── n_2
-   │     payload: observation {result: "still flaky"}
-   └─ t_fix_correct_loop_bound ── n_3
-         payload: observation {result: "bug gone — 3 runs green"}
+└─ reproduction script ── n_repro
+   ├─ fix: add lock around cache ── n_2
+   │     observation {"result": "still flaky"}
+   └─ fix: correct loop bound    ── n_3
+         observation {"result": "bug gone — 3 runs green"}
 ```
 
 When your colleague asks *"how did you know it was the loop bound?"*, the graph answers for you.
@@ -205,7 +214,7 @@ pip install arctx-tui          # optional: adds standalone arctx-tui command
 
 arctx init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py
-arctx git commit -m "baseline"
+BASE=$(arctx git commit -m "baseline" | jq -r .output_node_id)
 
 arctx-tui                              # explore the DAG interactively (requires arctx-tui)
 arctx graph dump --format outline      # or dump it as an LLM-friendly outline
@@ -220,16 +229,16 @@ Two agents on the same repo? Each gets an isolated work-session that doesn't tou
 eval $(arctx work-session env --run demo --new --user claude)
 git checkout -b claude/vec
 # ...edits...
-git add . && arctx git commit -m "Claude: vectorization"
+git add . && arctx git commit -m "Claude: vectorization" --from "$BASE"
 
 # Codex's terminal (running in parallel)
 eval $(arctx work-session env --run demo --new --user codex)
 git checkout main && git checkout -b codex/map
 # ...edits...
-git add . && arctx git commit -m "Codex: parallel map"
+git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 ```
 
-Both branches land in the same `RunGraph` as sibling transitions. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
+Both branches land in the same `RunGraph` as sibling transitions off `$BASE`. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
 
 > **Note on isolation.** A ARCTX `work-session` isolates ARCTX run/session attribution (who did what, in which session). It does **not** isolate the Git working tree by itself — both terminals above share the same checkout unless you attach each session to its own `git worktree`. See the next section for the worktree-aware variant.
 
