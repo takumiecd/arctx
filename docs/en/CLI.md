@@ -134,6 +134,10 @@ Setup commands:
 Daily git verbs:
 
 - `arctx git commit -m "message"` / `arctx commit -m "message"`
+  - The input node is normally resolved from the work-session / branch tip.
+    Pass `--from NODE` to branch off a chosen node instead (repeat for a
+    fan-in) — this is how experiments fan out as siblings from a shared
+    baseline.
 - `arctx git branch list` / `arctx branch list`
 - `arctx git branch show <name>` / `arctx branch show <name>`
 - `arctx git revert --sha SHA` / `arctx revert --sha SHA`

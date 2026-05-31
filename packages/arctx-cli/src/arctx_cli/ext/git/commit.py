@@ -27,6 +27,18 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     )
     p.add_argument("-m", "--message", required=True, help="Commit message")
     p.add_argument(
+        "--from",
+        dest="from_nodes",
+        action="append",
+        default=None,
+        metavar="NODE",
+        help=(
+            "Branch this commit off the given node instead of the session / "
+            "branch tip. Repeat for a fan-in. This is how sibling experiments "
+            "fan out from a shared baseline node."
+        ),
+    )
+    p.add_argument(
         "--branch",
         default=None,
         help="Override branch name (default: current git branch)",
@@ -82,6 +94,7 @@ def run_commit_command(
     work_session_id: str | None,
     merge: str | None = None,
     join: bool = False,
+    from_node_ids: tuple[str, ...] | None = None,
     # Test-only parameters; not exposed in the CLI parser.
     dry_run: bool = False,
     head_commit: str | None = None,
@@ -136,6 +149,7 @@ def run_commit_command(
             branch=branch,
             user_id=user_id,
             work_session_id=work_session_id,
+            from_node_ids=from_node_ids,
             dry_run=dry_run,
             head_commit=head_commit,
         )
@@ -178,6 +192,12 @@ def cli_commit(args) -> int:
     user_id = resolve_user_id_from_args(args)
     work_session_id = resolve_work_session_id_from_args(args)
 
+    from_nodes = getattr(args, "from_nodes", None)
+    merge = getattr(args, "merge", None)
+    if from_nodes and merge is not None:
+        print("error: --from cannot be combined with --merge", file=sys.stderr)
+        return 1
+
     try:
         result = run_commit_command(
             message=args.message,
@@ -186,8 +206,9 @@ def cli_commit(args) -> int:
             store_dir=args.store_dir,
             user_id=user_id,
             work_session_id=work_session_id,
-            merge=getattr(args, "merge", None),
+            merge=merge,
             join=getattr(args, "join", False),
+            from_node_ids=tuple(from_nodes) if from_nodes else None,
         )
     except ParallelSessionConflict as exc:
         print(f"error: {exc}", file=sys.stderr)
