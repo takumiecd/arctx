@@ -111,6 +111,7 @@ Current commands:
 - `node` — inspect Nodes and their payloads
 - `payload` — list payload types/schemas and attach payloads to Nodes or Transitions
 - `cut` — cut a Node or Transition (`cut node NODE_ID` or `cut transition T_ID`)
+- `claude-code` — Claude Code hooks adapter. `claude-code install` merges hook entries into `.claude/settings.json` (idempotent); `claude-code hook` consumes one hook event JSON from stdin and records it (session → WorkSession `ws_cc_<session_id>`, prompt/tool use → Transition with `claude_code.*` typed generic payloads, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Adapter logic: `packages/arctx/src/arctx/ext/claude_code/adapter.py`.
 - `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Transition.
 - `show` — inspect a node / transition / payload as JSON
 - `graph` — dump / trace / reachable graph queries

@@ -218,6 +218,40 @@ attribution の解決順:
 - work session: `--work-session` -> `ARCTX_WORK_SESSION_ID` ->
   `<ARCTX_HOME>/config.json` の `work_session.id` -> `default`
 
+## Claude Code 連携（hooks adapter）
+
+`arctx claude-code` は Claude Code の hooks からセッションを自動記録するアダプタ。
+手動の記録操作なしで、エージェントの行動が run に落ちる。
+
+```bash
+arctx claude-code install        # .claude/settings.json に hook entries を冪等マージ
+arctx claude-code install --print  # 書き込まずに hooks JSON snippet を表示
+```
+
+記録のマッピング:
+
+- 1 Claude Code セッション → 1 WorkSession（`ws_cc_<session_id>`、transcript_path 等を metadata に保持）
+- `UserPromptSubmit` → Transition + `TransitionPayload(type="claude_code.prompt")`
+- `PostToolUse` → Transition + `TransitionPayload(type="claude_code.tool_use")`
+  （既定 matcher は `Write|Edit|MultiEdit|NotebookEdit|Bash`。`--matcher` で変更）
+- `Stop` / `SessionEnd` → セッション先端 node への `NodePayload`
+
+各セッションの transition はそのセッションの先端（最後に作った transition の
+output node）に連鎖し、並列セッションは root からの sibling 枝として fan-out する。
+先端は work events から読み取り時に導出されるため、状態ファイルは持たない。
+cut 済みの枝は自動でスキップされる。
+
+`arctx claude-code hook` が hook 本体で、stdin から hook event JSON を 1 件読む。
+fail-safe が既定: run が未解決・JSON 不正・store エラーでも exit 0 で no-op し、
+Claude Code を決してブロックしない（デバッグには `--strict`）。stdout には何も
+出力しない（`UserPromptSubmit` では stdout がモデルの context に注入されるため）。
+
+- run の解決は他コマンドと同じ（`--run` → `ARCTX_RUN_ID` → `<gitdir>/arctx-id`）。
+- user attribution の最終 fallback だけ `user` ではなく `claude-code`。
+- `--tools A,B`: hook 側でも PostToolUse を tool 名でフィルタ（一次フィルタは
+  settings.json の matcher）。
+- 長大な tool 出力は payload 上で clip される（全文は transcript 側に残る）。
+
 ## Worktree attachment
 
 - `arctx work-session start --worktree PATH`
