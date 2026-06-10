@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Dev wrapper: run the arctx CLI from this repo's sources (no install needed).
+# Used as the hook command in .claude/settings.local.json so Claude Code
+# sessions in this repo are recorded even though the packages aren't
+# installed. See docs/ja/CLI.md "Claude Code 連携".
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONPATH="$REPO_ROOT/packages/arctx/src:$REPO_ROOT/packages/arctx-cli/src${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m arctx_cli.main "$@"
