@@ -36,4 +36,4 @@ hook '{"hook_event_name":"UserPromptSubmit","session_id":"sess-codex","prompt":"
 echo '--- dump:'
 A dump --run demo --format outline --full-payloads
 echo '--- work sessions:'
-A work-session list --run demo | python3 -c "import json,sys;[print(s['work_session_id'],s['user_id'],s['metadata'].get('claude_code',{}).get('model','')) for s in json.load(sys.stdin)['work_sessions']]"
+A work-session list --run demo | python3 -c "import json,sys;[print(s['work_session_id'],s['user_id'],s['metadata'].get('agent',{}).get('model','')) for s in json.load(sys.stdin)['work_sessions']]"

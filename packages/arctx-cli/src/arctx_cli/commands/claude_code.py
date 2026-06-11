@@ -14,6 +14,10 @@ from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 from arctx_cli.context import resolve_run_id_from_args, resolve_store, resolve_user_id_from_args
 
 HOOK_COMMAND = "arctx claude-code hook"
+# Idempotency marker: any hook command containing this substring counts as
+# ours, so rewriting the command to a wrapper/absolute path (e.g.
+# "/repo/scripts/arctx claude-code hook") still dedupes on re-install.
+_HOOK_MARKER = "claude-code hook"
 DEFAULT_TOOL_MATCHER = "Write|Edit|MultiEdit|NotebookEdit|Bash"
 _HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "SessionEnd")
 
@@ -75,6 +79,17 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         help=f"PostToolUse tool matcher (default: {DEFAULT_TOOL_MATCHER})",
     )
     install.add_argument(
+        "--command",
+        default=HOOK_COMMAND,
+        dest="hook_command",
+        metavar="CMD",
+        help=(
+            f"Hook command to write (default: {HOOK_COMMAND!r}). Pass an "
+            "absolute path when arctx is not on PATH or the PATH version "
+            "predates the claude-code subcommand"
+        ),
+    )
+    install.add_argument(
         "--print",
         action="store_true",
         dest="print_only",
@@ -128,15 +143,13 @@ def run_claude_code_hook_command(
     return result
 
 
-def _hook_entry() -> dict:
-    return {"type": "command", "command": HOOK_COMMAND}
-
-
-def build_hooks_config(matcher: str = DEFAULT_TOOL_MATCHER) -> dict:
-    """Hook entries for every event the adapter records."""
+def build_hooks_config(
+    matcher: str = DEFAULT_TOOL_MATCHER, command: str = HOOK_COMMAND
+) -> dict:
+    """Return hook entries for every event the adapter records."""
     config: dict = {}
     for event in _HOOK_EVENTS:
-        entry: dict = {"hooks": [_hook_entry()]}
+        entry: dict = {"hooks": [{"type": "command", "command": command}]}
         if event == "PostToolUse":
             entry["matcher"] = matcher
         config[event] = [entry]
@@ -154,7 +167,7 @@ def merge_hooks_into_settings(settings: dict, hooks_config: dict) -> bool:
     for event, entries in hooks_config.items():
         existing = hooks.setdefault(event, [])
         already = any(
-            HOOK_COMMAND in str(h.get("command", ""))
+            _HOOK_MARKER in str(h.get("command", ""))
             for e in existing
             if isinstance(e, dict)
             for h in e.get("hooks", [])
@@ -172,18 +185,61 @@ def run_claude_code_install_command(
     settings_path: str | None,
     local: bool,
     matcher: str,
+    command: str = HOOK_COMMAND,
 ) -> dict:
     path = Path(settings_path) if settings_path else _default_settings_path(local=local)
     settings: dict = {}
     if path.exists():
         settings = json.loads(path.read_text(encoding="utf-8"))
-    changed = merge_hooks_into_settings(settings, build_hooks_config(matcher))
+    changed = merge_hooks_into_settings(settings, build_hooks_config(matcher, command))
     if changed:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(settings, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
-    return {"settings_path": str(path), "changed": changed}
+    result = {"settings_path": str(path), "changed": changed}
+    warning = _check_hook_command(command)
+    if warning:
+        result["warning"] = warning
+    return result
+
+
+def _check_hook_command(command: str) -> str | None:
+    """Best-effort check that the hook command will actually run.
+
+    The hook itself is fail-safe (silent no-op on error), which means a
+    missing or outdated `arctx` on PATH produces no symptom beyond
+    "nothing gets recorded". Surface that at install time instead.
+    """
+    import shlex  # noqa: PLC0415
+    import shutil  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    try:
+        executable = shlex.split(command)[0]
+    except (ValueError, IndexError):
+        return f"could not parse hook command: {command!r}"
+    resolved = shutil.which(executable)
+    if resolved is None:
+        return (
+            f"{executable!r} not found on PATH — hooks will silently no-op. "
+            "Re-run with --command '/absolute/path/to/arctx claude-code hook'."
+        )
+    try:
+        probe = subprocess.run(
+            [resolved, "claude-code", "--help"],
+            capture_output=True,
+            timeout=10,
+        )
+        if probe.returncode != 0:
+            return (
+                f"{resolved} does not support the claude-code subcommand "
+                "(older version?) — hooks will silently no-op. Upgrade it or "
+                "point --command at a newer arctx."
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return f"could not verify {resolved} (probe failed) — check that the hook command runs."
+    return None
 
 
 def _default_settings_path(*, local: bool) -> Path:
@@ -213,7 +269,7 @@ def cli_claude_code(args) -> int:
             if args.print_only:
                 print(
                     json.dumps(
-                        {"hooks": build_hooks_config(args.matcher)},
+                        {"hooks": build_hooks_config(args.matcher, args.hook_command)},
                         ensure_ascii=False,
                         indent=2,
                     )
@@ -223,7 +279,10 @@ def cli_claude_code(args) -> int:
                 settings_path=args.settings,
                 local=args.local,
                 matcher=args.matcher,
+                command=args.hook_command,
             )
+            if "warning" in result:
+                print(f"warning: {result['warning']}", file=sys.stderr)
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         except (OSError, ValueError, json.JSONDecodeError) as exc:

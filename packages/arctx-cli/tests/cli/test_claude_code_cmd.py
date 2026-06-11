@@ -67,7 +67,7 @@ def test_hook_command_records_prompt_and_tool_use():
             p.type
             for p in handle.run_graph.payloads_for_transition(tool["transition_id"])
         ]
-        assert types == ["claude_code.tool_use"]
+        assert types == ["agent.tool_use"]
         assert "ws_cc_s1" in handle.run_graph.work_sessions
 
 
@@ -89,8 +89,9 @@ def test_hook_command_persists_session_start_metadata():
 
         handle = resolve_store(_store_dir(td)).load_run("run_cc")
         session = handle.run_graph.work_sessions["ws_cc_s1"]
-        assert session.metadata["claude_code"]["model"] == "claude-fable-5"
-        assert session.metadata["claude_code"]["source"] == "startup"
+        assert session.metadata["agent"]["harness"] == "claude-code"
+        assert session.metadata["agent"]["model"] == "claude-fable-5"
+        assert session.metadata["agent"]["source"] == "startup"
 
 
 def test_hook_command_unknown_run_raises():
@@ -196,6 +197,55 @@ def test_install_writes_settings_and_is_idempotent():
         )
         assert second["changed"] is False
         assert json.loads(path.read_text(encoding="utf-8")) == settings
+
+
+def test_hook_cli_strict_keeps_stdout_empty(monkeypatch, capsys):
+    with tempfile.TemporaryDirectory() as td:
+        _init(td)
+        monkeypatch.delenv("ARCTX_RUN_ID", raising=False)
+        monkeypatch.setattr(
+            "sys.stdin",
+            io.StringIO(json.dumps(_event("UserPromptSubmit", prompt="hello"))),
+        )
+        rc = main(
+            ["claude-code", "hook", "--strict", "--run", "run_cc", "--store-dir", _store_dir(td)]
+        )
+        captured = capsys.readouterr()
+        assert rc == 0
+        assert captured.out == ""
+        assert "UserPromptSubmit" in captured.err
+
+
+def test_install_custom_command_and_marker_idempotency():
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "settings.json"
+        wrapper = "/repo/scripts/arctx claude-code hook"
+        first = run_claude_code_install_command(
+            settings_path=str(path), local=False, matcher="Bash", command=wrapper
+        )
+        assert first["changed"] is True
+        settings = json.loads(path.read_text(encoding="utf-8"))
+        assert settings["hooks"]["Stop"][0]["hooks"][0]["command"] == wrapper
+
+        # Re-install with the default command: the marker ("claude-code
+        # hook") must dedupe against the wrapper-style command.
+        second = run_claude_code_install_command(
+            settings_path=str(path), local=False, matcher="Bash"
+        )
+        assert second["changed"] is False
+        assert json.loads(path.read_text(encoding="utf-8")) == settings
+
+
+def test_install_warns_when_hook_command_missing_from_path():
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "settings.json"
+        result = run_claude_code_install_command(
+            settings_path=str(path),
+            local=False,
+            matcher="Bash",
+            command="definitely-not-a-real-binary-xyz claude-code hook",
+        )
+        assert "not found on PATH" in result["warning"]
 
 
 def test_install_preserves_existing_hooks():

@@ -1,10 +1,13 @@
-"""Map Claude Code hook events onto ARCTX records.
+"""Translate Claude Code hook events into SessionRecorder calls.
+
+This module is a thin harness adapter: it parses Claude Code's hook event
+JSON (https://code.claude.com/docs/en/hooks) and forwards it to the
+harness-neutral ``arctx.ext.agents.SessionRecorder``. All graph semantics
+(tip derivation, payload vocabulary, clipping) live in the neutral layer;
+a new harness adapter should need only a translation like this one.
 
 The functions here mutate an in-memory ``RunHandle`` only; persisting the
-mutation is the caller's job (the CLI hook command uses the same
-append-or-save path as every other mutating command).
-
-Hook event reference: https://code.claude.com/docs/en/hooks
+mutation is the caller's job.
 """
 
 from __future__ import annotations
@@ -12,13 +15,17 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from arctx.core.cuts import is_active_node
-from arctx.core.schema.payloads import NodePayload, TransitionPayload
+from arctx.ext.agents import DEFAULT_CLIP_CHARS, SessionRecorder, clip, session_tip
 
-# Default cap for each recorded string field. Tool outputs can be huge
-# (full file reads, long command output); the graph stores a clipped form
-# and the transcript_path on the WorkSession keeps the full record.
-DEFAULT_CLIP_CHARS = 2000
+__all__ = [
+    "DEFAULT_CLIP_CHARS",
+    "clip",
+    "record_hook_event",
+    "session_tip",
+    "work_session_id_for",
+]
+
+HARNESS = "claude-code"
 
 _SESSION_METADATA_KEYS = ("session_id", "transcript_path", "cwd", "source", "model")
 
@@ -26,44 +33,6 @@ _SESSION_METADATA_KEYS = ("session_id", "transcript_path", "cwd", "source", "mod
 def work_session_id_for(session_id: str) -> str:
     """Deterministic WorkSession id for one Claude Code session."""
     return f"ws_cc_{session_id}"
-
-
-def session_tip(handle, work_session_id: str) -> str:
-    """Return the node id this session should extend next.
-
-    Derived at read time from work events: the output node of the most
-    recent transition created in this work session that is still active.
-    Falls back to the run root, so the first prompt of each session fans
-    out as a sibling branch off the root.
-    """
-    graph = handle.run_graph
-    for event in reversed(graph.work_events):
-        if event.work_session_id != work_session_id:
-            continue
-        if event.event_type != "transition_created":
-            continue
-        transition = graph.transitions.get(event.target_id or "")
-        if transition is None:
-            continue
-        node_id = transition.output_node_id
-        if node_id in graph.nodes and is_active_node(graph, node_id):
-            return node_id
-    return handle.root_node_id
-
-
-def clip(value: Any, *, limit: int = DEFAULT_CLIP_CHARS) -> Any:
-    """Recursively clip long strings so payload content stays bounded."""
-    if isinstance(value, str):
-        if len(value) <= limit:
-            return value
-        return value[:limit] + f"…(+{len(value) - limit} chars)"
-    if isinstance(value, Mapping):
-        return {str(k): clip(v, limit=limit) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [clip(v, limit=limit) for v in value]
-    if isinstance(value, (int, float, bool)) or value is None:
-        return value
-    return clip(str(value), limit=limit)
 
 
 def record_hook_event(
@@ -76,8 +45,9 @@ def record_hook_event(
 ) -> dict[str, Any] | None:
     """Record one hook event into the run graph.
 
-    Returns a summary dict of what was recorded, or None when the event is
-    a no-op (unknown event, filtered tool, stop with no session activity).
+    Returns a summary dict of what was recorded (with the originating hook
+    event under ``"event"``), or None when the event is a no-op (unknown
+    event, filtered tool, stop with no session activity).
 
     ``tools`` filters PostToolUse by tool name; None or ``"*"`` records
     every tool that arrives (the settings.json matcher is the primary
@@ -87,29 +57,23 @@ def record_hook_event(
     session_id = event.get("session_id")
     if not name or not session_id:
         return None
-    ws_id = work_session_id_for(str(session_id))
+    recorder = SessionRecorder(
+        handle,
+        work_session_id=work_session_id_for(str(session_id)),
+        user_id=user_id,
+        harness=HARNESS,
+        clip_chars=clip_chars,
+    )
 
     if name == "SessionStart":
-        metadata = {
-            "claude_code": {k: event[k] for k in _SESSION_METADATA_KEYS if k in event}
-        }
-        handle.ensure_work_session(
-            user_id=user_id, work_session_id=ws_id, metadata=metadata
-        )
-        return {"event": name, "work_session_id": ws_id}
+        metadata = {k: event[k] for k in _SESSION_METADATA_KEYS if k in event}
+        return {"event": name, **recorder.start(metadata)}
 
     if name == "UserPromptSubmit":
         prompt = event.get("prompt")
         if not prompt:
             return None
-        return _record_transition(
-            handle,
-            ws_id,
-            user_id=user_id,
-            payload_type="claude_code.prompt",
-            content={"prompt": clip(prompt, limit=clip_chars)},
-            event_name=name,
-        )
+        return {"event": name, **recorder.prompt(str(prompt))}
 
     if name == "PostToolUse":
         tool_name = event.get("tool_name")
@@ -117,76 +81,21 @@ def record_hook_event(
             return None
         if tools is not None and "*" not in tools and tool_name not in tools:
             return None
-        content = {
-            "tool_name": tool_name,
-            "tool_input": clip(event.get("tool_input"), limit=clip_chars),
-            "tool_output": clip(
-                event.get("tool_output", event.get("tool_response")),
-                limit=clip_chars,
-            ),
-        }
-        return _record_transition(
-            handle,
-            ws_id,
-            user_id=user_id,
-            payload_type="claude_code.tool_use",
-            content=content,
-            event_name=name,
+        result = recorder.action(
+            str(tool_name),
+            event.get("tool_input"),
+            event.get("tool_output", event.get("tool_response")),
         )
+        return {"event": name, **result}
 
     if name in ("Stop", "SessionEnd"):
-        tip = session_tip(handle, ws_id)
-        if tip == handle.root_node_id:
-            return None
         content: dict[str, Any] = {}
         if name == "SessionEnd" and event.get("reason"):
             content["reason"] = str(event["reason"])
-        payload_type = "claude_code.stop" if name == "Stop" else "claude_code.session_end"
-        attached = handle.attach(
-            tip,
-            NodePayload(
-                payload_id="pending",
-                target_id="pending",
-                type=payload_type,
-                content=content,
-            ),
-            user_id=user_id,
-            work_session_id=ws_id,
-        )
-        return {
-            "event": name,
-            "work_session_id": ws_id,
-            "node_id": tip,
-            "payload_id": attached.payload_id,
-        }
+        kind = "stop" if name == "Stop" else "session_end"
+        result = recorder.turn_end(kind=kind, content=content)
+        if result is None:
+            return None
+        return {"event": name, **result}
 
     return None
-
-
-def _record_transition(
-    handle,
-    ws_id: str,
-    *,
-    user_id: str,
-    payload_type: str,
-    content: dict[str, Any],
-    event_name: str,
-) -> dict[str, Any]:
-    tip = session_tip(handle, ws_id)
-    transition = handle.transition(
-        [tip],
-        TransitionPayload(
-            payload_id="pending",
-            target_id="pending",
-            type=payload_type,
-            content=content,
-        ),
-        user_id=user_id,
-        work_session_id=ws_id,
-    )
-    return {
-        "event": event_name,
-        "work_session_id": ws_id,
-        "transition_id": transition.transition_id,
-        "output_node_id": transition.output_node_id,
-    }

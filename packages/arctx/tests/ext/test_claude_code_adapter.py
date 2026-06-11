@@ -37,8 +37,9 @@ def test_session_start_creates_work_session_with_metadata():
     assert result == {"event": "SessionStart", "work_session_id": ws_id}
     session = handle.run_graph.work_sessions[ws_id]
     assert session.user_id == "claude-code"
-    assert session.metadata["claude_code"]["source"] == "startup"
-    assert session.metadata["claude_code"]["model"] == "claude-sonnet-4-6"
+    assert session.metadata["agent"]["harness"] == "claude-code"
+    assert session.metadata["agent"]["source"] == "startup"
+    assert session.metadata["agent"]["model"] == "claude-sonnet-4-6"
 
 
 def test_prompt_then_tool_use_chain_within_session():
@@ -65,9 +66,10 @@ def test_prompt_then_tool_use_chain_within_session():
     assert tool_transition.input_node_ids == (prompt["output_node_id"],)
 
     payloads = handle.run_graph.payloads_for_transition(tool["transition_id"])
-    assert [p.type for p in payloads] == ["claude_code.tool_use"]
+    assert [p.type for p in payloads] == ["agent.tool_use"]
     assert payloads[0].content["tool_input"] == {"command": "pytest -q"}
     assert payloads[0].content["tool_output"] == "1 passed"
+    assert payloads[0].metadata == {"harness": "claude-code"}
 
 
 def test_parallel_sessions_become_sibling_branches():
@@ -115,7 +117,7 @@ def test_stop_attaches_payload_to_session_tip():
     assert stop is not None
     assert stop["node_id"] == prompt["output_node_id"]
     payloads = handle.run_graph.payloads_for_node(stop["node_id"])
-    assert "claude_code.stop" in [p.type for p in payloads]
+    assert "agent.stop" in [p.type for p in payloads]
 
 
 def test_stop_without_activity_is_noop():

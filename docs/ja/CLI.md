@@ -228,13 +228,20 @@ arctx claude-code install        # .claude/settings.json に hook entries を冪
 arctx claude-code install --print  # 書き込まずに hooks JSON snippet を表示
 ```
 
+構造は二層: 記録の意味論はハーネス中立な `arctx.ext.agents.SessionRecorder`
+（payload type は `agent.prompt` / `agent.tool_use` / `agent.stop` /
+`agent.session_end`、ハーネス名は payload metadata の `harness`）が持ち、
+`arctx.ext.claude_code` は hook event JSON をそこへ翻訳する薄い adapter。
+別ハーネス（Codex 等）の対応は翻訳器を足すだけで、保存される語彙は共通になる。
+
 記録のマッピング:
 
-- 1 Claude Code セッション → 1 WorkSession（`ws_cc_<session_id>`、transcript_path 等を metadata に保持）
-- `UserPromptSubmit` → Transition + `TransitionPayload(type="claude_code.prompt")`
-- `PostToolUse` → Transition + `TransitionPayload(type="claude_code.tool_use")`
+- 1 Claude Code セッション → 1 WorkSession（`ws_cc_<session_id>`、transcript_path
+  等を `metadata["agent"]` に保持）
+- `UserPromptSubmit` → Transition + `TransitionPayload(type="agent.prompt")`
+- `PostToolUse` → Transition + `TransitionPayload(type="agent.tool_use")`
   （既定 matcher は `Write|Edit|MultiEdit|NotebookEdit|Bash`。`--matcher` で変更）
-- `Stop` / `SessionEnd` → セッション先端 node への `NodePayload`
+- `Stop` / `SessionEnd` → セッション先端 node への `NodePayload(type="agent.stop" / "agent.session_end")`
 
 各セッションの transition はそのセッションの先端（最後に作った transition の
 output node）に連鎖し、並列セッションは root からの sibling 枝として fan-out する。
@@ -251,6 +258,16 @@ Claude Code を決してブロックしない（デバッグには `--strict`）
 - `--tools A,B`: hook 側でも PostToolUse を tool 名でフィルタ（一次フィルタは
   settings.json の matcher）。
 - 長大な tool 出力は payload 上で clip される（全文は transcript 側に残る）。
+
+`install` のオプション:
+
+- `--command CMD`: 書き込む hook コマンドを上書き（既定 `arctx claude-code hook`）。
+  PATH の `arctx` が古い／無い環境では絶対パスを渡す（dev では
+  `scripts/arctx claude-code hook`）。install は PATH 上のコマンドが
+  `claude-code` subcommand を持つか best-effort で検査し、ダメなら警告を出す
+  （hook 自体はフェイルセーフで無言 no-op になるため、ここで気づかせる）。
+- 冪等判定はコマンド文字列中の `claude-code hook` マーカーで行うので、
+  絶対パスに書き換えた後の再 install でも重複しない。
 
 ## Worktree attachment
 
