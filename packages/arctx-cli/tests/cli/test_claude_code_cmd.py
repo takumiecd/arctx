@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from arctx_cli.commands.claude_code import (
+from arctx_cli.ext.claude_code import (
     build_hooks_config,
     merge_hooks_into_settings,
     run_claude_code_hook_command,

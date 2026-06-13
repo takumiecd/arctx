@@ -412,7 +412,9 @@ The 0.2.x storage format is maintained within the 0.2 series. Breaking changes w
 ## Development
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m pytest tests -q
+uv run --package arctx --extra dev pytest packages/arctx/tests -q
+uv run --package arctx-cli --extra dev pytest packages/arctx-cli/tests -q
+uv run --package arctx-tui --extra dev pytest packages/arctx-tui/tests -q
 ```
 
 ## Release

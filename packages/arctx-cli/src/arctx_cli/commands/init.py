@@ -135,8 +135,9 @@ def run_init_command(
         repo_root = find_repo_root()
         write_arctx_id(repo_root, handle.run_id)
         written_arctx_id_path = str(arctx_id_path(repo_root))
-    except RuntimeError:
-        # Not inside a git repo — skip pointer creation silently.
+    except (OSError, RuntimeError):
+        # Not inside a git repo, or the gitdir is read-only in the current
+        # sandbox. The run itself is still valid without an active pointer.
         pass
 
     installed_hook_path: str | None = None

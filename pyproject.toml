@@ -5,6 +5,25 @@ build-backend = "hatchling.build"
 # Root pyproject.toml — dev tooling only.
 # Distributable packages are in packages/arctx/ and packages/arctx-cli/.
 
+[tool.uv.workspace]
+members = [
+    "packages/arctx",
+    "packages/arctx-cli",
+    "packages/arctx-tui",
+]
+
+[tool.uv.sources]
+arctx = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "black>=23.0",
+    "mypy>=1.0",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1.0",
+]
+
 [tool.black]
 line-length = 100
 target-version = ["py310"]

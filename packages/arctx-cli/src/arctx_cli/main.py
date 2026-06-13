@@ -17,8 +17,13 @@ def _build_parser(*, run_dir: str | None = None) -> argparse.ArgumentParser:
 
     register_cli_commands(subparsers, core_cli_commands())
 
-    from arctx_cli.ext_registry import register_enabled_cli  # noqa: PLC0415
+    from arctx_cli.ext_registry import (  # noqa: PLC0415
+        ALWAYS_ON_EXTENSIONS,
+        register_enabled_cli,
+        register_extension_cli,
+    )
 
+    register_extension_cli(subparsers, ALWAYS_ON_EXTENSIONS)
     register_enabled_cli(subparsers, run_dir)
 
     return parser

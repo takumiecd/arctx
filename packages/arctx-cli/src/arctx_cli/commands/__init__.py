@@ -11,8 +11,6 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.alias_cmd import cli_alias
     from arctx_cli.commands.anchor import add_parser as add_anchor_parser
     from arctx_cli.commands.anchor import cli_anchor
-    from arctx_cli.commands.claude_code import add_parser as add_claude_code_parser
-    from arctx_cli.commands.claude_code import cli_claude_code
     from arctx_cli.commands.current import add_parser as add_current_parser
     from arctx_cli.commands.current import cli_current
     from arctx_cli.commands.cut import add_parser as add_cut_parser
@@ -59,7 +57,6 @@ def core_cli_commands() -> list[CliCommand]:
     return [
         CliCommand("alias", add_alias_parser, cli_alias),
         CliCommand("anchor", add_anchor_parser, cli_anchor),
-        CliCommand("claude-code", add_claude_code_parser, cli_claude_code),
         CliCommand("current", add_current_parser, cli_current),
         CliCommand("ext", add_ext_parser, cli_ext),
         CliCommand("dump", add_dump_parser, cli_dump),
