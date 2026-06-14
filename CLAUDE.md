@@ -111,12 +111,11 @@ Current commands:
 - `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Transition.
 - `show` — inspect a node / transition / payload as JSON
 - `graph` — dump / trace / reachable graph queries
-- `trace` / `outcomes` / `reachable` — compatibility derived queries
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html`. `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `migrate` — convert a jsonl run dir to sqlite
 
-Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `sync`, `anchor`, `node`, `transition`, `payload`, `tui` (moved to standalone `arctx-tui` command).
+Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `sync`, `anchor`, `node`, `transition`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
 
 Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
 `arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to

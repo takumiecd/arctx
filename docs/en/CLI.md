@@ -253,9 +253,11 @@ When repos are registered, export includes a Repos section.
 - `arctx graph trace <node_id>`
 - `arctx graph reachable <node_id>`
 
-Compatibility commands such as `arctx show`, `arctx dump`, `arctx trace`,
-`arctx reachable`, and `arctx outcomes` still exist. Prefer the `node`,
-`transition`, `payload`, and `graph` namespaces for new usage.
+`arctx dump` remains as a compatibility shortcut for `arctx graph dump`.
+Top-level `trace`, `reachable`, and `outcomes` are unregistered; use
+`arctx log --to`, `arctx graph trace`, `arctx graph reachable`, and `arctx show`.
 
 Removed commands: `arctx plan`, `arctx predict`, `arctx observe`, and
-`arctx note`.
+`arctx note`. Unregistered legacy plumbing commands include `arctx node`,
+`arctx transition`, `arctx payload`, `arctx trace`, `arctx reachable`, and
+`arctx outcomes`.
