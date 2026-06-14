@@ -95,21 +95,19 @@ git checkout -b feat/cache
 # ...edit...
 git add .
 A=$(arctx git commit -m "add cache (hypothesis A)" --from "$BASE" | jq -r .output_node_id)
-arctx payload add --node "$A" --payload-type node_payload \
-  --field type=benchmark \
-  --field 'content={"elapsed_ms": 1200, "note": "slower than baseline"}'
+arctx attach "$A" --type benchmark \
+  --json '{"elapsed_ms": 1200, "note": "slower than baseline"}'
 
 # 3. Abandon A — it stays in the graph, just marked inactive, with a reason.
-arctx cut node "$A" --reason "slower than baseline"
+arctx cut "$A" --reason "slower than baseline"
 
 # 4. Hypothesis B — vectorize, also branched off the same baseline node.
 git checkout main && git checkout -b feat/vectorize
 # ...edit...
 git add .
 B=$(arctx git commit -m "vectorize (hypothesis B)" --from "$BASE" | jq -r .output_node_id)
-arctx payload add --node "$B" --payload-type node_payload \
-  --field type=benchmark \
-  --field 'content={"elapsed_ms": 180, "note": "5x faster than baseline"}'
+arctx attach "$B" --type benchmark \
+  --json '{"elapsed_ms": 180, "note": "5x faster than baseline"}'
 ```
 
 `--from "$BASE"` anchors both experiments to the baseline node, so they fan out as
@@ -179,16 +177,14 @@ git checkout -b try/race-fix
 # ...edit...
 git add .
 R=$(arctx git commit -m "fix: add lock around cache" --from "$REPRO" | jq -r .output_node_id)
-arctx payload add --node "$R" --payload-type node_payload \
-  --field type=observation --field 'content={"result": "still flaky"}'
+arctx attach "$R" --type observation --json '{"result": "still flaky"}'
 
 # Hypothesis: off-by-one in index
 git checkout main && git checkout -b try/index-fix
 # ...edit...
 git add .
 I=$(arctx git commit -m "fix: correct loop bound" --from "$REPRO" | jq -r .output_node_id)
-arctx payload add --node "$I" --payload-type node_payload \
-  --field type=observation --field 'content={"result": "bug gone — 3 runs green"}'
+arctx attach "$I" --type observation --json '{"result": "bug gone - 3 runs green"}'
 ```
 
 Both hypotheses branch off the reproduction node, so they stay independent and comparable:
@@ -303,8 +299,6 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx git commit -m ...` | Drive a real `git commit` and record a `Transition` with `GitChangePayload`. |
 | `arctx work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
 | `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
-| `arctx transition create` | Add a transition without git. |
-| `arctx payload add` | Attach a payload to an existing Node / Transition. |
 | `arctx graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
 | `arctx graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
 | `arctx-tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). Standalone command from `pip install arctx-tui`. |

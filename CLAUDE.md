@@ -105,9 +105,7 @@ Current commands:
 - `add node` / `add step` — Phase 1 DAG core surface; externally call transitions "steps" while internal storage still uses `Transition`
 - `attach <id>` — attach a generic payload to a Node or Step by resolving the record id
 - `log` — user-facing DAG history command; wraps outline dump / trace behavior
-- `transition create` — create one Transition and one output Node (`--from NODE --payload-type TYPE --field key=value`)
-- `node` — inspect Nodes and their payloads
-- `payload` — list payload types/schemas and attach payloads to Nodes or Transitions
+- Internal compatibility helpers remain in `commands.transition`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add step`, `show`, and `attach`.
 - `cut` — cut a Node or Transition (`cut node NODE_ID` or `cut transition T_ID`)
 - `claude-code` — Claude Code hooks adapter. `claude-code install` merges hook entries into `.claude/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `claude-code hook` consumes one hook event JSON from stdin and records it (session → WorkSession `ws_cc_<session_id>`, prompt/tool use → Transition, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/claude_code/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
 - `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Transition.
@@ -118,7 +116,7 @@ Current commands:
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html`. `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `migrate` — convert a jsonl run dir to sqlite
 
-Deleted commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `tui` (moved to standalone `arctx-tui` command).
+Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `sync`, `anchor`, `node`, `transition`, `payload`, `tui` (moved to standalone `arctx-tui` command).
 
 Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
 `arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to

@@ -33,20 +33,14 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.log import cli_log
     from arctx_cli.commands.migrate import add_parser as add_migrate_parser
     from arctx_cli.commands.migrate import cli_migrate
-    from arctx_cli.commands.node import add_parser as add_node_parser
-    from arctx_cli.commands.node import cli_node
     from arctx_cli.commands.outcomes import add_parser as add_outcomes_parser
     from arctx_cli.commands.outcomes import cli_outcomes
-    from arctx_cli.commands.payload import add_parser as add_payload_parser
-    from arctx_cli.commands.payload import cli_payload
     from arctx_cli.commands.reachable import add_parser as add_reachable_parser
     from arctx_cli.commands.reachable import cli_reachable
     from arctx_cli.commands.show import add_parser as add_show_parser
     from arctx_cli.commands.show import cli_show
     from arctx_cli.commands.trace import add_parser as add_trace_parser
     from arctx_cli.commands.trace import cli_trace
-    from arctx_cli.commands.transition import add_parser as add_transition_parser
-    from arctx_cli.commands.transition import cli_transition
     from arctx_cli.commands.use import add_parser as add_use_parser
     from arctx_cli.commands.use import cli_use
     from arctx_cli.commands.work_session import add_parser as add_work_session_parser
@@ -65,14 +59,11 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("list", add_list_parser, cli_list),
         CliCommand("log", add_log_parser, cli_log),
         CliCommand("migrate", add_migrate_parser, cli_migrate),
-        CliCommand("node", add_node_parser, cli_node),
         CliCommand("outcomes", add_outcomes_parser, cli_outcomes),
-        CliCommand("payload", add_payload_parser, cli_payload),
         CliCommand("reachable", add_reachable_parser, cli_reachable),
         CliCommand("cut", add_cut_parser, cli_cut),
         CliCommand("show", add_show_parser, cli_show),
         CliCommand("trace", add_trace_parser, cli_trace),
-        CliCommand("transition", add_transition_parser, cli_transition),
         CliCommand("use", add_use_parser, cli_use),
         CliCommand("work-session", add_work_session_parser, cli_work_session),
     ]

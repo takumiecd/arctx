@@ -36,16 +36,14 @@ arctx show <id>
 arctx log
 ```
 
-既存 CLI はすぐには削除しない。
+旧CLIは順次、登録から外す。
 
 ```bash
-arctx transition create
-arctx payload add
 arctx graph dump
-arctx node ...
 ```
 
-これらは当面 compatibility / plumbing として残す。
+`transition`, `payload`, `node` はトップレベル登録から外した。
+`graph dump` は当面 compatibility / plumbing として残す。
 
 `arctx view` と `arctx guide` は Phase 1 の途中でCLI登録から削除した。
 
@@ -328,8 +326,9 @@ Phase 1 で残した旧 CLI を整理する。
 
 候補:
 
-- `arctx transition ...` を削除または hidden にする。
-- `arctx payload add --transition` を `--step` に変える。
+- `arctx transition ...` はトップレベルCLI登録から外した。内部 helper は互換用途で残す。
+- `arctx payload ...` はトップレベルCLI登録から外した。payload 追加は `attach` に寄せる。
+- `arctx node ...` はトップレベルCLI登録から外した。参照は `show <id>` に寄せる。
 - `arctx graph dump` を `arctx log` に寄せる。
 - `arctx view` は削除済み。
 

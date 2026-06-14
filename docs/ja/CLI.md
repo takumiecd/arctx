@@ -168,16 +168,14 @@ Phase 1 では既存の `dump` / `trace` 機能を利用しています。
 
 ## 旧CLIの扱い
 
-以下はまだ残りますが、v0.3 系では主要CLIではなく compatibility / plumbing として扱います。
+以下は compatibility / plumbing として扱います。
 
 ```bash
-arctx transition create
-arctx payload add
 arctx graph dump
-arctx node ...
 ```
 
-内部実装の Step 化が進むまでは、これらを急に削除しません。
+`transition`, `payload`, `node` はトップレベルCLI登録から外しました。
+内部 helper は互換用途で残し、ユーザー向け操作は `add step`, `attach`, `show` に寄せます。
 
 ## Git 連携
 

@@ -58,10 +58,12 @@ repo's persistent default. It does not report an `ARCTX_RUN_ID` override.
 
 ```bash
 arctx init req_demo --run-id demo
-arctx transition create --run demo --from <root_node_id> --payload-type transition_payload --field type=experiment --field lr=0.01
-arctx payload add --run demo --node <node_id> --payload-type node_payload --field type=note --field text="observed result"
-arctx cut node <node_id> --run demo --reason "discarded"
-arctx graph dump --run demo --format outline
+ROOT=$(arctx show --run demo | jq -r .root_node_id)
+STEP=$(arctx add step --run demo --from "$ROOT" --type experiment --field lr=0.01 | jq -r .id)
+NODE=$(arctx show "$STEP" --run demo | jq -r .step.output_node_id)
+arctx attach "$NODE" --run demo --type note --field text="observed result"
+arctx cut "$NODE" --run demo --reason "discarded"
+arctx log --run demo --format outline
 ```
 
 Core commands:
@@ -74,35 +76,20 @@ Core commands:
   pinning.
 - `arctx export [--format md|tex|html]`: render a run as a shareable document.
 
-## Node
+## DAG Records
 
-- `arctx node show <node_id>`
-- `arctx node payloads <node_id>`
+- `arctx add node`: add a standalone node.
+- `arctx add step --from NODE --type TYPE --field key=value`: add a step and its output node.
+- `arctx attach <node-or-step-id> --type TYPE --field key=value`: attach a payload.
+- `arctx show <node-or-step-or-payload-id>`: inspect one record with attached payloads.
 
-## Transition
-
-- `arctx transition create --from NODE --payload-type TYPE --field key=value`
-- `arctx transition show <transition_id>`
-- `arctx transition output <transition_id>`
-- `arctx transition inputs <transition_id>`
-- `arctx transition payloads <transition_id>`
-
-Each transition has exactly one output node. Create fan-out by running
-`transition create` multiple times from the same input node. Create a
-multi-input join by passing repeated `--from` flags.
-
-## Payload
-
-- `arctx payload types`
-- `arctx payload schema <payload_type>`
-- `arctx payload add --node NODE --payload-type TYPE --field key=value`
-- `arctx payload add --transition TRANSITION --payload-type TYPE --field key=value`
-- `arctx payload list --node NODE` / `arctx payload list --transition TRANSITION`
-- `arctx payload show <payload_id>`
+Each step has exactly one output node. Create fan-out by running `add step`
+multiple times from the same input node. Create a multi-input join by passing
+repeated `--from` flags.
 
 ## Cut
 
-- `arctx cut node <node_id>`
+- `arctx cut <node_id>`
 - `arctx cut transition <transition_id>`
 
 Cutting records an inactive branch. It does not delete history.
@@ -215,7 +202,7 @@ Fixed-mode example:
 
 ```bash
 eval "$(arctx work-session env --run run_x --new --user codex)"
-arctx transition create --from NODE_ID --payload-type transition_payload --field type=suggestion
+arctx add step --from NODE_ID --type suggestion
 ```
 
 Spawn example:
