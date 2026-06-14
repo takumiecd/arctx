@@ -1,37 +1,71 @@
 # State Model
 
+Phase 1 の実装では、外向きの用語と内部名が一部ずれています。
+
+外向き:
+
+- `Node`
+- `Step`
+- `Payload`
+
+内部実装:
+
+- `Node`
+- `Transition`
+- `Payload`
+
+`Step` は現行コード上の `Transition` に対応します。
+
+## RunGraph
+
 `RunGraph` は以下を append-only に保持します。
 
 - `nodes: dict[str, Node]`
-- `transitions: dict[str, Transition]` — `input_node_ids` (多入力可) と `output_node_id` (必ず 1 つ) を持つ
+- `transitions: dict[str, Transition]`
 - `payloads: dict[str, PayloadBase]`
 - `views: dict[str, GraphView]`
-- `work_sessions`, `work_events`
+- `work_sessions`
+- `work_events`
 
-`Edge` record は廃止済みです。接続情報は `Transition` 自身が保持します。
+Phase 1 では `views` も storage も残します。ただし MVP のユーザー向け概念としては前面に出しません。
 
-core payload は汎用 `NodePayload` / `TransitionPayload` と `CutPayload` です。
-`GitChangePayload`、branch payload、git 関連 WorkEvent は標準 `git` extension
-(`arctx.ext.git`) が登録します。
+## Transition as Step
 
-## 逆引きインデックス（永続化せず、ロード時に再構築）
+内部 `Transition` は次の制約を持ちます。
 
-- `transitions_by_input_node: dict[str, list[str]]` — node → outgoing transition IDs
-- `transition_by_output_node: dict[str, str]` — node → incoming transition ID（1 対 1 制約）
-- `payloads_by_node`, `payloads_by_transition`
+- `input_node_ids`: 1 つ以上の入力 Node。
+- `output_node_id`: 必ず 1 つの出力 Node。
+- fan-out は同じ入力 Node から複数の Step を作ることで表す。
+- join は複数入力の Step で表す。
 
-## lookup API
+外向きJSONでは、Phase 1 の新CLIは `kind: "step"` を返します。ただし互換のため、内部IDや一部field名には `transition_id` が残る場合があります。
 
-- `transitions_from_node(node_id) -> list[str]`
-- `transition_to_node(node_id) -> str | None`
-- `transition_inputs(transition_id) -> list[str]`
-- `transition_output(transition_id) -> str`
-- `payloads_for_node(node_id, *, payload_type=None) -> list[PayloadBase]`
-- `payloads_for_transition(transition_id, *, payload_type=None) -> list[PayloadBase]`
+## Payload
+
+Payload は Node / Step に付く意味情報です。
+
+現行内部の `target_kind` は以下です。
+
+- Node payload: `target_kind="node"`
+- Step payload: `target_kind="transition"`
+
+Phase 2 で内部名を変更する場合、`target_kind="step"` への移行を検討します。
+
+## Cut
+
+Cut は `CutPayload` として保存されます。
+
+削除ではありません。read-time に active / inactive を計算します。
 
 ## Storage
 
-JSONL: `nodes.jsonl`, `transitions.jsonl`, `payloads.jsonl`, `views.jsonl`,
-`work_sessions.jsonl`, `work_events.jsonl`。
+Phase 1 では既存schemaを維持します。
 
-`edges.jsonl` は存在しません。SQLite も同じ table 構成。
+- `nodes.jsonl`
+- `transitions.jsonl`
+- `payloads.jsonl`
+- `views.jsonl`
+- `work_sessions.jsonl`
+- `work_events.jsonl`
+
+Phase 2 で `transitions.jsonl` を `steps.jsonl` に変えるかどうかを決めます。

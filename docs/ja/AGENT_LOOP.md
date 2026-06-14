@@ -1,30 +1,94 @@
 # Agent Loop
 
+この文書は、Codex / Claude Code などの agent が v0.3.0b1 の DAG core CLI を使うときの基本ループを説明します。
+
+Phase 1 では内部実装に `Transition` が残りますが、agent 向けには `Step` として扱います。
+
 ## 推奨ループ
 
-1. `arctx graph dump` で文脈を読む。
-2. `arctx transition create --from NODE_ID --payload-type transition_payload --field type=suggestion --field proposal="..."` で方針を append する。
-3. 実装、実験、レビュー、デバッグ、調査などの外部作業を行う。
-4. `arctx transition create --from NODE_ID --payload-type transition_payload --field type=implementation --field result="..."` で結果を append する。
-5. 間違った枝は削除せず、`arctx cut node NODE_ID` で無効化する。
-6. 区切りで `arctx export --format md` を実行する。受け手に無効枝を見せない場合は
-   `--exclude-cut` を付ける。
+1. `arctx log` / `arctx show <id>` で現在の DAG を読む。
+2. `arctx add step --from NODE_ID --title "..."` で次の作業単位を append する。
+3. 必要な外部作業を行う。
+4. `arctx attach <node_or_step_id> --type result --field ...` で結果や観測を付ける。
+5. 間違った枝は削除せず、`arctx cut <node_or_step_id> --reason "..."` で無効化する。
 
-fan-out は、同じ input node から複数の transition を作って表現する。multi-input join は
-`--from` を複数回渡す。
+基本形:
 
-並列 process は、各 writer が新規 record だけを append すれば同じ run で作業できる。
-merge は record-level append であり、既存履歴の mutation ではない。
+```bash
+arctx log --run run_x
+arctx show <id> --run run_x
+
+arctx add step --from <node_id> --title "try parser rewrite" --run run_x
+arctx attach <step_id> --type result --field status="works" --run run_x
+arctx cut <node_or_step_id> --reason "invalid assumption" --run run_x
+```
+
+fan-out は、同じ input Node から複数の Step を作って表現します。
+
+multi-input join は `--from` を複数回渡します。
+
+```bash
+arctx add step --from n_a --from n_b --title "merge findings" --run run_x
+```
+
+## 読み取り
+
+agent はまず `show` と `log` を組み合わせます。
+
+```bash
+arctx show <id> --run run_x
+arctx log --from <node_id> --run run_x
+arctx log --to <node_id> --run run_x
+```
+
+- `show <id>`: Node / Step / Payload の 1 件を見る。
+- `log --from`: 指定 Node から下流を見る。
+- `log --to`: 指定 Node がどう作られたかを上流へたどる。
+
+将来的に `context` を追加する場合も、これは `show` と `log` の agent 向け合成ビューとして扱います。
+
+## 書き込み
+
+新しい観測点や作業起点を作る場合:
+
+```bash
+arctx add node --title "baseline" --run run_x
+```
+
+既存 Node から新しい Step を作る場合:
+
+```bash
+arctx add step --from n_123 --title "try cache" --run run_x
+```
+
+Step の出力 Node は自動生成されます。
+
+Node / Step に情報を付ける場合:
+
+```bash
+arctx attach n_123 --type note --field text="important assumption" --run run_x
+arctx attach t_456 --type result --field elapsed_ms=120 --run run_x
+```
+
+Phase 1 では Step ID は内部都合で `t_...` のままです。
+
+## Cut
+
+Cut は削除ではありません。`CutPayload` を付ける append-only な操作です。
+
+```bash
+arctx cut t_456 --reason "slower than baseline" --run run_x
+```
+
+cut 済みの枝は read-time に inactive として扱われます。
 
 ## セットアップの考え方
 
-ARCTX には別々の3種類の状態がある:
+ARCTX には別々の状態があります。
 
-- **Run:** `<ARCTX_HOME>/runs/<run_id>` 配下の graph。
-- **Repo pointer:** `<gitdir>/arctx-id`。`arctx init`, `arctx use`,
-  `arctx git init`, `arctx git repo add` が書く。
-- **Shell pointer:** `ARCTX_RUN_ID`。通常は
-  `eval "$(arctx use <run_id> --shell)"` または `arctx work-session env` で設定する。
+- **Run:** `<ARCTX_HOME>/runs/<run_id>` 配下の DAG。
+- **Repo pointer:** `<gitdir>/arctx-id`。`arctx init`, `arctx use`, `arctx git init` などが書く。
+- **Shell pointer:** `ARCTX_RUN_ID`。`eval "$(arctx use <run_id> --shell)"` や `arctx work-session env` で設定する。
 
 解決順:
 
@@ -34,84 +98,39 @@ ARCTX_RUN_ID
 <gitdir>/arctx-id
 ```
 
-repo pointer は「この checkout は通常この run に属する」を表すときに使う。
-shell pointer は、1つの端末で repo 間を移動しながら同じ run を追うとき、または
-子 process を他の端末から分離したいときに使う。
-
-## 1 repo + git
-
-```bash
-cd ~/dev/my-repo
-arctx init "機能X" --run-id run_x --extension git
-arctx git init
-arctx git commit -m "first change"
-```
-
-`arctx init --extension git` は run を作成し git 連携を有効化する。
-`arctx git init` は、その run に repo を明示登録し、repo marker と hooks を設定する。
-以後、通常の `arctx git ...` コマンドは repo pointer から run を解決できる。
-
-## 複数 repo を1つの run で扱う
-
-run は git の上位にあり、複数 repo にまたがれる。各 repo を registry に登録すれば、
-どの repo の commit も同じ run の履歴に積まれる。
-
-```bash
-cd ~/dev/frontend
-arctx init "機能X" --run-id run_x --extension git
-arctx git init
-
-cd ~/dev/backend
-arctx git repo add --run run_x
-```
-
-- commit tip 整合は `(repo_id, branch)` キーなので、別 repo の同名 branch
-  （例: 2つの `main`）は衝突しない。
-- 1つの端末で `run_x` を追いながら repo 間を移動するなら、repo pointer に頼らず
-  端末を固定する: `eval "$(arctx use run_x --shell)"`。
-- `arctx export` は登録 repo を Repos section に出す。`local_path` は
-  machine-specific path の漏洩を避けるためデフォルトで落ちる。ローカル診断では
-  `--include-local` を使う。
-
 ## Work Session 固定モード
 
-並列 agent は、共有 repo pointer だけに頼らない。各 process の環境変数で run と
-work session を固定する。
+並列 agent は、共有 repo pointer だけに頼らず、各 process の環境変数で run と work session を固定します。
 
 ```bash
 eval "$(arctx work-session env --run run_x --new --user codex)"
-arctx transition create --from NODE_ID --payload-type transition_payload --field type=suggestion
+arctx add step --from <node_id> --title "codex attempt"
 ```
 
-子 process には `spawn` を使う。child には一意な `ARCTX_WORK_SESSION_ID` が渡り、
-兄弟 terminal / 兄弟 child process と fixed session を共有しない。
+子 process には `spawn` を使えます。
 
 ```bash
 arctx work-session spawn --run run_x --user codex -- codex
 arctx work-session spawn --run run_x --user claude-code -- claude
 ```
 
-毎回明示したい場合は、変更系コマンドに `--run` と `--work-session` の両方を渡す。
+毎回明示したい場合は、変更系コマンドに `--run` と `--work-session` の両方を渡します。
 
 ```bash
-arctx transition create --run run_x --work-session ws_xxx --from NODE_ID
+arctx add step --run run_x --work-session ws_xxx --from <node_id> --title "attempt"
 ```
 
-デフォルト attribution は `user=user`, `work_session=default`。誰が書いた record かを
-区別したい場合は、agent ごとに `--user` または `ARCTX_USER_ID` を設定する。
+デフォルト attribution は `user=user`, `work_session=default` です。誰が書いた record かを区別したい場合は、agent ごとに `--user` または `ARCTX_USER_ID` を設定します。
 
-この固定モードは、同一マシン上の複数 process を前提とする。NFS やクラウド同期
-フォルダ越しに、複数マシンから同じ run directory を直接叩かない。マシンをまたぐ
-交換には `arctx sync` を使う。
+## Git / worktree
 
-## Agent ごとの worktree
+Git 連携は標準 extension として残りますが、v0.3 の中心は `arctx git commit` ではなく DAG core の Node / Step / Payload です。
 
-並列 coding agent では、work session と git worktree を組み合わせる。
+並列 coding agent では、work session と git worktree を組み合わせられます。
 
 ```bash
 arctx git worktree add ../my-repo-codex codex/run-x --base main
 arctx work-session spawn --run run_x --user codex --worktree ../my-repo-codex -- codex
 ```
 
-work session は worktree path を記録し、child に `ARCTX_GIT_WORKTREE=PATH` を export する。
-git verbs は、shell cwd が別の場所でも、その worktree 内で実行される。
+work session は worktree path を記録し、child に `ARCTX_GIT_WORKTREE=PATH` を export します。git verbs は、shell cwd が別の場所でも、その worktree 内で実行されます。
