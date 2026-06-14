@@ -20,14 +20,14 @@ Cut is a Payload
 
 まず表現とCLIを新仕様へ寄せます。
 
-- 外向きには `Transition` ではなく `Step` と呼ぶ。
+- 外向きには `Step` ではなく `Step` と呼ぶ。
 - `arctx add node` で依存を持たない Node を作れるようにする。
 - `arctx add step` で Node から Step を作り、出力 Node を自動生成する。
 - `arctx attach <id>` で Node / Step に Payload を付ける。
 - `arctx cut <id>` で CutPayload を付ける。
 - `arctx show <id>` と `arctx log` で確認する。
 
-この段階では内部実装の `Transition`, `transition_id`, `transitions.jsonl`, `target_kind="transition"` は残します。
+この段階では内部実装の `Step`, `step_id`, `steps.jsonl`, `target_kind="step"` は残します。
 
 ## Phase 2
 
@@ -35,11 +35,11 @@ Phase 1 のCLIと用語が固まったら、内部実装も Step に寄せます
 
 候補:
 
-- `Transition` -> `Step`
-- `transition_id` -> `step_id`
-- `TransitionPayload` -> `StepPayload`
-- `target_kind="transition"` -> `target_kind="step"`
-- `transitions` -> `steps`
+- `Step` -> `Step`
+- `step_id` -> `step_id`
+- `StepPayload` -> `StepPayload`
+- `target_kind="step"` -> `target_kind="step"`
+- `steps` -> `steps`
 
 この変更は storage schema、extension API、tests に広く影響するため、Phase 1 とは分けます。
 

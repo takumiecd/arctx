@@ -1,12 +1,12 @@
 # API
 
-v0.3.0b1 の Phase 1 では、CLI と docs は `Step` に寄せていますが、Python API の内部名にはまだ `Transition` が残ります。
+v0.3.0b1 の Phase 1 では、CLI と docs は `Step` に寄せていますが、Python API の内部名にはまだ `Step` が残ります。
 
 つまり、現時点では以下の対応です。
 
 ```text
 CLI / docs: Step
-Python API: Transition
+Python API: Step
 ```
 
 内部APIの全面的な `Step` 化は Phase 2 で扱います。
@@ -15,7 +15,7 @@ Python API: Transition
 
 ```python
 import arctx as arctx
-from arctx import NodePayload, Requirement, TransitionPayload
+from arctx import NodePayload, Requirement, StepPayload
 
 req = Requirement("req_1", "task", "my_task")
 run = arctx.init(req, run_id="my-run")
@@ -23,11 +23,11 @@ run = arctx.init(req, run_id="my-run")
 # 依存を持たない Node を作る。
 baseline = run.add_node()
 
-# Step を作る。Python API ではまだ transition() を使う。
+# Step を作る。Python API ではまだ step() を使う。
 # 常に 1 つの output node も作られる。
-step = run.transition(
+step = run.add_step(
     [baseline.node_id],
-    TransitionPayload(
+    StepPayload(
         payload_id="_",
         target_id="_",
         type="experiment",
@@ -48,22 +48,22 @@ run.attach(
 )
 
 # fan-out は同じ input Node から複数の Step を作る。
-v1 = run.transition(
+v1 = run.add_step(
     [result_node_id],
-    TransitionPayload(payload_id="_", target_id="_", type="experiment"),
+    StepPayload(payload_id="_", target_id="_", type="experiment"),
 )
-v2 = run.transition(
+v2 = run.add_step(
     [result_node_id],
-    TransitionPayload(payload_id="_", target_id="_", type="experiment"),
+    StepPayload(payload_id="_", target_id="_", type="experiment"),
 )
 
 # cut は append-only な Payload。
 run.cut(v1.output_node_id, target_kind="node", reason="不採用")
 
 # multi-input join は input Node を複数渡す。
-join = run.transition(
+join = run.add_step(
     [v1.output_node_id, v2.output_node_id],
-    TransitionPayload(payload_id="_", target_id="_", type="synthesis"),
+    StepPayload(payload_id="_", target_id="_", type="synthesis"),
 )
 ```
 
@@ -71,10 +71,10 @@ join = run.transition(
 
 Phase 1 では以下が残ります。
 
-- `Transition`
-- `TransitionPayload`
-- `run.transition(...)`
-- `target_kind="transition"`
+- `Step`
+- `StepPayload`
+- `run.add_step(...)`
+- `target_kind="step"`
 
 CLI ではこれらを Step として見せます。
 
@@ -83,7 +83,7 @@ CLI ではこれらを Step として見せます。
 `run.plan()`, `run.predict()`, `run.observe()`, `run.note()` は削除済みです。
 
 - plan / observe / predict は Step で表現します。
-- Python API では当面 `run.transition(...)` を使います。
+- Python API では当面 `run.add_step(...)` を使います。
 - note は `run.attach(node_id, NodePayload(type="note", content={"text": "..."}))` で表現します。
 
 ## Git Extension API
@@ -91,7 +91,7 @@ CLI ではこれらを Step として見せます。
 git 連携の verb は標準 `git` extension の namespace にあります。
 
 ```python
-transition = run.git.commit(message="run baseline benchmark")
+step = run.git.commit(message="run baseline benchmark")
 run.git.revert(target_sha="<sha>")
 run.git.cherry_pick(source_sha="<sha>")
 run.git.reset(to_node_id="<node_id>", mode="hard")
@@ -100,11 +100,11 @@ violations = run.git.verify()
 
 v0.3 の中心は Git commit ではなく DAG core の Node / Step / Payload です。
 
-Phase 1 では git extension の戻り値や内部 payload target にはまだ `Transition` が残ります。
+Phase 1 では git extension の戻り値や内部 payload target にはまだ `Step` が残ります。
 
 ## Payload 登録
 
-現時点で Step に付く Payload は、内部的には `target_kind="transition"` を使います。
+現時点で Step に付く Payload は、内部的には `target_kind="step"` を使います。
 
 ```python
 from arctx import PayloadBase, register_payload_class
@@ -117,7 +117,7 @@ class MyStepPayload(PayloadBase):
     payload_id: str
     target_id: str
     score: float = 0.0
-    target_kind: Literal["transition"] = field(default="transition", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="my_step_payload", init=False)
 
     def to_dict(self): ...

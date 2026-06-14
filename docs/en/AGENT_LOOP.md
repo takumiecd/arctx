@@ -10,7 +10,7 @@
 6. At checkpoints, produce an artifact with `arctx export --format md`; add
    `--exclude-cut` when the recipient should not see inactive branches.
 
-Fan-out is represented by creating multiple transitions from the same input
+Fan-out is represented by creating multiple steps from the same input
 node. Multi-input joins use repeated `--from` flags.
 
 Parallel processes can work in the same run when each writer appends only new

@@ -2,7 +2,7 @@
 
 この文書は v0.3.0b1 の DAG Core Redesign における主要CLIを説明します。
 
-Phase 1 では、内部実装にはまだ `Transition` という名前が残ります。ただしユーザー向けCLIでは `Step` と呼びます。
+Phase 1 では、内部実装にはまだ `Step` という名前が残ります。ただしユーザー向けCLIでは `Step` と呼びます。
 
 ## 基本フロー
 
@@ -76,7 +76,7 @@ arctx add step --from n_123 --title "try new design"
 arctx add step --from n_a --from n_b --title "merge results"
 ```
 
-Step は現行内部実装の `Transition` に対応します。
+Step は現行内部実装の `Step` に対応します。
 
 ```text
 Node(s) -- Step --> Node
@@ -95,7 +95,7 @@ arctx attach t_456 --type result --field score=0.91
 
 `attach` は対象IDから Node / Step を自動判定します。
 
-Phase 1 では Step は内部的に Transition なので、Step への Payload は内部では `target_kind="transition"` として保存されます。
+Phase 1 では Step は内部的に Step なので、Step への Payload は内部では `target_kind="step"` として保存されます。
 
 ## arctx cut
 
@@ -112,7 +112,7 @@ Cut は削除ではありません。append-only な Payload です。
 
 ```bash
 arctx cut node <node_id>
-arctx cut transition <transition_id>
+arctx cut step <step_id>
 arctx cut step <step_id>
 ```
 
@@ -126,7 +126,7 @@ arctx show t_456
 arctx show pl_789
 ```
 
-新形式では、内部 Transition は Step として表示します。
+新形式では、内部 Step は Step として表示します。
 
 ```json
 {
@@ -146,7 +146,7 @@ arctx show pl_789
 
 ```bash
 arctx show --node <node_id>
-arctx show --transition <transition_id>
+arctx show --step <step_id>
 arctx show --payload <payload_id>
 ```
 
@@ -174,7 +174,7 @@ Phase 1 では既存の `dump` / `trace` 機能を利用しています。
 arctx graph dump
 ```
 
-`transition`, `payload`, `node` はトップレベルCLI登録から外しました。
+`step`, `payload`, `node` はトップレベルCLI登録から外しました。
 内部 helper は互換用途で残し、ユーザー向け操作は `add step`, `attach`, `show` に寄せます。
 
 ## Git 連携

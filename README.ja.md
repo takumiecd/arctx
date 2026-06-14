@@ -38,11 +38,11 @@ Cut is a Payload
 
 Phase 1 では、外向きのCLIとdocsを `Node / Step / Payload` に寄せます。
 
-内部実装にはまだ `Transition` という名前が残ります。
+内部実装にはまだ `Step` という名前が残ります。
 
 ```text
 外向き: Step
-内部:   Transition
+内部:   Step
 ```
 
 内部 class / storage / extension API まで `Step` に寄せる作業は Phase 2 で扱います。
@@ -116,7 +116,7 @@ arctx log
 以下は移行期間中の compatibility / plumbing として残ります。
 
 ```bash
-arctx transition create
+arctx step create
 arctx payload add
 arctx graph dump
 arctx node ...

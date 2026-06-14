@@ -38,13 +38,13 @@ The current core model is **a single RunGraph plus attached payloads**. Pure gra
 Pure graph records (`packages/arctx/src/arctx/core/schema/graph.py`):
 
 - `Node`: pure DAG node
-- `Transition`: connects many input nodes to exactly one output node (`input_node_ids: tuple[str, ...]`, `output_node_id: str`). Fan-out is represented as sibling Transitions sharing the same input nodes.
+- `Step`: connects many input nodes to exactly one output node (`input_node_ids: tuple[str, ...]`, `output_node_id: str`). Fan-out is represented as sibling Steps sharing the same input nodes.
 
 Container (`packages/arctx/src/arctx/core/run_graph.py`):
 
-- `RunGraph`: holds all nodes / transitions / payloads, plus reverse-lookup indices
+- `RunGraph`: holds all nodes / steps / payloads, plus reverse-lookup indices
 
-There is no `Edge` record, no `InputTransition`/`OutputTransition` split, and no `transition_kind()` method. Kind is expressed by the `type` field on the attached `TransitionPayload`.
+There is no `Edge` record, no `InputTransition`/`OutputTransition` split, and no `step_kind()` method. Kind is expressed by the `type` field on the attached `StepPayload`.
 
 Avoid reintroducing `Dag`, `StateNode`, `ExecutionPlan`, `PredictionPlan`, `ObservedTransition`, `PredictedTransition`, `ActionResult`, `DerivedRecord`, `InputTransition`, `OutputTransition`, `PlanPayload`, `PredictionPayload`, `ResultPayload`, or `NotePayload` as public symbols.
 
@@ -54,22 +54,22 @@ Two-tier design. Core payloads live under `packages/arctx/src/arctx/core/schema/
 
 **Generic payloads** (use `type` string to distinguish purpose):
 - `NodePayload(payload_id, target_id, type, content={}, metadata={})` — any node annotation
-- `TransitionPayload(payload_id, target_id, type, content={}, metadata={})` — any transition annotation
+- `StepPayload(payload_id, target_id, type, content={}, metadata={})` — any step annotation
 
 **Core typed payloads**:
 - `CutPayload(payload_id, target_id, target_kind, reason=None)` — append-only cut marker
-- `JoinPayload(payload_id, target_id, joined_views)` — transition-targeting marker for a multi-input transition that joins independent histories with no common ancestor (extension-agnostic; `target_kind="transition"`)
+- `JoinPayload(payload_id, target_id, joined_views)` — step-targeting marker for a multi-input step that joins independent histories with no common ancestor (extension-agnostic; `target_kind="step"`)
 
 **Git extension payloads** (`packages/arctx/src/arctx/ext/git/payloads.py`):
-- `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=(), repo_id="")` — git record on a Transition
+- `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=(), repo_id="")` — git record on a Step
 - `BranchPayload(..., repo_id="")`, `MergePayload`, `RevertPayload`, `CherryPickPayload`
 - `RepoPayload(payload_id, target_id, repo_id, slug, remotes, canonical, local_path)` — run-scoped repo registry entry (the 対応表), attached to the run root node. `RemoteRef(kind, url)` holds each known remote URL form. git payloads reference a repo by `repo_id` only. `local_path` is environment-specific and is stripped on export/share (`RepoPayload.shareable()`). Registry/resolution helpers live in `packages/arctx/src/arctx/ext/git/registry.py` (`resolve_repo_id`, `list_repos`, `normalize_remote_url`). Branch tip events are keyed by `(repo_id, branch)`.
 
 **User subclasses**: inherit `PayloadBase`, set `payload_type` as a class-level `field(default="...", init=False)`, register with `register_payload_class(MyClass)`.
 
-**Deserialization**: `payload_from_dict(data)` dispatches by `payload_type`. Unknown types fall back to `NodePayload` or `TransitionPayload` (generic) — CLI never crashes on unregistered custom types.
+**Deserialization**: `payload_from_dict(data)` dispatches by `payload_type`. Unknown types fall back to `NodePayload` or `StepPayload` (generic) — CLI never crashes on unregistered custom types.
 
-Old payload types `PlanPayload`, `PredictionPayload`, `ResultPayload`, `NotePayload` are deleted. Use `TransitionPayload(type="...")` and `NodePayload(type="note", content={"text": "..."})` instead.
+Old payload types `PlanPayload`, `PredictionPayload`, `ResultPayload`, `NotePayload` are deleted. Use `StepPayload(type="...")` and `NodePayload(type="note", content={"text": "..."})` instead.
 
 ## RunHandle
 
@@ -77,11 +77,11 @@ Old payload types `PlanPayload`, `PredictionPayload`, `ResultPayload`, `NotePayl
 
 Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`):
 
-- `transition(input_node_ids, payload, *, user_id=None, work_session_id=None) -> Transition` — create one Transition and one output Node from input nodes; `payload` must be transition-targeting
+- `add_step(input_node_ids, payload, *, user_id=None, work_session_id=None) -> Step` — create one Step and one output Node from input nodes; `payload` must be step-targeting
 - `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
-- `cut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> CutPayload` — mark a Node or Transition inactive
+- `cut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> CutPayload` — mark a Node or Step inactive
 - `trace(node_id, ...)` (alias: `history`) — walk history backwards
-- `outcomes(transition_id)` — return output node info for a transition
+- `outcomes(step_id)` — return output node info for a step
 
 Deleted verbs: `plan`, `predict`, `observe`, `note`.
 
@@ -102,20 +102,20 @@ Current commands:
   `export ARCTX_RUN_ID=<run>` for `eval` (terminal-scoped) instead of writing the
   repo pointer.
 - `init` / `list` — create / list runs
-- `add node` / `add step` — Phase 1 DAG core surface; externally call transitions "steps" while internal storage still uses `Transition`
+- `add node` / `add step` — DAG core surface. Both the public CLI and internal storage use `Step` (the `Transition` rename is complete)
 - `attach <id>` — attach a generic payload to a Node or Step by resolving the record id
 - `log` — user-facing DAG history command; wraps outline dump / trace behavior
-- Internal compatibility helpers remain in `commands.transition`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add step`, `show`, and `attach`.
-- `cut` — cut a Node or Transition (`cut node NODE_ID` or `cut transition T_ID`)
-- `claude-code` — Claude Code hooks adapter. `claude-code install` merges hook entries into `.claude/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `claude-code hook` consumes one hook event JSON from stdin and records it (session → WorkSession `ws_cc_<session_id>`, prompt/tool use → Transition, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/claude_code/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
-- `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Transition.
-- `show` — inspect a node / transition / payload as JSON
+- Internal compatibility helpers remain in `commands.step`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add step`, `show`, and `attach`.
+- `cut` — cut a Node or Step (`cut node NODE_ID` or `cut step T_ID`)
+- `claude-code` — Claude Code hooks adapter. `claude-code install` merges hook entries into `.claude/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `claude-code hook` consumes one hook event JSON from stdin and records it (session → WorkSession `ws_cc_<session_id>`, prompt/tool use → Step, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/claude_code/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
+- `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Step.
+- `show` — inspect a node / step / payload as JSON
 - `graph` — dump / trace / reachable graph queries
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html`. `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `migrate` — convert a jsonl run dir to sqlite
 
-Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `sync`, `anchor`, `node`, `transition`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
+Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
 
 Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
 `arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to
@@ -141,8 +141,8 @@ The `workflows/`, `domains/`, `execution/`, and `search/` packages are scaffoldi
 
 `arctx dump` is the single command for getting the whole run structure in one shot. Two formats:
 
-- `--format outline` (default): LLM-optimized indented spanning tree. Each node and transition rendered exactly once. Multi-input transitions anchored under `input_node_ids[0]`; additional inputs shown inline as `(+n_X)`; non-primary parents show `▸ feeds t_X (@n_primary)`. Back-references use `↻n_X`. Cuts show `✂`. When ≥3 multi-input transitions exist, a top-level `joins:` index is emitted.
-- `--format mermaid`: human/visual format. Renders a `flowchart TD` mermaid block. Each Transition becomes labeled edges from each input to the single output.
+- `--format outline` (default): LLM-optimized indented spanning tree. Each node and step rendered exactly once. Multi-input steps anchored under `input_node_ids[0]`; additional inputs shown inline as `(+n_X)`; non-primary parents show `▸ feeds t_X (@n_primary)`. Back-references use `↻n_X`. Cuts show `✂`. When ≥3 multi-input steps exist, a top-level `joins:` index is emitted.
+- `--format mermaid`: human/visual format. Renders a `flowchart TD` mermaid block. Each Step becomes labeled edges from each input to the single output.
 
 Useful flags: `--node`, `--depth`, `--full-payloads`.
 
@@ -155,7 +155,7 @@ IDs are minted through `RunHandle._next_id(prefix)` (delegates to `opaque_id(pre
 Current prefixes:
 
 - `n` — Node
-- `t` — Transition
+- `t` — Step
 - `pl` — Payload
 - `run` — Run
 - `we` — WorkEvent
@@ -164,12 +164,12 @@ IDs are opaque and collision-resistant (`n_<uuid>`, `t_<uuid>`, `pl_<uuid>`). Do
 
 ## Cut
 
-Cut is append-only. It attaches a `CutPayload` to a Node or Transition; it does not delete records.
+Cut is append-only. It attaches a `CutPayload` to a Node or Step; it does not delete records.
 
 Activity is computed at read time in `packages/arctx/src/arctx/core/cuts.py`:
 
-- A `CutPayload` on a Node makes that node and all downstream Transitions and Nodes inactive.
-- A `CutPayload` on a Transition makes that Transition and its output Node (and descendants) inactive.
+- A `CutPayload` on a Node makes that node and all downstream Steps and Nodes inactive.
+- A `CutPayload` on a Step makes that Step and its output Node (and descendants) inactive.
 
 Writers that extend observed history must reject cut nodes via `_ensure_active_node(node_id)`.
 
@@ -180,7 +180,7 @@ Writers that extend observed history must reject cut nodes via `_ensure_active_n
 - `run.json`
 - `graph.json` (RunGraph metadata)
 - `nodes.jsonl`
-- `transitions.jsonl` — each row has `transition_id`, `input_node_ids`, `output_node_id`, `metadata`
+- `steps.jsonl` — each row has `step_id`, `input_node_ids`, `output_node_id`, `metadata`
 - `payloads.jsonl` — dispatched by `payload_type` on load
 - `work_sessions.jsonl`
 - `work_events.jsonl`
@@ -189,4 +189,4 @@ Old files `edges.jsonl`, `input_transitions.jsonl`, `output_transitions.jsonl`, 
 
 `SqliteRunStore` stores the same data in a per-run `run.db`.
 
-Payload deserialization uses `payload_from_dict(data)` which dispatches by `payload_type`. Fallback: unknown types become generic `NodePayload` / `TransitionPayload`.
+Payload deserialization uses `payload_from_dict(data)` which dispatches by `payload_type`. Fallback: unknown types become generic `NodePayload` / `StepPayload`.

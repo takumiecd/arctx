@@ -40,7 +40,7 @@ It is the graph layer underneath them.
 
 ![ARCTX CLI Demo](examples/demo_cli.gif)
 
-*Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `work-session`; both branches land as sibling transitions in the same `RunGraph` — no race, no overwrite.*
+*Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `work-session`; both branches land as sibling steps in the same `RunGraph` — no race, no overwrite.*
 
 ![ARCTX TUI Demo](examples/demo_tui.gif)
 
@@ -61,9 +61,9 @@ Real work is not a straight line. You form a hypothesis, try it, observe what ha
 
 ARCTX records all of it as one append-only DAG:
 
-- **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked work-session and their attempts become sibling transitions.
+- **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked work-session and their attempts become sibling steps.
 - **Reverts stay in the graph.** A failed rewrite isn't deleted, it's marked inactive via `CutPayload`. You can still see what was tried, and why.
-- **Domain payloads, not just commits.** Attach benchmark results, predictions, intent — anything. The DAG knows what each transition was *for*.
+- **Domain payloads, not just commits.** Attach benchmark results, predictions, intent — anything. The DAG knows what each step was *for*.
 - **Read-time activity.** Killed branches are filtered automatically; the graph stays clean without rewriting history.
 
 ARCTX is *not* an executor, planner, or agent framework. It is the substrate for storing what they did and why.
@@ -75,8 +75,8 @@ ARCTX is *not* an executor, planner, or agent framework. It is the substrate for
 - **Multi-agent software work** — Claude Code, Codex, custom agents and humans working on the same codebase. ARCTX keeps each attempt distinct and reviewable.
 - **Research and design exploration** — branch hypotheses, capture results as payloads, keep the dropped branches around as evidence.
 - **Debugging and investigation** — record hypotheses and observations as payloads; walk the trace backwards when you finally find the bug.
-- **Benchmark-driven engineering** — every "try variant A, try variant B" lands as a transition with its measurement attached.
-- **Kernel / numeric optimization** — one specific case of the above: tiled / vectorized / fused experiments as sibling transitions, with reverts and merges first-class.
+- **Benchmark-driven engineering** — every "try variant A, try variant B" lands as a step with its measurement attached.
+- **Kernel / numeric optimization** — one specific case of the above: tiled / vectorized / fused experiments as sibling steps, with reverts and merges first-class.
 
 ---
 
@@ -148,7 +148,7 @@ git checkout main && git checkout -b codex/map
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 ```
 
-Both land in the same `RunGraph` as sibling transitions off the baseline. Each
+Both land in the same `RunGraph` as sibling steps off the baseline. Each
 agent has its own work-session, and `--from "$BASE"` keeps them independent —
 no fast-forward conflict, no overwrite:
 
@@ -236,7 +236,7 @@ git checkout main && git checkout -b codex/map
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 ```
 
-Both branches land in the same `RunGraph` as sibling transitions off `$BASE`. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
+Both branches land in the same `RunGraph` as sibling steps off `$BASE`. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
 
 > **Note on isolation.** A ARCTX `work-session` isolates ARCTX run/session attribution (who did what, in which session). It does **not** isolate the Git working tree by itself — both terminals above share the same checkout unless you attach each session to its own `git worktree`. See the next section for the worktree-aware variant.
 
@@ -260,7 +260,7 @@ eval $(arctx work-session env --run demo --new --user codex \
         --worktree ../wt-codex)
 ```
 
-Both agents still land their commits as sibling transitions in the same
+Both agents still land their commits as sibling steps in the same
 `RunGraph`; the worktrees only separate the physical checkout.
 
 ---
@@ -277,7 +277,7 @@ RunGraph
 ```
 
 - Each **attempt / experiment / action is recorded as a step**, producing an output node that represents the resulting state.
-- `NodePayload` / `TransitionPayload` — generic annotations, distinguished by a `type` string. The current internal model still stores steps as `Transition` records while the public surface moves to `Step`.
+- `NodePayload` / `StepPayload` — generic annotations, distinguished by a `type` string. The current internal model still stores steps as `Step` records while the public surface moves to `Step`.
 - `CutPayload` — append-only invalidation. The target isn't deleted; it's filtered out at read time.
 - `GitChangePayload` — attached by the `git` extension on every `arctx git commit`.
 
@@ -296,7 +296,7 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx cut <node-or-step>` | Mark a node or step inactive via append-only payload. |
 | `arctx show [id]` | Show the current run or a single node/step/payload. |
 | `arctx log` | Show the DAG as an ordered event stream. |
-| `arctx git commit -m ...` | Drive a real `git commit` and record a `Transition` with `GitChangePayload`. |
+| `arctx git commit -m ...` | Drive a real `git commit` and record a `Step` with `GitChangePayload`. |
 | `arctx work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
 | `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
 | `arctx graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
@@ -315,7 +315,7 @@ Mutating commands resolve the target run in this order: `--run` flag → `ARCTX_
 
 ```python
 import arctx as arctx
-from arctx import NodePayload, Requirement, TransitionPayload
+from arctx import NodePayload, Requirement, StepPayload
 from arctx.storage import JsonlRunStore
 
 requirement = Requirement(
@@ -326,9 +326,9 @@ requirement = Requirement(
 
 run = arctx.init(requirement, run_id="demo")
 
-transition = run.transition(
+step = run.add_step(
     [run.root_node_id],
-    TransitionPayload(
+    StepPayload(
         payload_id="pending",
         target_id="pending",
         type="experiment",
@@ -337,7 +337,7 @@ transition = run.transition(
 )
 
 run.attach(
-    transition.output_node_id,
+    step.output_node_id,
     NodePayload(
         payload_id="pending",
         target_id="pending",
@@ -346,7 +346,7 @@ run.attach(
     ),
 )
 
-history = run.trace(transition.output_node_id)
+history = run.trace(step.output_node_id)
 
 store = JsonlRunStore("runs")
 run.save(store)
@@ -378,7 +378,7 @@ PYTHONPATH=src python3 -m arctx_cli.main ...
   run.json
   graph.json
   nodes.jsonl
-  transitions.jsonl
+  steps.jsonl
   payloads.jsonl
   work_sessions.jsonl
   work_events.jsonl

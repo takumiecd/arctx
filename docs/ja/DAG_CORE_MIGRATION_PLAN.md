@@ -1,5 +1,11 @@
 # DAG Core Migration Plan
 
+> ステータス: **Phase 1 / Phase 2 ともに完了 (2026-06-15)**。
+> 内部 `Transition` は `Step` へ全面リネーム済み（schema / storage / API / extension / tests）。
+> 動詞メソッドは `RunHandle.add_step`、storage は `steps.jsonl` / sqlite `steps` テーブル。
+> Step の ID プレフィックスは互換のため `t_` のまま据え置き。
+> 以下は移行時の計画記録であり、`Transition` 表記は当時の旧名称を指す履歴的記述。
+
 この文書は、Arctx を新しい DAG core 方針へ移行するための実装計画です。
 
 設計方針は `docs/ja/DAG_CORE_REDESIGN.md` を前提にする。

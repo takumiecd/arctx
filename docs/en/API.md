@@ -3,20 +3,20 @@
 Core API shape:
 
 ```python
-from arctx import Requirement, TransitionPayload, NodePayload, init
+from arctx import Requirement, StepPayload, NodePayload, init
 
 run = init(Requirement("req_1", "task", "my_task"), run_id="my-run")
 
-transition = run.transition(
+step = run.add_step(
     [run.root_node_id],
-    TransitionPayload(
+    StepPayload(
         payload_id="_",
         target_id="_",
         type="experiment",
         content={"lr": 0.01},
     ),
 )
-node_id = transition.output_node_id
+node_id = step.output_node_id
 
 run.attach(
     node_id,
@@ -29,21 +29,21 @@ run.attach(
 )
 ```
 
-`run.transition(...)` creates exactly one `Transition` and one output `Node`.
-Create sibling alternatives by calling `run.transition(...)` multiple times with
+`run.add_step(...)` creates exactly one `Step` and one output `Node`.
+Create sibling alternatives by calling `run.add_step(...)` multiple times with
 the same input node IDs.
 
-`cut(target_kind="node" | "transition")` appends a `CutPayload`.
+`cut(target_kind="node" | "step")` appends a `CutPayload`.
 
 The removed APIs `plan`, `predict`, `observe`, and `note` are represented by
-`transition(...)` and `attach(...)`.
+`step(...)` and `attach(...)`.
 
 ## Git Extension API
 
 Git verbs live under the standard `git` extension namespace:
 
 ```python
-transition = run.git.commit(message="run baseline benchmark")
+step = run.git.commit(message="run baseline benchmark")
 run.git.revert(target_sha="<sha>")
 run.git.cherry_pick(source_sha="<sha>")
 run.git.reset(to_node_id="<node_id>", mode="hard")

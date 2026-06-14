@@ -90,7 +90,7 @@ repeated `--from` flags.
 ## Cut
 
 - `arctx cut <node_id>`
-- `arctx cut transition <transition_id>`
+- `arctx cut step <step_id>`
 
 Cutting records an inactive branch. It does not delete history.
 
@@ -136,10 +136,10 @@ Daily git verbs:
 
 Commit attachment commands:
 
-- `arctx git add --transition T --commit SHA`: attach commit hashes to a
-  transition. This is different from `arctx git repo add`.
-- `arctx git list --transition T`
-- `arctx git show --transition T`
+- `arctx git add --step T --commit SHA`: attach commit hashes to a
+  step. This is different from `arctx git repo add`.
+- `arctx git list --step T`
+- `arctx git show --step T`
 
 Worktree helpers:
 
@@ -239,7 +239,7 @@ while sharing one ARCTX run.
 context, while `export` produces an artifact to hand to people.
 
 - `--format md|tex|html` (default `md`)
-- `--exclude-cut`: drop cut nodes/transitions.
+- `--exclude-cut`: drop cut nodes/steps.
 - `--include-local`: include repo `local_path` values.
 - `--node` / `--depth` / `--full-payloads`: traversal options shared with
   `dump`.
@@ -259,5 +259,5 @@ Top-level `trace`, `reachable`, and `outcomes` are unregistered; use
 
 Removed commands: `arctx plan`, `arctx predict`, `arctx observe`, and
 `arctx note`. Unregistered legacy plumbing commands include `arctx node`,
-`arctx transition`, `arctx payload`, `arctx trace`, `arctx reachable`, and
+`arctx step`, `arctx payload`, `arctx trace`, `arctx reachable`, and
 `arctx outcomes`.

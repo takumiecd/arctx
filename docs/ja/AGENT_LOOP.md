@@ -2,7 +2,7 @@
 
 この文書は、Codex / Claude Code などの agent が v0.3.0b1 の DAG core CLI を使うときの基本ループを説明します。
 
-Phase 1 では内部実装に `Transition` が残りますが、agent 向けには `Step` として扱います。
+Phase 1 では内部実装に `Step` が残りますが、agent 向けには `Step` として扱います。
 
 ## 推奨ループ
 
