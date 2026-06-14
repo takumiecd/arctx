@@ -45,8 +45,6 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.reachable import cli_reachable
     from arctx_cli.commands.show import add_parser as add_show_parser
     from arctx_cli.commands.show import cli_show
-    from arctx_cli.commands.sync import add_parser as add_sync_parser
-    from arctx_cli.commands.sync import cli_sync
     from arctx_cli.commands.trace import add_parser as add_trace_parser
     from arctx_cli.commands.trace import cli_trace
     from arctx_cli.commands.transition import add_parser as add_transition_parser
@@ -76,7 +74,6 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("reachable", add_reachable_parser, cli_reachable),
         CliCommand("cut", add_cut_parser, cli_cut),
         CliCommand("show", add_show_parser, cli_show),
-        CliCommand("sync", add_sync_parser, cli_sync),
         CliCommand("trace", add_trace_parser, cli_trace),
         CliCommand("transition", add_transition_parser, cli_transition),
         CliCommand("use", add_use_parser, cli_use),

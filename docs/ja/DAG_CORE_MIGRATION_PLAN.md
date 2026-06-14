@@ -237,7 +237,7 @@ MVP の主要 CLI には入れない。
 - `context` は将来、`show` と `log` を組み合わせた agent 向け合成ビューとして検討する。
 - `status` は Git 的 working tree がないため、意味が固まってから考える。
 - `debug` は実際の診断項目が見えてから分離する。
-- `sync` は remote / sharing 方針が固まってから名前を決める。
+- `sync` は remote / sharing 方針が固まってから名前を決める。既存の `arctx sync` CLI は削除済み。
 - `link` は Edge を直接張れるように見えるため採用しない。
 
 #### 9. `revise step` は後続で検討する

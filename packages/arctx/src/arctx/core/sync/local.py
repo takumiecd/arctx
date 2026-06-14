@@ -212,7 +212,7 @@ def load_sync_config(run_path: Path) -> dict[str, str]:
     """Load ``sync.json`` for a run."""
     path = run_path / "sync.json"
     if not path.exists():
-        raise RuntimeError("sync is not initialized. Use 'arctx sync init ...'")
+        raise RuntimeError("sync is not initialized for this run")
     return json.loads(path.read_text(encoding="utf-8"))
 
 

@@ -107,7 +107,8 @@ records.
 
 This fixed-mode workflow assumes multiple processes on the same machine. Do not
 directly share one run directory across machines through NFS or a cloud sync
-folder; use `arctx sync` for cross-machine exchange.
+folder. The public sync CLI is intentionally deferred until the remote/sharing
+model is settled.
 
 ## Worktree Per Agent
 

@@ -119,7 +119,6 @@ Current commands:
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html`. `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `anchor` — create a scope anchor node
 - `migrate` — convert a jsonl run dir to sqlite
-- `sync` — sync helpers
 
 Deleted commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `tui` (moved to standalone `arctx-tui` command).
 
