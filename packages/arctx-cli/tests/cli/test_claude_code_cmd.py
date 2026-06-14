@@ -60,12 +60,12 @@ def test_hook_command_records_prompt_and_tool_use():
         )
 
         handle = resolve_store(_store_dir(td)).load_run("run_cc")
-        assert prompt["transition_id"] in handle.run_graph.transitions
-        tool_transition = handle.run_graph.transitions[tool["transition_id"]]
-        assert tool_transition.input_node_ids == (prompt["output_node_id"],)
+        assert prompt["step_id"] in handle.run_graph.steps
+        tool_step = handle.run_graph.steps[tool["step_id"]]
+        assert tool_step.input_node_ids == (prompt["output_node_id"],)
         types = [
             p.type
-            for p in handle.run_graph.payloads_for_transition(tool["transition_id"])
+            for p in handle.run_graph.payloads_for_step(tool["step_id"])
         ]
         assert types == ["agent.tool_use"]
         assert "ws_cc_s1" in handle.run_graph.work_sessions
@@ -150,7 +150,7 @@ def test_hook_cli_records_via_stdin(monkeypatch, capsys):
         assert capsys.readouterr().out == ""
 
         handle = resolve_store(_store_dir(td)).load_run("run_cc")
-        assert len(handle.run_graph.transitions) == 1
+        assert len(handle.run_graph.steps) == 1
 
 
 def test_hook_cli_tools_filter(monkeypatch):
@@ -177,7 +177,7 @@ def test_hook_cli_tools_filter(monkeypatch):
         )
         assert rc == 0
         handle = resolve_store(_store_dir(td)).load_run("run_cc")
-        assert len(handle.run_graph.transitions) == 0
+        assert len(handle.run_graph.steps) == 0
 
 
 def test_install_writes_settings_and_is_idempotent():

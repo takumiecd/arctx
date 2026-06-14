@@ -18,8 +18,8 @@ from arctx_tui.editor import (
     GitPayloadFormData,
     PayloadForm,
     PayloadFormData,
-    TransitionForm,
-    TransitionFormData,
+    StepForm,
+    StepFormData,
 )
 from arctx_tui.flowchart_view import FlowchartItemClicked, FlowchartView
 from arctx_tui.graph_html import render_graph_html
@@ -37,7 +37,7 @@ class ArctxApp(App):
         Binding("2", "focus_flowchart", "Flowchart"),
         Binding("3", "focus_detail", "Detail"),
         Binding("g", "open_browser_graph", "Graph"),
-        Binding("t", "create_transition", "Transition"),
+        Binding("t", "create_step", "Step"),
         Binding("p", "attach_payload", "Payload"),
         Binding("c", "cut_selected", "Cut"),
         Binding("G", "attach_git_payload", "Git Payload"),
@@ -236,7 +236,7 @@ class ArctxApp(App):
             "run.json",
             "graph.json",
             "nodes.jsonl",
-            "transitions.jsonl",
+            "steps.jsonl",
             "payloads.jsonl",
             "work_sessions.jsonl",
             "work_events.jsonl",
@@ -335,7 +335,7 @@ class ArctxApp(App):
             path = f.name
         webbrowser.open(f"file://{path}")
 
-    def action_create_transition(self) -> None:
+    def action_create_step(self) -> None:
         if self._current_handle is None:
             return
         selected = self._selected
@@ -344,36 +344,36 @@ class ArctxApp(App):
         elif selected[0] == "node":
             node_id = selected[1]
         else:
-            node_id = self._current_handle.run_graph.transition_output(selected[1])
+            node_id = self._current_handle.run_graph.step_output(selected[1])
         if not node_id:
             return
-        self.push_screen(TransitionForm(default_node_id=node_id), self._create_transition)
+        self.push_screen(StepForm(default_node_id=node_id), self._create_step)
 
-    def _create_transition(self, data: TransitionFormData | None) -> None:
+    def _create_step(self, data: StepFormData | None) -> None:
         if self._current_handle is None or data is None:
             return
         try:
             field_data = {"type": data.payload_kind, **data.content}
             payload = build_payload(
                 payload_type=data.payload_type,
-                target_kind="transition",
+                target_kind="step",
                 target_id="pending",
                 payload_id="pending",
                 field_data=field_data,
             )
-            transition = self._current_handle.transition(list(data.input_node_ids), payload)
+            step = self._current_handle.add_step(list(data.input_node_ids), payload)
             self._store.save_run(self._current_handle)
-            self._reload_current_run(selected=("transition", transition.transition_id))
-            self.notify(f"Created transition {transition.transition_id}")
+            self._reload_current_run(selected=("step", step.step_id))
+            self.notify(f"Created step {step.step_id}")
         except Exception as exc:
             self.notify(str(exc), severity="error")
 
     def action_attach_payload(self) -> None:
         if self._current_handle is None or self._selected is None:
-            self.notify("Select a node or transition first", severity="warning")
+            self.notify("Select a node or step first", severity="warning")
             return
         kind, raw_id = self._selected
-        if kind not in ("node", "transition"):
+        if kind not in ("node", "step"):
             return
         self.push_screen(PayloadForm(target_kind=kind, target_id=raw_id), self._attach_payload)
 
@@ -406,10 +406,10 @@ class ArctxApp(App):
 
     def action_cut_selected(self) -> None:
         if self._current_handle is None or self._selected is None:
-            self.notify("Select a node or transition first", severity="warning")
+            self.notify("Select a node or step first", severity="warning")
             return
         kind, raw_id = self._selected
-        if kind not in ("node", "transition"):
+        if kind not in ("node", "step"):
             return
         try:
             cut = self._current_handle.cut(raw_id, target_kind=kind)
@@ -421,28 +421,28 @@ class ArctxApp(App):
 
     def action_attach_git_payload(self) -> None:
         if self._current_handle is None or self._selected is None:
-            self.notify("Select a transition first", severity="warning")
+            self.notify("Select a step first", severity="warning")
             return
         kind, raw_id = self._selected
-        if kind != "transition":
-            self.notify("Git payloads attach to transitions", severity="warning")
+        if kind != "step":
+            self.notify("Git payloads attach to steps", severity="warning")
             return
-        self.push_screen(GitPayloadForm(transition_id=raw_id), self._attach_git_payload)
+        self.push_screen(GitPayloadForm(step_id=raw_id), self._attach_git_payload)
 
     def _attach_git_payload(self, data: GitPayloadFormData | None) -> None:
         if self._current_handle is None or data is None:
             return
         try:
-            from arctx.ext.git.helpers.attach import attach_commits_to_transition
+            from arctx.ext.git.helpers.attach import attach_commits_to_step
 
-            result = attach_commits_to_transition(
+            result = attach_commits_to_step(
                 self._current_handle,
                 self._store.run_path(self._current_handle.run_id),
-                data.transition_id,
+                data.step_id,
                 data.commits,
             )
             self._store.save_run(self._current_handle)
-            self._reload_current_run(selected=("transition", data.transition_id))
+            self._reload_current_run(selected=("step", data.step_id))
             payload_id = result["created"]["git_change_payload_id"]
             self.notify(f"Attached git payload {payload_id}")
         except Exception as exc:

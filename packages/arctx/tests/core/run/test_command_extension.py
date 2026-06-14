@@ -11,7 +11,7 @@ from arctx.ext import attach_extensions
 from arctx.ext.command.payloads import CommandRunPayload
 
 
-def test_command_run_records_transition_payload_and_session_pointer(tmp_path):
+def test_command_run_records_step_payload_and_session_pointer(tmp_path):
     handle = attach_extensions(
         arctx.init(
             Requirement(requirement_id="req", target_type="task", target_id="target"),
@@ -27,10 +27,10 @@ def test_command_run_records_transition_payload_and_session_pointer(tmp_path):
         work_session_id="s1",
     )
 
-    transition = result["transition"]
+    step = result["step"]
     payload = result["payload"]
-    assert transition.input_node_ids == (handle.root_node_id,)
-    assert transition.output_node_id in handle.run_graph.nodes
+    assert step.input_node_ids == (handle.root_node_id,)
+    assert step.output_node_id in handle.run_graph.nodes
     assert isinstance(payload, CommandRunPayload)
     assert payload.command[:2] == (sys.executable, "-c")
     assert payload.cwd == str(tmp_path.resolve())
@@ -39,4 +39,4 @@ def test_command_run_records_transition_payload_and_session_pointer(tmp_path):
 
     pointer = latest_session_pointer(handle.run_graph, "s1")
     assert pointer is not None
-    assert pointer.data["current_node_ids"] == [transition.output_node_id]
+    assert pointer.data["current_node_ids"] == [step.output_node_id]

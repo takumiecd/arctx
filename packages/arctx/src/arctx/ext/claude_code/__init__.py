@@ -4,8 +4,8 @@ Maps Claude Code hook events onto ARCTX records so an agent session is
 recorded into a run automatically, with no manual bookkeeping:
 
 - one Claude Code session  -> one ``WorkSession`` (``ws_cc_<session_id>``)
-- ``UserPromptSubmit``     -> ``Transition`` + ``TransitionPayload(type="agent.prompt")``
-- ``PostToolUse``          -> ``Transition`` + ``TransitionPayload(type="agent.tool_use")``
+- ``UserPromptSubmit``     -> ``Step`` + ``StepPayload(type="agent.prompt")``
+- ``PostToolUse``          -> ``Step`` + ``StepPayload(type="agent.tool_use")``
 - ``Stop`` / ``SessionEnd``-> ``NodePayload`` attached to the session tip
 
 Only generic core payloads are used, so runs need no extension enablement

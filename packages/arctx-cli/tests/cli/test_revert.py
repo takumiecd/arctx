@@ -73,12 +73,12 @@ class TestRevertCLIIntegration:
         )
 
         orig_sha = r1["head_commit"]
-        orig_t_id = r1["transition_id"]
+        orig_t_id = r1["step_id"]
 
         # Now revert via arctx.
         r2 = run_revert_command(
             target_sha=orig_sha,
-            target_transition=None,
+            target_step=None,
             message=None,
             branch=None,
             run_id="run_rv",
@@ -87,21 +87,21 @@ class TestRevertCLIIntegration:
             work_session_id="ws_rv",
         )
 
-        assert "transition_id" in r2
+        assert "step_id" in r2
         assert r2["reverted_commit"] == orig_sha
-        assert r2["reverted_transition"] == orig_t_id
+        assert r2["reverted_step"] == orig_t_id
 
         # Load and verify the graph.
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_rv")
 
-        revert_payloads = handle.run_graph.payloads_for_transition(
-            r2["transition_id"], payload_type="revert"
+        revert_payloads = handle.run_graph.payloads_for_step(
+            r2["step_id"], payload_type="revert"
         )
         assert len(revert_payloads) == 1
         assert isinstance(revert_payloads[0], RevertPayload)
 
-    def test_revert_original_transition_untouched(self, tmp_path, monkeypatch):
+    def test_revert_original_step_untouched(self, tmp_path, monkeypatch):
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.chdir(repo)
 
@@ -125,12 +125,12 @@ class TestRevertCLIIntegration:
         store = resolve_store(_store_dir(tmp_path))
         handle_before = store.load_run("run_rv2")
         orig_payloads = list(
-            handle_before.run_graph.payloads_by_transition.get(r1["transition_id"], [])
+            handle_before.run_graph.payloads_by_step.get(r1["step_id"], [])
         )
 
         run_revert_command(
             target_sha=r1["head_commit"],
-            target_transition=None,
+            target_step=None,
             message=None,
             branch=None,
             run_id="run_rv2",
@@ -141,12 +141,12 @@ class TestRevertCLIIntegration:
 
         handle_after = store.load_run("run_rv2")
         after_payloads = list(
-            handle_after.run_graph.payloads_by_transition.get(r1["transition_id"], [])
+            handle_after.run_graph.payloads_by_step.get(r1["step_id"], [])
         )
         assert orig_payloads == after_payloads
 
     def test_revert_graph_forms_chain(self, tmp_path, monkeypatch):
-        """Revert transition's input should be the commit transition's output."""
+        """Revert step's input should be the commit step's output."""
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.chdir(repo)
 
@@ -169,7 +169,7 @@ class TestRevertCLIIntegration:
 
         r2 = run_revert_command(
             target_sha=r1["head_commit"],
-            target_transition=None,
+            target_step=None,
             message=None,
             branch=None,
             run_id="run_rv3",
@@ -180,5 +180,5 @@ class TestRevertCLIIntegration:
 
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_rv3")
-        t2 = handle.run_graph.transitions[r2["transition_id"]]
+        t2 = handle.run_graph.steps[r2["step_id"]]
         assert r1["output_node_id"] in t2.input_node_ids

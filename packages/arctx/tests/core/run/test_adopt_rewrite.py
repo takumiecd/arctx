@@ -17,7 +17,7 @@ def _make_handle(run_id: str = "run_rewrite"):
 
 
 def _commit(handle, sha: str, branch: str = "main", ws: str = "ws") -> str:
-    """Helper: do a dry_run commit and return the transition_id."""
+    """Helper: do a dry_run commit and return the step_id."""
     handle.ensure_work_session(user_id="user", work_session_id=ws)
     t = handle.git.commit(
         message=f"commit {sha}",
@@ -27,7 +27,7 @@ def _commit(handle, sha: str, branch: str = "main", ws: str = "ws") -> str:
         head_commit=sha,
         dry_run=True,
     )
-    return t.transition_id
+    return t.step_id
 
 
 class TestAdoptRewriteAmend:
@@ -43,7 +43,7 @@ class TestAdoptRewriteAmend:
             work_session_id="ws",
         )
 
-        assert t_id in result["affected_transitions"]
+        assert t_id in result["affected_steps"]
         assert "sha_before" not in result["skipped_shas"]
 
     def test_amend_current_sha_updates(self):
@@ -73,7 +73,7 @@ class TestAdoptRewriteAmend:
             work_session_id="ws",
         )
 
-        git_payloads = handle.run_graph.payloads_for_transition(
+        git_payloads = handle.run_graph.payloads_for_step(
             t_id, payload_type="git_change"
         )
         assert len(git_payloads) == 2
@@ -116,7 +116,7 @@ class TestAdoptRewriteAmend:
         )
 
         assert "sha_unknown" in result["skipped_shas"]
-        assert result["affected_transitions"] == []
+        assert result["affected_steps"] == []
 
     def test_amend_no_user_id_skips_event(self):
         handle = _make_handle()
@@ -134,11 +134,11 @@ class TestAdoptRewriteAmend:
         assert len(handle.run_graph.work_events) == initial_event_count
         assert result["event_id"] is None
         # But payload should still be appended.
-        assert len(result["affected_transitions"]) == 1
+        assert len(result["affected_steps"]) == 1
 
 
 class TestAdoptRewriteRebase:
-    def test_rebase_updates_all_affected_transitions(self):
+    def test_rebase_updates_all_affected_steps(self):
         handle = _make_handle()
         handle.ensure_work_session(user_id="user", work_session_id="ws")
 
@@ -153,8 +153,8 @@ class TestAdoptRewriteRebase:
             work_session_id="ws",
         )
 
-        assert t1 in result["affected_transitions"]
-        assert t2 in result["affected_transitions"]
+        assert t1 in result["affected_steps"]
+        assert t2 in result["affected_steps"]
         assert result["skipped_shas"] == []
 
     def test_rebase_current_sha_updated(self):
@@ -193,11 +193,11 @@ class TestAdoptRewriteRebase:
         evt = rebase_events[0]
         assert evt.data["onto"] == "sha_y2"
         assert set(evt.data["sha_map"].keys()) == {"sha_x1", "sha_x2"}
-        assert t1 in evt.data["affected_transitions"]
-        assert t2 in evt.data["affected_transitions"]
+        assert t1 in evt.data["affected_steps"]
+        assert t2 in evt.data["affected_steps"]
 
     def test_rebase_partial_skip(self):
-        """sha_map entries with no matching transition go to skipped_shas."""
+        """sha_map entries with no matching step go to skipped_shas."""
         handle = _make_handle()
         t1 = _commit(handle, "known_sha")
 
@@ -209,7 +209,7 @@ class TestAdoptRewriteRebase:
             work_session_id="ws",
         )
 
-        assert t1 in result["affected_transitions"]
+        assert t1 in result["affected_steps"]
         assert "orphan_sha" in result["skipped_shas"]
 
     def test_rebase_branch_inherited_from_existing_payload(self):
@@ -225,7 +225,7 @@ class TestAdoptRewriteRebase:
             work_session_id="ws",
         )
 
-        git_payloads = handle.run_graph.payloads_for_transition(
+        git_payloads = handle.run_graph.payloads_for_step(
             t1, payload_type="git_change"
         )
         # Both old and new payloads.

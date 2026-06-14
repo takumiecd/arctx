@@ -12,7 +12,7 @@ from arctx_tui.flowchart import ClickRegion, navigate_selection, render_flowchar
 
 
 class FlowchartItemClicked(Message):
-    """Posted when the user clicks a node or transition in the flowchart."""
+    """Posted when the user clicks a node or step in the flowchart."""
 
     def __init__(self, kind: str, raw_id: str) -> None:
         super().__init__()
@@ -32,7 +32,7 @@ class FlowchartView(ScrollableContainer, can_focus=True):
     its natural size drives the virtual content area.
 
     - mouse wheel / scrollbar / left-button drag: scroll or pan
-    - arrow keys: move the selected node or transition
+    - arrow keys: move the selected node or step
     - left-button drag: pan
     - left-button click (no drag): post FlowchartItemClicked on the hit region
     - 0 key (in app): recenter via recenter_to()

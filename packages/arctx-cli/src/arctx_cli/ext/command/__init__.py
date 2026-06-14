@@ -72,7 +72,7 @@ def run_command_run_command(
         before=before,
     )
     return {
-        "transition": result["transition"].to_dict(),
+        "step": result["step"].to_dict(),
         "output_node": result["output_node"].to_dict(),
         "payload": result["payload"].to_dict(),
         "exit_code": result["exit_code"],

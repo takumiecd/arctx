@@ -1,4 +1,4 @@
-"""arctx git subcommand — attach commit hashes to transitions."""
+"""arctx git subcommand — attach commit hashes to steps."""
 
 from __future__ import annotations
 
@@ -48,21 +48,21 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     add_verify_parser(git_sub)
     add_worktree_parser(git_sub)
 
-    sp_list = git_sub.add_parser("list", help="List git_change payloads for a Transition")
-    sp_list.add_argument("--transition", required=True, dest="transition_id")
+    sp_list = git_sub.add_parser("list", help="List git_change payloads for a Step")
+    sp_list.add_argument("--step", required=True, dest="step_id")
     sp_list.add_argument("--run", default=None)
     sp_list.add_argument("--store-dir", default=None)
 
-    sp_add = git_sub.add_parser("add", help="Attach explicit Git commits to a Transition")
-    sp_add.add_argument("--transition", required=True, dest="transition_id")
+    sp_add = git_sub.add_parser("add", help="Attach explicit Git commits to a Step")
+    sp_add.add_argument("--step", required=True, dest="step_id")
     sp_add.add_argument("--commit", action="append", required=True, dest="commits")
     sp_add.add_argument("--run", default=None)
     sp_add.add_argument("--store-dir", default=None)
     sp_add.add_argument("--user", default=None)
     sp_add.add_argument("--work-session", default=None)
 
-    sp_show = git_sub.add_parser("show", help="Show git_change payloads for a Transition")
-    sp_show.add_argument("--transition", required=True, dest="transition_id")
+    sp_show = git_sub.add_parser("show", help="Show git_change payloads for a Step")
+    sp_show.add_argument("--step", required=True, dest="step_id")
     sp_show.add_argument("--run", default=None)
     sp_show.add_argument("--store-dir", default=None)
 
@@ -136,16 +136,16 @@ def cli_git(args) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _git_payloads_for_transition(args) -> tuple[object, list]:
+def _git_payloads_for_step(args) -> tuple[object, list]:
     store = resolve_store(args.store_dir)
     run_id = resolve_run_id_from_args(args)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
-    if args.transition_id not in handle.run_graph.transitions:
-        raise KeyError(f"unknown transition_id: {args.transition_id}")
-    payloads = handle.run_graph.payloads_for_transition(
-        args.transition_id,
+    if args.step_id not in handle.run_graph.steps:
+        raise KeyError(f"unknown step_id: {args.step_id}")
+    payloads = handle.run_graph.payloads_for_step(
+        args.step_id,
         payload_type="git_change",
     )
     return handle, payloads
@@ -153,7 +153,7 @@ def _git_payloads_for_transition(args) -> tuple[object, list]:
 
 def _cli_git_list(args) -> int:
     try:
-        _, payloads = _git_payloads_for_transition(args)
+        _, payloads = _git_payloads_for_step(args)
     except KeyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -167,7 +167,7 @@ def _cli_git_list(args) -> int:
     print(
         json.dumps(
             {
-                "transition_id": args.transition_id,
+                "step_id": args.step_id,
                 "commits": commits,
             },
             ensure_ascii=False,
@@ -179,7 +179,7 @@ def _cli_git_list(args) -> int:
 
 def _cli_git_show(args) -> int:
     try:
-        _, payloads = _git_payloads_for_transition(args)
+        _, payloads = _git_payloads_for_step(args)
     except KeyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -200,14 +200,14 @@ def _cli_git_attach(args) -> int:
     handle = store.load_run(run_id)
     run_dir = _run_dir(store, run_id)
 
-    from arctx.ext.git.helpers.attach import attach_commits_to_transition
+    from arctx.ext.git.helpers.attach import attach_commits_to_step
 
     try:
         before = graph_counts(handle)
-        result = attach_commits_to_transition(
+        result = attach_commits_to_step(
             handle,
             run_dir,
-            args.transition_id,
+            args.step_id,
             tuple(args.commits),
             user_id=user_id,
             work_session_id=work_session_id,

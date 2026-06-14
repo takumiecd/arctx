@@ -15,7 +15,7 @@ from arctx.payload_builder import payload_type_names
 from arctx.core.types import JSONValue
 
 
-TargetKind = Literal["node", "transition"]
+TargetKind = Literal["node", "step"]
 PayloadOption = tuple[str, str]
 
 NODE_PAYLOAD_KINDS: tuple[PayloadOption, ...] = (
@@ -23,7 +23,7 @@ NODE_PAYLOAD_KINDS: tuple[PayloadOption, ...] = (
     ("Observation", "observation"),
     ("Payload", "payload"),
 )
-TRANSITION_PAYLOAD_KINDS: tuple[PayloadOption, ...] = (
+STEP_PAYLOAD_KINDS: tuple[PayloadOption, ...] = (
     ("Experiment", "experiment"),
     ("Suggestion", "suggestion"),
     ("Implementation", "implementation"),
@@ -33,7 +33,7 @@ TRANSITION_PAYLOAD_KINDS: tuple[PayloadOption, ...] = (
 
 
 @dataclass(frozen=True)
-class TransitionFormData:
+class StepFormData:
     input_node_ids: tuple[str, ...]
     payload_type: str
     payload_kind: str
@@ -51,7 +51,7 @@ class PayloadFormData:
 
 @dataclass(frozen=True)
 class GitPayloadFormData:
-    transition_id: str
+    step_id: str
     commits: tuple[str, ...]
 
 
@@ -91,8 +91,8 @@ class _FormScreen(ModalScreen):
         raise NotImplementedError
 
 
-class TransitionForm(_FormScreen):
-    """Create a transition from one or more input nodes."""
+class StepForm(_FormScreen):
+    """Create a step from one or more input nodes."""
 
     def __init__(self, *, default_node_id: str) -> None:
         super().__init__()
@@ -100,19 +100,19 @@ class TransitionForm(_FormScreen):
 
     def compose(self) -> ComposeResult:
         with Container(classes="editor-dialog"):
-            yield Label("Create Transition", classes="editor-title")
+            yield Label("Create Step", classes="editor-title")
             yield Label("Input nodes")
             yield Input(value=self._default_node_id, id="input-nodes")
             yield Label("Payload type")
             yield Select(
-                _payload_type_options("transition", include_cut=False),
-                value="transition_payload",
+                _payload_type_options("step", include_cut=False),
+                value="step_payload",
                 allow_blank=False,
                 id="payload-type",
             )
-            yield Label("Transition type")
+            yield Label("Step type")
             yield Select(
-                TRANSITION_PAYLOAD_KINDS,
+                STEP_PAYLOAD_KINDS,
                 value="experiment",
                 allow_blank=False,
                 id="payload-kind",
@@ -133,14 +133,14 @@ class TransitionForm(_FormScreen):
             )
             if not input_node_ids:
                 raise ValueError("Input nodes are required")
-            payload_type = self._select_value("payload-type") or "transition_payload"
+            payload_type = self._select_value("payload-type") or "step_payload"
             payload_kind = self._select_value("payload-kind") or "payload"
             content = _parse_json_object(self._input_value("content-json"))
         except Exception as exc:
             self._set_error(str(exc))
             return
         self.dismiss(
-            TransitionFormData(
+            StepFormData(
                 input_node_ids=input_node_ids,
                 payload_type=payload_type,
                 payload_kind=payload_kind,
@@ -150,7 +150,7 @@ class TransitionForm(_FormScreen):
 
 
 class PayloadForm(_FormScreen):
-    """Attach a payload to the selected node or transition."""
+    """Attach a payload to the selected node or step."""
 
     def __init__(self, *, target_kind: TargetKind, target_id: str) -> None:
         super().__init__()
@@ -159,13 +159,13 @@ class PayloadForm(_FormScreen):
 
     def compose(self) -> ComposeResult:
         default_payload_type = (
-            "node_payload" if self._target_kind == "node" else "transition_payload"
+            "node_payload" if self._target_kind == "node" else "step_payload"
         )
         default_payload_kind = "note" if self._target_kind == "node" else "observation"
         payload_kind_options = (
             NODE_PAYLOAD_KINDS
             if self._target_kind == "node"
-            else TRANSITION_PAYLOAD_KINDS
+            else STEP_PAYLOAD_KINDS
         )
         with Container(classes="editor-dialog"):
             yield Label("Attach Payload", classes="editor-title")
@@ -220,7 +220,7 @@ def _payload_type_options(
     candidates: list[PayloadOption] = []
     labels = {
         "node_payload": "NodePayload",
-        "transition_payload": "TransitionPayload",
+        "step_payload": "StepPayload",
         "cut": "CutPayload",
         "git_change": "GitChangePayload",
     }
@@ -231,7 +231,7 @@ def _payload_type_options(
             continue
         if target_kind == "node" and payload_type not in {"node_payload", "cut"}:
             continue
-        if target_kind == "transition" and payload_type not in {"transition_payload", "cut"}:
+        if target_kind == "step" and payload_type not in {"step_payload", "cut"}:
             continue
         label = labels.get(payload_type, payload_type)
         candidates.append((f"{label} ({payload_type})", payload_type))
@@ -239,16 +239,16 @@ def _payload_type_options(
 
 
 class GitPayloadForm(_FormScreen):
-    """Attach Git commits to a transition as a GitChangePayload."""
+    """Attach Git commits to a step as a GitChangePayload."""
 
-    def __init__(self, *, transition_id: str) -> None:
+    def __init__(self, *, step_id: str) -> None:
         super().__init__()
-        self._transition_id = transition_id
+        self._step_id = step_id
 
     def compose(self) -> ComposeResult:
         with Container(classes="editor-dialog"):
             yield Label("Attach Git Payload", classes="editor-title")
-            yield Label(f"Transition: {self._transition_id}")
+            yield Label(f"Step: {self._step_id}")
             yield Label("Commits")
             yield Input(placeholder="HEAD, abc123, ...", id="commits")
             yield Static("", id="form-error")
@@ -262,4 +262,4 @@ class GitPayloadForm(_FormScreen):
         if not commits:
             self._set_error("At least one commit is required")
             return
-        self.dismiss(GitPayloadFormData(transition_id=self._transition_id, commits=commits))
+        self.dismiss(GitPayloadFormData(step_id=self._step_id, commits=commits))

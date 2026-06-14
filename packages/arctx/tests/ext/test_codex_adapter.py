@@ -59,10 +59,10 @@ def test_prompt_then_tool_use_chain_within_session():
         user_id="codex",
     )
     assert tool is not None
-    tool_transition = handle.run_graph.transitions[tool["transition_id"]]
-    assert tool_transition.input_node_ids == (prompt["output_node_id"],)
+    tool_step = handle.run_graph.steps[tool["step_id"]]
+    assert tool_step.input_node_ids == (prompt["output_node_id"],)
 
-    payloads = handle.run_graph.payloads_for_transition(tool["transition_id"])
+    payloads = handle.run_graph.payloads_for_step(tool["step_id"])
     assert [p.type for p in payloads] == ["agent.tool_use"]
     assert payloads[0].content["tool_input"] == {"command": "pytest -q"}
     assert payloads[0].metadata == {"harness": "codex"}
@@ -118,5 +118,5 @@ def test_session_tip_skips_cut_branch():
     second = record_hook_event(
         handle, _event("UserPromptSubmit", prompt="second"), user_id="codex"
     )
-    transition = handle.run_graph.transitions[second["transition_id"]]
-    assert transition.input_node_ids == (handle.root_node_id,)
+    step = handle.run_graph.steps[second["step_id"]]
+    assert step.input_node_ids == (handle.root_node_id,)

@@ -21,7 +21,7 @@ def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
 
 
 def _first_commit(handle, sha: str = "sha_orig") -> object:
-    """Record a commit transition so we have something to revert."""
+    """Record a commit step so we have something to revert."""
     _ensure_session(handle)
     return handle.git.commit(
         message="original commit",
@@ -34,7 +34,7 @@ def _first_commit(handle, sha: str = "sha_orig") -> object:
 
 
 class TestRevertImplDryRun:
-    def test_returns_transition(self):
+    def test_returns_step(self):
         handle = _make_handle()
         orig = _first_commit(handle, sha="sha_orig")
 
@@ -46,7 +46,7 @@ class TestRevertImplDryRun:
             head_commit="sha_revert",
             dry_run=True,
         )
-        assert t.transition_id in handle.run_graph.transitions
+        assert t.step_id in handle.run_graph.steps
 
     def test_creates_output_node(self):
         handle = _make_handle()
@@ -76,14 +76,14 @@ class TestRevertImplDryRun:
             head_commit="sha_revert",
             dry_run=True,
         )
-        payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="revert"
+        payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="revert"
         )
         assert len(payloads) == 1
         rp = payloads[0]
         assert isinstance(rp, RevertPayload)
         assert rp.reverted_commit == "sha_orig"
-        assert rp.reverted_transition == orig.transition_id
+        assert rp.reverted_step == orig.step_id
 
     def test_git_change_payload_attached(self):
         handle = _make_handle()
@@ -97,8 +97,8 @@ class TestRevertImplDryRun:
             head_commit="sha_rev",
             dry_run=True,
         )
-        git_payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="git_change"
+        git_payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="git_change"
         )
         assert len(git_payloads) == 1
         assert isinstance(git_payloads[0], GitChangePayload)
@@ -116,20 +116,20 @@ class TestRevertImplDryRun:
             head_commit="sha_rev",
             dry_run=True,
         )
-        branch_payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="branch"
+        branch_payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="branch"
         )
         assert len(branch_payloads) == 1
         assert isinstance(branch_payloads[0], BranchPayload)
         assert branch_payloads[0].branch == "feature/x"
 
-    def test_original_transition_untouched(self):
-        """The reverted transition must not receive any new payloads."""
+    def test_original_step_untouched(self):
+        """The reverted step must not receive any new payloads."""
         handle = _make_handle()
         orig = _first_commit(handle, sha="sha_orig")
 
         payloads_before = list(
-            handle.run_graph.payloads_by_transition.get(orig.transition_id, [])
+            handle.run_graph.payloads_by_step.get(orig.step_id, [])
         )
 
         handle.git.revert(
@@ -142,7 +142,7 @@ class TestRevertImplDryRun:
         )
 
         payloads_after = list(
-            handle.run_graph.payloads_by_transition.get(orig.transition_id, [])
+            handle.run_graph.payloads_by_step.get(orig.step_id, [])
         )
         assert payloads_before == payloads_after
 
@@ -178,29 +178,29 @@ class TestRevertImplDryRun:
         assert tip is not None
         assert tip.data["tip_node_id"] == t.output_node_id
 
-    def test_revert_by_transition_id(self):
+    def test_revert_by_step_id(self):
         handle = _make_handle()
         orig = _first_commit(handle, sha="sha_orig2")
 
         t = handle.git.revert(
-            target_transition=orig.transition_id,
+            target_step=orig.step_id,
             branch="main",
             user_id="user",
             work_session_id="ws_1",
             head_commit="sha_rev2",
             dry_run=True,
         )
-        payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="revert"
+        payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="revert"
         )
-        assert payloads[0].reverted_transition == orig.transition_id
+        assert payloads[0].reverted_step == orig.step_id
         assert payloads[0].reverted_commit == "sha_orig2"
 
     def test_unknown_sha_raises(self):
         handle = _make_handle()
         _ensure_session(handle)
 
-        with pytest.raises(KeyError, match="no arctx transition found"):
+        with pytest.raises(KeyError, match="no arctx step found"):
             handle.git.revert(
                 target_sha="nonexistent_sha",
                 branch="main",
@@ -208,13 +208,13 @@ class TestRevertImplDryRun:
                 dry_run=True,
             )
 
-    def test_unknown_transition_id_raises(self):
+    def test_unknown_step_id_raises(self):
         handle = _make_handle()
         _ensure_session(handle)
 
-        with pytest.raises(KeyError, match="unknown transition_id"):
+        with pytest.raises(KeyError, match="unknown step_id"):
             handle.git.revert(
-                target_transition="t_nonexistent",
+                target_step="t_nonexistent",
                 branch="main",
                 head_commit="x",
                 dry_run=True,
@@ -224,7 +224,7 @@ class TestRevertImplDryRun:
         handle = _make_handle()
         _ensure_session(handle)
 
-        with pytest.raises(ValueError, match="Either target_sha or target_transition"):
+        with pytest.raises(ValueError, match="Either target_sha or target_step"):
             handle.git.revert(dry_run=True)
 
     def test_both_args_raises(self):
@@ -234,7 +234,7 @@ class TestRevertImplDryRun:
         with pytest.raises(ValueError, match="mutually exclusive"):
             handle.git.revert(
                 target_sha="sha_x",
-                target_transition="t_x",
+                target_step="t_x",
                 dry_run=True,
             )
 
@@ -253,7 +253,7 @@ class TestRevertImplDryRun:
         assert len(handle.run_graph.work_events) == initial_events
 
     def test_current_sha_is_new_sha(self):
-        """After revert, current_sha of the new transition must be the revert sha."""
+        """After revert, current_sha of the new step must be the revert sha."""
         handle = _make_handle()
         _first_commit(handle, sha="sha_orig3")
 
@@ -265,4 +265,4 @@ class TestRevertImplDryRun:
             head_commit="sha_revert3",
             dry_run=True,
         )
-        assert handle.git.current_sha(t.transition_id) == "sha_revert3"
+        assert handle.git.current_sha(t.step_id) == "sha_revert3"

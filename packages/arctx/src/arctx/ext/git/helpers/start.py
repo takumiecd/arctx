@@ -6,7 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from arctx.core.cuts import is_inactive_transition
+from arctx.core.cuts import is_inactive_step
 from arctx.ext.git.helpers import repo as git_repo
 from arctx.ext.git.helpers.session import (
     GitSession,
@@ -23,28 +23,28 @@ from arctx.core.run.handle import RunHandle
 def git_start(
     handle: RunHandle,
     run_dir: Path,
-    transition_id: str,
+    step_id: str,
     *,
     repo_root_hint: Path | None = None,
     user_id: str = "user",
 ) -> dict:
-    """Create a GitSession for *transition_id*.
+    """Create a GitSession for *step_id*.
 
-    Returns a dict with ``session_id``, ``transition_id``,
+    Returns a dict with ``session_id``, ``step_id``,
     ``base_commit``, ``branch``, ``dirty``, ``warnings``, and ``next``.
 
     Raises
     ------
     KeyError
-        If *transition_id* is not found in the graph.
+        If *step_id* is not found in the graph.
     ValueError
         If the IT is inactive, HEAD is detached, or the repo root cannot be
         detected.
     """
-    if transition_id not in handle.run_graph.transitions:
-        raise KeyError(f"unknown transition_id: {transition_id}")
-    if is_inactive_transition(handle.run_graph, transition_id):
-        raise ValueError(f"transition is inactive (cut): {transition_id}")
+    if step_id not in handle.run_graph.steps:
+        raise KeyError(f"unknown step_id: {step_id}")
+    if is_inactive_step(handle.run_graph, step_id):
+        raise ValueError(f"step is inactive (cut): {step_id}")
 
     # 2. Detect repo root
     cwd = repo_root_hint or Path(".")
@@ -80,10 +80,10 @@ def git_start(
     # Check for parallel open sessions on the same IT
     existing_sessions = list_sessions(run_dir)
     for s in existing_sessions:
-        if s.transition_id == transition_id and s.is_open and s.session_id != session_id:
+        if s.step_id == step_id and s.is_open and s.session_id != session_id:
             warnings.append(
                 f"Another open GitSession ({s.session_id}) is already tracking "
-                f"transition {transition_id}. "
+                f"step {step_id}. "
                 "Multiple sessions on the same IT are allowed but unusual."
             )
             break
@@ -93,7 +93,7 @@ def git_start(
     session = GitSession(
         session_id=session_id,
         run_id=handle.run_id,
-        transition_id=transition_id,
+        step_id=step_id,
         repo_root=str(repo_root),
         base_commit=base_commit,
         base_branch=branch,
@@ -108,7 +108,7 @@ def git_start(
 
     return {
         "session_id": session_id,
-        "transition_id": transition_id,
+        "step_id": step_id,
         "base_commit": base_commit,
         "branch": branch,
         "dirty": dirty,

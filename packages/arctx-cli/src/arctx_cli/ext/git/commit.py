@@ -1,6 +1,6 @@
 """arctx CLI commit command.
 
-Drives a git commit and records the corresponding arctx Transition with
+Drives a git commit and records the corresponding arctx Step with
 BranchPayload, GitChangePayload, BranchTipEvent, and SessionPointerEvent.
 """
 
@@ -23,7 +23,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``commit`` subcommand parser."""
     p = subparsers.add_parser(
         "commit",
-        help="Drive a git commit and record a arctx transition",
+        help="Drive a git commit and record a arctx step",
     )
     p.add_argument("-m", "--message", required=True, help="Commit message")
     p.add_argument(
@@ -50,7 +50,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         help=(
             "Merge target. Format: 'branch:<name>', 'node:<id>', or just '<name>' "
             "(auto-detected as branch name). Drives git merge and records a "
-            "multi-input transition with MergePayload."
+            "multi-input step with MergePayload."
         ),
     )
     p.add_argument(
@@ -123,7 +123,7 @@ def run_commit_command(
 
     Returns
     -------
-    dict with transition_id, output_node_id, branch, head_commit.
+    dict with step_id, output_node_id, branch, head_commit.
     """
     store = resolve_store(store_dir)
     handle = store.load_run(run_id)
@@ -132,7 +132,7 @@ def run_commit_command(
 
     if merge is not None:
         other_branch, other_node_id = _parse_merge_ref(merge)
-        transition = handle.git.merge(
+        step = handle.git.merge(
             other_branch=other_branch,
             other_node_id=other_node_id,
             message=message,
@@ -144,7 +144,7 @@ def run_commit_command(
             head_commit=head_commit,
         )
     else:
-        transition = handle.git.commit(
+        step = handle.git.commit(
             message=message,
             branch=branch,
             user_id=user_id,
@@ -163,18 +163,18 @@ def run_commit_command(
     )
 
     # Extract GitChangePayload info for the result.
-    git_payloads = handle.run_graph.payloads_for_transition(
-        transition.transition_id, payload_type="git_change"
+    git_payloads = handle.run_graph.payloads_for_step(
+        step.step_id, payload_type="git_change"
     )
     head_commit = git_payloads[-1].head_commit if git_payloads else ""
-    branch_payloads = handle.run_graph.payloads_for_transition(
-        transition.transition_id, payload_type="branch"
+    branch_payloads = handle.run_graph.payloads_for_step(
+        step.step_id, payload_type="branch"
     )
     resolved_branch = branch_payloads[-1].branch if branch_payloads else ""
 
     result: dict = {
-        "transition_id": transition.transition_id,
-        "output_node_id": transition.output_node_id,
+        "step_id": step.step_id,
+        "output_node_id": step.output_node_id,
         "branch": resolved_branch,
         "head_commit": head_commit,
     }
@@ -186,7 +186,7 @@ def run_commit_command(
 
 def cli_commit(args) -> int:
     """Entry point for ``arctx commit`` subcommand."""
-    from arctx.ext.git.verbs._forward_transition import ParallelSessionConflict  # noqa: PLC0415
+    from arctx.ext.git.verbs._forward_step import ParallelSessionConflict  # noqa: PLC0415
 
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)

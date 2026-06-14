@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from arctx.core.cuts import inactive_node_ids, inactive_transition_ids
+from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run.handle import RunHandle
 
 
@@ -26,7 +26,7 @@ def _build_labels(handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
         counter += 1
         state_labels[nid] = f"S{counter}"
     plan_labels: dict[str, str] = {}
-    for idx, tid in enumerate(graph.transitions, start=1):
+    for idx, tid in enumerate(graph.steps, start=1):
         plan_labels[tid] = f"P{idx}"
     return state_labels, plan_labels
 
@@ -48,10 +48,10 @@ def _assign_layers(handle: RunHandle) -> dict[tuple[str, str], int]:
             continue
         layers[key] = layer
         if kind == "node":
-            for tid in graph.transitions_from_node(rid):
-                queue.append(("transition", tid, layer + 1))
+            for tid in graph.steps_from_node(rid):
+                queue.append(("step", tid, layer + 1))
         else:
-            out = graph.transition_output(rid)
+            out = graph.step_output(rid)
             if out:
                 queue.append(("node", out, layer + 1))
 
@@ -63,7 +63,7 @@ def render_graph_html(handle: RunHandle) -> str:
     graph = handle.run_graph
     state_labels, plan_labels = _build_labels(handle)
     inactive_nodes = inactive_node_ids(graph)
-    inactive_trans = inactive_transition_ids(graph)
+    inactive_trans = inactive_step_ids(graph)
     layers = _assign_layers(handle)
 
     # Group by layer.
@@ -90,13 +90,13 @@ def render_graph_html(handle: RunHandle) -> str:
 
     svg_parts: list[str] = []
 
-    # Draw edges: node -> transition and transition -> node.
-    for tid, t in graph.transitions.items():
-        t_key = ("transition", tid)
+    # Draw edges: node -> step and step -> node.
+    for tid, t in graph.steps.items():
+        t_key = ("step", tid)
         t_pos = positions.get(t_key)
         if t_pos is None:
             continue
-        # Input edges: node -> transition.
+        # Input edges: node -> step.
         for inp in t.input_node_ids:
             src_key = ("node", inp)
             if src_key not in positions:
@@ -110,7 +110,7 @@ def render_graph_html(handle: RunHandle) -> str:
                 f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
                 f'stroke="{stroke}" stroke-width="1.5" {dash} marker-end="url(#arrow)"/>'
             )
-        # Output edge: transition -> node.
+        # Output edge: step -> node.
         out = t.output_node_id
         if out:
             dst_key = ("node", out)
@@ -147,9 +147,9 @@ def render_graph_html(handle: RunHandle) -> str:
             f'font-size="13" font-weight="bold" fill="white">{label}</text>'
         )
 
-    # Draw transitions.
-    for tid in graph.transitions:
-        key = ("transition", tid)
+    # Draw steps.
+    for tid in graph.steps:
+        key = ("step", tid)
         if key not in positions:
             continue
         cx, cy = positions[key]
@@ -192,7 +192,7 @@ def render_graph_html(handle: RunHandle) -> str:
   Run: {handle.run_id} &nbsp;|&nbsp;
   Target: {req.target_type} / {req.target_id} &nbsp;|&nbsp;
   Nodes: {len(graph.nodes)} &nbsp;|&nbsp;
-  Transitions: {len(graph.transitions)}
+  Steps: {len(graph.steps)}
 </div>
 <svg width="{svg_width:.0f}" height="{svg_height:.0f}" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -205,7 +205,7 @@ def render_graph_html(handle: RunHandle) -> str:
 <div class="legend">
   <div class="legend-item"><div class="dot" style="background:#ffcc00"></div> Root</div>
   <div class="legend-item"><div class="dot" style="background:#3b82f6"></div> Node</div>
-  <div class="legend-item"><div class="dot" style="background:#f59e0b"></div> Transition</div>
+  <div class="legend-item"><div class="dot" style="background:#f59e0b"></div> Step</div>
   <div class="legend-item"><div class="dot" style="background:#9ca3af"></div> Cut</div>
 </div>
 </body>

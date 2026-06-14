@@ -1,20 +1,20 @@
-"""Attach explicit Git commits to a Transition."""
+"""Attach explicit Git commits to a Step."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from arctx.core.cuts import is_inactive_transition
+from arctx.core.cuts import is_inactive_step
 from arctx.ext.git.helpers import repo as git_repo
 from arctx.ext.git.helpers.finish import _write_patch_artifact
 from arctx.core.run.handle import RunHandle
 from arctx.ext.git.payloads import CommitEntry, DiffSummary, GitChangePayload
 
 
-def attach_commits_to_transition(
+def attach_commits_to_step(
     handle: RunHandle,
     run_dir: Path,
-    transition_id: str,
+    step_id: str,
     commits: tuple[str, ...],
     *,
     user_id: str = "user",
@@ -23,10 +23,10 @@ def attach_commits_to_transition(
     """Attach explicit Git commits as a GitChangePayload."""
     if not commits:
         raise ValueError("at least one --commit is required")
-    if transition_id not in handle.run_graph.transitions:
-        raise KeyError(f"unknown transition_id: {transition_id}")
-    if is_inactive_transition(handle.run_graph, transition_id):
-        raise ValueError(f"transition {transition_id} is inactive (cut)")
+    if step_id not in handle.run_graph.steps:
+        raise KeyError(f"unknown step_id: {step_id}")
+    if is_inactive_step(handle.run_graph, step_id):
+        raise ValueError(f"step {step_id} is inactive (cut)")
 
     repo_root = git_repo.find_repo_root(Path("."))
     resolved = tuple(git_repo.resolve_commit(repo_root, c) for c in commits)
@@ -55,7 +55,7 @@ def attach_commits_to_transition(
 
     gcp = GitChangePayload(
         payload_id=payload_id,
-        target_id=transition_id,
+        target_id=step_id,
         branch=branch,
         head_commit=resolved[-1],
         diff_summary=diff_summary,
@@ -67,8 +67,8 @@ def attach_commits_to_transition(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type="git_change_attached",
-        target_kind="transition",
-        target_id=transition_id,
+        target_kind="step",
+        target_id=step_id,
         created_records=(payload_id,),
         summary=f"{len(resolved)} commit(s)",
         data={"commits": list(resolved), "branch": branch},
@@ -79,7 +79,7 @@ def attach_commits_to_transition(
             "git_change_payload_id": payload_id,
         },
         "linked": {
-            "transition_id": transition_id,
+            "step_id": step_id,
         },
         "git": {
             "commits": list(resolved),
@@ -88,6 +88,6 @@ def attach_commits_to_transition(
             "patch_artifact": patch_artifact,
         },
         "next": [
-            f"arctx git diff --transition {transition_id}",
+            f"arctx git diff --step {step_id}",
         ],
     }

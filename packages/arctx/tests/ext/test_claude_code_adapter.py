@@ -48,8 +48,8 @@ def test_prompt_then_tool_use_chain_within_session():
         handle, _event("UserPromptSubmit", prompt="fix the bug"), user_id="claude-code"
     )
     assert prompt is not None
-    transition = handle.run_graph.transitions[prompt["transition_id"]]
-    assert transition.input_node_ids == (handle.root_node_id,)
+    step = handle.run_graph.steps[prompt["step_id"]]
+    assert step.input_node_ids == (handle.root_node_id,)
 
     tool = record_hook_event(
         handle,
@@ -62,10 +62,10 @@ def test_prompt_then_tool_use_chain_within_session():
         user_id="claude-code",
     )
     assert tool is not None
-    tool_transition = handle.run_graph.transitions[tool["transition_id"]]
-    assert tool_transition.input_node_ids == (prompt["output_node_id"],)
+    tool_step = handle.run_graph.steps[tool["step_id"]]
+    assert tool_step.input_node_ids == (prompt["output_node_id"],)
 
-    payloads = handle.run_graph.payloads_for_transition(tool["transition_id"])
+    payloads = handle.run_graph.payloads_for_step(tool["step_id"])
     assert [p.type for p in payloads] == ["agent.tool_use"]
     assert payloads[0].content["tool_input"] == {"command": "pytest -q"}
     assert payloads[0].content["tool_output"] == "1 passed"
@@ -81,8 +81,8 @@ def test_parallel_sessions_become_sibling_branches():
         handle, _event("UserPromptSubmit", session_id="sB", prompt="b"), user_id="u"
     )
 
-    ta = handle.run_graph.transitions[a["transition_id"]]
-    tb = handle.run_graph.transitions[b["transition_id"]]
+    ta = handle.run_graph.steps[a["step_id"]]
+    tb = handle.run_graph.steps[b["step_id"]]
     assert ta.input_node_ids == (handle.root_node_id,)
     assert tb.input_node_ids == (handle.root_node_id,)
 
@@ -96,7 +96,7 @@ def test_tool_filter_skips_unlisted_tools():
         tools=["Bash", "Edit"],
     )
     assert result is None
-    assert len(handle.run_graph.transitions) == 0
+    assert len(handle.run_graph.steps) == 0
 
     wildcard = record_hook_event(
         handle,
@@ -140,8 +140,8 @@ def test_session_tip_skips_cut_branch():
     second = record_hook_event(
         handle, _event("UserPromptSubmit", prompt="second"), user_id="u"
     )
-    transition = handle.run_graph.transitions[second["transition_id"]]
-    assert transition.input_node_ids == (handle.root_node_id,)
+    step = handle.run_graph.steps[second["step_id"]]
+    assert step.input_node_ids == (handle.root_node_id,)
 
 
 def test_unknown_or_incomplete_events_are_noops():

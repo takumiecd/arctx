@@ -11,8 +11,8 @@ from arctx.core.schema import (
     PayloadBase,
     Requirement,
     TraceContext,
-    Transition,
-    TransitionPayload,
+    Step,
+    StepPayload,
     register_payload_class,
 )
 from arctx.core.types import (
@@ -30,8 +30,8 @@ __all__ = [
     "RunHandle",
     "TargetKind",
     "TraceContext",
-    "Transition",
-    "TransitionPayload",
+    "Step",
+    "StepPayload",
     "init",
     "opaque_id",
     "register_payload_class",

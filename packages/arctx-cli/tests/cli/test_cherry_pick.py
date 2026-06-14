@@ -94,7 +94,7 @@ class TestCherryPickCLIIntegration:
         )
         store.save_run(handle)
         r_feat = {
-            "transition_id": t_feat.transition_id,
+            "step_id": t_feat.step_id,
             "output_node_id": t_feat.output_node_id,
         }
 
@@ -117,21 +117,21 @@ class TestCherryPickCLIIntegration:
             work_session_id="ws_main",
         )
 
-        assert "transition_id" in r_cp
+        assert "step_id" in r_cp
         assert r_cp["source_commit"] == feature_sha
-        assert r_cp["source_transition"] == r_feat["transition_id"]
+        assert r_cp["source_step"] == r_feat["step_id"]
 
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_cp")
-        cp_payloads = handle.run_graph.payloads_for_transition(
-            r_cp["transition_id"], payload_type="cherry_pick"
+        cp_payloads = handle.run_graph.payloads_for_step(
+            r_cp["step_id"], payload_type="cherry_pick"
         )
         assert len(cp_payloads) == 1
         assert isinstance(cp_payloads[0], CherryPickPayload)
         assert cp_payloads[0].source_commit == feature_sha
 
-    def test_cherry_pick_cross_repo_none_source_transition(self, tmp_path, monkeypatch):
-        """Cherry-pick of an unknown sha → source_transition=None in payload."""
+    def test_cherry_pick_cross_repo_none_source_step(self, tmp_path, monkeypatch):
+        """Cherry-pick of an unknown sha → source_step=None in payload."""
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.chdir(repo)
 
@@ -177,5 +177,5 @@ class TestCherryPickCLIIntegration:
             work_session_id="ws_cp2",
         )
 
-        assert r_cp["source_transition"] is None
+        assert r_cp["source_step"] is None
         assert r_cp["source_commit"] == pick_sha

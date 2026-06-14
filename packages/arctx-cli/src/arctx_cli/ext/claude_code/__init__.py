@@ -30,7 +30,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
             "Adapter for Claude Code hooks. `install` writes hook entries into "
             ".claude/settings.json; `hook` consumes one hook event JSON from stdin "
             "and records it into the current run. Prompts and tool uses become "
-            "Transitions in the session's own branch; parallel sessions land as "
+            "Steps in the session's own branch; parallel sessions land as "
             "sibling branches."
         ),
     )

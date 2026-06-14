@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.work_helpers import latest_session_pointer, make_session_pointer_event
 from arctx.ext.command.payloads import CommandRunPayload
 
@@ -25,7 +25,7 @@ def run_impl(
     work_session_id: str | None = None,
     max_output_chars: int = 20000,
 ) -> dict[str, object]:
-    """Execute an external command and record the result as a transition."""
+    """Execute an external command and record the result as a step."""
     command_tuple = tuple(str(part) for part in command)
     if not command_tuple:
         raise ValueError("command must not be empty")
@@ -59,16 +59,16 @@ def run_impl(
     output_node = Node(node_id=self._next_id("n"))
     self.run_graph.add_node(output_node)
 
-    transition = Transition(
-        transition_id=self._next_id("t"),
+    step = Step(
+        step_id=self._next_id("t"),
         input_node_ids=current_node_ids,
         output_node_id=output_node.node_id,
     )
-    self.run_graph.add_transition(transition)
+    self.run_graph.add_step(step)
 
     payload = CommandRunPayload(
         payload_id=self._next_id("pl"),
-        target_id=transition.transition_id,
+        target_id=step.step_id,
         command=command_tuple,
         cwd=str(resolved_cwd),
         exit_code=result.returncode,
@@ -97,9 +97,9 @@ def run_impl(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type="command_run",
-        target_kind="transition",
-        target_id=transition.transition_id,
-        created_records=(output_node.node_id, transition.transition_id, payload.payload_id),
+        target_kind="step",
+        target_id=step.step_id,
+        created_records=(output_node.node_id, step.step_id, payload.payload_id),
         summary=" ".join(command_tuple),
         data={
             "command": list(command_tuple),
@@ -110,7 +110,7 @@ def run_impl(
     )
 
     return {
-        "transition": transition,
+        "step": step,
         "output_node": output_node,
         "payload": payload,
         "exit_code": result.returncode,

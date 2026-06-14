@@ -52,7 +52,7 @@ def make_amend_event(
     run_id: str,
     work_session_id: str,
     user_id: str,
-    transition_id: str,
+    step_id: str,
     old_sha: str,
     new_sha: str,
 ) -> WorkEvent:
@@ -64,7 +64,7 @@ def make_amend_event(
         user_id=user_id,
         event_type=AMEND_EVENT,
         data={
-            "transition_id": transition_id,
+            "step_id": step_id,
             "old_sha": old_sha,
             "new_sha": new_sha,
         },
@@ -78,7 +78,7 @@ def make_rebase_event(
     work_session_id: str,
     user_id: str,
     sha_map: dict[str, str],
-    affected_transitions: tuple[str, ...],
+    affected_steps: tuple[str, ...],
     onto: str,
 ) -> WorkEvent:
     """Build a RebaseEvent as a WorkEvent."""
@@ -90,7 +90,7 @@ def make_rebase_event(
         event_type=REBASE_EVENT,
         data={
             "sha_map": dict(sha_map),
-            "affected_transitions": list(affected_transitions),
+            "affected_steps": list(affected_steps),
             "onto": onto,
         },
     )
@@ -105,7 +105,7 @@ def make_reset_event(
     from_node_id: str,
     to_node_id: str,
     mode: str,
-    discarded_transition_ids: tuple[str, ...],
+    discarded_step_ids: tuple[str, ...],
 ) -> WorkEvent:
     """Build a ResetEvent as a WorkEvent."""
     return WorkEvent(
@@ -118,7 +118,7 @@ def make_reset_event(
             "from_node_id": from_node_id,
             "to_node_id": to_node_id,
             "mode": mode,
-            "discarded_transition_ids": list(discarded_transition_ids),
+            "discarded_step_ids": list(discarded_step_ids),
         },
     )
 

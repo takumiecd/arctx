@@ -61,8 +61,8 @@ def _build_two_branch_run(handle, ws_main: str = "ws_main", ws_feat: str = "ws_f
 
 
 class TestMergeCLIIntegration:
-    def test_merge_records_multi_input_transition(self, tmp_path):
-        """run_merge_command creates a multi-input transition with MergePayload."""
+    def test_merge_records_multi_input_step(self, tmp_path):
+        """run_merge_command creates a multi-input step with MergePayload."""
         from arctx_cli.ext.git.merge import run_merge_command
         from arctx.ext.git.payloads import MergePayload
 
@@ -87,14 +87,14 @@ class TestMergeCLIIntegration:
             head_commit="sha_merged_1",
         )
 
-        assert "transition_id" in result
+        assert "step_id" in result
         assert n_main in result["input_node_ids"]
         assert n_feat in result["input_node_ids"]
         assert result["merge_payload_type"] == "merge"
 
         handle2 = resolve_store(sd).load_run("run_mg1")
-        merge_pls = handle2.run_graph.payloads_for_transition(
-            result["transition_id"], payload_type="merge"
+        merge_pls = handle2.run_graph.payloads_for_step(
+            result["step_id"], payload_type="merge"
         )
         assert len(merge_pls) == 1
         assert isinstance(merge_pls[0], MergePayload)
@@ -128,15 +128,15 @@ class TestMergeCLIIntegration:
         assert result["merge_payload_type"] == "join"
 
         handle2 = resolve_store(sd).load_run("run_join1")
-        join_pls = handle2.run_graph.payloads_for_transition(
-            result["transition_id"], payload_type="join"
+        join_pls = handle2.run_graph.payloads_for_step(
+            result["step_id"], payload_type="join"
         )
         assert len(join_pls) == 1
         assert isinstance(join_pls[0], JoinPayload)
 
         # No MergePayload.
-        merge_pls = handle2.run_graph.payloads_for_transition(
-            result["transition_id"], payload_type="merge"
+        merge_pls = handle2.run_graph.payloads_for_step(
+            result["step_id"], payload_type="merge"
         )
         assert len(merge_pls) == 0
 
@@ -166,16 +166,16 @@ class TestMergeCLIIntegration:
             head_commit="sha_cm_merge",
         )
 
-        assert "transition_id" in result
+        assert "step_id" in result
         assert result.get("merge") is not None
 
         handle2 = resolve_store(sd).load_run("run_cm1")
-        t = handle2.run_graph.transitions[result["transition_id"]]
+        t = handle2.run_graph.steps[result["step_id"]]
         assert n_main in t.input_node_ids
         assert n_feat in t.input_node_ids
 
-        merge_pls = handle2.run_graph.payloads_for_transition(
-            result["transition_id"], payload_type="merge"
+        merge_pls = handle2.run_graph.payloads_for_step(
+            result["step_id"], payload_type="merge"
         )
         assert len(merge_pls) == 1
         assert isinstance(merge_pls[0], MergePayload)
@@ -207,11 +207,11 @@ class TestMergeCLIIntegration:
         )
 
         handle2 = resolve_store(sd).load_run("run_brname")
-        t = handle2.run_graph.transitions[result["transition_id"]]
+        t = handle2.run_graph.steps[result["step_id"]]
         assert n_feat in t.input_node_ids
 
     def test_merge_graph_has_correct_output_node(self, tmp_path):
-        """Output node of merge transition should be new, different from both inputs."""
+        """Output node of merge step should be new, different from both inputs."""
         from arctx_cli.ext.git.merge import run_merge_command
 
         _init_arctx(tmp_path, run_id="run_graph_out")
@@ -260,7 +260,7 @@ class TestMergeCLIIntegration:
             )
 
     def test_merge_dump_shows_join_correctly(self, tmp_path):
-        """After merge, arctx dump should show the multi-input transition."""
+        """After merge, arctx dump should show the multi-input step."""
         from arctx_cli.ext.git.merge import run_merge_command
 
         _init_arctx(tmp_path, run_id="run_dump")
@@ -285,5 +285,5 @@ class TestMergeCLIIntegration:
         )
 
         handle2 = resolve_store(sd).load_run("run_dump")
-        t = handle2.run_graph.transitions[result["transition_id"]]
+        t = handle2.run_graph.steps[result["step_id"]]
         assert len(t.input_node_ids) == 2

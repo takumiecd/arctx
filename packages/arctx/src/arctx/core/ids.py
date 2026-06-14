@@ -1,4 +1,4 @@
-"""Identifier helpers for run and transition records."""
+"""Identifier helpers for run and step records."""
 
 from __future__ import annotations
 

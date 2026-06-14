@@ -9,7 +9,7 @@ import pytest
 
 from arctx import init
 from arctx.core.append import AppendBatch
-from arctx.core.schema.payloads import CutPayload, NodePayload, TransitionPayload
+from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
 from arctx.core.schema.work import WorkSession
 from arctx.core.schema.requirements import Requirement
 from arctx.storage.jsonl import JsonlRunStore
@@ -19,8 +19,8 @@ def _req() -> Requirement:
     return Requirement(requirement_id="r", target_type="task", target_id="t")
 
 
-def _tp(t_type: str = "experiment") -> TransitionPayload:
-    return TransitionPayload(payload_id="_", target_id="_", type=t_type)
+def _tp(t_type: str = "experiment") -> StepPayload:
+    return StepPayload(payload_id="_", target_id="_", type=t_type)
 
 
 def _np() -> NodePayload:
@@ -29,9 +29,9 @@ def _np() -> NodePayload:
 
 def _make_populated_run(run_id: str = "test_run"):
     run = init(_req(), run_id=run_id)
-    t1 = run.transition([run.root_node_id], _tp("suggestion"))
+    t1 = run.add_step([run.root_node_id], _tp("suggestion"))
     n1 = t1.output_node_id
-    t2 = run.transition([n1], _tp("implementation"))
+    t2 = run.add_step([n1], _tp("implementation"))
     run.attach(run.root_node_id, _np())
     return run
 
@@ -45,24 +45,24 @@ def test_round_trip_basic():
 
     assert loaded.run_id == run.run_id
     assert len(loaded.run_graph.nodes) == len(run.run_graph.nodes)
-    assert len(loaded.run_graph.transitions) == len(run.run_graph.transitions)
+    assert len(loaded.run_graph.steps) == len(run.run_graph.steps)
     assert len(loaded.run_graph.payloads) == len(run.run_graph.payloads)
 
 
 def test_round_trip_indices_rebuilt():
     run = _make_populated_run("rt_idx")
-    [t1] = list(run.run_graph.transitions.values())[:1]
+    [t1] = list(run.run_graph.steps.values())[:1]
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
         loaded = store.load_run("rt_idx")
 
     # Verify reverse indices are rebuilt.
-    for tid, t in loaded.run_graph.transitions.items():
+    for tid, t in loaded.run_graph.steps.items():
         for nid in t.input_node_ids:
-            assert tid in loaded.run_graph.transitions_by_input_node.get(nid, [])
+            assert tid in loaded.run_graph.steps_by_input_node.get(nid, [])
         if t.output_node_id:
-            assert loaded.run_graph.transition_by_output_node.get(t.output_node_id) == tid
+            assert loaded.run_graph.step_by_output_node.get(t.output_node_id) == tid
 
 
 def test_round_trip_payloads_preserved():
@@ -79,8 +79,8 @@ def test_round_trip_payloads_preserved():
 
 def test_round_trip_with_cut():
     run = _make_populated_run("rt_cut")
-    t_ids = list(run.run_graph.transitions)
-    run.cut(t_ids[0], target_kind="transition", reason="bad")
+    t_ids = list(run.run_graph.steps)
+    run.cut(t_ids[0], target_kind="step", reason="bad")
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
@@ -99,13 +99,13 @@ def test_jsonl_files_created():
         assert (run_path / "run.json").exists()
         assert (run_path / "nodes.jsonl").exists()
         assert not (run_path / "views.jsonl").exists()
-        assert (run_path / "transitions.jsonl").exists()
+        assert (run_path / "steps.jsonl").exists()
         assert (run_path / "payloads.jsonl").exists()
         # Old edge file should NOT exist.
         assert not (run_path / "edges.jsonl").exists()
         # Old split files should NOT exist.
-        assert not (run_path / "input_transitions.jsonl").exists()
-        assert not (run_path / "output_transitions.jsonl").exists()
+        assert not (run_path / "input_steps.jsonl").exists()
+        assert not (run_path / "output_steps.jsonl").exists()
 
 
 def test_list_runs():
@@ -129,11 +129,11 @@ def test_incremental_save():
         store.save_run(run)
 
         # Add more data.
-        t1 = run.transition([run.root_node_id], _tp())
+        t1 = run.add_step([run.root_node_id], _tp())
         store.save_run(run)
 
         loaded = store.load_run("rt_incr")
-        assert len(loaded.run_graph.transitions) == 1
+        assert len(loaded.run_graph.steps) == 1
         assert len(loaded.run_graph.nodes) == 2  # root + output
 
 
@@ -191,11 +191,11 @@ def test_concurrent_save_run_does_not_clobber():
 
         a = store.load_run("rt_concurrent")
         b = store.load_run("rt_concurrent")
-        ta = a.transition([a.root_node_id], _tp("a"))
-        tb = b.transition([b.root_node_id], _tp("b"))
+        ta = a.add_step([a.root_node_id], _tp("a"))
+        tb = b.add_step([b.root_node_id], _tp("b"))
         store.save_run(a)
         store.save_run(b)  # stale snapshot — must not erase ta
 
         loaded = store.load_run("rt_concurrent")
-        assert ta.transition_id in loaded.run_graph.transitions
-        assert tb.transition_id in loaded.run_graph.transitions
+        assert ta.step_id in loaded.run_graph.steps
+        assert tb.step_id in loaded.run_graph.steps

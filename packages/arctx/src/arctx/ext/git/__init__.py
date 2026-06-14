@@ -76,15 +76,15 @@ class GitNamespace:
 
         return branch_members(self.handle.run_graph, branch)
 
-    def current_sha(self, transition_id: str) -> str | None:
+    def current_sha(self, step_id: str) -> str | None:
         from arctx.ext.git.queries import current_sha
 
-        return current_sha(self.handle.run_graph, transition_id)
+        return current_sha(self.handle.run_graph, step_id)
 
-    def transition_by_sha(self, sha: str) -> str | None:
-        from arctx.ext.git.queries import transition_by_sha
+    def step_by_sha(self, sha: str) -> str | None:
+        from arctx.ext.git.queries import step_by_sha
 
-        return transition_by_sha(self.handle.run_graph, sha)
+        return step_by_sha(self.handle.run_graph, sha)
 
 
 class GitExtension(ExtensionBase):

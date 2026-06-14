@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.graph import Node, Transition
-from arctx.core.schema.payloads import CutPayload, NodePayload, TransitionPayload
+from arctx.core.schema.graph import Node, Step
+from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
 
 
 def _graph_with_nodes(*node_ids: str) -> RunGraph:
@@ -34,43 +34,43 @@ def test_add_node_duplicate_raises():
 
 
 # ---------------------------------------------------------------------------
-# add_transition
+# add_step
 # ---------------------------------------------------------------------------
 
 
-def test_add_transition_basic():
+def test_add_step_basic():
     g = _graph_with_nodes("n_a", "n_b")
-    t = Transition("t_1", ("n_a",), "n_b")
-    g.add_transition(t)
-    assert "t_1" in g.transitions
-    assert g.transition_by_output_node["n_b"] == "t_1"
-    assert "t_1" in g.transitions_by_input_node.get("n_a", [])
+    t = Step("t_1", ("n_a",), "n_b")
+    g.add_step(t)
+    assert "t_1" in g.steps
+    assert g.step_by_output_node["n_b"] == "t_1"
+    assert "t_1" in g.steps_by_input_node.get("n_a", [])
 
 
-def test_add_transition_unknown_input_raises():
+def test_add_step_unknown_input_raises():
     g = _graph_with_nodes("n_a", "n_b")
     with pytest.raises(KeyError, match="unknown input_node_id"):
-        g.add_transition(Transition("t_1", ("n_x",), "n_b"))
+        g.add_step(Step("t_1", ("n_x",), "n_b"))
 
 
-def test_add_transition_unknown_output_raises():
+def test_add_step_unknown_output_raises():
     g = _graph_with_nodes("n_a")
     with pytest.raises(KeyError, match="unknown output_node_id"):
-        g.add_transition(Transition("t_1", ("n_a",), "n_x"))
+        g.add_step(Step("t_1", ("n_a",), "n_x"))
 
 
-def test_add_transition_duplicate_output_raises():
+def test_add_step_duplicate_output_raises():
     g = _graph_with_nodes("n_a", "n_b", "n_c")
-    g.add_transition(Transition("t_1", ("n_a",), "n_b"))
+    g.add_step(Step("t_1", ("n_a",), "n_b"))
     with pytest.raises(ValueError, match="already used"):
-        g.add_transition(Transition("t_2", ("n_a",), "n_b"))
+        g.add_step(Step("t_2", ("n_a",), "n_b"))
 
 
-def test_add_transition_duplicate_id_raises():
+def test_add_step_duplicate_id_raises():
     g = _graph_with_nodes("n_a", "n_b", "n_c")
-    g.add_transition(Transition("t_1", ("n_a",), "n_b"))
-    with pytest.raises(ValueError, match="duplicate transition_id"):
-        g.add_transition(Transition("t_1", ("n_a",), "n_c"))
+    g.add_step(Step("t_1", ("n_a",), "n_b"))
+    with pytest.raises(ValueError, match="duplicate step_id"):
+        g.add_step(Step("t_1", ("n_a",), "n_c"))
 
 
 # ---------------------------------------------------------------------------
@@ -86,12 +86,12 @@ def test_attach_node_payload():
     assert "pl_1" in g.payloads_by_node["n_a"]
 
 
-def test_attach_transition_payload():
+def test_attach_step_payload():
     g = _graph_with_nodes("n_a", "n_b")
-    g.add_transition(Transition("t_1", ("n_a",), "n_b"))
-    p = TransitionPayload(payload_id="pl_2", target_id="t_1", type="experiment")
+    g.add_step(Step("t_1", ("n_a",), "n_b"))
+    p = StepPayload(payload_id="pl_2", target_id="t_1", type="experiment")
     g.attach_payload(p)
-    assert "pl_2" in g.payloads_by_transition["t_1"]
+    assert "pl_2" in g.payloads_by_step["t_1"]
 
 
 def test_attach_payload_unknown_node_raises():
@@ -114,30 +114,30 @@ def test_attach_payload_duplicate_raises():
 # ---------------------------------------------------------------------------
 
 
-def test_transitions_from_node():
+def test_steps_from_node():
     g = _graph_with_nodes("n_a", "n_b")
-    g.add_transition(Transition("t_1", ("n_a",), "n_b"))
-    assert g.transitions_from_node("n_a") == ["t_1"]
-    assert g.transitions_from_node("n_b") == []
+    g.add_step(Step("t_1", ("n_a",), "n_b"))
+    assert g.steps_from_node("n_a") == ["t_1"]
+    assert g.steps_from_node("n_b") == []
 
 
-def test_transition_to_node():
+def test_step_to_node():
     g = _graph_with_nodes("n_a", "n_b")
-    g.add_transition(Transition("t_1", ("n_a",), "n_b"))
-    assert g.transition_to_node("n_b") == "t_1"
-    assert g.transition_to_node("n_a") is None
+    g.add_step(Step("t_1", ("n_a",), "n_b"))
+    assert g.step_to_node("n_b") == "t_1"
+    assert g.step_to_node("n_a") is None
 
 
-def test_transition_inputs():
+def test_step_inputs():
     g = _graph_with_nodes("n_a", "n_b", "n_c")
-    g.add_transition(Transition("t_1", ("n_a", "n_b"), "n_c"))
-    assert g.transition_inputs("t_1") == ["n_a", "n_b"]
+    g.add_step(Step("t_1", ("n_a", "n_b"), "n_c"))
+    assert g.step_inputs("t_1") == ["n_a", "n_b"]
 
 
-def test_transition_output():
+def test_step_output():
     g = _graph_with_nodes("n_a", "n_b")
-    g.add_transition(Transition("t_1", ("n_a",), "n_b"))
-    assert g.transition_output("t_1") == "n_b"
+    g.add_step(Step("t_1", ("n_a",), "n_b"))
+    assert g.step_output("t_1") == "n_b"
 
 
 def test_payloads_for_node_filter():
@@ -153,5 +153,5 @@ def test_payloads_for_node_filter():
 
 def test_roots():
     g = _graph_with_nodes("n_a", "n_b")
-    g.add_transition(Transition("t_1", ("n_a",), "n_b"))
+    g.add_step(Step("t_1", ("n_a",), "n_b"))
     assert g.roots() == ["n_a"]

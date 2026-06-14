@@ -24,7 +24,7 @@ class CommandNamespace:
 
 
 class CommandExtension(ExtensionBase):
-    """Extension for recording external command execution as DAG transitions."""
+    """Extension for recording external command execution as DAG steps."""
 
     name = "command"
     version = "0.1"

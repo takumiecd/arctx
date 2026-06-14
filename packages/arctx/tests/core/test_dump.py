@@ -6,7 +6,7 @@ import pytest
 
 from arctx import init
 from arctx.core.run.dump import DumpOptions, render_mermaid, render_outline
-from arctx.core.schema.payloads import TransitionPayload
+from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
 
 
@@ -14,15 +14,15 @@ def _req() -> Requirement:
     return Requirement(requirement_id="r", target_type="task", target_id="t")
 
 
-def _tp(t_type: str = "experiment") -> TransitionPayload:
-    return TransitionPayload(payload_id="_", target_id="_", type=t_type)
+def _tp(t_type: str = "experiment") -> StepPayload:
+    return StepPayload(payload_id="_", target_id="_", type=t_type)
 
 
 def _make_run():
     run = init(_req(), run_id="dump_test")
-    t1 = run.transition([run.root_node_id], _tp("suggestion"))
+    t1 = run.add_step([run.root_node_id], _tp("suggestion"))
     n1 = t1.output_node_id
-    t2 = run.transition([n1], _tp("implementation"))
+    t2 = run.add_step([n1], _tp("implementation"))
     return run, t1, n1, t2
 
 
@@ -37,11 +37,11 @@ def test_outline_contains_run_id():
     assert "dump_test" in out
 
 
-def test_outline_contains_transition_ids():
+def test_outline_contains_step_ids():
     run, t1, n1, t2 = _make_run()
     out = render_outline(run, DumpOptions())
-    assert t1.transition_id in out
-    assert t2.transition_id in out
+    assert t1.step_id in out
+    assert t2.step_id in out
 
 
 def test_outline_contains_node_ids():
@@ -60,7 +60,7 @@ def test_outline_shows_payload_type():
 
 def test_outline_cut_shows_scissors():
     run, t1, n1, t2 = _make_run()
-    run.cut(t1.transition_id, target_kind="transition", reason="wrong")
+    run.cut(t1.step_id, target_kind="step", reason="wrong")
     out = render_outline(run, DumpOptions())
     assert "✂" in out
 

@@ -16,12 +16,12 @@ from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("cut", help="Cut a Node or Transition")
+    parser = subparsers.add_parser("cut", help="Cut a Node or Step")
     parser.add_argument("kind", nargs="?")
     parser.add_argument("id", nargs="?")
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument("--node", dest="node_id", metavar="NODE_ID")
-    group.add_argument("--transition", dest="transition_id", metavar="TRANSITION_ID")
+    group.add_argument("--step", dest="step_id", metavar="STEP_ID")
     parser.add_argument("--run", default=None)
     parser.add_argument("--reason", default=None)
     parser.add_argument("--store-dir", default=None)
@@ -68,14 +68,14 @@ def cli_cut(args) -> int:
     if args.node_id is not None:
         target_id = args.node_id
         target_kind = "node"
-    elif args.transition_id is not None:
-        target_id = args.transition_id
-        target_kind = "transition"
+    elif args.step_id is not None:
+        target_id = args.step_id
+        target_kind = "step"
     elif args.kind is not None and args.id is not None:
-        if args.kind not in ("node", "transition", "step"):
-            raise ValueError("cut target kind must be node, transition, or step")
+        if args.kind not in ("node", "step", "step"):
+            raise ValueError("cut target kind must be node, step, or step")
         target_id = args.id
-        target_kind = "transition" if args.kind == "step" else args.kind
+        target_kind = "step" if args.kind == "step" else args.kind
     elif args.kind is not None:
         target_id = args.kind
         store = resolve_store(store_dir)
@@ -87,7 +87,7 @@ def cli_cut(args) -> int:
             raise ValueError("cannot cut a payload")
         target_kind = resolved
     else:
-        raise ValueError("provide '<id>', 'node <id>', 'transition <id>', --node, or --transition")
+        raise ValueError("provide '<id>', 'node <id>', 'step <id>', --node, or --step")
 
     result = run_cut_command(
         run_id=run_id,

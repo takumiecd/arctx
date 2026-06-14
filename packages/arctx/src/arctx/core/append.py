@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Union
 
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import PayloadBase
 from arctx.core.schema.work import WorkEvent, WorkSession
 
-GraphRecordKind = Literal["node", "transition", "payload"]
-GraphRecord = Union[Node, Transition, PayloadBase]
+GraphRecordKind = Literal["node", "step", "payload"]
+GraphRecord = Union[Node, Step, PayloadBase]
 
 
 @dataclass(frozen=True)

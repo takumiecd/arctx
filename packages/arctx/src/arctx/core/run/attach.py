@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from arctx.core.schema.payloads import PayloadBase
-from arctx.core.run.transition import _clone_payload
+from arctx.core.run.step import _clone_payload
 
 
 def attach_impl(

@@ -32,9 +32,9 @@ def test_recorder_is_usable_without_any_harness_event_format():
     session = handle.run_graph.work_sessions["ws_x"]
     assert session.metadata["agent"] == {"harness": "my-harness", "model": "some-model"}
 
-    prompt_payloads = handle.run_graph.payloads_for_transition(p["transition_id"])
+    prompt_payloads = handle.run_graph.payloads_for_step(p["step_id"])
     assert [pl.type for pl in prompt_payloads] == ["agent.prompt"]
-    action_payloads = handle.run_graph.payloads_for_transition(a["transition_id"])
+    action_payloads = handle.run_graph.payloads_for_step(a["step_id"])
     assert [pl.type for pl in action_payloads] == ["agent.tool_use"]
     assert action_payloads[0].metadata == {"harness": "my-harness"}
 
@@ -52,9 +52,9 @@ def test_recorder_chains_and_sessions_stay_independent():
     b1 = rec_b.prompt("b1")
     a2 = rec_a.action("tool", {}, "out")
 
-    t_a1 = handle.run_graph.transitions[a1["transition_id"]]
-    t_b1 = handle.run_graph.transitions[b1["transition_id"]]
-    t_a2 = handle.run_graph.transitions[a2["transition_id"]]
+    t_a1 = handle.run_graph.steps[a1["step_id"]]
+    t_b1 = handle.run_graph.steps[b1["step_id"]]
+    t_a2 = handle.run_graph.steps[a2["step_id"]]
     assert t_a1.input_node_ids == (handle.root_node_id,)
     assert t_b1.input_node_ids == (handle.root_node_id,)
     assert t_a2.input_node_ids == (a1["output_node_id"],)

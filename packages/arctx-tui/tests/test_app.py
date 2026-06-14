@@ -7,7 +7,7 @@ import re
 import pytest
 
 from arctx import init
-from arctx.core.schema.payloads import NodePayload, TransitionPayload
+from arctx.core.schema.payloads import NodePayload, StepPayload
 from arctx.core.schema.requirements import Requirement
 
 
@@ -15,8 +15,8 @@ def _req() -> Requirement:
     return Requirement(requirement_id="r", target_type="task", target_id="t")
 
 
-def _tp(t_type: str = "experiment") -> TransitionPayload:
-    return TransitionPayload(payload_id="_", target_id="_", type=t_type)
+def _tp(t_type: str = "experiment") -> StepPayload:
+    return StepPayload(payload_id="_", target_id="_", type=t_type)
 
 
 def _np(text: str = "hello") -> NodePayload:
@@ -25,10 +25,10 @@ def _np(text: str = "hello") -> NodePayload:
 
 def _make_handle():
     run = init(_req(), run_id="tui_test")
-    t1 = run.transition([run.root_node_id], _tp("suggestion"))
+    t1 = run.add_step([run.root_node_id], _tp("suggestion"))
     n1 = t1.output_node_id
     run.attach(run.root_node_id, _np("root note"))
-    t2 = run.transition([n1], _tp("implementation"))
+    t2 = run.add_step([n1], _tp("implementation"))
     return run
 
 
@@ -51,33 +51,33 @@ def test_build_detail_markdown_no_data():
     assert "Run Overview" in md
 
 
-def test_build_detail_markdown_transition():
-    """type=='transition' now renders transition detail from flowchart click."""
+def test_build_detail_markdown_step():
+    """type=='step' now renders step detail from flowchart click."""
     from arctx_tui.detail import build_detail_markdown
     from arctx_tui.flowchart import _build_labels
     handle = _make_handle()
-    t_id = list(handle.run_graph.transitions)[0]
+    t_id = list(handle.run_graph.steps)[0]
     state_labels, plan_labels = _build_labels(handle)
-    md = build_detail_markdown(handle, {"type": "transition", "id": t_id}, state_labels, plan_labels)
-    assert "Transition" in md
+    md = build_detail_markdown(handle, {"type": "step", "id": t_id}, state_labels, plan_labels)
+    assert "Step" in md
 
 
 def test_build_detail_markdown_node_includes_incoming_section():
-    """Non-root node detail should contain an ## Incoming section with transition info."""
+    """Non-root node detail should contain an ## Incoming section with step info."""
     from arctx_tui.detail import build_detail_markdown
     from arctx_tui.flowchart import _build_labels
     handle = _make_handle()
     graph = handle.run_graph
     # Pick the first non-root node.
-    t_id = list(graph.transitions)[0]
-    out_node_id = graph.transition_output(t_id)
+    t_id = list(graph.steps)[0]
+    out_node_id = graph.step_output(t_id)
     state_labels, plan_labels = _build_labels(handle)
 
     md = build_detail_markdown(
         handle, {"type": "node", "id": out_node_id}, state_labels, plan_labels
     )
     assert "## Incoming" in md
-    # Should mention the plan label for the transition.
+    # Should mention the plan label for the step.
     pl = plan_labels.get(t_id, "?")
     assert pl in md
 
@@ -111,7 +111,7 @@ def test_app_has_editor_actions_bound():
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
     }
 
-    assert "action_create_transition" in method_names
+    assert "action_create_step" in method_names
     assert "action_attach_payload" in method_names
     assert "action_cut_selected" in method_names
     assert "action_attach_git_payload" in method_names
@@ -152,25 +152,25 @@ def test_editor_payload_type_options_are_target_compatible():
     from arctx_tui.editor import _payload_type_options
 
     node_values = {value for _, value in _payload_type_options("node", include_cut=True)}
-    transition_values = {
-        value for _, value in _payload_type_options("transition", include_cut=True)
+    step_values = {
+        value for _, value in _payload_type_options("step", include_cut=True)
     }
-    transition_create_values = {
-        value for _, value in _payload_type_options("transition", include_cut=False)
+    step_create_values = {
+        value for _, value in _payload_type_options("step", include_cut=False)
     }
 
     assert {"node_payload", "cut"} <= node_values
-    assert "transition_payload" not in node_values
-    assert {"transition_payload", "cut"} <= transition_values
-    assert "node_payload" not in transition_values
-    assert "cut" not in transition_create_values
+    assert "step_payload" not in node_values
+    assert {"step_payload", "cut"} <= step_values
+    assert "node_payload" not in step_values
+    assert "cut" not in step_create_values
 
 
 def test_git_payload_form_data():
     from arctx_tui.editor import GitPayloadFormData
 
-    data = GitPayloadFormData(transition_id="t_1", commits=("HEAD", "abc123"))
-    assert data.transition_id == "t_1"
+    data = GitPayloadFormData(step_id="t_1", commits=("HEAD", "abc123"))
+    assert data.step_id == "t_1"
     assert data.commits == ("HEAD", "abc123")
 
 
@@ -249,18 +249,18 @@ def test_flowchart_click_map_covers_nodes():
     )
 
 
-def test_flowchart_click_map_covers_transitions():
-    """A graph with one transition has a click region for it."""
+def test_flowchart_click_map_covers_steps():
+    """A graph with one step has a click region for it."""
     from arctx_tui.flowchart import render_flowchart, ClickRegion
     handle = _make_handle()
     graph = handle.run_graph
-    t_id = list(graph.transitions)[0]
+    t_id = list(graph.steps)[0]
     lines, regions = render_flowchart(handle, handle.root_node_id, depth=2)
-    trans_regions = [r for r in regions if r.kind == "transition"]
-    assert trans_regions, "Expected at least one transition click region"
+    trans_regions = [r for r in regions if r.kind == "step"]
+    assert trans_regions, "Expected at least one step click region"
     trans_ids = {r.raw_id for r in trans_regions}
     assert t_id in trans_ids, (
-        f"Transition {t_id!r} not found in click regions. Found: {trans_ids}"
+        f"Step {t_id!r} not found in click regions. Found: {trans_ids}"
     )
 
 
@@ -370,23 +370,23 @@ def test_node_click_calls_set_selected_not_show():
 
 
 def _make_branching_handle():
-    """Root -> T1 -> N1, Root -> T2 -> N2 — two transitions from root."""
+    """Root -> T1 -> N1, Root -> T2 -> N2 — two steps from root."""
     from arctx import init
-    from arctx.core.schema.payloads import TransitionPayload
+    from arctx.core.schema.payloads import StepPayload
     from arctx.core.schema.requirements import Requirement
 
     req = Requirement(requirement_id="r", target_type="task", target_id="t")
     run = init(req, run_id="branch_test")
-    tp = lambda t: TransitionPayload(payload_id="_", target_id="_", type=t)
+    tp = lambda t: StepPayload(payload_id="_", target_id="_", type=t)
 
-    # Two separate transitions from root produce two children at the same layer.
-    t1 = run.transition([run.root_node_id], tp("left"))
-    t2 = run.transition([run.root_node_id], tp("right"))
+    # Two separate steps from root produce two children at the same layer.
+    t1 = run.add_step([run.root_node_id], tp("left"))
+    t2 = run.add_step([run.root_node_id], tp("right"))
     return run
 
 
 def test_flowchart_junctions_use_proper_glyphs():
-    """When a node fans out to two transitions, connector junction must use ┴/┬/┌/┐, not └/┘ mid-line."""
+    """When a node fans out to two steps, connector junction must use ┴/┬/┌/┐, not └/┘ mid-line."""
     from arctx_tui.flowchart import render_flowchart
 
     handle = _make_branching_handle()

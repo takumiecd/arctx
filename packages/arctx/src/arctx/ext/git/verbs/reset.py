@@ -6,20 +6,20 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from arctx.core.cuts import cut_transition_ids
+from arctx.core.cuts import cut_step_ids
 from arctx.core.schema.work_helpers import (
     latest_session_pointer,
     make_session_pointer_event,
 )
 from arctx.ext.git.events import make_reset_event
 from arctx.ext.git.helpers.repo import resolve_worktree_path
-from arctx.ext.git.queries import current_sha, transition_by_sha
+from arctx.ext.git.queries import current_sha, step_by_sha
 
 if TYPE_CHECKING:
     from arctx.core.run.handle import RunHandle
 
 
-def _compute_discarded_transition_ids(
+def _compute_discarded_step_ids(
     graph,
     from_node_id: str,
     to_node_id: str,
@@ -39,8 +39,8 @@ def _compute_discarded_transition_ids(
     discarded_nodes = ancestors_of_from - ancestors_of_to
 
     discarded_t_ids: list[str] = []
-    for t_id, transition in graph.transitions.items():
-        if transition.output_node_id in discarded_nodes:
+    for t_id, step in graph.steps.items():
+        if step.output_node_id in discarded_nodes:
             discarded_t_ids.append(t_id)
 
     return tuple(discarded_t_ids)
@@ -58,7 +58,7 @@ def reset_impl(
     work_session_id: str | None = None,
     dry_run: bool = False,
 ) -> dict:
-    """Reset to a past node. Does NOT create a new Transition."""
+    """Reset to a past node. Does NOT create a new Step."""
     if to_node_id is None and to_sha is None:
         raise ValueError("Either to_node_id or to_sha must be provided")
     if to_node_id is not None and to_sha is not None:
@@ -68,11 +68,11 @@ def reset_impl(
     resolved_repo_path = resolve_worktree_path(repo_path)
 
     if to_sha is not None:
-        t_id = transition_by_sha(graph, to_sha)
+        t_id = step_by_sha(graph, to_sha)
         if t_id is None:
-            raise KeyError(f"no arctx transition found for sha {to_sha!r}")
-        transition = graph.transitions[t_id]
-        to_node_id = transition.output_node_id
+            raise KeyError(f"no arctx step found for sha {to_sha!r}")
+        step = graph.steps[t_id]
+        to_node_id = step.output_node_id
 
     if to_node_id not in graph.nodes:
         raise KeyError(f"unknown node_id: {to_node_id!r}")
@@ -92,12 +92,12 @@ def reset_impl(
     else:
         from_node_id = self.root_node_id
 
-    discarded_transition_ids = _compute_discarded_transition_ids(
+    discarded_step_ids = _compute_discarded_step_ids(
         graph, from_node_id, to_node_id
     )
 
     target_sha: str | None = None
-    incoming_t_id = graph.transition_by_output_node.get(to_node_id)
+    incoming_t_id = graph.step_by_output_node.get(to_node_id)
     if incoming_t_id is not None:
         target_sha = current_sha(graph, incoming_t_id)
 
@@ -134,7 +134,7 @@ def reset_impl(
             from_node_id=from_node_id,
             to_node_id=to_node_id,
             mode=mode,
-            discarded_transition_ids=discarded_transition_ids,
+            discarded_step_ids=discarded_step_ids,
         )
         graph.add_work_event(reset_event)
         event_id = reset_event.event_id
@@ -150,15 +150,15 @@ def reset_impl(
         graph.add_work_event(sp_event)
 
     if mode == "hard":
-        already_cut = cut_transition_ids(graph)
-        for t_id in discarded_transition_ids:
+        already_cut = cut_step_ids(graph)
+        for t_id in discarded_step_ids:
             if t_id in already_cut:
                 continue
             from arctx.core.schema.payloads import CutPayload  # noqa: PLC0415
             cut = CutPayload(
                 payload_id=self._next_id("pl"),
                 target_id=t_id,
-                target_kind="transition",
+                target_kind="step",
                 reason=f"discarded by reset to {to_node_id}",
             )
             graph.attach_payload(cut)
@@ -166,7 +166,7 @@ def reset_impl(
     return {
         "to_node_id": to_node_id,
         "from_node_id": from_node_id,
-        "discarded_transition_ids": list(discarded_transition_ids),
+        "discarded_step_ids": list(discarded_step_ids),
         "mode": mode,
         "event_id": event_id,
     }

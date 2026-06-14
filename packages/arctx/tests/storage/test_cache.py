@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from arctx import init
-from arctx.core.schema.payloads import TransitionPayload
+from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
 from arctx.storage._cache import CACHE_SCHEMA_VERSION, load_cache, save_cache
 from arctx.storage.jsonl import JsonlRunStore
@@ -16,8 +16,8 @@ def _req() -> Requirement:
     return Requirement(requirement_id="r", target_type="task", target_id="t")
 
 
-def _tp() -> TransitionPayload:
-    return TransitionPayload(payload_id="_", target_id="_", type="experiment")
+def _tp() -> StepPayload:
+    return StepPayload(payload_id="_", target_id="_", type="experiment")
 
 
 def test_cache_miss_on_empty_dir():
@@ -30,7 +30,7 @@ def test_cache_miss_on_empty_dir():
 
 def test_cache_roundtrip():
     run = init(_req(), run_id="cache_rt")
-    t1 = run.transition([run.root_node_id], _tp())
+    t1 = run.add_step([run.root_node_id], _tp())
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)
@@ -58,7 +58,7 @@ def test_cache_miss_on_stale_counts():
 def test_cache_used_on_load():
     """JsonlRunStore.load_run should use the cache on second load."""
     run = init(_req(), run_id="cache_use")
-    t1 = run.transition([run.root_node_id], _tp())
+    t1 = run.add_step([run.root_node_id], _tp())
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
         store.save_run(run)

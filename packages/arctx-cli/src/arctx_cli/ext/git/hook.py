@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from arctx.ext.git.helpers.repo import resolve_worktree_path
-from arctx.ext.git.queries import transition_by_sha
+from arctx.ext.git.queries import step_by_sha
 
 # ---------------------------------------------------------------------------
 # Hook script content
@@ -29,7 +29,7 @@ exec arctx git hook post-rewrite "$1"
 _POST_COMMIT_HOOK = """\
 #!/usr/bin/env bash
 # .git/hooks/post-commit — arctx revert/cherry-pick fallback tracking
-# Detects bare git revert / cherry-pick and records a arctx transition.
+# Detects bare git revert / cherry-pick and records a arctx step.
 exec arctx git hook post-commit
 """
 
@@ -234,7 +234,7 @@ def run_hook_post_rewrite(
     Returns
     -------
     dict with keys from ``adopt_rewrite``:
-        - affected_transitions, skipped_shas, event_id
+        - affected_steps, skipped_shas, event_id
     """
     import os  # noqa: PLC0415
 
@@ -255,7 +255,7 @@ def run_hook_post_rewrite(
 
     if not sha_map:
         return {
-            "affected_transitions": [],
+            "affected_steps": [],
             "skipped_shas": [],
             "event_id": None,
         }
@@ -312,13 +312,13 @@ def run_hook_post_commit(
 
     Detects whether the newest commit is a bare ``git revert`` or
     ``git cherry-pick`` (i.e. not driven by ``arctx revert`` / ``arctx
-    cherry-pick``) and records the appropriate arctx transition if so.
+    cherry-pick``) and records the appropriate arctx step if so.
 
     Detection logic
     ---------------
     1. Read HEAD: sha, subject, full body via ``git log -1``.
     2. Check whether HEAD sha is already known to arctx
-       (``transition_by_sha``).  If it is, arctx already recorded it —
+       (``step_by_sha``).  If it is, arctx already recorded it —
        return early.
     3. Match subject/body against revert / cherry-pick patterns.
     4. If matched, call ``handle.revert`` / ``handle.cherry_pick`` with
@@ -335,7 +335,7 @@ def run_hook_post_commit(
     -------
     dict with keys:
         - action: "revert", "cherry_pick", "skip", or "warn"
-        - transition_id: the new arctx transition ID (or None)
+        - step_id: the new arctx step ID (or None)
         - message: human-readable description
     """
     import os  # noqa: PLC0415
@@ -370,14 +370,14 @@ def run_hook_post_commit(
         except Exception as exc:  # noqa: BLE001
             return {
                 "action": "warn",
-                "transition_id": None,
+                "step_id": None,
                 "message": f"could not read git HEAD: {exc}",
             }
 
     if not head_sha:
         return {
             "action": "skip",
-            "transition_id": None,
+            "step_id": None,
             "message": "no HEAD sha found",
         }
 
@@ -390,15 +390,15 @@ def run_hook_post_commit(
     except Exception as exc:  # noqa: BLE001
         return {
             "action": "warn",
-            "transition_id": None,
+            "step_id": None,
             "message": f"could not load run: {exc}",
         }
 
-    if transition_by_sha(handle.run_graph, head_sha) is not None:
+    if step_by_sha(handle.run_graph, head_sha) is not None:
         # Already recorded by arctx revert/cherry-pick/commit — skip.
         return {
             "action": "skip",
-            "transition_id": None,
+            "step_id": None,
             "message": "HEAD sha already recorded by arctx",
         }
 
@@ -410,21 +410,21 @@ def run_hook_post_commit(
         sha_match = _REVERT_SHA_RE.search(head_body)
         if sha_match:
             reverted_sha = sha_match.group(1)
-            # Look up the reverted transition.
-            reverted_t = transition_by_sha(handle.run_graph, reverted_sha)
+            # Look up the reverted step.
+            reverted_t = step_by_sha(handle.run_graph, reverted_sha)
             if reverted_t is None:
                 # We don't know the original commit — skip; can't link properly.
                 return {
                     "action": "warn",
-                    "transition_id": None,
+                    "step_id": None,
                     "message": (
                         f"post-commit: revert of {reverted_sha[:12]} detected but "
                         "original commit not in arctx graph; skipping"
                     ),
                 }
             try:
-                transition = handle.git.revert(
-                    target_transition=reverted_t,
+                step = handle.git.revert(
+                    target_step=reverted_t,
                     user_id=user_id,
                     work_session_id=work_session_id,
                     head_commit=head_sha,
@@ -433,16 +433,16 @@ def run_hook_post_commit(
                 store.save_run(handle)
                 return {
                     "action": "revert",
-                    "transition_id": transition.transition_id,
+                    "step_id": step.step_id,
                     "message": (
                         f"post-commit: recorded revert of {reverted_sha[:12]} "
-                        f"as {transition.transition_id}"
+                        f"as {step.step_id}"
                     ),
                 }
             except Exception as exc:  # noqa: BLE001
                 return {
                     "action": "warn",
-                    "transition_id": None,
+                    "step_id": None,
                     "message": f"post-commit: failed to record revert: {exc}",
                 }
 
@@ -453,7 +453,7 @@ def run_hook_post_commit(
     if cp_match:
         source_sha = cp_match.group(1)
         try:
-            transition = handle.git.cherry_pick(
+            step = handle.git.cherry_pick(
                 source_sha=source_sha,
                 user_id=user_id,
                 work_session_id=work_session_id,
@@ -463,23 +463,23 @@ def run_hook_post_commit(
             store.save_run(handle)
             return {
                 "action": "cherry_pick",
-                "transition_id": transition.transition_id,
+                "step_id": step.step_id,
                 "message": (
                     f"post-commit: recorded cherry-pick of {source_sha[:12]} "
-                    f"as {transition.transition_id}"
+                    f"as {step.step_id}"
                 ),
             }
         except Exception as exc:  # noqa: BLE001
             return {
                 "action": "warn",
-                "transition_id": None,
+                "step_id": None,
                 "message": f"post-commit: failed to record cherry-pick: {exc}",
             }
 
     # Not a revert or detectable cherry-pick — nothing to do.
     return {
         "action": "skip",
-        "transition_id": None,
+        "step_id": None,
         "message": "post-commit: not a revert or cherry-pick (no pattern matched)",
     }
 
@@ -520,7 +520,7 @@ def run_hook_post_merge(
     -------
     dict with keys:
         - action: "adopted", "skip", or "warn"
-        - transition_id: new arctx transition ID (or None)
+        - step_id: new arctx step ID (or None)
         - message: human-readable description
     """
     import os  # noqa: PLC0415
@@ -541,7 +541,7 @@ def run_hook_post_merge(
     if squash:
         return {
             "action": "skip",
-            "transition_id": None,
+            "step_id": None,
             "message": "post-merge: squash merge — skipping automatic adoption",
         }
 
@@ -561,14 +561,14 @@ def run_hook_post_merge(
         except Exception as exc:  # noqa: BLE001
             return {
                 "action": "warn",
-                "transition_id": None,
+                "step_id": None,
                 "message": f"post-merge: could not read HEAD sha: {exc}",
             }
 
     if not head_sha:
         return {
             "action": "skip",
-            "transition_id": None,
+            "step_id": None,
             "message": "post-merge: no HEAD sha found",
         }
 
@@ -581,14 +581,14 @@ def run_hook_post_merge(
     except Exception as exc:  # noqa: BLE001
         return {
             "action": "warn",
-            "transition_id": None,
+            "step_id": None,
             "message": f"post-merge: could not load run: {exc}",
         }
 
-    if transition_by_sha(handle.run_graph, head_sha) is not None:
+    if step_by_sha(handle.run_graph, head_sha) is not None:
         return {
             "action": "skip",
-            "transition_id": None,
+            "step_id": None,
             "message": "post-merge: HEAD sha already recorded by arctx",
         }
 
@@ -605,14 +605,14 @@ def run_hook_post_merge(
         if p2_result.returncode != 0:
             return {
                 "action": "skip",
-                "transition_id": None,
+                "step_id": None,
                 "message": "post-merge: HEAD is not a merge commit (no second parent)",
             }
         other_sha = p2_result.stdout.strip()
     except Exception as exc:  # noqa: BLE001
         return {
             "action": "warn",
-            "transition_id": None,
+            "step_id": None,
             "message": f"post-merge: could not verify merge parents: {exc}",
         }
 
@@ -621,14 +621,14 @@ def run_hook_post_merge(
     # ------------------------------------------------------------------
     # Look up the other node by its sha, if known.
     other_node_id: str | None = None
-    other_transition_id = transition_by_sha(handle.run_graph, other_sha)
-    if other_transition_id is not None:
-        other_t = handle.run_graph.transitions.get(other_transition_id)
+    other_step_id = step_by_sha(handle.run_graph, other_sha)
+    if other_step_id is not None:
+        other_t = handle.run_graph.steps.get(other_step_id)
         if other_t is not None:
             other_node_id = other_t.output_node_id
 
     try:
-        transition = handle.git.merge(
+        step = handle.git.merge(
             other_node_id=other_node_id,
             other_branch=None,  # branch unknown from hook context
             head_commit=head_sha,
@@ -639,16 +639,16 @@ def run_hook_post_merge(
         store.save_run(handle)
         return {
             "action": "adopted",
-            "transition_id": transition.transition_id,
+            "step_id": step.step_id,
             "message": (
                 f"post-merge: adopted merge commit {head_sha[:12]} "
-                f"as {transition.transition_id}"
+                f"as {step.step_id}"
             ),
         }
     except Exception as exc:  # noqa: BLE001
         return {
             "action": "warn",
-            "transition_id": None,
+            "step_id": None,
             "message": f"post-merge: could not adopt merge: {exc}",
         }
 
@@ -691,11 +691,11 @@ def cli_hook(args) -> int:
             user_id=os.environ.get("ARCTX_USER_ID"),
             work_session_id=os.environ.get("ARCTX_WORK_SESSION_ID"),
         )
-        n_affected = len(result.get("affected_transitions", []))
+        n_affected = len(result.get("affected_steps", []))
         n_skipped = len(result.get("skipped_shas", []))
         print(
             f"arctx: post-rewrite ({args.mode}): "
-            f"{n_affected} transition(s) updated, {n_skipped} sha(s) skipped",
+            f"{n_affected} step(s) updated, {n_skipped} sha(s) skipped",
             file=sys.stderr,
         )
         return 0

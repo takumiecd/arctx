@@ -5,14 +5,14 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from arctx.core.schema.graph import Transition
+from arctx.core.schema.graph import Step
 from arctx.core.schema.payloads import JoinPayload
 from arctx.ext.git.payloads import MergePayload
 from arctx.ext.git.helpers.repo import resolve_worktree_path
-from arctx.ext.git.verbs._forward_transition import (
+from arctx.ext.git.verbs._forward_step import (
     capture_git_info,
     check_branch_tip_consistency,
-    record_forward_transition,
+    record_forward_step,
     resolve_current_branch,
     resolve_current_node_ids,
 )
@@ -66,8 +66,8 @@ def merge_impl(
     head_commit: str | None = None,
     dry_run: bool = False,
     join: bool = False,
-) -> Transition:
-    """Drive ``git merge <other>`` and record a multi-input Transition."""
+) -> Step:
+    """Drive ``git merge <other>`` and record a multi-input Step."""
     resolved_repo_path: Path = resolve_worktree_path(repo_path)
 
     repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
@@ -142,7 +142,7 @@ def merge_impl(
     merged_from_label = other_branch or resolved_other_node_id
     merged_into_label = current_branch
 
-    transition = record_forward_transition(
+    step = record_forward_step(
         self,
         current_node_ids=multi_input_node_ids,
         current_branch=current_branch,
@@ -171,16 +171,16 @@ def merge_impl(
         join_views = tuple(sorted({merged_into_label, merged_from_label}))
         typed_payload: MergePayload | JoinPayload = JoinPayload(
             payload_id=self._next_id("pl"),
-            target_id=transition.transition_id,
+            target_id=step.step_id,
             joined_views=join_views,
         )
     else:
         typed_payload = MergePayload(
             payload_id=self._next_id("pl"),
-            target_id=transition.transition_id,
+            target_id=step.step_id,
             merged_from=merged_from_label,
             merged_into=merged_into_label,
         )
     self.run_graph.attach_payload(typed_payload)
 
-    return transition
+    return step

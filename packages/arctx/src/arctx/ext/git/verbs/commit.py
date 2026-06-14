@@ -5,13 +5,13 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from arctx.core.schema.graph import Transition
+from arctx.core.schema.graph import Step
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.registry import resolve_repo_id
-from arctx.ext.git.verbs._forward_transition import (
+from arctx.ext.git.verbs._forward_step import (
     capture_git_info,
     check_branch_tip_consistency,
-    record_forward_transition,
+    record_forward_step,
     resolve_current_branch,
     resolve_current_node_ids,
 )
@@ -28,10 +28,10 @@ def commit_impl(
     head_commit: str | None = None,
     from_node_ids: tuple[str, ...] | None = None,
     dry_run: bool = False,
-) -> Transition:
-    """Drive a git commit and record the corresponding arctx Transition.
+) -> Step:
+    """Drive a git commit and record the corresponding arctx Step.
 
-    ``from_node_ids`` explicitly anchors the new transition's input node(s),
+    ``from_node_ids`` explicitly anchors the new step's input node(s),
     branching the experiment off a chosen node instead of the session/branch
     tip. This is how sibling experiments fan out from a shared baseline.
     """
@@ -90,7 +90,7 @@ def commit_impl(
         repo_path=resolved_repo_path,
     )
 
-    return record_forward_transition(
+    return record_forward_step(
         self,
         current_node_ids=current_node_ids,
         current_branch=current_branch,

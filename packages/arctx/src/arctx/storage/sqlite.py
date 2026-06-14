@@ -11,7 +11,7 @@ from arctx.core import _json as _fast_json
 from arctx.core.append import AppendBatch, AppendResult
 from arctx.core.run import RunHandle
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import payload_from_dict
 from arctx.core.schema.requirements import requirement_from_dict
 from arctx.core.schema.work import WorkEvent, work_event_from_dict, work_session_from_dict
@@ -75,7 +75,7 @@ class SqliteRunStore:
             )
             _merge_records(con, "nodes", "node_id", run.run_graph.nodes.values())
             _merge_records(
-                con, "transitions", "transition_id", run.run_graph.transitions.values()
+                con, "steps", "step_id", run.run_graph.steps.values()
             )
             _merge_records(con, "payloads", "payload_id", run.run_graph.payloads.values())
             _merge_records(
@@ -94,7 +94,7 @@ class SqliteRunStore:
         # row-count mismatch rebuild the cache on next load.
         mem_counts = (
             len(run.run_graph.nodes),
-            len(run.run_graph.transitions),
+            len(run.run_graph.steps),
             len(run.run_graph.payloads),
             len(run.run_graph.work_sessions),
             len(run.run_graph.work_events),
@@ -223,7 +223,7 @@ class SqliteRunStore:
                 int(con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
                 for table in (
                     "nodes",
-                    "transitions",
+                    "steps",
                     "payloads",
                     "work_sessions",
                     "work_events",
@@ -244,9 +244,9 @@ def _setup_db(con: sqlite3.Connection) -> None:
             node_id TEXT UNIQUE NOT NULL,
             data_json TEXT NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS transitions (
+        CREATE TABLE IF NOT EXISTS steps (
             seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            transition_id TEXT UNIQUE NOT NULL,
+            step_id TEXT UNIQUE NOT NULL,
             data_json TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS payloads (
@@ -274,10 +274,10 @@ def _load_graph(con: sqlite3.Connection) -> RunGraph:
         graph.metadata = dict(json.loads(row[0]).get("metadata") or {})
     for data in _rows(con, "nodes"):
         graph.nodes[data["node_id"]] = Node(data["node_id"], dict(data.get("metadata") or {}))
-    for data in _rows(con, "transitions"):
-        graph.add_transition(
-            Transition(
-                transition_id=data["transition_id"],
+    for data in _rows(con, "steps"):
+        graph.add_step(
+            Step(
+                step_id=data["step_id"],
                 input_node_ids=tuple(data.get("input_node_ids") or []),
                 output_node_id=str(data.get("output_node_id") or ""),
                 metadata=dict(data.get("metadata") or {}),
@@ -288,8 +288,8 @@ def _load_graph(con: sqlite3.Connection) -> RunGraph:
         graph.payloads[payload.payload_id] = payload
         if payload.target_kind == "node":
             graph.payloads_by_node.setdefault(payload.target_id, []).append(payload.payload_id)
-        elif payload.target_kind == "transition":
-            graph.payloads_by_transition.setdefault(payload.target_id, []).append(payload.payload_id)
+        elif payload.target_kind == "step":
+            graph.payloads_by_step.setdefault(payload.target_id, []).append(payload.payload_id)
     for data in _rows(con, "work_sessions"):
         session = work_session_from_dict(data)
         graph.work_sessions[session.work_session_id] = session
@@ -330,7 +330,7 @@ def _dumps(data: dict[str, Any]) -> str:
 def _record_table(kind: str) -> tuple[str, str]:
     return {
         "node": ("nodes", "node_id"),
-        "transition": ("transitions", "transition_id"),
+        "step": ("steps", "step_id"),
         "payload": ("payloads", "payload_id"),
     }[kind]
 

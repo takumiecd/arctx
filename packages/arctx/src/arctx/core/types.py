@@ -8,10 +8,10 @@ from typing import Any, Literal
 
 JSONValue = Any
 
-TargetKind = Literal["node", "transition"]
+TargetKind = Literal["node", "step"]
 
 NODE_PREFIX = "n"
-TRANSITION_PREFIX = "t"
+STEP_PREFIX = "t"
 PAYLOAD_PREFIX = "pl"
 
 

@@ -79,7 +79,7 @@ def _make_two_branch_run():
 
 
 class TestMergeImplDryRun:
-    def test_creates_multi_input_transition(self):
+    def test_creates_multi_input_step(self):
         handle, n_root, n1, n2, t1, t2 = _make_two_branch_run()
 
         merge_t = handle.git.merge(
@@ -105,8 +105,8 @@ class TestMergeImplDryRun:
             head_commit="sha_merge",
             dry_run=True,
         )
-        merge_payloads = handle.run_graph.payloads_for_transition(
-            merge_t.transition_id, payload_type="merge"
+        merge_payloads = handle.run_graph.payloads_for_step(
+            merge_t.step_id, payload_type="merge"
         )
         assert len(merge_payloads) == 1
         assert isinstance(merge_payloads[0], MergePayload)
@@ -123,8 +123,8 @@ class TestMergeImplDryRun:
             head_commit="sha_merge_commit",
             dry_run=True,
         )
-        git_payloads = handle.run_graph.payloads_for_transition(
-            merge_t.transition_id, payload_type="git_change"
+        git_payloads = handle.run_graph.payloads_for_step(
+            merge_t.step_id, payload_type="git_change"
         )
         assert len(git_payloads) == 1
         assert isinstance(git_payloads[0], GitChangePayload)
@@ -174,14 +174,14 @@ class TestMergeImplDryRun:
             dry_run=True,
             join=True,
         )
-        join_payloads = handle.run_graph.payloads_for_transition(
-            join_t.transition_id, payload_type="join"
+        join_payloads = handle.run_graph.payloads_for_step(
+            join_t.step_id, payload_type="join"
         )
         assert len(join_payloads) == 1
         assert isinstance(join_payloads[0], JoinPayload)
         # MergePayload should NOT be present.
-        merge_payloads = handle.run_graph.payloads_for_transition(
-            join_t.transition_id, payload_type="merge"
+        merge_payloads = handle.run_graph.payloads_for_step(
+            join_t.step_id, payload_type="merge"
         )
         assert len(merge_payloads) == 0
 
@@ -197,8 +197,8 @@ class TestMergeImplDryRun:
             dry_run=True,
             join=False,
         )
-        join_payloads = handle.run_graph.payloads_for_transition(
-            merge_t.transition_id, payload_type="join"
+        join_payloads = handle.run_graph.payloads_for_step(
+            merge_t.step_id, payload_type="join"
         )
         assert len(join_payloads) == 0
 
@@ -289,7 +289,7 @@ class TestMergeImplDryRun:
         assert len(new_nodes) == 1
         assert list(new_nodes)[0] == merge_t.output_node_id
 
-    def test_merge_transition_not_in_input_twice(self):
+    def test_merge_step_not_in_input_twice(self):
         """other_node_id must not appear in input_node_ids twice even if current=other."""
         handle = _make_handle("run_dedup")
         _ensure_session(handle, ws_id="ws_x")

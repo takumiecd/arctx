@@ -43,7 +43,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     )
     sp_step.add_argument("--title", default=None)
     sp_step.add_argument("--type", dest="payload_kind", default=None)
-    sp_step.add_argument("--payload-type", default="transition_payload")
+    sp_step.add_argument("--payload-type", default="step_payload")
     sp_step.add_argument("--field", action="append", default=None, help="Payload field as key=value")
     sp_step.add_argument("--json", default=None, help="Payload fields as a JSON object")
     sp_step.add_argument("--run", default=None)
@@ -143,14 +143,14 @@ def run_add_step_command(
 
     payload = build_payload(
         payload_type=payload_type,
-        target_kind="transition",
+        target_kind="step",
         target_id="pending",
         payload_id="pending",
         json_data={},
         field_data=data,
     )
     before = graph_counts(handle)
-    transition = handle.transition(
+    step = handle.add_step(
         input_node_ids,
         payload,
         user_id=user_id,
@@ -163,7 +163,7 @@ def run_add_step_command(
         work_session_id=work_session_id,
         before=before,
     )
-    return {"step": step_view(transition)}
+    return {"step": step_view(step)}
 
 
 def cli_add(args) -> int:

@@ -49,8 +49,8 @@ def run_reachable_command(
 
     if include_records:
         result["nodes"] = [g.nodes[nid].to_dict() for nid in reachable["node_ids"]]
-        result["transitions"] = [
-            g.transitions[tid].to_dict() for tid in reachable["transition_ids"]
+        result["steps"] = [
+            g.steps[tid].to_dict() for tid in reachable["step_ids"]
         ]
         result["payloads"] = [g.payloads[pl_id].to_dict() for pl_id in reachable["payload_ids"]]
 

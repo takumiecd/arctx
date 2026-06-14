@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 
-TargetKind = Literal["node", "transition", "payload"]
+TargetKind = Literal["node", "step", "payload"]
 
 
 def resolve_target_kind(handle, record_id: str) -> TargetKind:
@@ -14,8 +14,8 @@ def resolve_target_kind(handle, record_id: str) -> TargetKind:
     matches: list[TargetKind] = []
     if record_id in graph.nodes:
         matches.append("node")
-    if record_id in graph.transitions:
-        matches.append("transition")
+    if record_id in graph.steps:
+        matches.append("step")
     if record_id in graph.payloads:
         matches.append("payload")
     if not matches:
@@ -25,14 +25,14 @@ def resolve_target_kind(handle, record_id: str) -> TargetKind:
     return matches[0]
 
 
-def step_view(transition) -> dict:
-    """Return a user-facing Step view for an internal Transition."""
+def step_view(step) -> dict:
+    """Return a user-facing Step view for an internal Step."""
     return {
         "kind": "step",
-        "id": transition.transition_id,
-        "step_id": transition.transition_id,
-        "transition_id": transition.transition_id,
-        "input_node_ids": list(transition.input_node_ids),
-        "output_node_id": transition.output_node_id,
-        "metadata": dict(transition.metadata),
+        "id": step.step_id,
+        "step_id": step.step_id,
+        "step_id": step.step_id,
+        "input_node_ids": list(step.input_node_ids),
+        "output_node_id": step.output_node_id,
+        "metadata": dict(step.metadata),
     }

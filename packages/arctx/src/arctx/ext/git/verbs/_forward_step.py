@@ -1,4 +1,4 @@
-"""Internal helper for recording a forward arctx Transition with git metadata.
+"""Internal helper for recording a forward arctx Step with git metadata.
 
 Used by commit_impl, revert_impl, and cherry_pick_impl.  Not part of the
 public RunHandle API.
@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.ext.git.payloads import (
     BranchPayload,
     CommitEntry,
@@ -157,7 +157,7 @@ def capture_git_info(
     return diff_summary, commit_log
 
 
-def record_forward_transition(
+def record_forward_step(
     self: "RunHandle",
     *,
     current_node_ids: tuple[str, ...],
@@ -172,25 +172,25 @@ def record_forward_transition(
     user_id: str | None,
     work_session_id: str | None,
     repo_id: str = "",
-) -> Transition:
-    """Append node, transition, standard payloads + extra payloads, and work events."""
+) -> Step:
+    """Append node, step, standard payloads + extra payloads, and work events."""
     if user_id is not None and work_session_id is not None:
         self.ensure_work_session(user_id=user_id, work_session_id=work_session_id)
 
     output_node = Node(node_id=self._next_id("n"))
     self.run_graph.add_node(output_node)
 
-    transition_id = self._next_id("t")
-    transition = Transition(
-        transition_id=transition_id,
+    step_id = self._next_id("t")
+    step = Step(
+        step_id=step_id,
         input_node_ids=current_node_ids,
         output_node_id=output_node.node_id,
     )
-    self.run_graph.add_transition(transition)
+    self.run_graph.add_step(step)
 
     branch_payload = BranchPayload(
         payload_id=self._next_id("pl"),
-        target_id=transition_id,
+        target_id=step_id,
         branch=current_branch,
         repo_id=repo_id,
     )
@@ -198,7 +198,7 @@ def record_forward_transition(
 
     git_payload = GitChangePayload(
         payload_id=self._next_id("pl"),
-        target_id=transition_id,
+        target_id=step_id,
         branch=current_branch,
         head_commit=head_commit,
         diff_summary=diff_summary,
@@ -234,7 +234,7 @@ def record_forward_transition(
 
     created = (
         output_node.node_id,
-        transition_id,
+        step_id,
         branch_payload.payload_id,
         git_payload.payload_id,
         *[pl.payload_id for pl in extra_payloads],
@@ -243,11 +243,11 @@ def record_forward_transition(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type=event_type,
-        target_kind="transition",
-        target_id=transition_id,
+        target_kind="step",
+        target_id=step_id,
         created_records=created,
         summary=event_summary,
         data=event_data,
     )
 
-    return transition
+    return step

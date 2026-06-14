@@ -14,7 +14,7 @@ from arctx.core import _json as _fast_json
 from arctx.core.append import AppendBatch, AppendResult, GraphRecordEnvelope
 from arctx.core.run import RunHandle
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import payload_from_dict
 from arctx.core.schema.requirements import requirement_from_dict
 from arctx.core.schema.work import work_event_from_dict, work_session_from_dict
@@ -59,7 +59,7 @@ class JsonlRunStore:
         counts = []
         for name in (
             "nodes",
-            "transitions",
+            "steps",
             "payloads",
             "work_sessions",
             "work_events",
@@ -93,9 +93,9 @@ class JsonlRunStore:
                 run_path / "nodes.jsonl", run.run_graph.nodes.values(), "node_id"
             )
             self._merge_jsonl(
-                run_path / "transitions.jsonl",
-                run.run_graph.transitions.values(),
-                "transition_id",
+                run_path / "steps.jsonl",
+                run.run_graph.steps.values(),
+                "step_id",
             )
             self._merge_jsonl(
                 run_path / "payloads.jsonl",
@@ -119,7 +119,7 @@ class JsonlRunStore:
             # the row-count mismatch trigger a rebuild on next load.
             mem_counts = (
                 len(run.run_graph.nodes),
-                len(run.run_graph.transitions),
+                len(run.run_graph.steps),
                 len(run.run_graph.payloads),
                 len(run.run_graph.work_sessions),
                 len(run.run_graph.work_events),
@@ -216,22 +216,22 @@ class JsonlRunStore:
                 metadata=dict(row.get("metadata") or {}),
             )
 
-        for row in self._read_jsonl(run_path / "transitions.jsonl"):
-            transition = Transition(
-                transition_id=row["transition_id"],
+        for row in self._read_jsonl(run_path / "steps.jsonl"):
+            step = Step(
+                step_id=row["step_id"],
                 input_node_ids=tuple(row.get("input_node_ids") or []),
                 output_node_id=str(row.get("output_node_id") or ""),
                 metadata=dict(row.get("metadata") or {}),
             )
-            graph.add_transition(transition)
+            graph.add_step(step)
 
         for row in self._read_jsonl(run_path / "payloads.jsonl"):
             payload = payload_from_dict(row)
             graph.payloads[payload.payload_id] = payload
             if payload.target_kind == "node":
                 graph.payloads_by_node.setdefault(payload.target_id, []).append(payload.payload_id)
-            elif payload.target_kind == "transition":
-                graph.payloads_by_transition.setdefault(payload.target_id, []).append(
+            elif payload.target_kind == "step":
+                graph.payloads_by_step.setdefault(payload.target_id, []).append(
                     payload.payload_id
                 )
 
@@ -324,7 +324,7 @@ def _run_lock(run_path: Path):
 def _existing_ids(run_path: Path) -> dict[str, set[str]]:
     return {
         "node": _ids_from_jsonl(run_path / "nodes.jsonl", "node_id"),
-        "transition": _ids_from_jsonl(run_path / "transitions.jsonl", "transition_id"),
+        "step": _ids_from_jsonl(run_path / "steps.jsonl", "step_id"),
         "payload": _ids_from_jsonl(run_path / "payloads.jsonl", "payload_id"),
         "work_sessions": _ids_from_jsonl(run_path / "work_sessions.jsonl", "work_session_id"),
         "work_events": _ids_from_jsonl(run_path / "work_events.jsonl", "event_id"),
@@ -352,7 +352,7 @@ def _existing_work_sessions(run_path: Path) -> dict[str, str]:
 def _record_file(record: GraphRecordEnvelope) -> str:
     return {
         "node": "nodes.jsonl",
-        "transition": "transitions.jsonl",
+        "step": "steps.jsonl",
         "payload": "payloads.jsonl",
     }[record.record_kind]
 

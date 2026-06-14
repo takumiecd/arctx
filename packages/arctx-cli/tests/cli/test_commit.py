@@ -53,7 +53,7 @@ def _init_arctx(repo: Path, tmp_path: Path, run_id: str = "run_test") -> dict:
 
 
 class TestCommitCLIIntegration:
-    def test_arctx_commit_records_transition(self, tmp_path, monkeypatch):
+    def test_arctx_commit_records_step(self, tmp_path, monkeypatch):
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
         monkeypatch.setenv("ARCTX_WORK_SESSION_ID", "ws_test")
@@ -77,7 +77,7 @@ class TestCommitCLIIntegration:
             work_session_id="ws_test",
         )
 
-        assert "transition_id" in result
+        assert "step_id" in result
         assert "output_node_id" in result
         assert result["head_commit"] != ""
 
@@ -144,7 +144,7 @@ class TestCommitCLIIntegration:
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_chain")
 
-        t2 = handle.run_graph.transitions[r2["transition_id"]]
+        t2 = handle.run_graph.steps[r2["step_id"]]
         assert r1["output_node_id"] in t2.input_node_ids
 
     def test_from_branches_siblings_off_baseline(self, tmp_path, monkeypatch):
@@ -198,8 +198,8 @@ class TestCommitCLIIntegration:
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_from")
 
-        ta = handle.run_graph.transitions[a["transition_id"]]
-        tb = handle.run_graph.transitions[b["transition_id"]]
+        ta = handle.run_graph.steps[a["step_id"]]
+        tb = handle.run_graph.steps[b["step_id"]]
         # Both experiments hang off the same baseline node — true siblings.
         assert ta.input_node_ids == (base_node,)
         assert tb.input_node_ids == (base_node,)

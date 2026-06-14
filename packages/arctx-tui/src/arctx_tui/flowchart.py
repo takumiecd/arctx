@@ -1,13 +1,13 @@
 """ASCII flowchart renderer for the ARCTX DAG.
 
 Produces a list of Rich-markup strings (one per row) showing nodes and
-transitions in layered columns.  Layout rules:
+steps in layered columns.  Layout rules:
   - Center node is layer 0.
-  - Forward (outgoing) transitions and output nodes get positive layer indices.
-  - Backward (incoming) transitions and input nodes get negative layer indices.
-  - BFS up to *depth* hops; both nodes and transitions count as one hop each.
+  - Forward (outgoing) steps and output nodes get positive layer indices.
+  - Backward (incoming) steps and input nodes get negative layer indices.
+  - BFS up to *depth* hops; both nodes and steps count as one hop each.
   - Nodes: box  ┌─────┐  │ Sk  │  └─────┘
-  - Transitions: diamond-ish  ◇ Pk type  (single line)
+  - Steps: diamond-ish  ◇ Pk type  (single line)
   - Edges: vertical/L-shape connector lines between layers.
 
 CELL_W = 14 chars per column; BAND_H = 5 rows per band.
@@ -21,7 +21,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Literal
 
-from arctx.core.cuts import inactive_node_ids, inactive_transition_ids
+from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run.handle import RunHandle
 
 
@@ -35,7 +35,7 @@ class ClickRegion:
     row: int         # 0-indexed line within the rendered output
     col_start: int   # inclusive visible-char column
     col_end: int     # inclusive visible-char column
-    kind: Literal["node", "transition"]
+    kind: Literal["node", "step"]
     raw_id: str
 
 
@@ -62,14 +62,14 @@ def _compute_layers(
         layers[key] = layer
 
         if kind == "node":
-            for tid in graph.transitions_from_node(rid):
-                queue.append(("transition", tid, layer + 1))
-            for tid in graph.transitions_to_node(rid):
-                queue.append(("transition", tid, layer - 1))
+            for tid in graph.steps_from_node(rid):
+                queue.append(("step", tid, layer + 1))
+            for tid in graph.steps_to_node(rid):
+                queue.append(("step", tid, layer - 1))
         else:
-            for nid in graph.transition_outputs(rid):
+            for nid in graph.step_outputs(rid):
                 queue.append(("node", nid, layer + 1))
-            for nid in graph.transition_inputs(rid):
+            for nid in graph.step_inputs(rid):
                 queue.append(("node", nid, layer - 1))
 
     by_layer: dict[int, list[tuple[str, str]]] = {}
@@ -83,10 +83,10 @@ def _connected(handle: RunHandle, upper: tuple[str, str], lower: tuple[str, str]
     graph = handle.run_graph
     u_kind, u_id = upper
     l_kind, l_id = lower
-    if u_kind == "node" and l_kind == "transition":
-        return u_id in graph.transition_inputs(l_id)
-    if u_kind == "transition" and l_kind == "node":
-        return graph.transition_output(u_id) == l_id
+    if u_kind == "node" and l_kind == "step":
+        return u_id in graph.step_inputs(l_id)
+    if u_kind == "step" and l_kind == "node":
+        return graph.step_output(u_id) == l_id
     return False
 
 
@@ -152,16 +152,16 @@ def _build_labels(handle: RunHandle) -> tuple[dict[str, str], dict[str, str]]:
         counter += 1
         state_labels[nid] = f"S{counter}"
     plan_labels: dict[str, str] = {}
-    for idx, tid in enumerate(graph.transitions, start=1):
+    for idx, tid in enumerate(graph.steps, start=1):
         plan_labels[tid] = f"P{idx}"
     return state_labels, plan_labels
 
 
-def _transition_type(handle: RunHandle, transition_id: str) -> str:
-    """Return the type string of the first TransitionPayload on this transition."""
-    from arctx.core.schema.payloads import TransitionPayload
-    for p in handle.run_graph.payloads_for_transition(transition_id):
-        if isinstance(p, TransitionPayload):
+def _step_type(handle: RunHandle, step_id: str) -> str:
+    """Return the type string of the first StepPayload on this step."""
+    from arctx.core.schema.payloads import StepPayload
+    for p in handle.run_graph.payloads_for_step(step_id):
+        if isinstance(p, StepPayload):
             s = p.type
             return s if len(s) <= 20 else s[:19] + "…"
     return ""
@@ -178,7 +178,7 @@ def render_flowchart(
     lines: list of Rich-markup strings (one per rendered row).
     click_regions: list of ClickRegion describing clickable areas in visible-char coords.
 
-    The center node gets [reverse] highlight. Depth counts node+transition hops.
+    The center node gets [reverse] highlight. Depth counts node+step hops.
     Returns at least one line even for a single-node graph.
     """
     graph = handle.run_graph
@@ -188,7 +188,7 @@ def render_flowchart(
 
     state_labels, plan_labels = _build_labels(handle)
     inactive_nodes = inactive_node_ids(graph)
-    inactive_trans = inactive_transition_ids(graph)
+    inactive_trans = inactive_step_ids(graph)
 
     # BFS to assign layer indices.
     layers: dict[tuple[str, str], int] = {}
@@ -205,14 +205,14 @@ def render_flowchart(
         layers[key] = layer
 
         if kind == "node":
-            for tid in graph.transitions_from_node(rid):
-                queue.append(("transition", tid, layer + 1))
-            for tid in graph.transitions_to_node(rid):
-                queue.append(("transition", tid, layer - 1))
-        else:  # transition
-            for nid in graph.transition_outputs(rid):
+            for tid in graph.steps_from_node(rid):
+                queue.append(("step", tid, layer + 1))
+            for tid in graph.steps_to_node(rid):
+                queue.append(("step", tid, layer - 1))
+        else:  # step
+            for nid in graph.step_outputs(rid):
                 queue.append(("node", nid, layer + 1))
-            for nid in graph.transition_inputs(rid):
+            for nid in graph.step_inputs(rid):
                 queue.append(("node", nid, layer - 1))
 
     if not layers:
@@ -307,7 +307,7 @@ def _build_markup_lines(
 ) -> tuple[list[str], list[ClickRegion]]:
     """Build Rich markup lines with connector lines between layers.
 
-    Also returns click regions (visible-char coords) for all nodes and transitions.
+    Also returns click regions (visible-char coords) for all nodes and steps.
     """
     graph = handle.run_graph
     output: list[str] = []
@@ -365,10 +365,10 @@ def _build_markup_lines(
                 l_kind, l_rid = l_item
                 connected = False
 
-                if u_kind == "node" and l_kind == "transition":
-                    connected = u_rid in graph.transition_inputs(l_rid)
-                elif u_kind == "transition" and l_kind == "node":
-                    connected = graph.transition_output(u_rid) == l_rid
+                if u_kind == "node" and l_kind == "step":
+                    connected = u_rid in graph.step_inputs(l_rid)
+                elif u_kind == "step" and l_kind == "node":
+                    connected = graph.step_output(u_rid) == l_rid
 
                 if connected:
                     connected_lower.append(l_item)
@@ -476,11 +476,11 @@ def _build_markup_lines(
                         raw_id=rid,
                     ))
 
-            else:  # transition
+            else:  # step
                 pl = plan_labels.get(rid, "?")
-                t_type = _transition_type(handle, rid)
+                t_type = _step_type(handle, rid)
                 is_cut = rid in inactive_trans
-                is_selected = selected == ("transition", rid)
+                is_selected = selected == ("step", rid)
                 color = "red" if is_cut else "cyan"
                 label_full = f"◇ {pl}"
                 if t_type:
@@ -498,13 +498,13 @@ def _build_markup_lines(
                 left = col_center - visible_len // 2
                 abs_row = band_start + 2
                 row_markup.setdefault(abs_row, []).append(
-                    (left, markup, visible_len, "transition", rid)
+                    (left, markup, visible_len, "step", rid)
                 )
                 regions.append(ClickRegion(
                     row=abs_row,
                     col_start=max(0, left - 1),
                     col_end=left + visible_len,
-                    kind="transition",
+                    kind="step",
                     raw_id=rid,
                 ))
 

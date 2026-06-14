@@ -32,10 +32,10 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_schema.add_argument("payload_type")
     sp_schema.add_argument("--store-dir", default=None)
 
-    sp_add = payload_sub.add_parser("add", help="Attach a payload to a node or transition")
+    sp_add = payload_sub.add_parser("add", help="Attach a payload to a node or step")
     target = sp_add.add_mutually_exclusive_group(required=True)
     target.add_argument("--node", dest="node_id", default=None)
-    target.add_argument("--transition", dest="transition_id", default=None)
+    target.add_argument("--step", dest="step_id", default=None)
     sp_add.add_argument("--payload-type", required=True)
     sp_add.add_argument("--field", action="append", default=None, help="Payload field as key=value")
     sp_add.add_argument("--json", default=None, help="Payload fields as a JSON object")
@@ -44,10 +44,10 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_add.add_argument("--user", default=None)
     sp_add.add_argument("--work-session", default=None)
 
-    sp_list = payload_sub.add_parser("list", help="List payloads on a node or transition")
+    sp_list = payload_sub.add_parser("list", help="List payloads on a node or step")
     target = sp_list.add_mutually_exclusive_group(required=True)
     target.add_argument("--node", dest="node_id", default=None)
-    target.add_argument("--transition", dest="transition_id", default=None)
+    target.add_argument("--step", dest="step_id", default=None)
     sp_list.add_argument("--run", default=None)
     sp_list.add_argument("--store-dir", default=None)
 
@@ -97,7 +97,7 @@ def run_payload_add_command(
             user_id=user_id,
             work_session_id=work_session_id,
             event_type="payload_attached",
-            target_kind="transition",
+            target_kind="step",
             target_id=payload.target_id,
             created_records=(payload.payload_id,),
             summary=payload.payload_type,
@@ -130,9 +130,9 @@ def run_payload_list_command(
             raise KeyError(f"unknown node_id: {target_id}")
         payloads = g.payloads_for_node(target_id)
     else:
-        if target_id not in g.transitions:
-            raise KeyError(f"unknown transition_id: {target_id}")
-        payloads = g.payloads_for_transition(target_id)
+        if target_id not in g.steps:
+            raise KeyError(f"unknown step_id: {target_id}")
+        payloads = g.payloads_for_step(target_id)
     return {"payloads": [p.to_dict() for p in payloads]}
 
 
@@ -155,8 +155,8 @@ def cli_payload(args) -> int:
         print(json.dumps(payload_schema(args.payload_type), ensure_ascii=False, indent=2))
         return 0
     if args.payload_command == "add":
-        target_kind = "node" if args.node_id is not None else "transition"
-        target_id = args.node_id if args.node_id is not None else args.transition_id
+        target_kind = "node" if args.node_id is not None else "step"
+        target_id = args.node_id if args.node_id is not None else args.step_id
         result = run_payload_add_command(
             run_id=resolve_run_id_from_args(args),
             target_kind=target_kind,
@@ -171,8 +171,8 @@ def cli_payload(args) -> int:
         print(json.dumps(result["payload"], ensure_ascii=False, indent=2))
         return 0
     if args.payload_command == "list":
-        target_kind = "node" if args.node_id is not None else "transition"
-        target_id = args.node_id if args.node_id is not None else args.transition_id
+        target_kind = "node" if args.node_id is not None else "step"
+        target_id = args.node_id if args.node_id is not None else args.step_id
         result = run_payload_list_command(
             run_id=resolve_run_id_from_args(args),
             target_kind=target_kind,

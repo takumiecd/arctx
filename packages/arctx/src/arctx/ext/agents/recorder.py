@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from arctx.core.cuts import is_active_node
-from arctx.core.schema.payloads import NodePayload, TransitionPayload
+from arctx.core.schema.payloads import NodePayload, StepPayload
 
 # Default cap for each recorded string field. Tool outputs can be huge
 # (full file reads, long command output); the graph stores a clipped form
@@ -27,7 +27,7 @@ def session_tip(handle, work_session_id: str) -> str:
     """Return the node id this session should extend next.
 
     Derived at read time from work events: the output node of the most
-    recent transition created in this work session that is still active.
+    recent step created in this work session that is still active.
     Falls back to the run root, so the first prompt of each session fans
     out as a sibling branch off the root.
     """
@@ -35,12 +35,12 @@ def session_tip(handle, work_session_id: str) -> str:
     for event in reversed(graph.work_events):
         if event.work_session_id != work_session_id:
             continue
-        if event.event_type != "transition_created":
+        if event.event_type != "step_created":
             continue
-        transition = graph.transitions.get(event.target_id or "")
-        if transition is None:
+        step = graph.steps.get(event.target_id or "")
+        if step is None:
             continue
-        node_id = transition.output_node_id
+        node_id = step.output_node_id
         if node_id in graph.nodes and is_active_node(graph, node_id):
             return node_id
     return handle.root_node_id
@@ -86,8 +86,8 @@ class SessionRecorder:
         return {"work_session_id": self.work_session_id}
 
     def prompt(self, text: str) -> dict[str, Any]:
-        """Record a user prompt as a Transition (``agent.prompt``)."""
-        return self._transition(
+        """Record a user prompt as a Step (``agent.prompt``)."""
+        return self._step(
             "agent.prompt", {"prompt": clip(text, limit=self.clip_chars)}
         )
 
@@ -97,13 +97,13 @@ class SessionRecorder:
         action_input: Any = None,
         action_output: Any = None,
     ) -> dict[str, Any]:
-        """Record one tool/action execution as a Transition (``agent.tool_use``)."""
+        """Record one tool/action execution as a Step (``agent.tool_use``)."""
         content = {
             "tool_name": name,
             "tool_input": clip(action_input, limit=self.clip_chars),
             "tool_output": clip(action_output, limit=self.clip_chars),
         }
-        return self._transition("agent.tool_use", content)
+        return self._step("agent.tool_use", content)
 
     def turn_end(
         self, *, kind: str = "stop", content: dict[str, Any] | None = None
@@ -138,13 +138,13 @@ class SessionRecorder:
         """Return the node this session would extend next."""
         return session_tip(self.handle, self.work_session_id)
 
-    def _transition(
+    def _step(
         self, payload_type: str, content: dict[str, Any]
     ) -> dict[str, Any]:
         tip = session_tip(self.handle, self.work_session_id)
-        transition = self.handle.transition(
+        step = self.handle.add_step(
             [tip],
-            TransitionPayload(
+            StepPayload(
                 payload_id="pending",
                 target_id="pending",
                 type=payload_type,
@@ -156,6 +156,6 @@ class SessionRecorder:
         )
         return {
             "work_session_id": self.work_session_id,
-            "transition_id": transition.transition_id,
-            "output_node_id": transition.output_node_id,
+            "step_id": step.step_id,
+            "output_node_id": step.output_node_id,
         }

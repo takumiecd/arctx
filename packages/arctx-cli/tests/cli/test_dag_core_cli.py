@@ -47,10 +47,10 @@ def test_add_node_creates_standalone_node_with_payload(tmp_path):
     store = resolve_store(_store_dir(td))
     handle = store.load_run("run_dag_core")
     assert node_id in handle.run_graph.nodes
-    assert handle.run_graph.transition_to_node(node_id) is None
+    assert handle.run_graph.step_to_node(node_id) is None
 
 
-def test_add_step_wraps_transition_as_step(tmp_path):
+def test_add_step_wraps_step_as_step(tmp_path):
     td = str(tmp_path)
     init = _init(td)
 
@@ -59,7 +59,7 @@ def test_add_step_wraps_transition_as_step(tmp_path):
         input_node_ids=[init["root_node_id"]],
         title="try new design",
         payload_kind=None,
-        payload_type="transition_payload",
+        payload_type="step_payload",
         field_data={},
         json_data={},
         store_dir=_store_dir(td),
@@ -80,7 +80,7 @@ def test_attach_infers_node_or_step_target(tmp_path):
         input_node_ids=[init["root_node_id"]],
         title="step",
         payload_kind=None,
-        payload_type="transition_payload",
+        payload_type="step_payload",
         field_data={},
         json_data={},
         store_dir=_store_dir(td),
@@ -107,7 +107,7 @@ def test_attach_infers_node_or_step_target(tmp_path):
 
     assert node_payload["target_kind"] == "node"
     assert node_payload["type"] == "note"
-    assert step_payload["target_kind"] == "transition"
+    assert step_payload["target_kind"] == "step"
     assert step_payload["type"] == "result"
 
 
@@ -119,7 +119,7 @@ def test_show_record_uses_step_vocabulary(tmp_path):
         input_node_ids=[init["root_node_id"]],
         title="step",
         payload_kind=None,
-        payload_type="transition_payload",
+        payload_type="step_payload",
         field_data={},
         json_data={},
         store_dir=_store_dir(td),
@@ -144,7 +144,7 @@ def test_log_from_renders_step_title(tmp_path):
         input_node_ids=[init["root_node_id"]],
         title="try cache",
         payload_kind=None,
-        payload_type="transition_payload",
+        payload_type="step_payload",
         field_data={},
         json_data={},
         store_dir=_store_dir(td),
@@ -170,7 +170,7 @@ def test_log_to_returns_trace_context(tmp_path):
         input_node_ids=[init["root_node_id"]],
         title="try cache",
         payload_kind=None,
-        payload_type="transition_payload",
+        payload_type="step_payload",
         field_data={},
         json_data={},
         store_dir=_store_dir(td),

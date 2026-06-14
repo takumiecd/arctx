@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class VerifyViolation:
     """One violation of the descendant constraint."""
 
-    transition_id: str
+    step_id: str
     kind: Literal["dead_sha", "non_descendant", "missing_sha", "missing_input_sha"]
     message: str
     details: dict = field(default_factory=dict)  # type: ignore[assignment]
@@ -57,16 +57,16 @@ def verify_impl(
     repo_path: Path | None = None,
     skip_dead_sha_check: bool = False,
 ) -> list[VerifyViolation]:
-    """Verify the descendant constraint over all non-cut transitions."""
-    from arctx.core.cuts import inactive_transition_ids  # noqa: PLC0415
+    """Verify the descendant constraint over all non-cut steps."""
+    from arctx.core.cuts import inactive_step_ids  # noqa: PLC0415
 
     graph = self.run_graph
     resolved_repo_path = resolve_worktree_path(repo_path)
 
-    inactive = inactive_transition_ids(graph)
+    inactive = inactive_step_ids(graph)
     violations: list[VerifyViolation] = []
 
-    for t_id, transition in graph.transitions.items():
+    for t_id, step in graph.steps.items():
         if t_id in inactive:
             continue
 
@@ -75,37 +75,37 @@ def verify_impl(
         if output_sha is None:
             violations.append(
                 VerifyViolation(
-                    transition_id=t_id,
+                    step_id=t_id,
                     kind="missing_sha",
                     message=(
-                        f"Transition {t_id} has no GitChangePayload; "
+                        f"Step {t_id} has no GitChangePayload; "
                         "cannot verify descendant constraint"
                     ),
-                    details={"transition_id": t_id},
+                    details={"step_id": t_id},
                 )
             )
             continue
 
-        for input_node_id in transition.input_node_ids:
-            if input_node_id not in graph.transition_by_output_node:
+        for input_node_id in step.input_node_ids:
+            if input_node_id not in graph.step_by_output_node:
                 continue
 
-            in_t_id = graph.transition_by_output_node[input_node_id]
+            in_t_id = graph.step_by_output_node[input_node_id]
             input_sha = current_sha(graph, in_t_id)
 
             if input_sha is None:
                 violations.append(
                     VerifyViolation(
-                        transition_id=t_id,
+                        step_id=t_id,
                         kind="missing_input_sha",
                         message=(
-                            f"Transition {t_id}: input node {input_node_id} "
-                            f"has no GitChangePayload on its producing transition {in_t_id}"
+                            f"Step {t_id}: input node {input_node_id} "
+                            f"has no GitChangePayload on its producing step {in_t_id}"
                         ),
                         details={
-                            "transition_id": t_id,
+                            "step_id": t_id,
                             "input_node_id": input_node_id,
-                            "input_transition_id": in_t_id,
+                            "input_step_id": in_t_id,
                             "output_sha": output_sha,
                         },
                     )
@@ -133,15 +133,15 @@ def verify_impl(
             if status == "non_descendant":
                 violations.append(
                     VerifyViolation(
-                        transition_id=t_id,
+                        step_id=t_id,
                         kind="non_descendant",
                         message=(
-                            f"Transition {t_id}: output sha {output_sha!r} is NOT "
+                            f"Step {t_id}: output sha {output_sha!r} is NOT "
                             f"a descendant of input sha {input_sha!r} "
                             f"(input node {input_node_id})"
                         ),
                         details={
-                            "transition_id": t_id,
+                            "step_id": t_id,
                             "input_node_id": input_node_id,
                             "input_sha": input_sha,
                             "output_sha": output_sha,
@@ -151,14 +151,14 @@ def verify_impl(
             else:
                 violations.append(
                     VerifyViolation(
-                        transition_id=t_id,
+                        step_id=t_id,
                         kind="dead_sha",
                         message=(
-                            f"Transition {t_id}: sha {output_sha!r} or input sha "
+                            f"Step {t_id}: sha {output_sha!r} or input sha "
                             f"{input_sha!r} is not present in git object store"
                         ),
                         details={
-                            "transition_id": t_id,
+                            "step_id": t_id,
                             "input_node_id": input_node_id,
                             "input_sha": input_sha,
                             "output_sha": output_sha,

@@ -43,7 +43,7 @@ class RunHandle:
         if not is_active_node(self.run_graph, node_id):
             raise ValueError(
                 f"node is in a cut (inactive) branch: {node_id}; "
-                "no new transitions can extend it"
+                "no new steps can extend it"
             )
 
     def save(self, store) -> object:
@@ -133,9 +133,9 @@ from arctx.core.run.cut import cut_impl as _cut_impl  # noqa: E402
 from arctx.core.run.node import add_node_impl as _add_node_impl  # noqa: E402
 from arctx.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from arctx.core.run.trace import trace_impl as _trace_impl  # noqa: E402
-from arctx.core.run.transition import transition_impl as _transition_impl  # noqa: E402
+from arctx.core.run.step import add_step_impl as _add_step_impl  # noqa: E402
 
-RunHandle.transition = _transition_impl
+RunHandle.add_step = _add_step_impl
 RunHandle.add_node = _add_node_impl
 RunHandle.attach = _attach_impl
 RunHandle.cut = _cut_impl

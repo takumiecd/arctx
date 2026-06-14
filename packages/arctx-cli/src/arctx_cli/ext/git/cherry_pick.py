@@ -1,6 +1,6 @@
 """arctx CLI cherry-pick command.
 
-Drives a ``git cherry-pick`` and records the corresponding arctx Transition with
+Drives a ``git cherry-pick`` and records the corresponding arctx Step with
 BranchPayload, GitChangePayload, CherryPickPayload, BranchTipEvent, and
 SessionPointerEvent.
 """
@@ -24,7 +24,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``cherry-pick`` subcommand parser."""
     p = subparsers.add_parser(
         "cherry-pick",
-        help="Cherry-pick a commit and record a arctx transition",
+        help="Cherry-pick a commit and record a arctx step",
     )
     p.add_argument("--sha", required=True, help="Commit sha to cherry-pick")
     p.add_argument("--branch", default=None, help="Override branch name")
@@ -63,15 +63,15 @@ def run_cherry_pick_command(
 
     Returns
     -------
-    dict with transition_id, output_node_id, branch, head_commit,
-    source_transition, source_commit.
+    dict with step_id, output_node_id, branch, head_commit,
+    source_step, source_commit.
     """
     store = resolve_store(store_dir)
     handle = store.load_run(run_id)
 
     before = graph_counts(handle)
 
-    transition = handle.git.cherry_pick(
+    step = handle.git.cherry_pick(
         source_sha=source_sha,
         branch=branch,
         user_id=user_id,
@@ -87,33 +87,33 @@ def run_cherry_pick_command(
     )
 
     # Extract payload info for the result.
-    git_payloads = handle.run_graph.payloads_for_transition(
-        transition.transition_id, payload_type="git_change"
+    git_payloads = handle.run_graph.payloads_for_step(
+        step.step_id, payload_type="git_change"
     )
     head_commit = git_payloads[-1].head_commit if git_payloads else ""
-    branch_payloads = handle.run_graph.payloads_for_transition(
-        transition.transition_id, payload_type="branch"
+    branch_payloads = handle.run_graph.payloads_for_step(
+        step.step_id, payload_type="branch"
     )
     resolved_branch = branch_payloads[-1].branch if branch_payloads else ""
-    cp_payloads = handle.run_graph.payloads_for_transition(
-        transition.transition_id, payload_type="cherry_pick"
+    cp_payloads = handle.run_graph.payloads_for_step(
+        step.step_id, payload_type="cherry_pick"
     )
-    source_transition = cp_payloads[-1].source_transition if cp_payloads else None
+    source_step = cp_payloads[-1].source_step if cp_payloads else None
     source_commit = cp_payloads[-1].source_commit if cp_payloads else ""
 
     return {
-        "transition_id": transition.transition_id,
-        "output_node_id": transition.output_node_id,
+        "step_id": step.step_id,
+        "output_node_id": step.output_node_id,
         "branch": resolved_branch,
         "head_commit": head_commit,
-        "source_transition": source_transition,
+        "source_step": source_step,
         "source_commit": source_commit,
     }
 
 
 def cli_cherry_pick(args) -> int:
     """Entry point for ``arctx cherry-pick`` subcommand."""
-    from arctx.ext.git.verbs._forward_transition import ParallelSessionConflict  # noqa: PLC0415
+    from arctx.ext.git.verbs._forward_step import ParallelSessionConflict  # noqa: PLC0415
 
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)

@@ -66,9 +66,9 @@ def test_hook_command_records_prompt_and_tool_use():
         )
 
         handle = resolve_store(_store_dir(td)).load_run("run_codex")
-        assert prompt["transition_id"] in handle.run_graph.transitions
-        tool_transition = handle.run_graph.transitions[tool["transition_id"]]
-        assert tool_transition.input_node_ids == (prompt["output_node_id"],)
+        assert prompt["step_id"] in handle.run_graph.steps
+        tool_step = handle.run_graph.steps[tool["step_id"]]
+        assert tool_step.input_node_ids == (prompt["output_node_id"],)
         assert "ws_codex_s1" in handle.run_graph.work_sessions
 
 
@@ -153,7 +153,7 @@ def test_hook_cli_records_from_argv(monkeypatch, capsys):
         assert capsys.readouterr().out == ""
 
         handle = resolve_store(_store_dir(td)).load_run("run_codex")
-        assert len(handle.run_graph.transitions) == 1
+        assert len(handle.run_graph.steps) == 1
 
 
 def test_install_writes_hooks_and_is_idempotent():

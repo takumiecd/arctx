@@ -55,7 +55,7 @@ def run_attach_command(
     data.update(field_data or {})
     data.setdefault("type", payload_kind)
     internal_payload_type = payload_type or (
-        "node_payload" if target_kind == "node" else "transition_payload"
+        "node_payload" if target_kind == "node" else "step_payload"
     )
     result = run_payload_add_command(
         run_id=run_id,

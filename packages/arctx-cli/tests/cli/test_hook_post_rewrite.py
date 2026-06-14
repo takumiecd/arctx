@@ -4,7 +4,7 @@ Simulates what git does when post-rewrite hook fires after amend/rebase:
 - Creates a real git repo.
 - Runs arctx init + arctx commit (via run_commit_command).
 - Directly calls run_hook_post_rewrite with stdin_lines to simulate the hook.
-- Verifies that the new GitChangePayload is appended to the correct transition.
+- Verifies that the new GitChangePayload is appended to the correct step.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ class TestHookPostRewriteAmend:
             work_session_id="ws",
         )
         old_sha = commit_result["head_commit"]
-        t_id = commit_result["transition_id"]
+        t_id = commit_result["step_id"]
 
         # Simulate amend: create a new sha (we just use a fake sha for post-rewrite test).
         new_sha = "amended_" + old_sha[:8]
@@ -90,7 +90,7 @@ class TestHookPostRewriteAmend:
             work_session_id="ws",
         )
 
-        assert t_id in result["affected_transitions"]
+        assert t_id in result["affected_steps"]
         assert result["skipped_shas"] == []
 
         # Verify persistence.
@@ -147,7 +147,7 @@ class TestHookPostRewriteAmend:
         )
 
         assert "deadbeef1234" in result["skipped_shas"]
-        assert result["affected_transitions"] == []
+        assert result["affected_steps"] == []
 
     def test_empty_stdin_is_noop(self, tmp_path, monkeypatch):
         repo = _init_git_repo(tmp_path / "repo")
@@ -163,13 +163,13 @@ class TestHookPostRewriteAmend:
             work_session_id="ws",
         )
 
-        assert result["affected_transitions"] == []
+        assert result["affected_steps"] == []
         assert result["skipped_shas"] == []
         assert result["event_id"] is None
 
 
 class TestHookPostRewriteRebase:
-    def test_rebase_updates_multiple_transitions(self, tmp_path, monkeypatch):
+    def test_rebase_updates_multiple_steps(self, tmp_path, monkeypatch):
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.chdir(repo)
         _init_arctx(repo, tmp_path, run_id="run_rebase")
@@ -210,14 +210,14 @@ class TestHookPostRewriteRebase:
             work_session_id="ws",
         )
 
-        assert r1["transition_id"] in result["affected_transitions"]
-        assert r2["transition_id"] in result["affected_transitions"]
+        assert r1["step_id"] in result["affected_steps"]
+        assert r2["step_id"] in result["affected_steps"]
         assert result["skipped_shas"] == []
 
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_rebase")
-        assert handle.git.current_sha(r1["transition_id"]) == new1
-        assert handle.git.current_sha(r2["transition_id"]) == new2
+        assert handle.git.current_sha(r1["step_id"]) == new1
+        assert handle.git.current_sha(r2["step_id"]) == new2
 
     def test_rebase_records_rebase_event(self, tmp_path, monkeypatch):
         repo = _init_git_repo(tmp_path / "repo")
