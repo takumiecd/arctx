@@ -43,10 +43,11 @@ arctx transition create
 arctx payload add
 arctx graph dump
 arctx node ...
-arctx view ...
 ```
 
 これらは当面 compatibility / plumbing として残す。
+
+`arctx view` と `arctx guide` は Phase 1 の途中でCLI登録から削除した。
 
 #### 2. `arctx add node`
 
@@ -330,7 +331,7 @@ Phase 1 で残した旧 CLI を整理する。
 - `arctx transition ...` を削除または hidden にする。
 - `arctx payload add --transition` を `--step` に変える。
 - `arctx graph dump` を `arctx log` に寄せる。
-- `arctx view` を削除または hidden にする。
+- `arctx view` は削除済み。
 
 #### 4. Storage migration 方針
 

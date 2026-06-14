@@ -84,9 +84,6 @@ Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`)
 - `anchor(from_node_id, label, ...)` — create a lightweight scope anchor node
 - `trace(node_id, ...)` (alias: `history`) — walk history backwards
 - `outcomes(transition_id)` — return output node info for a transition
-- `view_create(name, *, root_node_id)`
-- `view_list()`
-- `view_show(name)`
 
 Deleted verbs: `plan`, `predict`, `observe`, `note`.
 
@@ -107,6 +104,9 @@ Current commands:
   `export ARCTX_RUN_ID=<run>` for `eval` (terminal-scoped) instead of writing the
   repo pointer.
 - `init` / `list` — create / list runs
+- `add node` / `add step` — Phase 1 DAG core surface; externally call transitions "steps" while internal storage still uses `Transition`
+- `attach <id>` — attach a generic payload to a Node or Step by resolving the record id
+- `log` — user-facing DAG history command; wraps outline dump / trace behavior
 - `transition create` — create one Transition and one output Node (`--from NODE --payload-type TYPE --field key=value`)
 - `node` — inspect Nodes and their payloads
 - `payload` — list payload types/schemas and attach payloads to Nodes or Transitions
@@ -116,15 +116,13 @@ Current commands:
 - `show` — inspect a node / transition / payload as JSON
 - `graph` — dump / trace / reachable graph queries
 - `trace` / `outcomes` / `reachable` — compatibility derived queries
-- `view` — manage `GraphView`s
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html`. `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `anchor` — create a scope anchor node
-- `guide` — print usage hints
 - `migrate` — convert a jsonl run dir to sqlite
 - `sync` — sync helpers
 
-Deleted commands: `plan`, `predict`, `observe`, `note`, `tui` (moved to standalone `arctx-tui` command).
+Deleted commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `tui` (moved to standalone `arctx-tui` command).
 
 Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
 `arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to

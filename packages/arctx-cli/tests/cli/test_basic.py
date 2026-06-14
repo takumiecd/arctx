@@ -9,7 +9,6 @@ import pytest
 
 from arctx_cli.commands.cut import run_cut_command
 from arctx_cli.commands.dump import run_dump_command
-from arctx_cli.commands.guide import run_guide_command, run_guide_list
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.list import run_list_command
 from arctx_cli.commands.payload import run_payload_add_command, run_payload_list_command
@@ -211,39 +210,3 @@ def test_dump_mermaid():
         )
         assert "```mermaid" in out
         assert "flowchart TD" in out
-
-
-# ---------------------------------------------------------------------------
-# arctx guide
-# ---------------------------------------------------------------------------
-
-
-def test_guide_uses_current_cli_commands():
-    result = run_guide_command(lang="en", topic="overview")
-    guide = result["guide"]
-    assert "arctx transition create" in guide
-    assert "arctx payload add" in guide
-    assert "arctx graph dump" in guide
-    assert "arctx work-session env" in guide
-    assert "arctx attach" not in guide
-
-
-def test_guide_ja_topics_are_localized():
-    result = run_guide_command(lang="ja", topic="record")
-    assert "1 つの実験を記録する" in result["guide"]
-    assert "arctx transition create" in result["guide"]
-
-
-def test_guide_list_uses_selected_language_summaries():
-    result = run_guide_list(lang="ja")
-    summaries = {entry["id"]: entry["summary"] for entry in result["topics"]}
-    assert summaries["record"] == "1 つの実験を記録する基本フロー"
-    assert summaries["work-session"] == "同じ run 内で並列プロセスの履歴を分ける"
-
-
-def test_guide_work_session_topic_explains_both_modes():
-    result = run_guide_command(lang="ja", topic="work-session")
-    guide = result["guide"]
-    assert "毎回明示モード" in guide
-    assert "固定モード" in guide
-    assert "arctx work-session spawn" in guide

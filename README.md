@@ -304,7 +304,6 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
 | `arctx-tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). Standalone command from `pip install arctx-tui`. |
 | `arctx cut node <id>` | Mark a Node (and descendants) inactive — append-only. |
-| `arctx guide` | Discover concepts interactively. `--lang ja` for Japanese. |
 
 `arctx dump ...` is retained as a compatibility shortcut for `arctx graph dump ...`.
 

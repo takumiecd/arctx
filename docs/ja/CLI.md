@@ -175,7 +175,6 @@ arctx transition create
 arctx payload add
 arctx graph dump
 arctx node ...
-arctx view ...
 ```
 
 内部実装の Step 化が進むまでは、これらを急に削除しません。

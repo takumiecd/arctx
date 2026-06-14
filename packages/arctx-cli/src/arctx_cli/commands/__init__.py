@@ -27,8 +27,6 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.ext import cli_ext
     from arctx_cli.commands.graph import add_parser as add_graph_parser
     from arctx_cli.commands.graph import cli_graph
-    from arctx_cli.commands.guide import add_parser as add_guide_parser
-    from arctx_cli.commands.guide import cli_guide
     from arctx_cli.commands.init import add_parser as add_init_parser
     from arctx_cli.commands.init import cli_init
     from arctx_cli.commands.list import add_parser as add_list_parser
@@ -55,8 +53,6 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.transition import cli_transition
     from arctx_cli.commands.use import add_parser as add_use_parser
     from arctx_cli.commands.use import cli_use
-    from arctx_cli.commands.view import add_parser as add_view_parser
-    from arctx_cli.commands.view import cli_view
     from arctx_cli.commands.work_session import add_parser as add_work_session_parser
     from arctx_cli.commands.work_session import cli_work_session
 
@@ -70,7 +66,6 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("dump", add_dump_parser, cli_dump),
         CliCommand("export", add_export_parser, cli_export),
         CliCommand("graph", add_graph_parser, cli_graph),
-        CliCommand("guide", add_guide_parser, cli_guide),
         CliCommand("init", add_init_parser, cli_init),
         CliCommand("list", add_list_parser, cli_list),
         CliCommand("log", add_log_parser, cli_log),
@@ -85,7 +80,6 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("trace", add_trace_parser, cli_trace),
         CliCommand("transition", add_transition_parser, cli_transition),
         CliCommand("use", add_use_parser, cli_use),
-        CliCommand("view", add_view_parser, cli_view),
         CliCommand("work-session", add_work_session_parser, cli_work_session),
     ]
 
