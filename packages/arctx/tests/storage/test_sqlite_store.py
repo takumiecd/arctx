@@ -85,16 +85,6 @@ def test_round_trip_with_cut():
     assert len(cut_payloads) >= 1
 
 
-def test_round_trip_views_preserved():
-    run = _make_populated_run("sq_views")
-    with tempfile.TemporaryDirectory() as td:
-        store = SqliteRunStore(td)
-        store.save_run(run)
-        loaded = store.load_run("sq_views")
-
-    assert "main" in loaded.run_graph.views
-
-
 def test_list_runs():
     with tempfile.TemporaryDirectory() as td:
         store = SqliteRunStore(td)

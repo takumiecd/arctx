@@ -138,9 +138,7 @@ def run_show_command(
         "root_node_id": handle.root_node_id,
         "node_count": len(g.nodes),
         "transition_count": len(g.transitions),
-
         "payload_count": len(g.payloads),
-        "views": [v.name for v in handle.run_graph.views.values()],
     }
 
 

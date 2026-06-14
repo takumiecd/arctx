@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
-from arctx.core.graph_view import GraphView
 from arctx.core.schema.graph import Node, Transition
 from arctx.core.schema.payloads import PayloadBase
 from arctx.core.schema.work import WorkEvent, WorkSession
@@ -19,7 +18,6 @@ class RunGraph:
     nodes: dict[str, Node] = field(default_factory=dict)
     transitions: dict[str, Transition] = field(default_factory=dict)
     payloads: dict[str, PayloadBase] = field(default_factory=dict)
-    views: dict[str, GraphView] = field(default_factory=dict)
     work_sessions: dict[str, WorkSession] = field(default_factory=dict)
     work_events: list[WorkEvent] = field(default_factory=list)
 
@@ -30,15 +28,6 @@ class RunGraph:
     payloads_by_transition: dict[str, list[str]] = field(default_factory=dict)
 
     metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-    # ----- views -----------------------------------------------------------
-
-    def add_view(self, view: GraphView) -> None:
-        if view.name in self.views:
-            raise ValueError(f"duplicate view name: {view.name!r}")
-        if view.root_node_id not in self.nodes:
-            raise KeyError(f"unknown root_node_id: {view.root_node_id}")
-        self.views[view.name] = view
 
     def add_work_session(self, session: WorkSession) -> None:
         if session.work_session_id in self.work_sessions:

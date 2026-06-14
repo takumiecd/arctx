@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from arctx.core.graph_view import GraphView
 from arctx.core.run import RunHandle
 from arctx.core.run import init as _core_init
 from arctx.core.run_graph import RunGraph
@@ -31,7 +30,6 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 
 __all__ = [
     "CutPayload",
-    "GraphView",
     "Node",
     "NodePayload",
     "Payload",

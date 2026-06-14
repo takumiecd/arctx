@@ -90,16 +90,6 @@ def test_round_trip_with_cut():
     assert len(cut_payloads) >= 1
 
 
-def test_round_trip_views_preserved():
-    run = _make_populated_run("rt_views")
-    with tempfile.TemporaryDirectory() as td:
-        store = JsonlRunStore(td)
-        store.save_run(run)
-        loaded = store.load_run("rt_views")
-
-    assert "main" in loaded.run_graph.views
-
-
 def test_jsonl_files_created():
     run = _make_populated_run("rt_files")
     with tempfile.TemporaryDirectory() as td:
@@ -108,6 +98,7 @@ def test_jsonl_files_created():
         run_path = Path(td) / "rt_files"
         assert (run_path / "run.json").exists()
         assert (run_path / "nodes.jsonl").exists()
+        assert not (run_path / "views.jsonl").exists()
         assert (run_path / "transitions.jsonl").exists()
         assert (run_path / "payloads.jsonl").exists()
         # Old edge file should NOT exist.

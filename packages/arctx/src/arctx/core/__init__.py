@@ -1,6 +1,5 @@
 """Core graph model."""
 
-from arctx.core.graph_view import GraphView
 from arctx.core.ids import opaque_id, sequential_id, slugify, timestamp_id
 from arctx.core.run import RunHandle, init
 from arctx.core.run_graph import RunGraph
@@ -22,7 +21,6 @@ from arctx.core.types import (
 
 __all__ = [
     "CutPayload",
-    "GraphView",
     "Node",
     "NodePayload",
     "Payload",

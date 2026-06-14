@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from arctx.core.graph_view import GraphView
 from arctx.core.run import RunHandle
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node, Transition
@@ -236,9 +235,6 @@ def _local_batches(handle: RunHandle) -> list[dict[str, Any]]:
         node = graph.nodes[handle.root_node_id]
         seed_records.append(("node", node.node_id, node.to_dict()))
         included.add(("node", node.node_id))
-    for view in graph.views.values():
-        seed_records.append(("view", view.view_id, view.to_dict()))
-        included.add(("view", view.view_id))
     if seed_records:
         batches.append({"operation": "seed", "records": seed_records})
 
@@ -331,22 +327,6 @@ def _apply_record(graph: RunGraph, kind: str, body: dict[str, Any]) -> bool:
         graph.attach_payload(payload)
         return True
 
-    if kind == "view":
-        view = GraphView(
-            view_id=str(body["view_id"]),
-            name=str(body["name"]),
-            root_node_id=str(body["root_node_id"]),
-            metadata=dict(body.get("metadata") or {}),
-        )
-        existing = graph.views.get(view.name)
-        if existing is not None:
-            _ensure_same(existing.to_dict(), body, kind, view.name)
-            return False
-        graph.add_view(view)
-        if view.name == "main":
-            graph.metadata["root_node_id"] = view.root_node_id
-        return True
-
     # Unknown record kinds are silently skipped for forward compatibility.
     return False
 
@@ -362,7 +342,6 @@ def _is_empty_seed_graph(graph: RunGraph) -> bool:
         len(graph.nodes) == 1
         and not graph.transitions
         and not graph.payloads
-        and set(graph.views) <= {"main"}
     )
 
 
@@ -370,7 +349,6 @@ def _clear_graph(graph: RunGraph) -> None:
     graph.nodes.clear()
     graph.transitions.clear()
     graph.payloads.clear()
-    graph.views.clear()
     graph.payloads_by_node.clear()
     graph.payloads_by_transition.clear()
     graph.transitions_by_input_node.clear()

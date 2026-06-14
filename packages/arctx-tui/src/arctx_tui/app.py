@@ -238,7 +238,6 @@ class ArctxApp(App):
             "nodes.jsonl",
             "transitions.jsonl",
             "payloads.jsonl",
-            "views.jsonl",
             "work_sessions.jsonl",
             "work_events.jsonl",
             "run.db",

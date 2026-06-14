@@ -276,13 +276,12 @@ The center of ARCTX is **`RunGraph`** — an append-only DAG. Pure graph records
 ```text
 RunGraph
   ├── Node         ← pure DAG node
-  ├── Transition   ← N input nodes → 1 output node
-  ├── Payload      ← annotation attached to a Node or Transition
-  └── GraphView    ← lightweight named scope (just a root_node_id)
+  ├── Step         ← N input nodes → 1 output node
+  └── Payload      ← annotation attached to a Node or Step
 ```
 
-- Each **attempt / experiment / action is recorded as a transition**, producing an output node that represents the resulting state.
-- `NodePayload` / `TransitionPayload` — generic annotations, distinguished by a `type` string.
+- Each **attempt / experiment / action is recorded as a step**, producing an output node that represents the resulting state.
+- `NodePayload` / `TransitionPayload` — generic annotations, distinguished by a `type` string. The current internal model still stores steps as `Transition` records while the public surface moves to `Step`.
 - `CutPayload` — append-only invalidation. The target isn't deleted; it's filtered out at read time.
 - `GitChangePayload` — attached by the `git` extension on every `arctx git commit`.
 
@@ -295,6 +294,12 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | Command | What it does |
 | --- | --- |
 | `arctx init <req-id>` | Start a new run. Add `--extension git` for git integration. |
+| `arctx add node` | Add an independent DAG node. |
+| `arctx add step --from <node> --title ...` | Add a DAG step and its output node. |
+| `arctx attach <node-or-step> --title ...` | Attach a payload to an existing node or step. |
+| `arctx cut <node-or-step>` | Mark a node or step inactive via append-only payload. |
+| `arctx show [id]` | Show the current run or a single node/step/payload. |
+| `arctx log` | Show the DAG as an ordered event stream. |
 | `arctx git commit -m ...` | Drive a real `git commit` and record a `Transition` with `GitChangePayload`. |
 | `arctx work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
 | `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
@@ -303,7 +308,6 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
 | `arctx graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
 | `arctx-tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). Standalone command from `pip install arctx-tui`. |
-| `arctx cut node <id>` | Mark a Node (and descendants) inactive — append-only. |
 
 `arctx dump ...` is retained as a compatibility shortcut for `arctx graph dump ...`.
 
@@ -355,8 +359,6 @@ run.save(store)
 loaded = store.load_run("demo")
 ```
 
-For isolated exploration, a `GraphView` holds only a `root_node_id`; its contents are derived at read time via `RunGraph.reachable_from(root_node_id)`.
-
 ---
 
 ## Install
@@ -384,14 +386,13 @@ PYTHONPATH=src python3 -m arctx_cli.main ...
   nodes.jsonl
   transitions.jsonl
   payloads.jsonl
-  views.jsonl
   work_sessions.jsonl
   work_events.jsonl
 ```
 
 `SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<ARCTX_HOME>/runs`.
 
-The 0.2.x storage format is maintained within the 0.2 series. Breaking changes will require an explicit migration note.
+`GraphView` / `views.jsonl` were removed during the 0.3 beta redesign. Old view records are ignored by the new core graph model.
 
 ---
 

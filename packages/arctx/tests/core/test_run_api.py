@@ -33,11 +33,10 @@ def _np(text: str = "hello") -> NodePayload:
 # ---------------------------------------------------------------------------
 
 
-def test_init_creates_root_node_and_main_view():
+def test_init_creates_root_node():
     run = init(_req(), run_id="test_init")
     assert run.root_node_id.startswith("n_")
     assert run.root_node_id in run.run_graph.nodes
-    assert "main" in run.run_graph.views
 
 
 # ---------------------------------------------------------------------------

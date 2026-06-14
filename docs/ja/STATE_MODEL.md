@@ -23,11 +23,10 @@ Phase 1 の実装では、外向きの用語と内部名が一部ずれていま
 - `nodes: dict[str, Node]`
 - `transitions: dict[str, Transition]`
 - `payloads: dict[str, PayloadBase]`
-- `views: dict[str, GraphView]`
 - `work_sessions`
 - `work_events`
 
-Phase 1 では `views` も storage も残します。ただし MVP のユーザー向け概念としては前面に出しません。
+Phase 1 の途中で `GraphView` / `views` は core model から削除しました。
 
 ## Transition as Step
 
@@ -64,8 +63,9 @@ Phase 1 では既存schemaを維持します。
 - `nodes.jsonl`
 - `transitions.jsonl`
 - `payloads.jsonl`
-- `views.jsonl`
 - `work_sessions.jsonl`
 - `work_events.jsonl`
+
+旧 run に `views.jsonl` が残っていても、新しい loader は core graph には取り込みません。
 
 Phase 2 で `transitions.jsonl` を `steps.jsonl` に変えるかどうかを決めます。

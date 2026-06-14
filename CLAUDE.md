@@ -42,8 +42,7 @@ Pure graph records (`packages/arctx/src/arctx/core/schema/graph.py`):
 
 Container (`packages/arctx/src/arctx/core/run_graph.py`):
 
-- `RunGraph`: holds all nodes / transitions / payloads / views, plus reverse-lookup indices
-- `GraphView`: lightweight named label anchored to a root node; contents derived at read time via reachability
+- `RunGraph`: holds all nodes / transitions / payloads, plus reverse-lookup indices
 
 There is no `Edge` record, no `InputTransition`/`OutputTransition` split, and no `transition_kind()` method. Kind is expressed by the `type` field on the attached `TransitionPayload`.
 
@@ -166,7 +165,6 @@ Current prefixes:
 - `pl` — Payload
 - `run` — Run
 - `we` — WorkEvent
-- `view` — GraphView
 
 IDs are opaque and collision-resistant (`n_<uuid>`, `t_<uuid>`, `pl_<uuid>`). Do not assume sequential IDs. The root node is opaque; use `run.root_node_id` or the `root_node_id` returned by `run_init_command`.
 
@@ -190,7 +188,6 @@ Writers that extend observed history must reject cut nodes via `_ensure_active_n
 - `nodes.jsonl`
 - `transitions.jsonl` — each row has `transition_id`, `input_node_ids`, `output_node_id`, `metadata`
 - `payloads.jsonl` — dispatched by `payload_type` on load
-- `views.jsonl`
 - `work_sessions.jsonl`
 - `work_events.jsonl`
 

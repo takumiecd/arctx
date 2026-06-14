@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from arctx.core.cuts import is_active_node
-from arctx.core.graph_view import GraphView
 from arctx.core.ids import opaque_id, slugify, timestamp_id
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node
@@ -46,11 +45,6 @@ class RunHandle:
                 f"node is in a cut (inactive) branch: {node_id}; "
                 "no new transitions can extend it"
             )
-
-    def _get_view(self, name: str) -> GraphView:
-        if name not in self.run_graph.views:
-            raise KeyError(f"unknown view: {name!r}")
-        return self.run_graph.views[name]
 
     def save(self, store) -> object:
         return store.save_run(self)
@@ -115,7 +109,7 @@ class RunHandle:
 
 
 def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
-    """Create a new in-memory run with a seeded RunGraph and 'main' GraphView."""
+    """Create a new in-memory run with a seeded root Node."""
 
     rid = run_id or timestamp_id(f"run_{slugify(requirement.requirement_id)}")
 
@@ -123,13 +117,6 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
     root = Node(node_id=opaque_id("n"))
     graph.add_node(root)
     graph.metadata["root_node_id"] = root.node_id
-
-    main_view = GraphView(
-        view_id=opaque_id("view"),
-        name="main",
-        root_node_id=root.node_id,
-    )
-    graph.add_view(main_view)
 
     handle = RunHandle(
         run_id=rid,
@@ -148,9 +135,6 @@ from arctx.core.run.node import add_node_impl as _add_node_impl  # noqa: E402
 from arctx.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from arctx.core.run.trace import trace_impl as _trace_impl  # noqa: E402
 from arctx.core.run.transition import transition_impl as _transition_impl  # noqa: E402
-from arctx.core.run.view import view_create_impl as _view_create_impl  # noqa: E402
-from arctx.core.run.view import view_list_impl as _view_list_impl  # noqa: E402
-from arctx.core.run.view import view_show_impl as _view_show_impl  # noqa: E402
 
 RunHandle.transition = _transition_impl
 RunHandle.add_node = _add_node_impl
@@ -160,6 +144,3 @@ RunHandle.cut = _cut_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl
 RunHandle.outcomes = _outcomes_impl
-RunHandle.view_create = _view_create_impl
-RunHandle.view_list = _view_list_impl
-RunHandle.view_show = _view_show_impl

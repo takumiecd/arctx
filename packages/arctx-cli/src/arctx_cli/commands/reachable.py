@@ -10,12 +10,10 @@ from arctx_cli.context import resolve_store, resolve_run_id_from_args
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
-        "reachable", help="Show active subgraph forward-reachable from a node or view"
+        "reachable", help="Show active subgraph forward-reachable from a node"
     )
     parser.add_argument("--run", default=None)
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--from-node", dest="from_node", default=None)
-    group.add_argument("--view", dest="view_name", default=None)
+    parser.add_argument("--from-node", required=True, dest="from_node")
     parser.add_argument("--include-records", action="store_true")
     parser.add_argument("--store-dir", default=None)
     return parser
@@ -29,10 +27,10 @@ def run_reachable_command(
     include_records: bool,
     store_dir: str,
 ) -> dict:
-    if from_node is None and view_name is None:
-        raise ValueError("either from_node or view_name is required")
-    if from_node is not None and view_name is not None:
-        raise ValueError("from_node and view_name are mutually exclusive")
+    if from_node is None:
+        raise ValueError("from_node is required")
+    if view_name is not None:
+        raise ValueError("view_name is no longer supported")
 
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -40,11 +38,7 @@ def run_reachable_command(
     handle = store.load_run(run_id)
     g = handle.run_graph
 
-    if view_name is not None:
-        view = handle.view_show(view_name)
-        root_node_id = view.root_node_id
-    else:
-        root_node_id = from_node
+    root_node_id = from_node
 
     if root_node_id not in g.nodes:
         raise KeyError(f"unknown node_id: {root_node_id}")
@@ -67,7 +61,7 @@ def cli_reachable(args) -> int:
     result = run_reachable_command(
         run_id=resolve_run_id_from_args(args),
         from_node=args.from_node,
-        view_name=args.view_name,
+        view_name=None,
         include_records=args.include_records,
         store_dir=args.store_dir,
     )
