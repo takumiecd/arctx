@@ -12,11 +12,13 @@ Arctx = one append-only DAG log
 
 ## パッケージ構成
 
+本線は **`arctx`（コア）と `arctx-cli`** の 2 つです。`arctx-tui` は実験的な副次パッケージで、現行ベータの注力対象ではありません（インタラクティブ UI は将来 GUI へ移行する方針）。通常は `arctx-cli` を入れれば `arctx` も入ります。
+
 | パッケージ | インストール | インポート | 用途 |
 |-----------|------------|----------|------|
 | `arctx` | `pip install arctx` | `import arctx` | コア API・ストレージ・拡張 |
-| `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` コマンド |
-| `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | `arctx-tui` コマンド |
+| `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` コマンド（本線）|
+| `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | _実験的_ `arctx-tui` コマンド（副次・後退）|
 
 ## 基本概念
 

@@ -17,15 +17,15 @@ git clone https://github.com/takumiecd/arctx && cd arctx
 
 ## Packages
 
-This repository distributes three packages:
+The primary surface is two packages — **`arctx` (core) and `arctx-cli`**. A third package, `arctx-tui`, is experimental and not a focus of the current beta.
 
 | Package | Install | Import | Purpose |
 |---------|---------|--------|---------|
 | `arctx` | `pip install arctx` | `import arctx` | Core API, storage, extensions (no CLI/TUI deps) |
 | `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` command, argparse CLI |
-| `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | `arctx-tui` command, Textual TUI |
+| `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | _Experimental_ `arctx-tui` command (Textual TUI) — secondary; a GUI is the intended direction |
 
-`arctx-cli` and `arctx-tui` both depend on `arctx` but not on each other. Install only what you need.
+`arctx-cli` and `arctx-tui` both depend on `arctx` but not on each other. For normal use, install `arctx-cli` (it pulls in `arctx`).
 
 ```python
 import arctx
@@ -44,9 +44,9 @@ It is the graph layer underneath them.
 
 ![ARCTX TUI Demo](examples/demo_tui.gif)
 
-*Interactive 3-pane TUI walks the DAG: attempts, reverts, payload diffs, and full git history all in one view.*
+*Experimental TUI walking the DAG. The TUI is secondary; the intended interactive direction is a GUI.*
 
-> 0.2 beta — the core graph model is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
+> 0.3 beta — the DAG core (Node / Step / Payload) is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
 
 *日本語版は [README.ja.md](README.ja.md) を参照してください。*
 
@@ -208,14 +208,14 @@ From inside a git repository:
 
 ```bash
 pip install arctx-cli
-pip install arctx-tui          # optional: adds standalone arctx-tui command
 
 arctx init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py
 BASE=$(arctx git commit -m "baseline" | jq -r .output_node_id)
 
-arctx-tui                              # explore the DAG interactively (requires arctx-tui)
-arctx graph dump --format outline      # or dump it as an LLM-friendly outline
+arctx log                              # walk the DAG
+arctx dump --format outline            # or dump it as an LLM-friendly outline
+arctx dump --format mermaid            # or a visual mermaid flowchart
 ```
 
 `arctx dump` is kept as a compatibility shortcut for `arctx graph dump`.
@@ -301,7 +301,7 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
 | `arctx graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
 | `arctx graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
-| `arctx-tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). Standalone command from `pip install arctx-tui`. |
+| `arctx-tui` | _Experimental_ interactive explorer (separate `pip install arctx-tui`). Secondary surface; a GUI is the intended direction. |
 
 `arctx dump ...` is retained as a compatibility shortcut for `arctx graph dump ...`.
 

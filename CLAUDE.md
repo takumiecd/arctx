@@ -6,10 +6,10 @@ This file provides guidance to Claude Code when working in this repository.
 
 The packages are usually not installed during local development. Use `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src`.
 
-This repo contains three packages:
-- `arctx` (import name `arctx`) — core API, payloads, extensions. See `packages/arctx/`.
-- `arctx-cli` (import name `arctx_cli`, provides the `arctx` command) — argparse CLI. See `packages/arctx-cli/`. Depends only on `arctx`.
-- `arctx-tui` (import name `arctx_tui`, provides the `arctx-tui` command) — Textual TUI. See `packages/arctx-tui/`. Depends only on `arctx` and `textual`. Install separately: `pip install arctx-tui`.
+This repo contains three packages. The primary, must-ship surface is **`arctx` (core) + `arctx-cli`**; `arctx-tui` is an experimental, de-prioritized secondary surface (the intended interactive direction is a GUI, not the TUI). Focus releases, tests, and docs on core + CLI.
+- `arctx` (import name `arctx`) — core API, payloads, extensions. See `packages/arctx/`. **Primary.**
+- `arctx-cli` (import name `arctx_cli`, provides the `arctx` command) — argparse CLI. See `packages/arctx-cli/`. Depends only on `arctx`. **Primary.**
+- `arctx-tui` (import name `arctx_tui`, provides the `arctx-tui` command) — Textual TUI. See `packages/arctx-tui/`. Depends only on `arctx` and `textual`. Install separately: `pip install arctx-tui`. **Experimental / secondary — not a release blocker; may lag behind core+CLI.**
 
 - Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src python3 -m pytest packages/arctx/tests packages/arctx-cli/tests packages/arctx-tui/tests --import-mode=importlib -q`
 - Run one test file: `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m pytest packages/arctx/tests/core/test_run_api.py -q`
