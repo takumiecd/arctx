@@ -1,15 +1,15 @@
-"""Tests for Node, Transition, and Payload schema classes."""
+"""Tests for Node, Step, and Payload schema classes."""
 
 from __future__ import annotations
 
 import pytest
 
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import (
     CutPayload,
     NodePayload,
     PayloadBase,
-    TransitionPayload,
+    StepPayload,
     payload_from_dict,
     register_payload_class,
 )
@@ -35,13 +35,13 @@ def test_node_to_dict_roundtrip():
 
 
 # ---------------------------------------------------------------------------
-# Transition
+# Step
 # ---------------------------------------------------------------------------
 
 
-def test_transition_single_output():
-    t = Transition(
-        transition_id="t_1",
+def test_step_single_output():
+    t = Step(
+        step_id="t_1",
         input_node_ids=("n_a",),
         output_node_id="n_b",
     )
@@ -49,16 +49,16 @@ def test_transition_single_output():
     assert t.input_node_ids == ("n_a",)
 
 
-def test_transition_to_dict():
-    t = Transition(transition_id="t_1", input_node_ids=("n_a",), output_node_id="n_b")
+def test_step_to_dict():
+    t = Step(step_id="t_1", input_node_ids=("n_a",), output_node_id="n_b")
     d = t.to_dict()
-    assert d["transition_id"] == "t_1"
+    assert d["step_id"] == "t_1"
     assert d["output_node_id"] == "n_b"
 
 
-def test_transition_multi_input():
-    t = Transition(
-        transition_id="t_join",
+def test_step_multi_input():
+    t = Step(
+        step_id="t_join",
         input_node_ids=("n_a", "n_b"),
         output_node_id="n_c",
     )
@@ -101,19 +101,19 @@ def test_node_payload_to_dict():
 
 
 # ---------------------------------------------------------------------------
-# TransitionPayload
+# StepPayload
 # ---------------------------------------------------------------------------
 
 
-def test_transition_payload_construction():
-    p = TransitionPayload(
+def test_step_payload_construction():
+    p = StepPayload(
         payload_id="pl_2",
         target_id="t_1",
         type="experiment",
         content={"lr": 0.01},
     )
-    assert p.target_kind == "transition"
-    assert p.payload_type == "transition_payload"
+    assert p.target_kind == "step"
+    assert p.payload_type == "step_payload"
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +128,9 @@ def test_cut_payload_node():
     assert c.reason == "stale"
 
 
-def test_cut_payload_transition():
-    c = CutPayload(payload_id="pl_c", target_id="t_x", target_kind="transition")
-    assert c.target_kind == "transition"
+def test_cut_payload_step():
+    c = CutPayload(payload_id="pl_c", target_id="t_x", target_kind="step")
+    assert c.target_kind == "step"
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +147,7 @@ def test_git_change_payload():
         head_commit="abc123",
         diff_summary=diff,
     )
-    assert g.target_kind == "transition"
+    assert g.target_kind == "step"
     assert g.payload_type == "git_change"
     d = g.to_dict()
     assert d["branch"] == "main"
@@ -167,11 +167,11 @@ def test_payload_from_dict_node_payload():
     assert p.type == "note"
 
 
-def test_payload_from_dict_transition_payload():
-    data = {"payload_type": "transition_payload", "payload_id": "pl_2", "target_id": "t_1",
-            "target_kind": "transition", "type": "experiment", "content": {}, "metadata": {}}
+def test_payload_from_dict_step_payload():
+    data = {"payload_type": "step_payload", "payload_id": "pl_2", "target_id": "t_1",
+            "target_kind": "step", "type": "experiment", "content": {}, "metadata": {}}
     p = payload_from_dict(data)
-    assert isinstance(p, TransitionPayload)
+    assert isinstance(p, StepPayload)
 
 
 def test_payload_from_dict_cut():
@@ -184,9 +184,9 @@ def test_payload_from_dict_cut():
 
 def test_payload_from_dict_unknown_type_fallback_to_generic():
     data = {"payload_type": "my_custom_type", "payload_id": "pl_u",
-            "target_id": "t_x", "target_kind": "transition", "foo": "bar"}
+            "target_id": "t_x", "target_kind": "step", "foo": "bar"}
     p = payload_from_dict(data)
-    assert isinstance(p, TransitionPayload)
+    assert isinstance(p, StepPayload)
     assert p.type == "my_custom_type"
 
 
@@ -212,7 +212,7 @@ def test_register_custom_payload_class():
         payload_id: str
         target_id: str
         score: float = 0.0
-        target_kind: Literal["transition"] = field(default="transition", init=False)
+        target_kind: Literal["step"] = field(default="step", init=False)
         payload_type: str = field(default="my_payload_test", init=False)
 
         def to_dict(self):
@@ -222,7 +222,7 @@ def test_register_custom_payload_class():
 
     register_payload_class(MyPayload)
     data = {"payload_type": "my_payload_test", "payload_id": "pl_m",
-            "target_id": "t_1", "target_kind": "transition", "score": 0.9}
+            "target_id": "t_1", "target_kind": "step", "score": 0.9}
     p = payload_from_dict(data)
     assert isinstance(p, MyPayload)
     assert p.score == 0.9

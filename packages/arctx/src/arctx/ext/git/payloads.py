@@ -7,11 +7,11 @@ register_payload_decoder.
 Classes:
   - CommitEntry: a single commit entry in a GitChangePayload
   - DiffSummary: aggregate diff stats
-  - GitChangePayload: git commit/diff record on a Transition
-  - BranchPayload: branch where a transition was created
-  - RevertPayload: marks a transition as a revert
-  - CherryPickPayload: marks a transition as a cherry-pick
-  - MergePayload: marks a transition as a git merge
+  - GitChangePayload: git commit/diff record on a Step
+  - BranchPayload: branch where a step was created
+  - RevertPayload: marks a step as a revert
+  - CherryPickPayload: marks a step as a cherry-pick
+  - MergePayload: marks a step as a git merge
 """
 
 from __future__ import annotations
@@ -132,10 +132,10 @@ class RepoPayload(PayloadBase):
 
 @dataclass(frozen=True)
 class BranchPayload(PayloadBase):
-    """Branch where a transition was created. Historical, immutable.
+    """Branch where a step was created. Historical, immutable.
 
-    Attached to a Transition at commit time. Records the git branch name
-    on which the transition originated. Not updated on merge/rebase.
+    Attached to a Step at commit time. Records the git branch name
+    on which the step originated. Not updated on merge/rebase.
     """
 
     payload_id: str
@@ -144,7 +144,7 @@ class BranchPayload(PayloadBase):
     repo_id: str = ""
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: Literal["transition"] = field(default="transition", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="branch", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
@@ -161,7 +161,7 @@ class BranchPayload(PayloadBase):
 
 @dataclass(frozen=True)
 class GitChangePayload(PayloadBase):
-    """Git repository change information attached to a Transition."""
+    """Git repository change information attached to a Step."""
 
     payload_id: str
     target_id: str
@@ -174,7 +174,7 @@ class GitChangePayload(PayloadBase):
     repo_id: str = ""
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: Literal["transition"] = field(default="transition", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="git_change", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
@@ -194,19 +194,19 @@ class GitChangePayload(PayloadBase):
 
 @dataclass(frozen=True)
 class RevertPayload(PayloadBase):
-    """Marks a transition as a revert of another transition.
+    """Marks a step as a revert of another step.
 
-    Attached to the *new* (forward) transition that undoes the original commit.
-    The reverted transition is NOT touched; no CutPayload is appended to it.
+    Attached to the *new* (forward) step that undoes the original commit.
+    The reverted step is NOT touched; no CutPayload is appended to it.
     """
 
     payload_id: str
     target_id: str
-    reverted_transition: str  # original t_id whose effect is undone
+    reverted_step: str  # original t_id whose effect is undone
     reverted_commit: str      # original sha that was reverted
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: Literal["transition"] = field(default="transition", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="revert", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
@@ -215,7 +215,7 @@ class RevertPayload(PayloadBase):
             "payload_type": self.payload_type,
             "target_kind": self.target_kind,
             "target_id": self.target_id,
-            "reverted_transition": self.reverted_transition,
+            "reverted_step": self.reverted_step,
             "reverted_commit": self.reverted_commit,
             "metadata": dict(self.metadata),
         }
@@ -223,15 +223,15 @@ class RevertPayload(PayloadBase):
 
 @dataclass(frozen=True)
 class CherryPickPayload(PayloadBase):
-    """Marks a transition as a cherry-pick of another transition / commit."""
+    """Marks a step as a cherry-pick of another step / commit."""
 
     payload_id: str
     target_id: str
-    source_transition: str | None  # may be None if cross-repo or not found
+    source_step: str | None  # may be None if cross-repo or not found
     source_commit: str
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: Literal["transition"] = field(default="transition", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="cherry_pick", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
@@ -240,7 +240,7 @@ class CherryPickPayload(PayloadBase):
             "payload_type": self.payload_type,
             "target_kind": self.target_kind,
             "target_id": self.target_id,
-            "source_transition": self.source_transition,
+            "source_step": self.source_step,
             "source_commit": self.source_commit,
             "metadata": dict(self.metadata),
         }
@@ -248,10 +248,10 @@ class CherryPickPayload(PayloadBase):
 
 @dataclass(frozen=True)
 class MergePayload(PayloadBase):
-    """Marks a transition as a git merge (multi-input, with common ancestor).
+    """Marks a step as a git merge (multi-input, with common ancestor).
 
-    Attached to the new Transition that represents the merge commit.
-    Input node IDs are (current_tip, other_tip); the transition has 2+ inputs.
+    Attached to the new Step that represents the merge commit.
+    Input node IDs are (current_tip, other_tip); the step has 2+ inputs.
     """
 
     payload_id: str
@@ -260,7 +260,7 @@ class MergePayload(PayloadBase):
     merged_into: str   # branch name or node id of the target (current) branch
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: Literal["transition"] = field(default="transition", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="merge", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
@@ -344,19 +344,19 @@ def _revert_from_dict(data: dict[str, JSONValue]) -> RevertPayload:
     return RevertPayload(
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
-        reverted_transition=str(data.get("reverted_transition", "")),
+        reverted_step=str(data.get("reverted_step", "")),
         reverted_commit=str(data.get("reverted_commit", "")),
         metadata=dict(data.get("metadata") or {}),
     )
 
 
 def _cherry_pick_from_dict(data: dict[str, JSONValue]) -> CherryPickPayload:
-    raw_source_transition = data.get("source_transition")
-    source_transition = str(raw_source_transition) if raw_source_transition is not None else None
+    raw_source_step = data.get("source_step")
+    source_step = str(raw_source_step) if raw_source_step is not None else None
     return CherryPickPayload(
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
-        source_transition=source_transition,
+        source_step=source_step,
         source_commit=str(data.get("source_commit", "")),
         metadata=dict(data.get("metadata") or {}),
     )

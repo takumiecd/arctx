@@ -1,4 +1,4 @@
-"""Payload records attached to nodes or transitions.
+"""Payload records attached to nodes or steps.
 
 A target may have multiple payloads attached.
 Payloads are immutable and append-only; CutPayload encodes cuts
@@ -6,9 +6,9 @@ without ever deleting graph records.
 
 Built-in payload types defined here (core):
   - NodePayload: generic node payload with type + content dict
-  - TransitionPayload: generic transition payload with type + content dict
-  - CutPayload: append-only inactivity marker (node or transition)
-  - JoinPayload: multi-input transition without a common ancestor (extension-agnostic)
+  - StepPayload: generic step payload with type + content dict
+  - CutPayload: append-only inactivity marker (node or step)
+  - JoinPayload: multi-input step without a common ancestor (extension-agnostic)
 
 Extension-specific payload classes (e.g. GitChangePayload, BranchPayload,
 RevertPayload, CherryPickPayload, MergePayload) live with their owning
@@ -34,7 +34,7 @@ class PayloadBase(ABC):
 
     payload_id: str
     target_id: str
-    target_kind: Literal["node", "transition"]
+    target_kind: Literal["node", "step"]
     payload_type: str
 
     @abstractmethod
@@ -65,8 +65,8 @@ class NodePayload(PayloadBase):
 
 
 @dataclass(frozen=True)
-class TransitionPayload(PayloadBase):
-    """Generic transition payload. Use the ``type`` field to distinguish purposes."""
+class StepPayload(PayloadBase):
+    """Generic step payload. Use the ``type`` field to distinguish purposes."""
 
     payload_id: str
     target_id: str
@@ -74,8 +74,8 @@ class TransitionPayload(PayloadBase):
     content: dict[str, JSONValue] = field(default_factory=dict)
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: Literal["transition"] = field(default="transition", init=False)
-    payload_type: str = field(default="transition_payload", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
+    payload_type: str = field(default="step_payload", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
@@ -88,14 +88,14 @@ class TransitionPayload(PayloadBase):
 
 @dataclass(frozen=True)
 class CutPayload(PayloadBase):
-    """Append-only cut marker on a Node or Transition.
+    """Append-only cut marker on a Node or Step.
 
     Inactivity is computed at read time; graph records are never deleted.
     """
 
     payload_id: str
     target_id: str
-    target_kind: Literal["node", "transition"]
+    target_kind: Literal["node", "step"]
     reason: str | None = None
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
@@ -107,7 +107,7 @@ class CutPayload(PayloadBase):
 
 @dataclass(frozen=True)
 class JoinPayload(PayloadBase):
-    """Multi-input transition without a common ancestor (extension-agnostic).
+    """Multi-input step without a common ancestor (extension-agnostic).
 
     Used to integrate independent DAGs that don't share a common history.
     Lives in core because the "logical join" concept is not git-specific.
@@ -118,7 +118,7 @@ class JoinPayload(PayloadBase):
     joined_views: tuple[str, ...]
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: Literal["transition"] = field(default="transition", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="join", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
@@ -136,7 +136,7 @@ class JoinPayload(PayloadBase):
 # Payload union type (core only — extensions extend via registration)
 # ---------------------------------------------------------------------------
 
-Payload = Union[NodePayload, TransitionPayload, CutPayload, JoinPayload]
+Payload = Union[NodePayload, StepPayload, CutPayload, JoinPayload]
 
 
 # ---------------------------------------------------------------------------
@@ -182,8 +182,8 @@ def _node_payload_from_dict(data: dict[str, JSONValue]) -> NodePayload:
     )
 
 
-def _transition_payload_from_dict(data: dict[str, JSONValue]) -> TransitionPayload:
-    return TransitionPayload(
+def _step_payload_from_dict(data: dict[str, JSONValue]) -> StepPayload:
+    return StepPayload(
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
         type=str(data.get("type", "")),
@@ -229,12 +229,12 @@ def _generic_custom_from_dict(cls: type[PayloadBase], data: dict[str, JSONValue]
 
 # Register core built-ins.
 register_payload_class(NodePayload)
-register_payload_class(TransitionPayload)
+register_payload_class(StepPayload)
 register_payload_class(CutPayload)
 register_payload_class(JoinPayload)
 
 register_payload_decoder("node_payload", _node_payload_from_dict)
-register_payload_decoder("transition_payload", _transition_payload_from_dict)
+register_payload_decoder("step_payload", _step_payload_from_dict)
 register_payload_decoder("cut", _cut_from_dict)
 register_payload_decoder("join", _join_from_dict)
 
@@ -251,7 +251,7 @@ def payload_from_dict(data: dict[str, JSONValue]) -> PayloadBase:
       1. Custom decoder registered via register_payload_decoder.
       2. Registered class (via register_payload_class) — best-effort
          constructor invocation through _generic_custom_from_dict.
-      3. Generic NodePayload / TransitionPayload fallback (unknown type).
+      3. Generic NodePayload / StepPayload fallback (unknown type).
     """
     payload_type = data.get("payload_type")
     pt_str = str(payload_type) if payload_type is not None else ""
@@ -271,8 +271,8 @@ def payload_from_dict(data: dict[str, JSONValue]) -> PayloadBase:
         for k, v in data.items()
         if k not in ("payload_id", "target_id", "target_kind", "payload_type", "type", "content", "metadata")
     }
-    if target_kind == "transition":
-        return TransitionPayload(
+    if target_kind == "step":
+        return StepPayload(
             payload_id=str(data.get("payload_id", "")),
             target_id=str(data.get("target_id", "")),
             type=pt_str or "unknown",

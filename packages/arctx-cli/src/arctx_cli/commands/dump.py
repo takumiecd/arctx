@@ -25,9 +25,9 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--depth", type=int, default=None,
                         help="Limit traversal depth")
     parser.add_argument("--observed-only", action="store_true",
-                        help="Hide predicted output transitions")
+                        help="Hide predicted output steps")
     parser.add_argument("--predicted-only", action="store_true",
-                        help="Hide observed (result) output transitions")
+                        help="Hide observed (result) output steps")
     parser.add_argument("--full-payloads", action="store_true",
                         help="Include full payload metrics / rationale")
     parser.add_argument("--run", default=None)

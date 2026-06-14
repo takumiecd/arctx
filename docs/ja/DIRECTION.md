@@ -1,45 +1,49 @@
 # Direction
 
-正準グラフモデル:
+Arctx は v0.3.0b1 から DAG Core Redesign に入ります。
+
+旧来の「仕様履歴を残すツール」という説明ではなく、今後は次の定義を中心にします。
 
 ```text
-Node -> Transition -> Node -> Transition -> Node
+Arctx = one append-only DAG log
 ```
 
-`Transition` は必ず 1 つの output Node を持ちます（single-output）。
-fan-out は sibling Transitions（同じ input から複数の Transition）で表現します。
+ユーザーが扱う基本モデル:
 
-Transition の種類・意味は attached payload の `type` フィールドで区別します。
-`transition_kind()` メソッドも専用の record type も持ちません。
+```text
+Node(s) -- Step --> Node
+Payload attaches to Node / Step
+Cut is a Payload
+```
 
-core は standalone で、git には依存しません。git 連携は標準 extension
-`arctx.ext.git` が提供します。正式 CLI は `arctx git <verb>` で、`arctx commit`
-などの日常用 command は default alias として解決されます。
+## Phase 1
 
-今後の UI は DAG を図として表示し、選択した node / transition の
-payload だけを詳細表示する方針です。
+まず表現とCLIを新仕様へ寄せます。
 
-## git worktree-aware な workflow
+- 外向きには `Step` ではなく `Step` と呼ぶ。
+- `arctx add node` で依存を持たない Node を作れるようにする。
+- `arctx add step` で Node から Step を作り、出力 Node を自動生成する。
+- `arctx attach <id>` で Node / Step に Payload を付ける。
+- `arctx cut <id>` で CutPayload を付ける。
+- `arctx show <id>` と `arctx log` で確認する。
 
-Git extension は worktree-aware になっています。`WorkSession` を特定の
-`git worktree` に紐付けると、その session 内で動く git verb はリンクされた
-working tree に対して実行されます:
+この段階では内部実装の `Step`, `step_id`, `steps.jsonl`, `target_kind="step"` は残します。
 
-- `ARCTX_GIT_WORKTREE` がセットされていると、すべての git verb
-  (`arctx git commit / revert / cherry-pick / merge / reset / verify`)
-  の cwd がその worktree に切り替わります。
-- `arctx work-session start / env / spawn --worktree PATH` は解決済みの
-  絶対パス・current branch・`git --git-common-dir` を
-  `WorkSession.metadata["worktree"]` に記録し、子プロセス向けに
-  `ARCTX_GIT_WORKTREE` を export します。
-- `arctx git worktree {add,list,remove}` は `git worktree` の薄いラッパです。
-  ライフサイクル管理は git 側に寄せているため、ARCTX の外で作成した
-  worktree もそのまま attach できます。
+## Phase 2
 
-今後の検討事項:
+Phase 1 のCLIと用語が固まったら、内部実装も Step に寄せます。
 
-- `arctx work-session list` / TUI に worktree path を表示する。
-- 1 session 内で worktree を跨いだ場合、transition ごとに workspace path
-  を記録する。
-- `work-session env --new --worktree PATH` が存在しないディレクトリを
-  指したとき、自動で worktree を作成する。
+候補:
+
+- `Step` -> `Step`
+- `step_id` -> `step_id`
+- `StepPayload` -> `StepPayload`
+- `target_kind="step"` -> `target_kind="step"`
+- `steps` -> `steps`
+
+この変更は storage schema、extension API、tests に広く影響するため、Phase 1 とは分けます。
+
+詳細は以下を参照してください。
+
+- `docs/ja/DAG_CORE_REDESIGN.md`
+- `docs/ja/DAG_CORE_MIGRATION_PLAN.md`

@@ -25,7 +25,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--store-dir",
         default=None,
-        help="Directory where runs are stored (default: .arctx/runs)",
+        help="Directory where runs are stored (default: <ARCTX_HOME>/runs)",
     )
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--run", metavar="RUN_ID", help="Single run ID to migrate")
@@ -41,7 +41,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 def run_migrate_command(
     *,
     to: str,
-    store_dir: str,
+    store_dir: str | None,
     run_id: str | None,
     all_runs: bool,
     force: bool,
@@ -67,6 +67,11 @@ def run_migrate_command(
     """
     if to != "sqlite":
         raise ValueError(f"unsupported target format: {to!r}")
+
+    if store_dir is None:
+        from arctx_cli.paths import resolve_store_dir  # noqa: PLC0415
+
+        store_dir = resolve_store_dir()
 
     src_store = JsonlRunStore(store_dir)
     from arctx.storage.sqlite import SqliteRunStore

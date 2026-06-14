@@ -1,14 +1,17 @@
 """CLI-side extension registration.
 
 Keeps the arctx layer free of CLI dependencies.  ``arctx_cli.main``
-calls :func:`register_enabled_cli` to attach argparse subparsers for each
-extension that is enabled in the current run directory.
+registers always-on adapter extensions first, then calls
+:func:`register_enabled_cli` to attach argparse subparsers for each extension
+that is enabled in the current run directory.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterable
+
+ALWAYS_ON_EXTENSIONS = ("claude-code", "codex")
 
 
 def register_extension_cli(subparsers, names: Iterable[str]) -> None:
@@ -31,4 +34,11 @@ def register_enabled_cli(subparsers, run_dir: str | Path | None) -> None:
         return
     from arctx.ext.enabled import load_enabled
 
-    register_extension_cli(subparsers, (item.name for item in load_enabled(run_dir)))
+    register_extension_cli(
+        subparsers,
+        (
+            item.name
+            for item in load_enabled(run_dir)
+            if item.name not in ALWAYS_ON_EXTENSIONS
+        ),
+    )

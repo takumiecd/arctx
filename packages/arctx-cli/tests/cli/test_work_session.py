@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from arctx_cli.commands.init import run_init_command
-from arctx_cli.commands.transition import run_transition_command
+from arctx_cli.commands.step import run_step_command
 from arctx_cli.commands.work_session import (
     run_work_session_env_command,
     run_work_session_list_command,
@@ -89,7 +89,7 @@ def test_two_fixed_work_sessions_keep_events_separate():
             store_dir=_store_dir(td),
         )
 
-        run_transition_command(
+        run_step_command(
             run_id="run_ws",
             input_node_ids=[root_id],
             payload_type="suggestion",
@@ -98,7 +98,7 @@ def test_two_fixed_work_sessions_keep_events_separate():
             user_id="worker",
             work_session_id="ws_a",
         )
-        run_transition_command(
+        run_step_command(
             run_id="run_ws",
             input_node_ids=[root_id],
             payload_type="suggestion",

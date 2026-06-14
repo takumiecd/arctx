@@ -1,4 +1,4 @@
-"""Tests for arctx show transition with --history flag."""
+"""Tests for arctx show step with --history flag."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import arctx as arctx
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.show import run_show_command
 from arctx_cli.context import resolve_store
-from arctx.core.schema.graph import Node, Transition
-from arctx.core.schema.payloads import TransitionPayload
+from arctx.core.schema.graph import Node, Step
+from arctx.core.schema.payloads import StepPayload
 from arctx.ext.git.payloads import DiffSummary, GitChangePayload
 from arctx.core.schema.requirements import Requirement
 
@@ -34,11 +34,11 @@ def _init_run(td: str, run_id: str = "run_show") -> dict:
 
 
 def _make_handle_with_two_git_payloads(td: str, run_id: str = "run_show"):
-    """Create a run with one transition and two GitChangePayloads appended."""
+    """Create a run with one step and two GitChangePayloads appended."""
     store = resolve_store(_store_dir(td))
     handle = store.load_run(run_id)
 
-    # Create a transition with dry_run commit.
+    # Create a step with dry_run commit.
     handle.ensure_work_session(user_id="user", work_session_id="ws")
     t = handle.git.commit(
         message="initial",
@@ -52,7 +52,7 @@ def _make_handle_with_two_git_payloads(td: str, run_id: str = "run_show"):
     # Manually append a second GitChangePayload (simulating amend).
     p2 = GitChangePayload(
         payload_id=handle._next_id("pl"),
-        target_id=t.transition_id,
+        target_id=t.step_id,
         branch="main",
         head_commit="sha_v2",
         diff_summary=DiffSummary(1, 2, 0),
@@ -60,10 +60,10 @@ def _make_handle_with_two_git_payloads(td: str, run_id: str = "run_show"):
     handle.run_graph.attach_payload(p2)
 
     store.save_run(handle)
-    return t.transition_id
+    return t.step_id
 
 
-class TestShowTransitionDefault:
+class TestShowStepDefault:
     def test_git_change_field_present(self, tmp_path):
         td = str(tmp_path)
         _init_run(td)
@@ -72,7 +72,7 @@ class TestShowTransitionDefault:
         result = run_show_command(
             run_id="run_show",
             node_id=None,
-            transition_id=t_id,
+            step_id=t_id,
             payload_id=None,
             with_payloads=False,
             outputs=False,
@@ -91,7 +91,7 @@ class TestShowTransitionDefault:
         result = run_show_command(
             run_id="run_show",
             node_id=None,
-            transition_id=t_id,
+            step_id=t_id,
             payload_id=None,
             with_payloads=False,
             outputs=False,
@@ -109,7 +109,7 @@ class TestShowTransitionDefault:
         result = run_show_command(
             run_id="run_show",
             node_id=None,
-            transition_id=t_id,
+            step_id=t_id,
             payload_id=None,
             with_payloads=False,
             outputs=False,
@@ -128,13 +128,13 @@ class TestShowTransitionDefault:
 
         store = resolve_store(_store_dir(td))
         handle = store.load_run("run_show")
-        # Create a transition without GitChangePayload (use a generic payload).
-        dummy_payload = TransitionPayload(
+        # Create a step without GitChangePayload (use a generic payload).
+        dummy_payload = StepPayload(
             payload_id="pl_dummy",
             target_id="__placeholder__",
             type="note",
         )
-        t = handle.transition(
+        t = handle.add_step(
             input_node_ids=(handle.root_node_id,),
             payload=dummy_payload,
         )
@@ -143,7 +143,7 @@ class TestShowTransitionDefault:
         result = run_show_command(
             run_id="run_show",
             node_id=None,
-            transition_id=t.transition_id,
+            step_id=t.step_id,
             payload_id=None,
             with_payloads=False,
             outputs=False,
@@ -159,12 +159,12 @@ class TestShowTransitionDefault:
 
         store = resolve_store(_store_dir(td))
         handle = store.load_run("run_show")
-        dummy_payload = TransitionPayload(
+        dummy_payload = StepPayload(
             payload_id="pl_dummy2",
             target_id="__placeholder__",
             type="note",
         )
-        t = handle.transition(
+        t = handle.add_step(
             input_node_ids=(handle.root_node_id,),
             payload=dummy_payload,
         )
@@ -173,7 +173,7 @@ class TestShowTransitionDefault:
         result = run_show_command(
             run_id="run_show",
             node_id=None,
-            transition_id=t.transition_id,
+            step_id=t.step_id,
             payload_id=None,
             with_payloads=False,
             outputs=False,

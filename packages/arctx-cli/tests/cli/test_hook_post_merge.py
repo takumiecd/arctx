@@ -99,7 +99,7 @@ class TestRunHookPostMerge:
         assert "already recorded" in result["message"]
 
     def test_adopt_merge_when_other_node_known(self, tmp_path):
-        """When ^2 parent sha is already in arctx, adopt creates multi-input transition."""
+        """When ^2 parent sha is already in arctx, adopt creates multi-input step."""
         from arctx.core.schema.work import WorkSession
         from arctx.core.schema.work_helpers import make_session_pointer_event
         from arctx_cli.ext.git.commit import run_commit_command
@@ -174,10 +174,10 @@ class TestRunHookPostMerge:
             )
 
         assert result["action"] == "adopted"
-        assert result["transition_id"] is not None
+        assert result["step_id"] is not None
 
         handle2 = resolve_store(sd).load_run("run_pm_adopt")
-        t = handle2.run_graph.transitions[result["transition_id"]]
+        t = handle2.run_graph.steps[result["step_id"]]
         assert len(t.input_node_ids) == 2
 
     def test_warn_when_cannot_load_run(self, tmp_path):

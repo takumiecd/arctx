@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.uv-cache/
+.venv/
 .coverage
 htmlcov/
 
@@ -27,4 +29,3 @@ dist/
 # IDE / Agent state directories
 .claude/
 .antigravitycli/
-

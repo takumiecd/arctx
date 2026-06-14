@@ -34,7 +34,7 @@ def _first_commit(handle, sha: str = "sha_src") -> object:
 
 
 class TestCherryPickImplDryRun:
-    def test_returns_transition(self):
+    def test_returns_step(self):
         handle = _make_handle()
         _first_commit(handle, sha="sha_src1")
 
@@ -46,7 +46,7 @@ class TestCherryPickImplDryRun:
             head_commit="sha_cp1",
             dry_run=True,
         )
-        assert t.transition_id in handle.run_graph.transitions
+        assert t.step_id in handle.run_graph.steps
 
     def test_creates_output_node(self):
         handle = _make_handle()
@@ -76,17 +76,17 @@ class TestCherryPickImplDryRun:
             head_commit="sha_cp3",
             dry_run=True,
         )
-        payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="cherry_pick"
+        payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="cherry_pick"
         )
         assert len(payloads) == 1
         cp = payloads[0]
         assert isinstance(cp, CherryPickPayload)
         assert cp.source_commit == "sha_src3"
-        assert cp.source_transition == orig.transition_id
+        assert cp.source_step == orig.step_id
 
-    def test_cherry_pick_payload_source_transition_none_for_unknown_sha(self):
-        """Cross-repo cherry-pick: source sha not in arctx graph → source_transition=None."""
+    def test_cherry_pick_payload_source_step_none_for_unknown_sha(self):
+        """Cross-repo cherry-pick: source sha not in arctx graph → source_step=None."""
         handle = _make_handle()
         _ensure_session(handle)
 
@@ -98,10 +98,10 @@ class TestCherryPickImplDryRun:
             head_commit="sha_cp_foreign",
             dry_run=True,
         )
-        payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="cherry_pick"
+        payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="cherry_pick"
         )
-        assert payloads[0].source_transition is None
+        assert payloads[0].source_step is None
         assert payloads[0].source_commit == "sha_foreign"
 
     def test_git_change_payload_attached(self):
@@ -116,8 +116,8 @@ class TestCherryPickImplDryRun:
             head_commit="sha_cp4",
             dry_run=True,
         )
-        git_payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="git_change"
+        git_payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="git_change"
         )
         assert isinstance(git_payloads[0], GitChangePayload)
         assert git_payloads[0].head_commit == "sha_cp4"
@@ -134,8 +134,8 @@ class TestCherryPickImplDryRun:
             head_commit="sha_cp5",
             dry_run=True,
         )
-        branch_payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="branch"
+        branch_payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="branch"
         )
         assert branch_payloads[0].branch == "hotfix"
 
@@ -183,7 +183,7 @@ class TestCherryPickImplDryRun:
             head_commit="sha_cp8",
             dry_run=True,
         )
-        assert handle.git.current_sha(t.transition_id) == "sha_cp8"
+        assert handle.git.current_sha(t.step_id) == "sha_cp8"
 
     def test_no_user_id_skips_events(self):
         handle = _make_handle()

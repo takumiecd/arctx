@@ -9,9 +9,8 @@ def graph_counts(handle) -> dict[str, set[str]]:
     """Capture graph record IDs before a mutation."""
     return {
         "nodes": set(handle.run_graph.nodes),
-        "transitions": set(handle.run_graph.transitions),
+        "steps": set(handle.run_graph.steps),
         "payloads": set(handle.run_graph.payloads),
-        "views": {view.view_id for view in handle.run_graph.views.values()},
         "work_events": {event.event_id for event in handle.run_graph.work_events},
     }
 
@@ -52,20 +51,13 @@ def build_append_batch(
         node = handle.run_graph.nodes[node_id]
         records.append(GraphRecordEnvelope("node", node.node_id, node))
 
-    for transition_id in _new_ids(handle.run_graph.transitions, before, "transitions"):
-        transition = handle.run_graph.transitions[transition_id]
-        records.append(GraphRecordEnvelope("transition", transition.transition_id, transition))
+    for step_id in _new_ids(handle.run_graph.steps, before, "steps"):
+        step = handle.run_graph.steps[step_id]
+        records.append(GraphRecordEnvelope("step", step.step_id, step))
 
     for payload_id in _new_ids(handle.run_graph.payloads, before, "payloads"):
         payload = handle.run_graph.payloads[payload_id]
         records.append(GraphRecordEnvelope("payload", payload.payload_id, payload))
-
-    before_view_ids = before.get("views", set())
-    new_views = [
-        view for view in handle.run_graph.views.values() if view.view_id not in before_view_ids
-    ]
-    for view in new_views:
-        records.append(GraphRecordEnvelope("view", view.view_id, view))
 
     new_events = [
         event

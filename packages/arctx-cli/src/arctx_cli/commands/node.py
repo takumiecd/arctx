@@ -32,7 +32,7 @@ def cli_node(args) -> int:
         result = run_show_command(
             run_id=resolve_run_id_from_args(args),
             node_id=args.node_id,
-            transition_id=None,
+            step_id=None,
             payload_id=None,
             with_payloads=args.with_payloads,
             outputs=False,
@@ -44,7 +44,7 @@ def cli_node(args) -> int:
         result = run_show_command(
             run_id=resolve_run_id_from_args(args),
             node_id=args.node_id,
-            transition_id=None,
+            step_id=None,
             payload_id=None,
             with_payloads=True,
             outputs=False,

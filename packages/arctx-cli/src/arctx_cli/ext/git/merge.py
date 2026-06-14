@@ -1,6 +1,6 @@
 """arctx CLI merge command.
 
-Drives a git merge (or arctx-only join) and records a multi-input Transition
+Drives a git merge (or arctx-only join) and records a multi-input Step
 with MergePayload or JoinPayload.
 
 Usage:
@@ -43,7 +43,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``merge`` subcommand parser."""
     p = subparsers.add_parser(
         "merge",
-        help="Drive a git merge and record a multi-input arctx transition",
+        help="Drive a git merge and record a multi-input arctx step",
     )
     p.add_argument(
         "--other",
@@ -118,7 +118,7 @@ def run_merge_command(
 
     Returns
     -------
-    dict with transition_id, output_node_id, branch, head_commit,
+    dict with step_id, output_node_id, branch, head_commit,
     input_node_ids, merge_payload_type.
     """
     other_branch, other_node_id = _parse_merge_ref(other)
@@ -128,7 +128,7 @@ def run_merge_command(
 
     before = graph_counts(handle)
 
-    transition = handle.git.merge(
+    step = handle.git.merge(
         other_branch=other_branch,
         other_node_id=other_node_id,
         message=message,
@@ -148,21 +148,21 @@ def run_merge_command(
         before=before,
     )
 
-    git_payloads = handle.run_graph.payloads_for_transition(
-        transition.transition_id, payload_type="git_change"
+    git_payloads = handle.run_graph.payloads_for_step(
+        step.step_id, payload_type="git_change"
     )
     head_commit = git_payloads[-1].head_commit if git_payloads else ""
-    branch_payloads = handle.run_graph.payloads_for_transition(
-        transition.transition_id, payload_type="branch"
+    branch_payloads = handle.run_graph.payloads_for_step(
+        step.step_id, payload_type="branch"
     )
     resolved_branch = branch_payloads[-1].branch if branch_payloads else ""
 
     payload_type = "join" if join else "merge"
 
     return {
-        "transition_id": transition.transition_id,
-        "output_node_id": transition.output_node_id,
-        "input_node_ids": list(transition.input_node_ids),
+        "step_id": step.step_id,
+        "output_node_id": step.output_node_id,
+        "input_node_ids": list(step.input_node_ids),
         "branch": resolved_branch,
         "head_commit": head_commit,
         "merge_payload_type": payload_type,
@@ -171,7 +171,7 @@ def run_merge_command(
 
 def cli_merge(args) -> int:
     """Entry point for ``arctx merge`` subcommand."""
-    from arctx.ext.git.verbs._forward_transition import ParallelSessionConflict  # noqa: PLC0415
+    from arctx.ext.git.verbs._forward_step import ParallelSessionConflict  # noqa: PLC0415
 
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)

@@ -17,7 +17,7 @@ def _build_event(**overrides) -> WorkEvent:
         from_node_id="n_from",
         to_node_id="n_to",
         mode="hard",
-        discarded_transition_ids=("t_1", "t_2"),
+        discarded_step_ids=("t_1", "t_2"),
     )
     defaults.update(overrides)
     return make_reset_event(**defaults)
@@ -34,12 +34,12 @@ class TestMakeResetEvent:
             from_node_id="n_from",
             to_node_id="n_to",
             mode="mixed",
-            discarded_transition_ids=("t_a", "t_b", "t_c"),
+            discarded_step_ids=("t_a", "t_b", "t_c"),
         )
         assert event.data["from_node_id"] == "n_from"
         assert event.data["to_node_id"] == "n_to"
         assert event.data["mode"] == "mixed"
-        assert event.data["discarded_transition_ids"] == ["t_a", "t_b", "t_c"]
+        assert event.data["discarded_step_ids"] == ["t_a", "t_b", "t_c"]
 
     def test_identity_fields(self):
         event = _build_event(
@@ -54,8 +54,8 @@ class TestMakeResetEvent:
         assert event.user_id == "alice"
 
     def test_empty_discarded(self):
-        event = _build_event(discarded_transition_ids=())
-        assert event.data["discarded_transition_ids"] == []
+        event = _build_event(discarded_step_ids=())
+        assert event.data["discarded_step_ids"] == []
 
     def test_mode_hard(self):
         event = _build_event(mode="hard")
@@ -73,4 +73,4 @@ class TestMakeResetEvent:
         assert loaded["from_node_id"] == "n_from"
         assert loaded["to_node_id"] == "n_to"
         assert loaded["mode"] == "hard"
-        assert loaded["discarded_transition_ids"] == ["t_1", "t_2"]
+        assert loaded["discarded_step_ids"] == ["t_1", "t_2"]

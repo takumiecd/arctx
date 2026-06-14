@@ -20,7 +20,7 @@ class TestMergePayload:
             merged_into="main",
         )
         assert p.payload_type == "merge"
-        assert p.target_kind == "transition"
+        assert p.target_kind == "step"
         assert p.merged_from == "feature/x"
         assert p.merged_into == "main"
         assert p.metadata == {}
@@ -35,7 +35,7 @@ class TestMergePayload:
         )
         d = p.to_dict()
         assert d["payload_type"] == "merge"
-        assert d["target_kind"] == "transition"
+        assert d["target_kind"] == "step"
         assert d["merged_from"] == "feature/branch"
         assert d["merged_into"] == "main"
         assert d["metadata"] == {"note": "fast-forward"}
@@ -44,7 +44,7 @@ class TestMergePayload:
         data = {
             "payload_id": "pl_m2",
             "payload_type": "merge",
-            "target_kind": "transition",
+            "target_kind": "step",
             "target_id": "t_m",
             "merged_from": "feat",
             "merged_into": "main",
@@ -61,7 +61,7 @@ class TestMergePayload:
         data = {
             "payload_id": "pl_m3",
             "payload_type": "merge",
-            "target_kind": "transition",
+            "target_kind": "step",
             "target_id": "t_m3",
         }
         p = payload_from_dict(data)
@@ -88,7 +88,7 @@ class TestJoinPayload:
             joined_views=("main", "experiment"),
         )
         assert p.payload_type == "join"
-        assert p.target_kind == "transition"
+        assert p.target_kind == "step"
         assert p.joined_views == ("main", "experiment")
         assert p.metadata == {}
 
@@ -101,7 +101,7 @@ class TestJoinPayload:
         )
         d = p.to_dict()
         assert d["payload_type"] == "join"
-        assert d["target_kind"] == "transition"
+        assert d["target_kind"] == "step"
         assert d["joined_views"] == ["viewA", "viewB"]
         assert d["metadata"] == {"source": "manual"}
 
@@ -109,7 +109,7 @@ class TestJoinPayload:
         data = {
             "payload_id": "pl_j3",
             "payload_type": "join",
-            "target_kind": "transition",
+            "target_kind": "step",
             "target_id": "t_j3",
             "joined_views": ["alpha", "beta"],
             "metadata": {},
@@ -123,7 +123,7 @@ class TestJoinPayload:
         data = {
             "payload_id": "pl_j4",
             "payload_type": "join",
-            "target_kind": "transition",
+            "target_kind": "step",
             "target_id": "t_j4",
         }
         p = payload_from_dict(data)

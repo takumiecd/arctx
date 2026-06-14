@@ -23,10 +23,10 @@ def branch_members(graph: RunGraph, branch: str) -> set[str]:
     return graph.ancestors_of(tip_node_id) | {tip_node_id}
 
 
-def current_sha(graph: RunGraph, transition_id: str) -> str | None:
-    """Return the latest GitChangePayload head commit for a transition."""
-    git_payloads = graph.payloads_for_transition(
-        transition_id, payload_type="git_change"
+def current_sha(graph: RunGraph, step_id: str) -> str | None:
+    """Return the latest GitChangePayload head commit for a step."""
+    git_payloads = graph.payloads_for_step(
+        step_id, payload_type="git_change"
     )
     if not git_payloads:
         return None
@@ -35,10 +35,10 @@ def current_sha(graph: RunGraph, transition_id: str) -> str | None:
     return latest.head_commit
 
 
-def transition_by_sha(graph: RunGraph, sha: str) -> str | None:
-    """Find the transition whose latest GitChangePayload head commit matches."""
+def step_by_sha(graph: RunGraph, sha: str) -> str | None:
+    """Find the step whose latest GitChangePayload head commit matches."""
     result: str | None = None
-    for transition_id in graph.transitions:
-        if current_sha(graph, transition_id) == sha:
-            result = transition_id
+    for step_id in graph.steps:
+        if current_sha(graph, step_id) == sha:
+            result = step_id
     return result

@@ -1,10 +1,10 @@
 """arctx CLI reset command.
 
-Resets the session pointer to a past node WITHOUT creating a new Transition.
+Resets the session pointer to a past node WITHOUT creating a new Step.
 Analogous to ``git reset``: moves HEAD back but does not produce a new commit.
 
-For mode="hard", discarded transitions receive a CutPayload. For "mixed" and
-"soft" the transitions are left active (working tree / index changes remain).
+For mode="hard", discarded steps receive a CutPayload. For "mixed" and
+"soft" the steps are left active (working tree / index changes remain).
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``reset`` subcommand parser."""
     p = subparsers.add_parser(
         "reset",
-        help="Reset to a past node (no new transition)",
+        help="Reset to a past node (no new step)",
     )
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--node", default=None, help="Target node id")
     g.add_argument(
-        "--sha", default=None, help="Target commit sha (lookup via transition_by_sha)"
+        "--sha", default=None, help="Target commit sha (lookup via step_by_sha)"
     )
     p.add_argument(
         "--mode",
@@ -66,7 +66,7 @@ def run_reset_command(
     to_node_id:
         Target node id. Mutually exclusive with to_sha.
     to_sha:
-        Target commit sha (looked up via transition_by_sha).
+        Target commit sha (looked up via step_by_sha).
     mode:
         "hard" | "mixed" | "soft".
     branch:
@@ -84,7 +84,7 @@ def run_reset_command(
 
     Returns
     -------
-    dict with to_node_id, from_node_id, discarded_transition_ids, mode,
+    dict with to_node_id, from_node_id, discarded_step_ids, mode,
     event_id.
     """
     store = resolve_store(store_dir)

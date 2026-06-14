@@ -32,7 +32,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--full-payloads", action="store_true",
                         help="Include full payload content")
     parser.add_argument("--exclude-cut", action="store_true",
-                        help="Drop cut (inactive) nodes and transitions")
+                        help="Drop cut (inactive) nodes and steps")
     parser.add_argument("--include-local", action="store_true",
                         help="Keep repo local_path in the output (off by default)")
     parser.add_argument("--output", "-o", default=None,

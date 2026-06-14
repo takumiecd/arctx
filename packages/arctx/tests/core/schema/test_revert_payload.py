@@ -13,28 +13,28 @@ class TestRevertPayload:
         p = RevertPayload(
             payload_id="pl_1",
             target_id="t_1",
-            reverted_transition="t_orig",
+            reverted_step="t_orig",
             reverted_commit="abc123",
         )
         assert p.payload_id == "pl_1"
         assert p.target_id == "t_1"
-        assert p.reverted_transition == "t_orig"
+        assert p.reverted_step == "t_orig"
         assert p.reverted_commit == "abc123"
-        assert p.target_kind == "transition"
+        assert p.target_kind == "step"
         assert p.payload_type == "revert"
 
     def test_to_dict_round_trip(self):
         p = RevertPayload(
             payload_id="pl_abc",
             target_id="t_xyz",
-            reverted_transition="t_old",
+            reverted_step="t_old",
             reverted_commit="deadbeef",
             metadata={"note": "test"},
         )
         d = p.to_dict()
         assert d["payload_type"] == "revert"
-        assert d["target_kind"] == "transition"
-        assert d["reverted_transition"] == "t_old"
+        assert d["target_kind"] == "step"
+        assert d["reverted_step"] == "t_old"
         assert d["reverted_commit"] == "deadbeef"
         assert d["metadata"] == {"note": "test"}
 
@@ -42,7 +42,7 @@ class TestRevertPayload:
         assert isinstance(restored, RevertPayload)
         assert restored.payload_id == p.payload_id
         assert restored.target_id == p.target_id
-        assert restored.reverted_transition == p.reverted_transition
+        assert restored.reverted_step == p.reverted_step
         assert restored.reverted_commit == p.reverted_commit
         assert restored.metadata == p.metadata
 
@@ -50,9 +50,9 @@ class TestRevertPayload:
         d = {
             "payload_id": "pl_r",
             "payload_type": "revert",
-            "target_kind": "transition",
+            "target_kind": "step",
             "target_id": "t_r",
-            "reverted_transition": "t_source",
+            "reverted_step": "t_source",
             "reverted_commit": "cafe0000",
             "metadata": {},
         }
@@ -64,7 +64,7 @@ class TestRevertPayload:
         p = RevertPayload(
             payload_id="pl_1",
             target_id="t_1",
-            reverted_transition="t_x",
+            reverted_step="t_x",
             reverted_commit="sha1",
         )
         with pytest.raises(Exception):
@@ -74,7 +74,7 @@ class TestRevertPayload:
         p = RevertPayload(
             payload_id="pl_1",
             target_id="t_1",
-            reverted_transition="t_x",
+            reverted_step="t_x",
             reverted_commit="sha1",
         )
         assert p.metadata == {}

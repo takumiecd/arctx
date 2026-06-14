@@ -333,8 +333,8 @@ class TestVerifyCLIMocked:
         assert "non_descendant" in result["summary"]["by_kind"]
         assert result["summary"]["by_kind"]["non_descendant"] >= 1
 
-    def test_checked_count_matches_active_transitions(self, tmp_path):
-        """summary.checked equals the number of non-cut transitions."""
+    def test_checked_count_matches_active_steps(self, tmp_path):
+        """summary.checked equals the number of non-cut steps."""
         self._setup_run(tmp_path, run_id="run_cnt")
 
         def _git_ok(cmd, **kwargs):
@@ -348,5 +348,5 @@ class TestVerifyCLIMocked:
                 store_dir=_store_dir(tmp_path),
             )
 
-        # Two commits → 2 active transitions.
+        # Two commits → 2 active steps.
         assert result["summary"]["checked"] == 2

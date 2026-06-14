@@ -10,7 +10,7 @@ from arctx.ext.git.events import (
     make_rebase_event,
 )
 from arctx.ext.git.payloads import DiffSummary, GitChangePayload
-from arctx.ext.git.queries import transition_by_sha
+from arctx.ext.git.queries import step_by_sha
 
 if TYPE_CHECKING:
     from arctx.ext.git.payloads import CommitEntry
@@ -28,22 +28,22 @@ def adopt_rewrite_impl(
     diff_summaries: dict[str, DiffSummary] | None = None,
     commit_logs: dict[str, tuple[CommitEntry, ...]] | None = None,
 ) -> dict:
-    """Append new GitChangePayload(s) to transitions whose latest sha is in sha_map."""
-    affected_transitions: list[str] = []
+    """Append new GitChangePayload(s) to steps whose latest sha is in sha_map."""
+    affected_steps: list[str] = []
     skipped_shas: list[str] = []
 
     _diff_summaries = diff_summaries or {}
     _commit_logs = commit_logs or {}
 
     for old_sha, new_sha in sha_map.items():
-        t_id = transition_by_sha(self.run_graph, old_sha)
+        t_id = step_by_sha(self.run_graph, old_sha)
         if t_id is None:
             skipped_shas.append(old_sha)
             continue
 
         resolved_branch = branch
         if resolved_branch is None:
-            existing_git = self.run_graph.payloads_for_transition(
+            existing_git = self.run_graph.payloads_for_step(
                 t_id, payload_type="git_change"
             )
             if existing_git:
@@ -61,7 +61,7 @@ def adopt_rewrite_impl(
             commit_log=_commit_logs.get(new_sha, ()),
         )
         self.run_graph.attach_payload(new_payload)
-        affected_transitions.append(t_id)
+        affected_steps.append(t_id)
 
     event_id: str | None = None
     if user_id is not None and work_session_id is not None:
@@ -74,13 +74,13 @@ def adopt_rewrite_impl(
                 old_sha_single, new_sha_single = items[0]
             else:
                 old_sha_single, new_sha_single = ("", onto)
-            t_for_amend = affected_transitions[0] if affected_transitions else ""
+            t_for_amend = affected_steps[0] if affected_steps else ""
             event = make_amend_event(
                 event_id=eid,
                 run_id=self.run_id,
                 work_session_id=work_session_id,
                 user_id=user_id,
-                transition_id=t_for_amend,
+                step_id=t_for_amend,
                 old_sha=old_sha_single,
                 new_sha=new_sha_single,
             )
@@ -91,7 +91,7 @@ def adopt_rewrite_impl(
                 work_session_id=work_session_id,
                 user_id=user_id,
                 sha_map=sha_map,
-                affected_transitions=tuple(affected_transitions),
+                affected_steps=tuple(affected_steps),
                 onto=onto,
             )
 
@@ -99,7 +99,7 @@ def adopt_rewrite_impl(
         event_id = eid
 
     return {
-        "affected_transitions": affected_transitions,
+        "affected_steps": affected_steps,
         "skipped_shas": skipped_shas,
         "event_id": event_id,
     }

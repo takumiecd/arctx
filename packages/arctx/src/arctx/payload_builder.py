@@ -10,7 +10,7 @@ from arctx.core.schema.payloads import (
     CutPayload,
     NodePayload,
     PayloadBase,
-    TransitionPayload,
+    StepPayload,
     _PAYLOAD_REGISTRY,
     payload_from_dict,
 )
@@ -75,7 +75,7 @@ def payload_schema(payload_type: str) -> dict[str, JSONValue]:
 def build_payload(
     *,
     payload_type: str,
-    target_kind: Literal["node", "transition"],
+    target_kind: Literal["node", "step"],
     target_id: str,
     payload_id: str,
     json_data: dict[str, JSONValue] | None = None,
@@ -99,14 +99,14 @@ def build_payload(
             metadata=metadata,
         )
 
-    if payload_type == "transition_payload":
-        if target_kind != "transition":
-            raise ValueError("transition_payload can only target a transition")
+    if payload_type == "step_payload":
+        if target_kind != "step":
+            raise ValueError("step_payload can only target a step")
         payload_kind = str(data.pop("type", "payload"))
         metadata = _dict_field(data.pop("metadata", {}), "metadata")
         content = _dict_field(data.pop("content", {}), "content")
         content.update(data)
-        return TransitionPayload(
+        return StepPayload(
             payload_id=payload_id,
             target_id=target_id,
             type=payload_kind,
@@ -128,8 +128,8 @@ def build_payload(
         )
 
     if payload_type == "git_change":
-        if target_kind != "transition":
-            raise ValueError("git_change can only target a transition")
+        if target_kind != "step":
+            raise ValueError("git_change can only target a step")
         raise ValueError("use 'arctx git add' to attach git_change payloads")
 
     raw = {

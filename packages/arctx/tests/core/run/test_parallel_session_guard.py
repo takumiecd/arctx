@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from arctx.ext.git.verbs._forward_transition import (
+from arctx.ext.git.verbs._forward_step import (
     ParallelSessionConflict,
     check_branch_tip_consistency,
 )
@@ -242,7 +242,7 @@ class TestCommitGuard:
             head_commit="sha_new",
             dry_run=True,
         )
-        assert t.transition_id in handle.run_graph.transitions
+        assert t.step_id in handle.run_graph.steps
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +250,8 @@ class TestCommitGuard:
 # ---------------------------------------------------------------------------
 
 class TestRevertGuard:
-    def _setup_run_with_reverted_transition(self, run_id: str):
-        """Build a run with one commit and return (handle, transition_id)."""
+    def _setup_run_with_reverted_step(self, run_id: str):
+        """Build a run with one commit and return (handle, step_id)."""
         handle = _make_handle(run_id)
         _ensure_session(handle, ws_id="ws_a")
 
@@ -263,14 +263,14 @@ class TestRevertGuard:
             head_commit="sha1",
             dry_run=True,
         )
-        return handle, t.transition_id
+        return handle, t.step_id
 
     def test_revert_raises_when_tip_advanced(self):
-        handle, tid = self._setup_run_with_reverted_transition("run_revert_guard")
+        handle, tid = self._setup_run_with_reverted_step("run_revert_guard")
         _ensure_session(handle, ws_id="ws_b")
 
         # session A advances again from its own tip.
-        tip_a = handle.run_graph.transitions[tid].output_node_id
+        tip_a = handle.run_graph.steps[tid].output_node_id
         _set_session_pointer(handle, ws_id="ws_a", node_ids=(tip_a,))
 
         t_a2 = handle.git.commit(
@@ -287,7 +287,7 @@ class TestRevertGuard:
 
         with pytest.raises(ParallelSessionConflict):
             handle.git.revert(
-                target_transition=tid,
+                target_step=tid,
                 branch="main",
                 user_id="user",
                 work_session_id="ws_b",

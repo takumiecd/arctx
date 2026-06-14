@@ -31,7 +31,7 @@ def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
 
 
 class TestCommitImplDryRun:
-    def test_returns_transition(self):
+    def test_returns_step(self):
         handle = _make_handle()
         _ensure_session(handle)
         t = handle.git.commit(
@@ -42,7 +42,7 @@ class TestCommitImplDryRun:
             head_commit="abc123",
             dry_run=True,
         )
-        assert t.transition_id in handle.run_graph.transitions
+        assert t.step_id in handle.run_graph.steps
 
     def test_creates_output_node(self):
         handle = _make_handle()
@@ -70,8 +70,8 @@ class TestCommitImplDryRun:
             head_commit="abc123",
             dry_run=True,
         )
-        branch_payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="branch"
+        branch_payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="branch"
         )
         assert len(branch_payloads) == 1
         assert isinstance(branch_payloads[0], BranchPayload)
@@ -88,8 +88,8 @@ class TestCommitImplDryRun:
             head_commit="deadbeef",
             dry_run=True,
         )
-        git_payloads = handle.run_graph.payloads_for_transition(
-            t.transition_id, payload_type="git_change"
+        git_payloads = handle.run_graph.payloads_for_step(
+            t.step_id, payload_type="git_change"
         )
         assert len(git_payloads) == 1
         assert isinstance(git_payloads[0], GitChangePayload)

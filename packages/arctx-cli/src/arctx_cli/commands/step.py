@@ -1,4 +1,4 @@
-"""arctx CLI transition command."""
+"""arctx CLI step command."""
 
 from __future__ import annotations
 
@@ -16,19 +16,19 @@ from arctx_cli.context import (
 )
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
-from arctx.core.schema.payloads import TransitionPayload
+from arctx.core.schema.payloads import StepPayload
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
-        "transition",
-        help="Create and inspect transitions",
+        "step",
+        help="Create and inspect steps",
     )
-    transition_sub = parser.add_subparsers(dest="transition_command", required=True)
+    step_sub = parser.add_subparsers(dest="step_command", required=True)
 
-    sp_create = transition_sub.add_parser(
+    sp_create = step_sub.add_parser(
         "create",
-        help="Create one Transition and one output Node from input nodes",
+        help="Create one Step and one output Node from input nodes",
     )
     sp_create.add_argument("--run", default=None)
     sp_create.add_argument(
@@ -37,39 +37,39 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         required=True,
         dest="input_nodes",
         metavar="NODE_ID",
-        help="Input node (repeatable for multi-node transitions)",
+        help="Input node (repeatable for multi-node steps)",
     )
-    sp_create.add_argument("--payload-type", default="transition_payload")
+    sp_create.add_argument("--payload-type", default="step_payload")
     sp_create.add_argument("--field", action="append", default=None, help="Payload field as key=value")
     sp_create.add_argument("--json", default=None, help="Payload fields as a JSON object")
     sp_create.add_argument("--store-dir", default=None)
     sp_create.add_argument("--user", default=None)
     sp_create.add_argument("--work-session", default=None)
 
-    sp_show = transition_sub.add_parser("show", help="Show one transition")
-    sp_show.add_argument("transition_id")
+    sp_show = step_sub.add_parser("show", help="Show one step")
+    sp_show.add_argument("step_id")
     sp_show.add_argument("--with-payloads", action="store_true")
     sp_show.add_argument("--run", default=None)
     sp_show.add_argument("--store-dir", default=None)
 
-    sp_output = transition_sub.add_parser("output", help="Show a transition output node")
-    sp_output.add_argument("transition_id")
+    sp_output = step_sub.add_parser("output", help="Show a step output node")
+    sp_output.add_argument("step_id")
     sp_output.add_argument("--run", default=None)
     sp_output.add_argument("--store-dir", default=None)
 
-    sp_inputs = transition_sub.add_parser("inputs", help="Show transition input nodes")
-    sp_inputs.add_argument("transition_id")
+    sp_inputs = step_sub.add_parser("inputs", help="Show step input nodes")
+    sp_inputs.add_argument("step_id")
     sp_inputs.add_argument("--run", default=None)
     sp_inputs.add_argument("--store-dir", default=None)
 
-    sp_payloads = transition_sub.add_parser("payloads", help="Show transition payloads")
-    sp_payloads.add_argument("transition_id")
+    sp_payloads = step_sub.add_parser("payloads", help="Show step payloads")
+    sp_payloads.add_argument("step_id")
     sp_payloads.add_argument("--run", default=None)
     sp_payloads.add_argument("--store-dir", default=None)
     return parser
 
 
-def run_transition_command(
+def run_step_command(
     *,
     run_id: str,
     input_node_ids: list[str],
@@ -83,14 +83,14 @@ def run_transition_command(
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
-    payload = TransitionPayload(
+    payload = StepPayload(
         payload_id="pending",
         target_id="pending",
         type=payload_type,
         content=content,
     )
     before = graph_counts(handle)
-    transition = handle.transition(
+    step = handle.add_step(
         input_node_ids,
         payload,
         user_id=user_id,
@@ -103,10 +103,10 @@ def run_transition_command(
         work_session_id=work_session_id,
         before=before,
     )
-    return {"transition": transition.to_dict()}
+    return {"step": step.to_dict()}
 
 
-def run_transition_create_command(
+def run_step_create_command(
     *,
     run_id: str,
     input_node_ids: list[str],
@@ -123,14 +123,14 @@ def run_transition_create_command(
     handle = store.load_run(run_id)
     payload = build_payload(
         payload_type=payload_type,
-        target_kind="transition",
+        target_kind="step",
         target_id="pending",
         payload_id="pending",
         json_data=json_data,
         field_data=field_data,
     )
     before = graph_counts(handle)
-    transition = handle.transition(
+    step = handle.add_step(
         input_node_ids,
         payload,
         user_id=user_id,
@@ -143,13 +143,13 @@ def run_transition_create_command(
         work_session_id=work_session_id,
         before=before,
     )
-    return {"transition": transition.to_dict()}
+    return {"step": step.to_dict()}
 
 
-def cli_transition(args) -> int:
+def cli_step(args) -> int:
     try:
-        if args.transition_command == "create":
-            result = run_transition_create_command(
+        if args.step_command == "create":
+            result = run_step_create_command(
                 run_id=resolve_run_id_from_args(args),
                 input_node_ids=args.input_nodes,
                 payload_type=args.payload_type,
@@ -159,13 +159,13 @@ def cli_transition(args) -> int:
                 user_id=resolve_user_id_from_args(args),
                 work_session_id=resolve_work_session_id_from_args(args),
             )
-            print(json.dumps(result["transition"], ensure_ascii=False, indent=2))
+            print(json.dumps(result["step"], ensure_ascii=False, indent=2))
             return 0
-        if args.transition_command == "show":
+        if args.step_command == "show":
             result = run_show_command(
                 run_id=resolve_run_id_from_args(args),
                 node_id=None,
-                transition_id=args.transition_id,
+                step_id=args.step_id,
                 payload_id=None,
                 with_payloads=args.with_payloads,
                 outputs=True,
@@ -173,20 +173,20 @@ def cli_transition(args) -> int:
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
-        if args.transition_command == "output":
+        if args.step_command == "output":
             result = run_outcomes_command(
                 run_id=resolve_run_id_from_args(args),
-                transition_id=args.transition_id,
+                step_id=args.step_id,
                 include_payloads=False,
                 store_dir=args.store_dir,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
-        if args.transition_command == "inputs":
+        if args.step_command == "inputs":
             result = run_show_command(
                 run_id=resolve_run_id_from_args(args),
                 node_id=None,
-                transition_id=args.transition_id,
+                step_id=args.step_id,
                 payload_id=None,
                 with_payloads=False,
                 outputs=False,
@@ -194,11 +194,11 @@ def cli_transition(args) -> int:
             )
             print(json.dumps({"input_node_ids": result["input_node_ids"]}, ensure_ascii=False, indent=2))
             return 0
-        if args.transition_command == "payloads":
+        if args.step_command == "payloads":
             result = run_show_command(
                 run_id=resolve_run_id_from_args(args),
                 node_id=None,
-                transition_id=args.transition_id,
+                step_id=args.step_id,
                 payload_id=None,
                 with_payloads=True,
                 outputs=False,

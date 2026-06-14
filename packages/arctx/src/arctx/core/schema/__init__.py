@@ -1,12 +1,12 @@
 """Schema package — pure graph primitives and attached payloads."""
 
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import (
     CutPayload,
     NodePayload,
     Payload,
     PayloadBase,
-    TransitionPayload,
+    StepPayload,
     payload_from_dict,
     register_payload_class,
 )
@@ -21,8 +21,8 @@ __all__ = [
     "PayloadBase",
     "Requirement",
     "TraceContext",
-    "Transition",
-    "TransitionPayload",
+    "Step",
+    "StepPayload",
     "payload_from_dict",
     "register_payload_class",
 ]

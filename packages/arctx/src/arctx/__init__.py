@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from arctx.core.graph_view import GraphView
 from arctx.core.run import RunHandle
 from arctx.core.run import init as _core_init
 from arctx.core.run_graph import RunGraph
@@ -14,15 +13,15 @@ from arctx.core.schema import (
     PayloadBase,
     Requirement,
     TraceContext,
-    Transition,
-    TransitionPayload,
+    Step,
+    StepPayload,
     register_payload_class,
 )
 from arctx.core.types import (
     TargetKind,
 )
 
-__version__ = "0.2.0b4"
+__version__ = "0.3.0b1"
 
 
 def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
@@ -31,7 +30,6 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 
 __all__ = [
     "CutPayload",
-    "GraphView",
     "Node",
     "NodePayload",
     "Payload",
@@ -41,8 +39,8 @@ __all__ = [
     "RunHandle",
     "TargetKind",
     "TraceContext",
-    "Transition",
-    "TransitionPayload",
+    "Step",
+    "StepPayload",
     "init",
     "register_payload_class",
 ]

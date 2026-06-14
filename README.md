@@ -17,15 +17,15 @@ git clone https://github.com/takumiecd/arctx && cd arctx
 
 ## Packages
 
-This repository distributes three packages:
+The primary surface is two packages — **`arctx` (core) and `arctx-cli`**. A third package, `arctx-tui`, is experimental and not a focus of the current beta.
 
 | Package | Install | Import | Purpose |
 |---------|---------|--------|---------|
 | `arctx` | `pip install arctx` | `import arctx` | Core API, storage, extensions (no CLI/TUI deps) |
 | `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` command, argparse CLI |
-| `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | `arctx-tui` command, Textual TUI |
+| `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | _Experimental_ `arctx-tui` command (Textual TUI) — secondary; a GUI is the intended direction |
 
-`arctx-cli` and `arctx-tui` both depend on `arctx` but not on each other. Install only what you need.
+`arctx-cli` and `arctx-tui` both depend on `arctx` but not on each other. For normal use, install `arctx-cli` (it pulls in `arctx`).
 
 ```python
 import arctx
@@ -40,13 +40,13 @@ It is the graph layer underneath them.
 
 ![ARCTX CLI Demo](examples/demo_cli.gif)
 
-*Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `work-session`; both branches land as sibling transitions in the same `RunGraph` — no race, no overwrite.*
+*Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `work-session`; both branches land as sibling steps in the same `RunGraph` — no race, no overwrite.*
 
 ![ARCTX TUI Demo](examples/demo_tui.gif)
 
-*Interactive 3-pane TUI walks the DAG: attempts, reverts, payload diffs, and full git history all in one view.*
+*Experimental TUI walking the DAG. The TUI is secondary; the intended interactive direction is a GUI.*
 
-> 0.2 beta — the core graph model is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
+> 0.3 beta — the DAG core (Node / Step / Payload) is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
 
 *日本語版は [README.ja.md](README.ja.md) を参照してください。*
 
@@ -61,9 +61,9 @@ Real work is not a straight line. You form a hypothesis, try it, observe what ha
 
 ARCTX records all of it as one append-only DAG:
 
-- **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked work-session and their attempts become sibling transitions.
+- **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked work-session and their attempts become sibling steps.
 - **Reverts stay in the graph.** A failed rewrite isn't deleted, it's marked inactive via `CutPayload`. You can still see what was tried, and why.
-- **Domain payloads, not just commits.** Attach benchmark results, predictions, intent — anything. The DAG knows what each transition was *for*.
+- **Domain payloads, not just commits.** Attach benchmark results, predictions, intent — anything. The DAG knows what each step was *for*.
 - **Read-time activity.** Killed branches are filtered automatically; the graph stays clean without rewriting history.
 
 ARCTX is *not* an executor, planner, or agent framework. It is the substrate for storing what they did and why.
@@ -75,8 +75,8 @@ ARCTX is *not* an executor, planner, or agent framework. It is the substrate for
 - **Multi-agent software work** — Claude Code, Codex, custom agents and humans working on the same codebase. ARCTX keeps each attempt distinct and reviewable.
 - **Research and design exploration** — branch hypotheses, capture results as payloads, keep the dropped branches around as evidence.
 - **Debugging and investigation** — record hypotheses and observations as payloads; walk the trace backwards when you finally find the bug.
-- **Benchmark-driven engineering** — every "try variant A, try variant B" lands as a transition with its measurement attached.
-- **Kernel / numeric optimization** — one specific case of the above: tiled / vectorized / fused experiments as sibling transitions, with reverts and merges first-class.
+- **Benchmark-driven engineering** — every "try variant A, try variant B" lands as a step with its measurement attached.
+- **Kernel / numeric optimization** — one specific case of the above: tiled / vectorized / fused experiments as sibling steps, with reverts and merges first-class.
 
 ---
 
@@ -95,21 +95,19 @@ git checkout -b feat/cache
 # ...edit...
 git add .
 A=$(arctx git commit -m "add cache (hypothesis A)" --from "$BASE" | jq -r .output_node_id)
-arctx payload add --node "$A" --payload-type node_payload \
-  --field type=benchmark \
-  --field 'content={"elapsed_ms": 1200, "note": "slower than baseline"}'
+arctx attach "$A" --type benchmark \
+  --json '{"elapsed_ms": 1200, "note": "slower than baseline"}'
 
 # 3. Abandon A — it stays in the graph, just marked inactive, with a reason.
-arctx cut node "$A" --reason "slower than baseline"
+arctx cut "$A" --reason "slower than baseline"
 
 # 4. Hypothesis B — vectorize, also branched off the same baseline node.
 git checkout main && git checkout -b feat/vectorize
 # ...edit...
 git add .
 B=$(arctx git commit -m "vectorize (hypothesis B)" --from "$BASE" | jq -r .output_node_id)
-arctx payload add --node "$B" --payload-type node_payload \
-  --field type=benchmark \
-  --field 'content={"elapsed_ms": 180, "note": "5x faster than baseline"}'
+arctx attach "$B" --type benchmark \
+  --json '{"elapsed_ms": 180, "note": "5x faster than baseline"}'
 ```
 
 `--from "$BASE"` anchors both experiments to the baseline node, so they fan out as
@@ -150,7 +148,7 @@ git checkout main && git checkout -b codex/map
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 ```
 
-Both land in the same `RunGraph` as sibling transitions off the baseline. Each
+Both land in the same `RunGraph` as sibling steps off the baseline. Each
 agent has its own work-session, and `--from "$BASE"` keeps them independent —
 no fast-forward conflict, no overwrite:
 
@@ -179,16 +177,14 @@ git checkout -b try/race-fix
 # ...edit...
 git add .
 R=$(arctx git commit -m "fix: add lock around cache" --from "$REPRO" | jq -r .output_node_id)
-arctx payload add --node "$R" --payload-type node_payload \
-  --field type=observation --field 'content={"result": "still flaky"}'
+arctx attach "$R" --type observation --json '{"result": "still flaky"}'
 
 # Hypothesis: off-by-one in index
 git checkout main && git checkout -b try/index-fix
 # ...edit...
 git add .
 I=$(arctx git commit -m "fix: correct loop bound" --from "$REPRO" | jq -r .output_node_id)
-arctx payload add --node "$I" --payload-type node_payload \
-  --field type=observation --field 'content={"result": "bug gone — 3 runs green"}'
+arctx attach "$I" --type observation --json '{"result": "bug gone - 3 runs green"}'
 ```
 
 Both hypotheses branch off the reproduction node, so they stay independent and comparable:
@@ -212,14 +208,14 @@ From inside a git repository:
 
 ```bash
 pip install arctx-cli
-pip install arctx-tui          # optional: adds standalone arctx-tui command
 
 arctx init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py
 BASE=$(arctx git commit -m "baseline" | jq -r .output_node_id)
 
-arctx-tui                              # explore the DAG interactively (requires arctx-tui)
-arctx graph dump --format outline      # or dump it as an LLM-friendly outline
+arctx log                              # walk the DAG
+arctx dump --format outline            # or dump it as an LLM-friendly outline
+arctx dump --format mermaid            # or a visual mermaid flowchart
 ```
 
 `arctx dump` is kept as a compatibility shortcut for `arctx graph dump`.
@@ -240,7 +236,7 @@ git checkout main && git checkout -b codex/map
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 ```
 
-Both branches land in the same `RunGraph` as sibling transitions off `$BASE`. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
+Both branches land in the same `RunGraph` as sibling steps off `$BASE`. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
 
 > **Note on isolation.** A ARCTX `work-session` isolates ARCTX run/session attribution (who did what, in which session). It does **not** isolate the Git working tree by itself — both terminals above share the same checkout unless you attach each session to its own `git worktree`. See the next section for the worktree-aware variant.
 
@@ -264,7 +260,7 @@ eval $(arctx work-session env --run demo --new --user codex \
         --worktree ../wt-codex)
 ```
 
-Both agents still land their commits as sibling transitions in the same
+Both agents still land their commits as sibling steps in the same
 `RunGraph`; the worktrees only separate the physical checkout.
 
 ---
@@ -276,13 +272,12 @@ The center of ARCTX is **`RunGraph`** — an append-only DAG. Pure graph records
 ```text
 RunGraph
   ├── Node         ← pure DAG node
-  ├── Transition   ← N input nodes → 1 output node
-  ├── Payload      ← annotation attached to a Node or Transition
-  └── GraphView    ← lightweight named scope (just a root_node_id)
+  ├── Step         ← N input nodes → 1 output node
+  └── Payload      ← annotation attached to a Node or Step
 ```
 
-- Each **attempt / experiment / action is recorded as a transition**, producing an output node that represents the resulting state.
-- `NodePayload` / `TransitionPayload` — generic annotations, distinguished by a `type` string.
+- Each **attempt / experiment / action is recorded as a step**, producing an output node that represents the resulting state.
+- `NodePayload` / `StepPayload` — generic annotations, distinguished by a `type` string. The current internal model still stores steps as `Step` records while the public surface moves to `Step`.
 - `CutPayload` — append-only invalidation. The target isn't deleted; it's filtered out at read time.
 - `GitChangePayload` — attached by the `git` extension on every `arctx git commit`.
 
@@ -295,16 +290,18 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | Command | What it does |
 | --- | --- |
 | `arctx init <req-id>` | Start a new run. Add `--extension git` for git integration. |
-| `arctx git commit -m ...` | Drive a real `git commit` and record a `Transition` with `GitChangePayload`. |
+| `arctx add node` | Add an independent DAG node. |
+| `arctx add step --from <node> --title ...` | Add a DAG step and its output node. |
+| `arctx attach <node-or-step> --title ...` | Attach a payload to an existing node or step. |
+| `arctx cut <node-or-step>` | Mark a node or step inactive via append-only payload. |
+| `arctx show [id]` | Show the current run or a single node/step/payload. |
+| `arctx log` | Show the DAG as an ordered event stream. |
+| `arctx git commit -m ...` | Drive a real `git commit` and record a `Step` with `GitChangePayload`. |
 | `arctx work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
 | `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
-| `arctx transition create` | Add a transition without git. |
-| `arctx payload add` | Attach a payload to an existing Node / Transition. |
 | `arctx graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
 | `arctx graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
-| `arctx-tui` | Interactive 3-pane explorer (Runs / Flowchart / Detail). Standalone command from `pip install arctx-tui`. |
-| `arctx cut node <id>` | Mark a Node (and descendants) inactive — append-only. |
-| `arctx guide` | Discover concepts interactively. `--lang ja` for Japanese. |
+| `arctx-tui` | _Experimental_ interactive explorer (separate `pip install arctx-tui`). Secondary surface; a GUI is the intended direction. |
 
 `arctx dump ...` is retained as a compatibility shortcut for `arctx graph dump ...`.
 
@@ -318,7 +315,7 @@ Mutating commands resolve the target run in this order: `--run` flag → `ARCTX_
 
 ```python
 import arctx as arctx
-from arctx import NodePayload, Requirement, TransitionPayload
+from arctx import NodePayload, Requirement, StepPayload
 from arctx.storage import JsonlRunStore
 
 requirement = Requirement(
@@ -329,9 +326,9 @@ requirement = Requirement(
 
 run = arctx.init(requirement, run_id="demo")
 
-transition = run.transition(
+step = run.add_step(
     [run.root_node_id],
-    TransitionPayload(
+    StepPayload(
         payload_id="pending",
         target_id="pending",
         type="experiment",
@@ -340,7 +337,7 @@ transition = run.transition(
 )
 
 run.attach(
-    transition.output_node_id,
+    step.output_node_id,
     NodePayload(
         payload_id="pending",
         target_id="pending",
@@ -349,14 +346,12 @@ run.attach(
     ),
 )
 
-history = run.trace(transition.output_node_id)
+history = run.trace(step.output_node_id)
 
 store = JsonlRunStore("runs")
 run.save(store)
 loaded = store.load_run("demo")
 ```
-
-For isolated exploration, a `GraphView` holds only a `root_node_id`; its contents are derived at read time via `RunGraph.reachable_from(root_node_id)`.
 
 ---
 
@@ -383,16 +378,15 @@ PYTHONPATH=src python3 -m arctx_cli.main ...
   run.json
   graph.json
   nodes.jsonl
-  transitions.jsonl
+  steps.jsonl
   payloads.jsonl
-  views.jsonl
   work_sessions.jsonl
   work_events.jsonl
 ```
 
 `SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<ARCTX_HOME>/runs`.
 
-The 0.2.x storage format is maintained within the 0.2 series. Breaking changes will require an explicit migration note.
+`GraphView` / `views.jsonl` were removed during the 0.3 beta redesign. Old view records are ignored by the new core graph model.
 
 ---
 
@@ -412,7 +406,9 @@ The 0.2.x storage format is maintained within the 0.2 series. Breaking changes w
 ## Development
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m pytest tests -q
+uv run --package arctx --extra dev pytest packages/arctx/tests -q
+uv run --package arctx-cli --extra dev pytest packages/arctx-cli/tests -q
+uv run --package arctx-tui --extra dev pytest packages/arctx-tui/tests -q
 ```
 
 ## Release

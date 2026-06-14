@@ -2,15 +2,15 @@
 
 ## Recommended Loop
 
-1. Read context with `arctx graph dump`.
-2. Append intent with `arctx transition create --from NODE_ID --payload-type transition_payload --field type=suggestion --field proposal="..."`.
+1. Read context with `arctx log`.
+2. Append intent with `arctx add step --from NODE_ID --type suggestion --field proposal="..."`.
 3. Do external work: implementation, experiment, review, debugging, or research.
-4. Append the result with `arctx transition create --from NODE_ID --payload-type transition_payload --field type=implementation --field result="..."`.
-5. Cut wrong branches with `arctx cut node NODE_ID` instead of deleting records.
+4. Append the result with `arctx add step --from NODE_ID --type implementation --field result="..."`.
+5. Cut wrong branches with `arctx cut NODE_ID` instead of deleting records.
 6. At checkpoints, produce an artifact with `arctx export --format md`; add
    `--exclude-cut` when the recipient should not see inactive branches.
 
-Fan-out is represented by creating multiple transitions from the same input
+Fan-out is represented by creating multiple steps from the same input
 node. Multi-input joins use repeated `--from` flags.
 
 Parallel processes can work in the same run when each writer appends only new
@@ -82,7 +82,7 @@ work session in each process environment instead.
 
 ```bash
 eval "$(arctx work-session env --run run_x --new --user codex)"
-arctx transition create --from NODE_ID --payload-type transition_payload --field type=suggestion
+arctx add step --from NODE_ID --type suggestion
 ```
 
 Use `spawn` for child processes. The child receives a unique
@@ -98,7 +98,7 @@ For explicit mode, pass both `--run` and `--work-session` on every mutating
 command.
 
 ```bash
-arctx transition create --run run_x --work-session ws_xxx --from NODE_ID
+arctx add step --run run_x --work-session ws_xxx --from NODE_ID --type implementation
 ```
 
 The default attribution is `user=user` and `work_session=default`. Set `--user`
@@ -107,7 +107,8 @@ records.
 
 This fixed-mode workflow assumes multiple processes on the same machine. Do not
 directly share one run directory across machines through NFS or a cloud sync
-folder; use `arctx sync` for cross-machine exchange.
+folder. The public sync CLI is intentionally deferred until the remote/sharing
+model is settled.
 
 ## Worktree Per Agent
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import arctx_cli.alias as alias_mod
-import arctx_cli.commands.git as git_cmd_mod
+import arctx_cli.ext.git as git_cmd_mod
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.main import main, parse_args
 

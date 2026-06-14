@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.work import WorkSession
 from arctx.core.schema.work_helpers import make_branch_tip_event
 from arctx.ext.git.queries import branch_members
@@ -17,13 +17,13 @@ def _node(graph: RunGraph, node_id: str) -> Node:
     return n
 
 
-def _transition(graph: RunGraph, t_id: str, inputs: list[str], output: str) -> Transition:
-    t = Transition(
-        transition_id=t_id,
+def _step(graph: RunGraph, t_id: str, inputs: list[str], output: str) -> Step:
+    t = Step(
+        step_id=t_id,
         input_node_ids=tuple(inputs),
         output_node_id=output,
     )
-    graph.add_transition(t)
+    graph.add_step(t)
     return t
 
 
@@ -69,8 +69,8 @@ class TestBranchMembers:
         _node(graph, "n_0")
         _node(graph, "n_1")
         _node(graph, "n_2")
-        _transition(graph, "t_1", ["n_0"], "n_1")
-        _transition(graph, "t_2", ["n_1"], "n_2")
+        _step(graph, "t_1", ["n_0"], "n_1")
+        _step(graph, "t_2", ["n_1"], "n_2")
 
         _add_session(graph)
         _add_branch_tip(graph, "main", "n_2", "we_1")
@@ -83,8 +83,8 @@ class TestBranchMembers:
         _node(graph, "n_0")
         _node(graph, "n_1")
         _node(graph, "n_2")
-        _transition(graph, "t_1", ["n_0"], "n_1")
-        _transition(graph, "t_2", ["n_1"], "n_2")
+        _step(graph, "t_1", ["n_0"], "n_1")
+        _step(graph, "t_2", ["n_1"], "n_2")
 
         _add_session(graph)
         _add_branch_tip(graph, "main", "n_1", "we_1")
@@ -99,8 +99,8 @@ class TestBranchMembers:
         _node(graph, "n_root")
         _node(graph, "n_main_tip")
         _node(graph, "n_dev_tip")
-        _transition(graph, "t_m", ["n_root"], "n_main_tip")
-        _transition(graph, "t_d", ["n_root"], "n_dev_tip")
+        _step(graph, "t_m", ["n_root"], "n_main_tip")
+        _step(graph, "t_d", ["n_root"], "n_dev_tip")
 
         _add_session(graph)
         _add_branch_tip(graph, "main", "n_main_tip", "we_m")

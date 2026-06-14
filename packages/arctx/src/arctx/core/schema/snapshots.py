@@ -13,7 +13,7 @@ class TraceContext:
 
     current_node_id: str
     past_node_ids: tuple[str, ...] = ()
-    transition_ids: tuple[str, ...] = ()
+    step_ids: tuple[str, ...] = ()
     payload_ids: tuple[str, ...] = ()
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 

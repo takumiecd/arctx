@@ -179,9 +179,9 @@ class TestBranchShowCommand:
         )
         assert result["tip_node_id"] == commit_result["output_node_id"]
         assert result["members_count"] >= 1
-        assert len(result["transitions"]) >= 1
+        assert len(result["steps"]) >= 1
 
-    def test_transitions_include_branch_payload_info(self, tmp_path, monkeypatch):
+    def test_steps_include_branch_payload_info(self, tmp_path, monkeypatch):
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
         monkeypatch.chdir(repo)
@@ -209,5 +209,5 @@ class TestBranchShowCommand:
         result = run_branch_show_command(
             name="main", run_id="run_bs3", store_dir=_store_dir(tmp_path)
         )
-        t_ids = [t["transition_id"] for t in result["transitions"]]
-        assert commit_result["transition_id"] in t_ids
+        t_ids = [t["step_id"] for t in result["steps"]]
+        assert commit_result["step_id"] in t_ids

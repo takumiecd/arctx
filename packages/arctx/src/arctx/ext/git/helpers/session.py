@@ -15,7 +15,7 @@ _SESSIONS_DIR = "sessions"
 
 @dataclass
 class GitSession:
-    """Pending work interval anchored to a Transition.
+    """Pending work interval anchored to a Step.
 
     Created by ``arctx git start`` and closed by ``arctx git finish``.
     Stored under ``<run_dir>/git/sessions/<session_id>.json``.
@@ -24,7 +24,7 @@ class GitSession:
 
     session_id: str
     run_id: str
-    transition_id: str
+    step_id: str
     repo_root: str  # absolute path
     base_commit: str
     base_branch: str
@@ -44,7 +44,7 @@ class GitSession:
         return {
             "session_id": self.session_id,
             "run_id": self.run_id,
-            "transition_id": self.transition_id,
+            "step_id": self.step_id,
             "repo_root": self.repo_root,
             "base_commit": self.base_commit,
             "base_branch": self.base_branch,
@@ -62,7 +62,7 @@ class GitSession:
         return cls(
             session_id=str(data["session_id"]),
             run_id=str(data["run_id"]),
-            transition_id=str(data["transition_id"]),
+            step_id=str(data["step_id"]),
             repo_root=str(data["repo_root"]),
             base_commit=str(data["base_commit"]),
             base_branch=str(data["base_branch"]),

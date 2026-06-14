@@ -7,7 +7,7 @@ section, and a nested outline of the run.
 
 Two filters, both opt-in and with opposite defaults by intent:
 
-- ``exclude_cut`` (default False): drop cut (inactive) nodes/transitions. Cut
+- ``exclude_cut`` (default False): drop cut (inactive) nodes/steps. Cut
   is just history noise, so it is kept unless asked to be removed.
 - ``include_local`` (default False): include each repo's ``local_path`` in the
   registry section. local paths are environment-specific (and can leak a
@@ -15,7 +15,7 @@ Two filters, both opt-in and with opposite defaults by intent:
   keeps shared/exported artifacts free of machine-local data.
 
 This module stays repo-agnostic: it never imports the git extension. Repo
-registry entries and per-transition repo ids are read generically through
+registry entries and per-step repo ids are read generically through
 ``payload_type`` and ``to_dict()`` so a run with no git payloads exports fine.
 """
 
@@ -23,10 +23,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from arctx.core.cuts import inactive_node_ids, inactive_transition_ids
+from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run.handle import RunHandle
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.payloads import CutPayload, NodePayload, TransitionPayload
+from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
 
 
 @dataclass
@@ -41,7 +41,7 @@ class ExportOptions:
 @dataclass
 class _Row:
     depth: int
-    kind: str  # "node" | "transition" | "ref"
+    kind: str  # "node" | "step" | "ref"
     ident: str
     label: str
     cut: bool
@@ -102,18 +102,18 @@ def _node_summary(graph: RunGraph, node_id: str, full: bool = False) -> str | No
     return " · ".join(parts) if parts else None
 
 
-def _transition_summary(graph: RunGraph, transition_id: str, full: bool) -> str:
+def _step_summary(graph: RunGraph, step_id: str, full: bool) -> str:
     parts: list[str] = []
-    for payload in graph.payloads_for_transition(transition_id):
+    for payload in graph.payloads_for_step(step_id):
         if isinstance(payload, CutPayload):
             parts.append(_cut_reason(payload))
-        elif isinstance(payload, TransitionPayload):
+        elif isinstance(payload, StepPayload):
             parts.append(payload.type)
             if full and payload.content:
                 parts.append(_content_str(payload.content, full))
         else:
             parts.append(payload.payload_type)
-    return " ".join(parts) if parts else "transition"
+    return " ".join(parts) if parts else "step"
 
 
 # ---------------------------------------------------------------------------
@@ -140,12 +140,12 @@ def _repo_entries(graph: RunGraph) -> list[dict]:
 def _walk(handle: RunHandle, opts: ExportOptions) -> list[_Row]:
     graph = handle.run_graph
     inactive_nodes = inactive_node_ids(graph)
-    inactive_trans = inactive_transition_ids(graph)
+    inactive_trans = inactive_step_ids(graph)
     root_id = opts.node_id or handle.root_node_id
 
     rows: list[_Row] = []
     visited_nodes: set[str] = set()
-    visited_transitions: set[str] = set()
+    visited_steps: set[str] = set()
 
     def emit_node(node_id: str, depth: int) -> None:
         cut = node_id in inactive_nodes
@@ -161,38 +161,38 @@ def _walk(handle: RunHandle, opts: ExportOptions) -> list[_Row]:
         rows.append(_Row(depth, "node", node_id, label, cut))
         if opts.depth is not None and depth >= opts.depth:
             return
-        for transition_id in graph.transitions_from_node(node_id):
-            t = graph.transitions[transition_id]
+        for step_id in graph.steps_from_node(node_id):
+            t = graph.steps[step_id]
             if t.input_node_ids and t.input_node_ids[0] != node_id:
-                # Non-primary parent of a multi-input transition.
-                if not (opts.exclude_cut and transition_id in inactive_trans):
+                # Non-primary parent of a multi-input step.
+                if not (opts.exclude_cut and step_id in inactive_trans):
                     rows.append(
                         _Row(
                             depth + 1,
                             "ref",
-                            transition_id,
-                            f"▸ feeds {transition_id}",
-                            transition_id in inactive_trans,
+                            step_id,
+                            f"▸ feeds {step_id}",
+                            step_id in inactive_trans,
                         )
                     )
                 continue
-            emit_transition(transition_id, depth + 1)
+            emit_step(step_id, depth + 1)
 
-    def emit_transition(transition_id: str, depth: int) -> None:
-        cut = transition_id in inactive_trans
+    def emit_step(step_id: str, depth: int) -> None:
+        cut = step_id in inactive_trans
         if opts.exclude_cut and cut:
             return
-        t = graph.transitions[transition_id]
-        summary = _transition_summary(graph, transition_id, opts.full_payloads)
+        t = graph.steps[step_id]
+        summary = _step_summary(graph, step_id, opts.full_payloads)
         extras = ""
         if len(t.input_node_ids) > 1:
             extras = " " + " ".join(f"(+{n})" for n in t.input_node_ids[1:])
-        if transition_id in visited_transitions:
-            rows.append(_Row(depth, "ref", transition_id, f"↻ {transition_id}", cut))
+        if step_id in visited_steps:
+            rows.append(_Row(depth, "ref", step_id, f"↻ {step_id}", cut))
             return
-        visited_transitions.add(transition_id)
-        label = f"→ {transition_id}{extras}  {summary}"
-        rows.append(_Row(depth, "transition", transition_id, label, cut))
+        visited_steps.add(step_id)
+        label = f"→ {step_id}{extras}  {summary}"
+        rows.append(_Row(depth, "step", step_id, label, cut))
         if t.output_node_id:
             emit_node(t.output_node_id, depth + 1)
 
@@ -248,7 +248,7 @@ def render_markdown(handle: RunHandle, opts: ExportOptions) -> str:
         f"# Run `{handle.run_id}`",
         "",
         f"- nodes: {len(graph.nodes)}",
-        f"- transitions: {len(graph.transitions)}",
+        f"- steps: {len(graph.steps)}",
         "",
     ]
     lines += _render_repos_md(_repo_entries(graph), opts.include_local)
@@ -269,7 +269,7 @@ def render_html(handle: RunHandle, opts: ExportOptions) -> str:
         ".cut{color:#999;}li{margin:.1rem 0;}code{background:#f3f3f3;padding:0 .2em;}"
         "</style></head><body>",
         f"<h1>Run <code>{_esc_html(handle.run_id)}</code></h1>",
-        f"<p>nodes: {len(graph.nodes)} &middot; transitions: {len(graph.transitions)}</p>",
+        f"<p>nodes: {len(graph.nodes)} &middot; steps: {len(graph.steps)}</p>",
     ]
     entries = _repo_entries(graph)
     if entries:
@@ -313,7 +313,7 @@ def render_latex(handle: RunHandle, opts: ExportOptions) -> str:
         r"\usepackage[T1]{fontenc}",
         r"\begin{document}",
         rf"\section*{{Run \texttt{{{_esc_tex(handle.run_id)}}}}}",
-        rf"nodes: {len(graph.nodes)}, transitions: {len(graph.transitions)}",
+        rf"nodes: {len(graph.nodes)}, steps: {len(graph.steps)}",
         "",
     ]
     entries = _repo_entries(graph)

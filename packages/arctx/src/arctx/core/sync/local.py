@@ -14,10 +14,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from arctx.core.graph_view import GraphView
 from arctx.core.run import RunHandle
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import payload_from_dict
 from arctx.core.sync.records import (
     RecordTuple,
@@ -213,7 +212,7 @@ def load_sync_config(run_path: Path) -> dict[str, str]:
     """Load ``sync.json`` for a run."""
     path = run_path / "sync.json"
     if not path.exists():
-        raise RuntimeError("sync is not initialized. Use 'arctx sync init ...'")
+        raise RuntimeError("sync is not initialized for this run")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -236,35 +235,32 @@ def _local_batches(handle: RunHandle) -> list[dict[str, Any]]:
         node = graph.nodes[handle.root_node_id]
         seed_records.append(("node", node.node_id, node.to_dict()))
         included.add(("node", node.node_id))
-    for view in graph.views.values():
-        seed_records.append(("view", view.view_id, view.to_dict()))
-        included.add(("view", view.view_id))
     if seed_records:
         batches.append({"operation": "seed", "records": seed_records})
 
-    for transition in graph.transitions.values():
-        records: list[RecordTuple] = [("transition", transition.transition_id, transition.to_dict())]
-        included.add(("transition", transition.transition_id))
+    for step in graph.steps.values():
+        records: list[RecordTuple] = [("step", step.step_id, step.to_dict())]
+        included.add(("step", step.step_id))
 
         # Include input and output nodes.
-        for nid in transition.input_node_ids:
+        for nid in step.input_node_ids:
             if ("node", nid) not in included and nid in graph.nodes:
                 node = graph.nodes[nid]
                 records.append(("node", node.node_id, node.to_dict()))
                 included.add(("node", node.node_id))
-        if transition.output_node_id and ("node", transition.output_node_id) not in included:
-            nid = transition.output_node_id
+        if step.output_node_id and ("node", step.output_node_id) not in included:
+            nid = step.output_node_id
             if nid in graph.nodes:
                 node = graph.nodes[nid]
                 records.append(("node", node.node_id, node.to_dict()))
                 included.add(("node", node.node_id))
 
-        for payload in graph.payloads_for_transition(transition.transition_id):
+        for payload in graph.payloads_for_step(step.step_id):
             records.append(("payload", payload.payload_id, payload.to_dict()))
             included.add(("payload", payload.payload_id))
         batches.append(
             {
-                "operation": _operation_for_transition(graph, transition.transition_id),
+                "operation": _operation_for_step(graph, step.step_id),
                 "records": records,
             }
         )
@@ -291,11 +287,11 @@ def _local_batches(handle: RunHandle) -> list[dict[str, Any]]:
     return batches
 
 
-def _operation_for_transition(graph: RunGraph, transition_id: str) -> str:
-    payloads = graph.payloads_for_transition(transition_id)
+def _operation_for_step(graph: RunGraph, step_id: str) -> str:
+    payloads = graph.payloads_for_step(step_id)
     if any(getattr(p, "type", None) == "anchor" for p in payloads):
         return "anchor"
-    return "transition"
+    return "step"
 
 
 def _apply_record(graph: RunGraph, kind: str, body: dict[str, Any]) -> bool:
@@ -308,18 +304,18 @@ def _apply_record(graph: RunGraph, kind: str, body: dict[str, Any]) -> bool:
         graph.add_node(node)
         return True
 
-    if kind == "transition":
-        transition = Transition(
-            transition_id=str(body["transition_id"]),
+    if kind == "step":
+        step = Step(
+            step_id=str(body["step_id"]),
             input_node_ids=tuple(body.get("input_node_ids") or []),
             output_node_id=str(body.get("output_node_id") or ""),
             metadata=dict(body.get("metadata") or {}),
         )
-        existing = graph.transitions.get(transition.transition_id)
+        existing = graph.steps.get(step.step_id)
         if existing is not None:
-            _ensure_same(existing.to_dict(), body, kind, transition.transition_id)
+            _ensure_same(existing.to_dict(), body, kind, step.step_id)
             return False
-        graph.add_transition(transition)
+        graph.add_step(step)
         return True
 
     if kind == "payload":
@@ -331,50 +327,32 @@ def _apply_record(graph: RunGraph, kind: str, body: dict[str, Any]) -> bool:
         graph.attach_payload(payload)
         return True
 
-    if kind == "view":
-        view = GraphView(
-            view_id=str(body["view_id"]),
-            name=str(body["name"]),
-            root_node_id=str(body["root_node_id"]),
-            metadata=dict(body.get("metadata") or {}),
-        )
-        existing = graph.views.get(view.name)
-        if existing is not None:
-            _ensure_same(existing.to_dict(), body, kind, view.name)
-            return False
-        graph.add_view(view)
-        if view.name == "main":
-            graph.metadata["root_node_id"] = view.root_node_id
-        return True
-
     # Unknown record kinds are silently skipped for forward compatibility.
     return False
 
 
 def _refresh_counters(handle: RunHandle) -> None:
     handle._counters["n"] = _max_suffix(handle.run_graph.nodes)
-    handle._counters["t"] = _max_suffix(handle.run_graph.transitions)
+    handle._counters["t"] = _max_suffix(handle.run_graph.steps)
     handle._counters["pl"] = _max_suffix(handle.run_graph.payloads)
 
 
 def _is_empty_seed_graph(graph: RunGraph) -> bool:
     return (
         len(graph.nodes) == 1
-        and not graph.transitions
+        and not graph.steps
         and not graph.payloads
-        and set(graph.views) <= {"main"}
     )
 
 
 def _clear_graph(graph: RunGraph) -> None:
     graph.nodes.clear()
-    graph.transitions.clear()
+    graph.steps.clear()
     graph.payloads.clear()
-    graph.views.clear()
     graph.payloads_by_node.clear()
-    graph.payloads_by_transition.clear()
-    graph.transitions_by_input_node.clear()
-    graph.transition_by_output_node.clear()
+    graph.payloads_by_step.clear()
+    graph.steps_by_input_node.clear()
+    graph.step_by_output_node.clear()
     graph.metadata.pop("root_node_id", None)
 
 

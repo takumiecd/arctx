@@ -1,6 +1,5 @@
 """Core graph model."""
 
-from arctx.core.graph_view import GraphView
 from arctx.core.ids import opaque_id, sequential_id, slugify, timestamp_id
 from arctx.core.run import RunHandle, init
 from arctx.core.run_graph import RunGraph
@@ -12,8 +11,8 @@ from arctx.core.schema import (
     PayloadBase,
     Requirement,
     TraceContext,
-    Transition,
-    TransitionPayload,
+    Step,
+    StepPayload,
     register_payload_class,
 )
 from arctx.core.types import (
@@ -22,7 +21,6 @@ from arctx.core.types import (
 
 __all__ = [
     "CutPayload",
-    "GraphView",
     "Node",
     "NodePayload",
     "Payload",
@@ -32,8 +30,8 @@ __all__ = [
     "RunHandle",
     "TargetKind",
     "TraceContext",
-    "Transition",
-    "TransitionPayload",
+    "Step",
+    "StepPayload",
     "init",
     "opaque_id",
     "register_payload_class",

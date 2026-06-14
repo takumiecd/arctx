@@ -1,21 +1,19 @@
 # Concept
 
-arctx は作業履歴を append-only な RunGraph として記録します。
+Arctx は、append-only な DAG を編集・整理・共有するための core layer です。
 
-グラフ骨格は小さく保ちます。
+MVP の基本概念は 3 つです。
 
-- `Node`: 作業履歴上の状態や地点。
-- `Transition`: 1 つ以上の Node を入力として受け取り、必ず 1 つの Node を出力する作業単位。
+- `Node`: DAG 上の点。状態、成果物、判断、観測、設計断片などを表す。
+- `Step`: 1 つ以上の Node から、新しい Node を生む操作。現行内部実装では `Step` として保存される。
+- `Payload`: Node / Step に付く意味情報。note、result、rationale、repo-ref、agent event、cut などを表す。
 
-`Edge` record は廃止済みです。接続情報は `Transition` 自身が持ちます。
+接続情報は Step が持ちます。独立した `Edge` record はありません。
 
-意味は payload に分離します。
+```text
+Node(s) -- Step --> Node
+```
 
-- `TransitionPayload(type="suggestion" | "implementation" | "analysis" | ...)` — Transition の意味
-- `NodePayload(type="note" | ...)` — Node への注釈
-- `CutPayload` — 無効化マーク（cascade で下流を inactive にする）
-- `GitChangePayload` — Git commit 情報
-- ユーザー定義 subclass — `PayloadBase` を継承して `register_payload_class()` で登録
+`CutPayload` は Payload の一種です。削除ではなく、対象 Node / Step とその下流を現在の有効 DAG から外す append-only marker です。
 
-並列 agent は、それぞれ新しい node / transition / payload / work event
-の batch を append します。既存履歴は書き換えません。
+Phase 1 では、外向きのCLIとdocsでは `Step` と呼びますが、内部 class / storage には `Step` という名前が残ります。内部名の全面変更は Phase 2 で扱います。

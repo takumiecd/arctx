@@ -76,15 +76,15 @@ class GitNamespace:
 
         return branch_members(self.handle.run_graph, branch)
 
-    def current_sha(self, transition_id: str) -> str | None:
+    def current_sha(self, step_id: str) -> str | None:
         from arctx.ext.git.queries import current_sha
 
-        return current_sha(self.handle.run_graph, transition_id)
+        return current_sha(self.handle.run_graph, step_id)
 
-    def transition_by_sha(self, sha: str) -> str | None:
-        from arctx.ext.git.queries import transition_by_sha
+    def step_by_sha(self, sha: str) -> str | None:
+        from arctx.ext.git.queries import step_by_sha
 
-        return transition_by_sha(self.handle.run_graph, sha)
+        return step_by_sha(self.handle.run_graph, sha)
 
 
 class GitExtension(ExtensionBase):
@@ -104,7 +104,7 @@ class GitExtension(ExtensionBase):
         setattr(handle, self.name, GitNamespace(handle))
 
     def cli_commands(self) -> list[CliCommand]:
-        from arctx_cli.commands.git import add_parser, cli_git
+        from arctx_cli.ext.git import add_parser, cli_git
 
         return [CliCommand(name=self.name, add_parser=add_parser, handler=cli_git)]
 
@@ -145,12 +145,18 @@ class GitExtension(ExtensionBase):
         except RuntimeError:
             return
 
-        write_arctx_id(repo_root, ctx.run_id)
+        try:
+            write_arctx_id(repo_root, ctx.run_id)
+        except OSError:
+            pass
 
         if ctx.options.get("ext_git_no_hooks"):
             return
 
-        run_hook_install(repo_path=repo_root, force=False)
+        try:
+            run_hook_install(repo_path=repo_root, force=False)
+        except OSError:
+            pass
 
     def validate(self, handle: "RunHandle") -> list[Violation]:
         from arctx.ext.git.verbs.verify import verify_impl

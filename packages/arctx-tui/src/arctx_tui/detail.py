@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 
-from arctx.core.cuts import inactive_node_ids, inactive_transition_ids
+from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run.handle import RunHandle
 from arctx.core.schema.payloads import (
     CutPayload,
     NodePayload,
-    TransitionPayload,
+    StepPayload,
 )
 from arctx.ext.git.payloads import GitChangePayload
 
@@ -32,8 +32,8 @@ def build_detail_markdown(
 
     if kind in ("node", "note"):
         return _node_detail(handle, raw_id, state_labels, plan_labels)
-    if kind == "transition":
-        return _transition_detail(handle, raw_id, state_labels, plan_labels)
+    if kind == "step":
+        return _step_detail(handle, raw_id, state_labels, plan_labels)
 
     return _run_overview(handle)
 
@@ -42,9 +42,9 @@ def _run_overview(handle: RunHandle) -> str:
     graph = handle.run_graph
     req = handle.requirement
     node_count = len(graph.nodes)
-    trans_count = len(graph.transitions)
+    trans_count = len(graph.steps)
     inactive_n = len(inactive_node_ids(graph))
-    inactive_t = len(inactive_transition_ids(graph))
+    inactive_t = len(inactive_step_ids(graph))
 
     lines = [
         "# Run Overview",
@@ -52,7 +52,7 @@ def _run_overview(handle: RunHandle) -> str:
         f"**Target:** {req.target_type} / {req.target_id}",
         "",
         f"**Nodes:** {node_count} ({inactive_n} cut)",
-        f"**Transitions:** {trans_count} ({inactive_t} cut)",
+        f"**Steps:** {trans_count} ({inactive_t} cut)",
     ]
     if req.objective:
         lines += ["", "**Objective:**", "```", json.dumps(req.objective, indent=2), "```"]
@@ -74,8 +74,8 @@ def _node_detail(
     is_cut = node_id in inactive_node_ids(graph)
     role = "root" if is_root else "cut" if is_cut else "active"
 
-    incoming = graph.transitions_to_node(node_id)
-    outgoing = graph.transitions_from_node(node_id)
+    incoming = graph.steps_to_node(node_id)
+    outgoing = graph.steps_from_node(node_id)
 
     lines = [
         f"# Node {sl}",
@@ -99,16 +99,16 @@ def _node_detail(
             lines += ["", f"## Payload ({payload.payload_type})"]
             lines += ["```", json.dumps(payload.to_dict(), indent=2, ensure_ascii=False), "```"]
 
-    # Incoming transition detail (transition is no longer a selectable tree row).
+    # Incoming step detail (step is no longer a selectable tree row).
     if not is_root and incoming:
-        transition_id = incoming[0]
-        pl = plan_labels.get(transition_id, "?")
-        inputs = graph.transition_inputs(transition_id)
+        step_id = incoming[0]
+        pl = plan_labels.get(step_id, "?")
+        inputs = graph.step_inputs(step_id)
         input_labels = ", ".join(state_labels.get(n, "?") for n in inputs)
 
-        lines += ["", "## Incoming", "", f"**Transition:** {pl}", f"**From:** {input_labels}"]
+        lines += ["", "## Incoming", "", f"**Step:** {pl}", f"**From:** {input_labels}"]
 
-        for payload in graph.payloads_for_transition(transition_id):
+        for payload in graph.payloads_for_step(step_id):
             if isinstance(payload, CutPayload):
                 lines += ["", "### Cut"]
                 if payload.reason:
@@ -127,7 +127,7 @@ def _node_detail(
                     lines += ["", "**Commits:**"]
                     for c in payload.commit_log[:5]:
                         lines.append(f"- `{c.sha[:8]}` {c.subject}")
-            elif isinstance(payload, TransitionPayload):
+            elif isinstance(payload, StepPayload):
                 lines += ["", f"### {payload.type}"]
                 if payload.content:
                     lines += ["```", json.dumps(payload.content, indent=2, ensure_ascii=False), "```"]
@@ -138,30 +138,30 @@ def _node_detail(
     return "\n".join(lines)
 
 
-def _transition_detail(
+def _step_detail(
     handle: RunHandle,
-    transition_id: str,
+    step_id: str,
     state_labels: dict[str, str],
     plan_labels: dict[str, str],
 ) -> str:
-    if transition_id not in handle.run_graph.transitions:
-        return "*(unknown transition)*"
+    if step_id not in handle.run_graph.steps:
+        return "*(unknown step)*"
 
     graph = handle.run_graph
-    pl = plan_labels.get(transition_id, "?")
-    inputs = graph.transition_inputs(transition_id)
-    output = graph.transition_output(transition_id)
+    pl = plan_labels.get(step_id, "?")
+    inputs = graph.step_inputs(step_id)
+    output = graph.step_output(step_id)
     input_labels = ", ".join(state_labels.get(n, "?") for n in inputs)
     output_label = state_labels.get(output, "?") if output else "-"
 
     lines = [
-        f"# Transition {pl}",
+        f"# Step {pl}",
         "",
         f"**From:** {input_labels}",
         f"**To:** {output_label}",
     ]
 
-    for payload in graph.payloads_for_transition(transition_id):
+    for payload in graph.payloads_for_step(step_id):
         if isinstance(payload, CutPayload):
             lines += ["", "## Cut"]
             if payload.reason:
@@ -180,7 +180,7 @@ def _transition_detail(
                 lines += ["", "**Commits:**"]
                 for c in payload.commit_log[:5]:
                     lines.append(f"- `{c.sha[:8]}` {c.subject}")
-        elif isinstance(payload, TransitionPayload):
+        elif isinstance(payload, StepPayload):
             lines += ["", f"## {payload.type}"]
             if payload.content:
                 lines += ["```", json.dumps(payload.content, indent=2, ensure_ascii=False), "```"]

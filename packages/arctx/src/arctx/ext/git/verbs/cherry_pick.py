@@ -5,14 +5,14 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from arctx.core.schema.graph import Node, Transition
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.work_helpers import make_session_pointer_event
 from arctx.ext.git.events import make_branch_tip_event
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.payloads import BranchPayload, CherryPickPayload, GitChangePayload
-from arctx.ext.git.queries import transition_by_sha
+from arctx.ext.git.queries import step_by_sha
 from arctx.ext.git.registry import resolve_repo_id
-from arctx.ext.git.verbs._forward_transition import (
+from arctx.ext.git.verbs._forward_step import (
     capture_git_info,
     check_branch_tip_consistency,
     resolve_current_branch,
@@ -30,8 +30,8 @@ def cherry_pick_impl(
     work_session_id: str | None = None,
     head_commit: str | None = None,
     dry_run: bool = False,
-) -> Transition:
-    """Drive ``git cherry-pick <sha>`` and record the corresponding arctx Transition."""
+) -> Step:
+    """Drive ``git cherry-pick <sha>`` and record the corresponding arctx Step."""
     resolved_repo_path: Path = resolve_worktree_path(repo_path)
 
     current_node_ids = resolve_current_node_ids(self, work_session_id)
@@ -57,7 +57,7 @@ def cherry_pick_impl(
             self.run_graph, current_branch, current_node_ids, repo_id
         )
 
-    source_transition_id: str | None = transition_by_sha(self.run_graph, source_sha)
+    source_step_id: str | None = step_by_sha(self.run_graph, source_sha)
 
     if not dry_run:
         cmd = ["git", "cherry-pick", source_sha]
@@ -94,17 +94,17 @@ def cherry_pick_impl(
     output_node = Node(node_id=self._next_id("n"))
     self.run_graph.add_node(output_node)
 
-    transition_id = self._next_id("t")
-    transition = Transition(
-        transition_id=transition_id,
+    step_id = self._next_id("t")
+    step = Step(
+        step_id=step_id,
         input_node_ids=current_node_ids,
         output_node_id=output_node.node_id,
     )
-    self.run_graph.add_transition(transition)
+    self.run_graph.add_step(step)
 
     branch_payload = BranchPayload(
         payload_id=self._next_id("pl"),
-        target_id=transition_id,
+        target_id=step_id,
         branch=current_branch,
         repo_id=repo_id,
     )
@@ -112,7 +112,7 @@ def cherry_pick_impl(
 
     git_payload = GitChangePayload(
         payload_id=self._next_id("pl"),
-        target_id=transition_id,
+        target_id=step_id,
         branch=current_branch,
         head_commit=head_commit,
         diff_summary=diff_summary,
@@ -123,8 +123,8 @@ def cherry_pick_impl(
 
     cp_payload = CherryPickPayload(
         payload_id=self._next_id("pl"),
-        target_id=transition_id,
-        source_transition=source_transition_id,
+        target_id=step_id,
+        source_step=source_step_id,
         source_commit=source_sha,
     )
     self.run_graph.attach_payload(cp_payload)
@@ -155,11 +155,11 @@ def cherry_pick_impl(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type="cherry_pick_created",
-        target_kind="transition",
-        target_id=transition_id,
+        target_kind="step",
+        target_id=step_id,
         created_records=(
             output_node.node_id,
-            transition_id,
+            step_id,
             branch_payload.payload_id,
             git_payload.payload_id,
             cp_payload.payload_id,
@@ -167,10 +167,10 @@ def cherry_pick_impl(
         summary=f"cherry-pick {source_sha[:12]}",
         data={
             "source_sha": source_sha,
-            "source_transition": source_transition_id,
+            "source_step": source_step_id,
             "branch": current_branch,
             "head_commit": head_commit,
         },
     )
 
-    return transition
+    return step

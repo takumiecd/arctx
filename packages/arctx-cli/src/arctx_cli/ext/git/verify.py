@@ -1,7 +1,7 @@
 """arctx CLI verify command.
 
 Validates the Descendant constraint (REDESIGN §10.9 invariant 7) over all
-non-cut transitions in the current run.
+non-cut steps in the current run.
 
 Exit codes:
   0 — no violations
@@ -22,7 +22,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     """Register the ``verify`` subcommand parser."""
     p = subparsers.add_parser(
         "verify",
-        help="Verify the descendant constraint over all transitions",
+        help="Verify the descendant constraint over all steps",
     )
     p.add_argument(
         "--repo",
@@ -74,11 +74,11 @@ def run_verify_command(
         skip_dead_sha_check=skip_dead_sha_check,
     )
 
-    # Count non-cut transitions that were checked.
-    from arctx.core.cuts import inactive_transition_ids  # noqa: PLC0415
+    # Count non-cut steps that were checked.
+    from arctx.core.cuts import inactive_step_ids  # noqa: PLC0415
     graph = handle.run_graph
-    inactive = inactive_transition_ids(graph)
-    checked = sum(1 for t_id in graph.transitions if t_id not in inactive)
+    inactive = inactive_step_ids(graph)
+    checked = sum(1 for t_id in graph.steps if t_id not in inactive)
 
     by_kind: dict[str, int] = {}
     for v in violations:
@@ -86,7 +86,7 @@ def run_verify_command(
 
     violation_dicts = [
         {
-            "transition_id": v.transition_id,
+            "step_id": v.step_id,
             "kind": v.kind,
             "message": v.message,
             "details": v.details,
@@ -126,15 +126,15 @@ def cli_verify(args) -> int:
         violations = result["violations"]
         if not violations:
             print(
-                f"ok: {summary['checked']} transition(s) checked, "
+                f"ok: {summary['checked']} step(s) checked, "
                 "no violations found"
             )
         else:
             print(
                 f"FAIL: {summary['violations']} violation(s) in "
-                f"{summary['checked']} transition(s) checked"
+                f"{summary['checked']} step(s) checked"
             )
             for v in violations:
-                print(f"  [{v['kind']}] {v['transition_id']}: {v['message']}")
+                print(f"  [{v['kind']}] {v['step_id']}: {v['message']}")
 
     return 0 if not result["violations"] else 1

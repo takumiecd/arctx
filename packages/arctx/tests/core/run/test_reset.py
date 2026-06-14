@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from arctx.core.cuts import is_inactive_transition
+from arctx.core.cuts import is_inactive_step
 from arctx.core.schema.payloads import CutPayload
 from arctx.core.schema.requirements import Requirement
 from arctx.core.schema.work_helpers import (
@@ -26,12 +26,12 @@ def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
 
 
 def _make_chain(handle, length: int = 3):
-    """Build root -> t1 -> n1 -> t2 -> n2 -> ... and return (transitions, nodes).
+    """Build root -> t1 -> n1 -> t2 -> n2 -> ... and return (steps, nodes).
 
-    Returns list of transitions and list of output nodes in order.
+    Returns list of steps and list of output nodes in order.
     """
     _ensure_session(handle)
-    transitions = []
+    steps = []
     nodes = []
     for i in range(length):
         t = handle.git.commit(
@@ -42,17 +42,17 @@ def _make_chain(handle, length: int = 3):
             head_commit=f"sha_{i+1}",
             dry_run=True,
         )
-        transitions.append(t)
+        steps.append(t)
         nodes.append(t.output_node_id)
-    return transitions, nodes
+    return steps, nodes
 
 
 class TestResetImplDryRun:
-    def test_no_new_transition_created(self):
-        """reset must NOT create a new Transition."""
+    def test_no_new_step_created(self):
+        """reset must NOT create a new Step."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        count_before = len(handle.run_graph.transitions)
+        steps, nodes = _make_chain(handle, length=3)
+        count_before = len(handle.run_graph.steps)
 
         handle.git.reset(
             to_node_id=nodes[0],  # n1
@@ -61,12 +61,12 @@ class TestResetImplDryRun:
             work_session_id="ws_1",
             dry_run=True,
         )
-        assert len(handle.run_graph.transitions) == count_before
+        assert len(handle.run_graph.steps) == count_before
 
     def test_no_new_node_created(self):
         """reset must NOT create a new Node."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
+        steps, nodes = _make_chain(handle, length=3)
         count_before = len(handle.run_graph.nodes)
 
         handle.git.reset(
@@ -80,7 +80,7 @@ class TestResetImplDryRun:
 
     def test_reset_event_recorded(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
+        steps, nodes = _make_chain(handle, length=3)
 
         events_before = [e for e in handle.run_graph.work_events if e.event_type == RESET_EVENT]
 
@@ -96,7 +96,7 @@ class TestResetImplDryRun:
 
     def test_reset_event_data(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
+        steps, nodes = _make_chain(handle, length=3)
         # current is n3 (nodes[2]), resetting to n1 (nodes[0])
 
         handle.git.reset(
@@ -115,7 +115,7 @@ class TestResetImplDryRun:
 
     def test_session_pointer_updated(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
+        steps, nodes = _make_chain(handle, length=3)
 
         handle.git.reset(
             to_node_id=nodes[0],
@@ -130,7 +130,7 @@ class TestResetImplDryRun:
 
     def test_session_pointer_event_appended(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
+        steps, nodes = _make_chain(handle, length=3)
 
         sp_events_before = [
             e for e in handle.run_graph.work_events
@@ -150,11 +150,11 @@ class TestResetImplDryRun:
         ]
         assert len(sp_events_after) == len(sp_events_before) + 1
 
-    def test_hard_mode_cuts_discarded_transitions(self):
+    def test_hard_mode_cuts_discarded_steps(self):
         """mode=hard: t2 and t3 should be cut."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        t1, t2, t3 = transitions
+        steps, nodes = _make_chain(handle, length=3)
+        t1, t2, t3 = steps
 
         handle.git.reset(
             to_node_id=nodes[0],  # n1 — so t2 and t3 are discarded
@@ -163,14 +163,14 @@ class TestResetImplDryRun:
             work_session_id="ws_1",
             dry_run=True,
         )
-        assert is_inactive_transition(handle.run_graph, t2.transition_id)
-        assert is_inactive_transition(handle.run_graph, t3.transition_id)
+        assert is_inactive_step(handle.run_graph, t2.step_id)
+        assert is_inactive_step(handle.run_graph, t3.step_id)
 
     def test_hard_mode_t1_not_cut(self):
         """mode=hard: t1 (leading to to_node) must NOT be cut."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        t1, t2, t3 = transitions
+        steps, nodes = _make_chain(handle, length=3)
+        t1, t2, t3 = steps
 
         handle.git.reset(
             to_node_id=nodes[0],
@@ -179,12 +179,12 @@ class TestResetImplDryRun:
             work_session_id="ws_1",
             dry_run=True,
         )
-        assert not is_inactive_transition(handle.run_graph, t1.transition_id)
+        assert not is_inactive_step(handle.run_graph, t1.step_id)
 
     def test_mixed_mode_no_cut(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        t1, t2, t3 = transitions
+        steps, nodes = _make_chain(handle, length=3)
+        t1, t2, t3 = steps
 
         handle.git.reset(
             to_node_id=nodes[0],
@@ -193,13 +193,13 @@ class TestResetImplDryRun:
             work_session_id="ws_1",
             dry_run=True,
         )
-        assert not is_inactive_transition(handle.run_graph, t2.transition_id)
-        assert not is_inactive_transition(handle.run_graph, t3.transition_id)
+        assert not is_inactive_step(handle.run_graph, t2.step_id)
+        assert not is_inactive_step(handle.run_graph, t3.step_id)
 
     def test_soft_mode_no_cut(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        t1, t2, t3 = transitions
+        steps, nodes = _make_chain(handle, length=3)
+        t1, t2, t3 = steps
 
         handle.git.reset(
             to_node_id=nodes[0],
@@ -208,13 +208,13 @@ class TestResetImplDryRun:
             work_session_id="ws_1",
             dry_run=True,
         )
-        assert not is_inactive_transition(handle.run_graph, t2.transition_id)
-        assert not is_inactive_transition(handle.run_graph, t3.transition_id)
+        assert not is_inactive_step(handle.run_graph, t2.step_id)
+        assert not is_inactive_step(handle.run_graph, t3.step_id)
 
-    def test_cut_payload_on_discarded_transitions(self):
+    def test_cut_payload_on_discarded_steps(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        t2, t3 = transitions[1], transitions[2]
+        steps, nodes = _make_chain(handle, length=3)
+        t2, t3 = steps[1], steps[2]
 
         handle.git.reset(
             to_node_id=nodes[0],
@@ -225,15 +225,15 @@ class TestResetImplDryRun:
         )
         cut_payloads = [
             p for p in handle.run_graph.payloads.values()
-            if isinstance(p, CutPayload) and p.target_kind == "transition"
+            if isinstance(p, CutPayload) and p.target_kind == "step"
         ]
         cut_ids = {p.target_id for p in cut_payloads}
-        assert t2.transition_id in cut_ids
-        assert t3.transition_id in cut_ids
+        assert t2.step_id in cut_ids
+        assert t3.step_id in cut_ids
 
     def test_return_value_structure(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=2)
+        steps, nodes = _make_chain(handle, length=2)
 
         result = handle.git.reset(
             to_node_id=nodes[0],
@@ -244,7 +244,7 @@ class TestResetImplDryRun:
         )
         assert "to_node_id" in result
         assert "from_node_id" in result
-        assert "discarded_transition_ids" in result
+        assert "discarded_step_ids" in result
         assert "mode" in result
         assert "event_id" in result
         assert result["to_node_id"] == nodes[0]
@@ -252,8 +252,8 @@ class TestResetImplDryRun:
 
     def test_return_discarded_ids_correct(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        t2, t3 = transitions[1], transitions[2]
+        steps, nodes = _make_chain(handle, length=3)
+        t2, t3 = steps[1], steps[2]
 
         result = handle.git.reset(
             to_node_id=nodes[0],
@@ -262,14 +262,14 @@ class TestResetImplDryRun:
             work_session_id="ws_1",
             dry_run=True,
         )
-        discarded = set(result["discarded_transition_ids"])
-        assert t2.transition_id in discarded
-        assert t3.transition_id in discarded
+        discarded = set(result["discarded_step_ids"])
+        assert t2.step_id in discarded
+        assert t3.step_id in discarded
 
     def test_to_node_not_ancestor_raises(self):
         """Resetting to a node that is not an ancestor must raise ValueError."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=2)
+        steps, nodes = _make_chain(handle, length=2)
         # nodes[1] is current (n2); nodes[0] is n1, root is the real ancestor.
         # Try resetting "forward" — root is an ancestor of n1, not the reverse.
         # Create a second branch from the root to get a non-ancestor node.
@@ -306,9 +306,9 @@ class TestResetImplDryRun:
             )
 
     def test_same_node_no_op(self):
-        """Resetting to the current node produces no discarded transitions."""
+        """Resetting to the current node produces no discarded steps."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=2)
+        steps, nodes = _make_chain(handle, length=2)
 
         result = handle.git.reset(
             to_node_id=nodes[1],  # same as current
@@ -317,12 +317,12 @@ class TestResetImplDryRun:
             work_session_id="ws_1",
             dry_run=True,
         )
-        assert result["discarded_transition_ids"] == []
+        assert result["discarded_step_ids"] == []
 
     def test_no_user_id_skips_events(self):
         """Without user_id, no WorkEvents are recorded."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=2)
+        steps, nodes = _make_chain(handle, length=2)
         event_count_before = len(handle.run_graph.work_events)
 
         # Pass work_session_id so from_node is resolved correctly,
@@ -337,13 +337,13 @@ class TestResetImplDryRun:
         assert result["event_id"] is None
 
     def test_hard_mode_no_double_cut(self):
-        """If a transition is already cut, reset should not raise."""
+        """If a step is already cut, reset should not raise."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        t2 = transitions[1]
+        steps, nodes = _make_chain(handle, length=3)
+        t2 = steps[1]
 
         # Pre-cut t2.
-        handle.cut(t2.transition_id, target_kind="transition", reason="pre-cut")
+        handle.cut(t2.step_id, target_kind="step", reason="pre-cut")
 
         # reset should not raise even though t2 is already cut.
         handle.git.reset(
@@ -354,12 +354,12 @@ class TestResetImplDryRun:
             dry_run=True,
         )
         # t3 must be cut by reset (t2 was already cut before).
-        assert is_inactive_transition(handle.run_graph, transitions[2].transition_id)
+        assert is_inactive_step(handle.run_graph, steps[2].step_id)
 
     def test_to_sha_lookup(self):
-        """to_sha is resolved via transition_by_sha -> output_node_id."""
+        """to_sha is resolved via step_by_sha -> output_node_id."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
+        steps, nodes = _make_chain(handle, length=3)
         # sha_1 corresponds to t1 (nodes[0])
         result = handle.git.reset(
             to_sha="sha_1",
@@ -374,7 +374,7 @@ class TestResetImplDryRun:
         handle = _make_handle()
         _make_chain(handle, length=2)
 
-        with pytest.raises(KeyError, match="no arctx transition found"):
+        with pytest.raises(KeyError, match="no arctx step found"):
             handle.git.reset(
                 to_sha="nonexistent_sha",
                 mode="hard",
@@ -390,7 +390,7 @@ class TestResetImplDryRun:
 
     def test_both_args_raises(self):
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=1)
+        steps, nodes = _make_chain(handle, length=1)
 
         with pytest.raises(ValueError, match="mutually exclusive"):
             handle.git.reset(
@@ -403,8 +403,8 @@ class TestResetImplDryRun:
     def test_reset_to_middle_node(self):
         """Resetting from n3 to n2 discards only t3."""
         handle = _make_handle()
-        transitions, nodes = _make_chain(handle, length=3)
-        t1, t2, t3 = transitions
+        steps, nodes = _make_chain(handle, length=3)
+        t1, t2, t3 = steps
 
         result = handle.git.reset(
             to_node_id=nodes[1],  # n2
@@ -413,10 +413,10 @@ class TestResetImplDryRun:
             work_session_id="ws_1",
             dry_run=True,
         )
-        discarded = set(result["discarded_transition_ids"])
-        assert t3.transition_id in discarded
-        assert t2.transition_id not in discarded
-        assert t1.transition_id not in discarded
+        discarded = set(result["discarded_step_ids"])
+        assert t3.step_id in discarded
+        assert t2.step_id not in discarded
+        assert t1.step_id not in discarded
 
-        assert is_inactive_transition(handle.run_graph, t3.transition_id)
-        assert not is_inactive_transition(handle.run_graph, t2.transition_id)
+        assert is_inactive_step(handle.run_graph, t3.step_id)
+        assert not is_inactive_step(handle.run_graph, t2.step_id)

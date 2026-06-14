@@ -10,7 +10,7 @@ import pytest
 from arctx.core.schema.payloads import (
     NodePayload,
     PayloadBase,
-    TransitionPayload,
+    StepPayload,
     payload_from_dict,
     register_payload_class,
 )
@@ -22,7 +22,7 @@ def test_register_and_dispatch():
         payload_id: str
         target_id: str
         accuracy: float = 0.0
-        target_kind: Literal["transition"] = field(default="transition", init=False)
+        target_kind: Literal["step"] = field(default="step", init=False)
         payload_type: str = field(default="metric_payload_reg_test", init=False)
 
         def to_dict(self):
@@ -39,7 +39,7 @@ def test_register_and_dispatch():
         "payload_type": "metric_payload_reg_test",
         "payload_id": "pl_x",
         "target_id": "t_1",
-        "target_kind": "transition",
+        "target_kind": "step",
         "accuracy": 0.95,
     }
     p = payload_from_dict(data)
@@ -60,16 +60,16 @@ def test_unknown_type_fallback_node():
     assert p.type == "totally_unknown_node_type"
 
 
-def test_unknown_type_fallback_transition():
+def test_unknown_type_fallback_step():
     data = {
-        "payload_type": "totally_unknown_transition_type",
+        "payload_type": "totally_unknown_step_type",
         "payload_id": "pl_u",
         "target_id": "t_x",
-        "target_kind": "transition",
+        "target_kind": "step",
     }
     p = payload_from_dict(data)
-    assert isinstance(p, TransitionPayload)
-    assert p.type == "totally_unknown_transition_type"
+    assert isinstance(p, StepPayload)
+    assert p.type == "totally_unknown_step_type"
 
 
 def test_register_requires_payload_type():

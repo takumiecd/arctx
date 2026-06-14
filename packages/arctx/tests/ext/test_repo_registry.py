@@ -185,11 +185,11 @@ class TestMultiRepoTipKeying:
             message="b1", repo_path=b, user_id="u", work_session_id="ws"
         )
 
-        a_git = handle.run_graph.payloads_for_transition(
-            t_a.transition_id, payload_type="git_change"
+        a_git = handle.run_graph.payloads_for_step(
+            t_a.step_id, payload_type="git_change"
         )[0]
-        b_git = handle.run_graph.payloads_for_transition(
-            t_b.transition_id, payload_type="git_change"
+        b_git = handle.run_graph.payloads_for_step(
+            t_b.step_id, payload_type="git_change"
         )[0]
         assert isinstance(a_git, GitChangePayload)
         assert a_git.repo_id != ""

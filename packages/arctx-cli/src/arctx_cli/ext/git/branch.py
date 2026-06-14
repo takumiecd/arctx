@@ -2,7 +2,7 @@
 
 Provides:
   arctx branch list       — list all known branches and their tip node IDs
-  arctx branch show NAME  — show tip, members count, and BranchPayload transitions
+  arctx branch show NAME  — show tip, members count, and BranchPayload steps
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def run_branch_show_command(
       - tip_node_id: str | None
       - members_count: int
       - members_sample: list[str] (up to 10 node IDs)
-      - transitions: list[dict] for transitions that carry a BranchPayload
+      - steps: list[dict] for steps that carry a BranchPayload
         targeting this branch
     """
     store = resolve_store(store_dir)
@@ -87,18 +87,18 @@ def run_branch_show_command(
     if tip_node_id:
         members = branch_members(graph, name)
 
-    # Find transitions with BranchPayload(branch=name).
-    branch_transitions = []
-    for t_id, transition in graph.transitions.items():
-        for p in graph.payloads_for_transition(t_id, payload_type="branch"):
+    # Find steps with BranchPayload(branch=name).
+    branch_steps = []
+    for t_id, step in graph.steps.items():
+        for p in graph.payloads_for_step(t_id, payload_type="branch"):
             if getattr(p, "branch", None) == name:
                 # Collect associated GitChangePayload info.
-                git_payloads = graph.payloads_for_transition(t_id, payload_type="git_change")
+                git_payloads = graph.payloads_for_step(t_id, payload_type="git_change")
                 head_commit = git_payloads[-1].head_commit if git_payloads else None
-                branch_transitions.append(
+                branch_steps.append(
                     {
-                        "transition_id": t_id,
-                        "output_node_id": transition.output_node_id,
+                        "step_id": t_id,
+                        "output_node_id": step.output_node_id,
                         "head_commit": head_commit,
                         "branch_payload_id": p.payload_id,
                     }
@@ -109,7 +109,7 @@ def run_branch_show_command(
         "tip_node_id": tip_node_id,
         "members_count": len(members),
         "members_sample": sorted(members)[:10],
-        "transitions": branch_transitions,
+        "steps": branch_steps,
     }
 
 

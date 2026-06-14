@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import arctx as arctx
 from arctx.core.run.export import ExportOptions, export
-from arctx.core.schema.payloads import TransitionPayload
+from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
 from arctx.ext import attach_extensions
 from arctx.ext.git.payloads import RemoteRef, RepoPayload
@@ -20,9 +20,9 @@ def _make_handle(run_id: str = "run_exp"):
 
 
 def _step_payload(handle, i):
-    # transition() clones the payload and rebinds target_id, so a placeholder
+    # step() clones the payload and rebinds target_id, so a placeholder
     # target_id is fine here.
-    return TransitionPayload(
+    return StepPayload(
         payload_id=handle._next_id("pl"),
         target_id="pending",
         type="step",
@@ -64,16 +64,16 @@ class TestExportFormats:
 class TestCutExclude:
     def test_cut_kept_by_default_excluded_on_demand(self):
         h = _make_handle()
-        t = h.transition([h.root_node_id], _step_payload(h, 0))
-        # cut the transition
-        h.cut(t.transition_id, target_kind="transition")
+        t = h.add_step([h.root_node_id], _step_payload(h, 0))
+        # cut the step
+        h.cut(t.step_id, target_kind="step")
 
         default_out = export(h, "md", ExportOptions())
-        assert t.transition_id in default_out
+        assert t.step_id in default_out
         assert "(cut)" in default_out
 
         excluded = export(h, "md", ExportOptions(exclude_cut=True))
-        assert t.transition_id not in excluded
+        assert t.step_id not in excluded
 
 
 class TestRepoSection:

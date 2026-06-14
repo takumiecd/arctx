@@ -15,7 +15,7 @@ from arctx.core.types import JSONValue
 
 @dataclass(frozen=True)
 class CommandRunPayload(PayloadBase):
-    """External command execution result attached to a Transition."""
+    """External command execution result attached to a Step."""
 
     payload_id: str
     target_id: str
@@ -31,7 +31,7 @@ class CommandRunPayload(PayloadBase):
     truncated_stderr: bool = False
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    target_kind: Literal["transition"] = field(default="transition", init=False)
+    target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="command_run", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:

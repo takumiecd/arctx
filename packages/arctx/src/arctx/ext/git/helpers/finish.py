@@ -6,7 +6,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from arctx.core.cuts import is_inactive_transition
+from arctx.core.cuts import is_inactive_step
 from arctx.ext.git.helpers import repo as git_repo
 from arctx.ext.git.helpers.session import (
     GitSession,
@@ -19,7 +19,7 @@ from arctx.ext.git.payloads import (
     DiffSummary,
     GitChangePayload,
 )
-from arctx.core.schema.payloads import TransitionPayload
+from arctx.core.schema.payloads import StepPayload
 from arctx.core.run.handle import RunHandle
 
 
@@ -86,10 +86,10 @@ def _validate_session(session: GitSession, handle: RunHandle) -> list[str]:
         raise ValueError(
             f"session {session.session_id} is already closed (closed_at={session.closed_at})"
         )
-    if session.transition_id not in handle.run_graph.transitions:
-        raise KeyError(f"session references unknown transition_id: {session.transition_id}")
-    if is_inactive_transition(handle.run_graph, session.transition_id):
-        raise ValueError(f"transition {session.transition_id} is inactive (cut)")
+    if session.step_id not in handle.run_graph.steps:
+        raise KeyError(f"session references unknown step_id: {session.step_id}")
+    if is_inactive_step(handle.run_graph, session.step_id):
+        raise ValueError(f"step {session.step_id} is inactive (cut)")
     return []
 
 
@@ -103,14 +103,14 @@ def git_finish_form_a(
     user_id: str = "user",
     work_session_id: str | None = None,
 ) -> dict:
-    """Create a result transition and attach GitChangePayload.
+    """Create a result step and attach GitChangePayload.
 
-    In the new schema, this creates a new Transition from the session's
-    transition output node, with type="result" and attaches a GitChangePayload.
+    In the new schema, this creates a new Step from the session's
+    step output node, with type="result" and attaches a GitChangePayload.
     """
     session = load_session(session_id, run_dir)
     _validate_session(session, handle)
-    transition_id = session.transition_id
+    step_id = session.step_id
 
     try:
         current_root = git_repo.find_repo_root(Path("."))
@@ -150,13 +150,13 @@ def git_finish_form_a(
             "An empty GitChangePayload will be attached."
         )
 
-    # The session's transition output node is the starting point for the result.
-    t = handle.run_graph.transitions.get(transition_id)
+    # The session's step output node is the starting point for the result.
+    t = handle.run_graph.steps.get(step_id)
     if t is None:
-        raise KeyError(f"unknown transition_id: {transition_id}")
-    from_node_id = t.output_node_id or session.transition_id
+        raise KeyError(f"unknown step_id: {step_id}")
+    from_node_id = t.output_node_id or session.step_id
 
-    # Attach GitChangePayload to the existing transition.
+    # Attach GitChangePayload to the existing step.
     git_payload_id = handle._next_id("pl")
     patch_artifact: str | None = None
     if gdata["patch_text"]:
@@ -164,7 +164,7 @@ def git_finish_form_a(
 
     gcp = GitChangePayload(
         payload_id=git_payload_id,
-        target_id=transition_id,
+        target_id=step_id,
         branch=branch,
         head_commit=head_commit,
         diff_summary=gdata["diff_summary"],
@@ -176,8 +176,8 @@ def git_finish_form_a(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type="git_change_attached",
-        target_kind="transition",
-        target_id=transition_id,
+        target_kind="step",
+        target_id=step_id,
         created_records=(git_payload_id,),
         summary=f"{len(gdata['commit_log'])} commit(s)",
         data={"head_commit": head_commit, "branch": branch},
@@ -189,7 +189,7 @@ def git_finish_form_a(
     closed_session = GitSession(
         session_id=session.session_id,
         run_id=session.run_id,
-        transition_id=session.transition_id,
+        step_id=session.step_id,
         repo_root=session.repo_root,
         base_commit=session.base_commit,
         base_branch=session.base_branch,
@@ -206,7 +206,7 @@ def git_finish_form_a(
 
     return {
         "created": {
-            "transition_id": transition_id,
+            "step_id": step_id,
             "git_change_payload_id": git_payload_id,
         },
         "git": {
@@ -219,7 +219,7 @@ def git_finish_form_a(
         },
         "warnings": warnings,
         "next": [
-            f"arctx git diff --transition {transition_id}",
+            f"arctx git diff --step {step_id}",
         ],
     }
 
@@ -229,23 +229,23 @@ def git_finish_form_b(
     run_dir: Path,
     session_id: str,
     *,
-    transition_id: str,
+    step_id: str,
     user_id: str = "user",
     work_session_id: str | None = None,
 ) -> dict:
-    """Attach GitChangePayload to an existing Transition."""
+    """Attach GitChangePayload to an existing Step."""
     session = load_session(session_id, run_dir)
     _validate_session(session, handle)
 
-    if transition_id not in handle.run_graph.transitions:
-        raise KeyError(f"unknown transition_id: {transition_id}")
-    if transition_id != session.transition_id:
+    if step_id not in handle.run_graph.steps:
+        raise KeyError(f"unknown step_id: {step_id}")
+    if step_id != session.step_id:
         raise ValueError(
-            f"transition {transition_id} does not match session transition "
-            f"{session.transition_id!r}"
+            f"step {step_id} does not match session step "
+            f"{session.step_id!r}"
         )
-    if is_inactive_transition(handle.run_graph, transition_id):
-        raise ValueError(f"transition {transition_id} is inactive (cut)")
+    if is_inactive_step(handle.run_graph, step_id):
+        raise ValueError(f"step {step_id} is inactive (cut)")
 
     try:
         current_root = git_repo.find_repo_root(Path("."))
@@ -270,10 +270,10 @@ def git_finish_form_b(
         raise ValueError("Working tree has uncommitted tracked-file changes.")
 
     warnings: list[str] = []
-    existing_gcp = handle.run_graph.payloads_for_transition(transition_id, payload_type="git_change")
+    existing_gcp = handle.run_graph.payloads_for_step(step_id, payload_type="git_change")
     if existing_gcp:
         warnings.append(
-            f"Transition {transition_id} already has "
+            f"Step {step_id} already has "
             f"{len(existing_gcp)} GitChangePayload(s)."
         )
 
@@ -294,7 +294,7 @@ def git_finish_form_b(
 
     gcp = GitChangePayload(
         payload_id=git_payload_id,
-        target_id=transition_id,
+        target_id=step_id,
         branch=branch,
         head_commit=head_commit,
         diff_summary=gdata["diff_summary"],
@@ -306,8 +306,8 @@ def git_finish_form_b(
         user_id=user_id,
         work_session_id=work_session_id,
         event_type="git_change_attached",
-        target_kind="transition",
-        target_id=transition_id,
+        target_kind="step",
+        target_id=step_id,
         created_records=(git_payload_id,),
         summary=f"{len(gdata['commit_log'])} commit(s)",
         data={"head_commit": head_commit, "branch": branch},
@@ -318,7 +318,7 @@ def git_finish_form_b(
     closed_session = GitSession(
         session_id=session.session_id,
         run_id=session.run_id,
-        transition_id=session.transition_id,
+        step_id=session.step_id,
         repo_root=session.repo_root,
         base_commit=session.base_commit,
         base_branch=session.base_branch,
@@ -335,7 +335,7 @@ def git_finish_form_b(
 
     return {
         "created": {
-            "transition_id": transition_id,
+            "step_id": step_id,
             "git_change_payload_id": git_payload_id,
         },
         "git": {
@@ -348,6 +348,6 @@ def git_finish_form_b(
         },
         "warnings": warnings,
         "next": [
-            f"arctx git diff --transition {transition_id}",
+            f"arctx git diff --step {step_id}",
         ],
     }

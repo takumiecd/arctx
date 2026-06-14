@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from arctx.core.cuts import inactive_node_ids, inactive_transition_ids
+from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run.handle import RunHandle
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.payloads import CutPayload, NodePayload, TransitionPayload
+from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
 
 
 @dataclass
@@ -31,45 +31,55 @@ def _node_summary(graph: RunGraph, node_id: str) -> str | None:
             text = payload.content.get("text")
             if isinstance(text, str) and text:
                 return text
+            title = payload.content.get("title")
+            if isinstance(title, str) and title:
+                return title
             return payload.type
     return None
 
 
-def _transition_summary(graph: RunGraph, transition_id: str, full: bool) -> str:
-    payloads = graph.payloads_for_transition(transition_id)
+def _step_summary(graph: RunGraph, step_id: str, full: bool) -> str:
+    payloads = graph.payloads_for_step(step_id)
     parts = []
     for payload in payloads:
         if isinstance(payload, CutPayload):
             parts.append("✂cut")
-        elif isinstance(payload, TransitionPayload):
-            parts.append(payload.type)
+        elif isinstance(payload, StepPayload):
+            title = payload.content.get("title")
+            text = payload.content.get("text")
+            if isinstance(title, str) and title:
+                parts.append(title)
+            elif isinstance(text, str) and text:
+                parts.append(text)
+            else:
+                parts.append(payload.type)
             if full and payload.content:
                 import json
                 parts.append(json.dumps(payload.content)[:60])
         else:
             parts.append(payload.payload_type)
-    return " ".join(parts) if parts else "transition"
+    return " ".join(parts) if parts else "step"
 
 
 def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
     graph = handle.run_graph
     inactive_nodes = inactive_node_ids(graph)
-    inactive_trans = inactive_transition_ids(graph)
+    inactive_trans = inactive_step_ids(graph)
     root_id = opts.node_id or handle.root_node_id
 
     lines = [
         (
             f"run={handle.run_id}  nodes={len(graph.nodes)}  "
-            f"transitions={len(graph.transitions)}"
+            f"steps={len(graph.steps)}"
         ),
         "",
     ]
     visited_nodes: set[str] = set()
-    visited_transitions: set[str] = set()
+    visited_steps: set[str] = set()
 
-    # Count multi-input transitions for joins index.
+    # Count multi-input steps for joins index.
     multi_input_trans = [
-        tid for tid, t in graph.transitions.items() if len(t.input_node_ids) > 1
+        tid for tid, t in graph.steps.items() if len(t.input_node_ids) > 1
     ]
 
     def emit_node(node_id: str, prefix: str, is_last: bool, depth: int) -> None:
@@ -86,36 +96,36 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
             lines.append(f"{child_prefix}note: {_truncate(note, 80)}")
         if opts.depth is not None and depth >= opts.depth:
             return
-        transition_ids = graph.transitions_from_node(node_id)
-        for index, transition_id in enumerate(transition_ids):
-            t = graph.transitions[transition_id]
+        step_ids = graph.steps_from_node(node_id)
+        for index, step_id in enumerate(step_ids):
+            t = graph.steps[step_id]
             # Only render as primary if this node is inputs[0].
             if t.input_node_ids and t.input_node_ids[0] != node_id:
                 lines.append(
-                    f"{child_prefix}▸ feeds {transition_id} (@{t.input_node_ids[0]})"
+                    f"{child_prefix}▸ feeds {step_id} (@{t.input_node_ids[0]})"
                 )
                 continue
-            emit_transition(
-                transition_id,
+            emit_step(
+                step_id,
                 child_prefix,
-                index == len(transition_ids) - 1,
+                index == len(step_ids) - 1,
                 depth + 1,
             )
 
-    def emit_transition(transition_id: str, prefix: str, is_last: bool, depth: int) -> None:
-        t = graph.transitions[transition_id]
-        summary = _transition_summary(graph, transition_id, opts.full_payloads)
-        cut = " ✂" if transition_id in inactive_trans else ""
+    def emit_step(step_id: str, prefix: str, is_last: bool, depth: int) -> None:
+        t = graph.steps[step_id]
+        summary = _step_summary(graph, step_id, opts.full_payloads)
+        cut = " ✂" if step_id in inactive_trans else ""
         connector = "└─" if is_last else "├─"
-        if transition_id in visited_transitions:
-            lines.append(f"{prefix}{connector}↻ {transition_id}{cut}")
+        if step_id in visited_steps:
+            lines.append(f"{prefix}{connector}↻ {step_id}{cut}")
             return
-        visited_transitions.add(transition_id)
+        visited_steps.add(step_id)
         # Show extra inputs inline.
         extras = ""
         if len(t.input_node_ids) > 1:
             extras = " " + " ".join(f"(+{n})" for n in t.input_node_ids[1:])
-        lines.append(f"{prefix}{connector}→ {transition_id}{cut}{extras}  {summary}")
+        lines.append(f"{prefix}{connector}→ {step_id}{cut}{extras}  {summary}")
         child_prefix = prefix + ("  " if is_last else "│ ")
         if t.output_node_id:
             emit_node(t.output_node_id, child_prefix, True, depth + 1)
@@ -126,7 +136,7 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
         lines.append("")
         lines.append("joins:")
         for tid in multi_input_trans:
-            t = graph.transitions[tid]
+            t = graph.steps[tid]
             lines.append(f"  {tid}: inputs={list(t.input_node_ids)}")
 
     return "\n".join(lines)
@@ -135,7 +145,7 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
 def render_mermaid(handle: RunHandle, opts: DumpOptions) -> str:
     graph = handle.run_graph
     inactive_nodes = inactive_node_ids(graph)
-    inactive_trans = inactive_transition_ids(graph)
+    inactive_trans = inactive_step_ids(graph)
     lines = ["```mermaid", "flowchart TD"]
     for node_id in graph.nodes:
         label = "State"
@@ -148,15 +158,15 @@ def render_mermaid(handle: RunHandle, opts: DumpOptions) -> str:
         if cls != "state":
             lines.append(f"  class {node_id} {cls}")
 
-    for transition_id, t in graph.transitions.items():
-        summary = _transition_summary(graph, transition_id, False)
+    for step_id, t in graph.steps.items():
+        summary = _step_summary(graph, step_id, False)
         summary = _truncate(summary, 42).replace('"', "'")
-        is_cut = transition_id in inactive_trans
+        is_cut = step_id in inactive_trans
         if t.output_node_id:
             for inp in t.input_node_ids:
                 lines.append(f'  {inp} -->|"{summary}"| {t.output_node_id}')
         if is_cut:
-            lines.append(f"  class {transition_id} cut")
+            lines.append(f"  class {step_id} cut")
 
     if inactive_nodes:
         lines.append(f"  class {','.join(sorted(inactive_nodes))} cut")

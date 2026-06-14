@@ -1,6 +1,6 @@
 """Pure DAG records.
 
-Node and Transition form the DAG skeleton. Transition carries its own
+Node and Step form the DAG skeleton. Step carries its own
 connectivity (input_node_ids, output_node_id). Domain meaning is attached
 separately as payload records.
 """
@@ -24,14 +24,14 @@ class Node:
 
 
 @dataclass(frozen=True)
-class Transition:
-    """A pure DAG transition with explicit connectivity.
+class Step:
+    """A pure DAG step with explicit connectivity.
 
     Many input nodes -> one output node. The output node is always created
-    before or alongside the Transition.
+    before or alongside the Step.
     """
 
-    transition_id: str
+    step_id: str
     input_node_ids: tuple[str, ...] = ()
     output_node_id: str = ""
     metadata: dict[str, JSONValue] = field(default_factory=dict)

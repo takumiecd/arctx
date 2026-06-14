@@ -1,4 +1,4 @@
-"""Smoke tests for the new CLI: init, list, transition, cut, dump."""
+"""Smoke tests for the new CLI: init, list, step, cut, dump."""
 
 from __future__ import annotations
 
@@ -9,11 +9,10 @@ import pytest
 
 from arctx_cli.commands.cut import run_cut_command
 from arctx_cli.commands.dump import run_dump_command
-from arctx_cli.commands.guide import run_guide_command, run_guide_list
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.list import run_list_command
 from arctx_cli.commands.payload import run_payload_add_command, run_payload_list_command
-from arctx_cli.commands.transition import run_transition_command
+from arctx_cli.commands.step import run_step_command
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -71,44 +70,44 @@ def test_list_runs():
 
 
 # ---------------------------------------------------------------------------
-# arctx transition
+# arctx step
 # ---------------------------------------------------------------------------
 
 
-def test_transition_creates_transition():
+def test_step_creates_step():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        tr_result = run_transition_command(
+        tr_result = run_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
             payload_type="suggestion",
             content={"proposal": "try lr=0.01"},
             store_dir=_store_dir(td),
         )
-        t = tr_result["transition"]
-        assert t["transition_id"].startswith("t_")
+        t = tr_result["step"]
+        assert t["step_id"].startswith("t_")
         assert t["output_node_id"].startswith("n_")
 
 
-def test_transition_always_creates_one_output_node():
+def test_step_always_creates_one_output_node():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        tr_result = run_transition_command(
+        tr_result = run_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
             payload_type="suggestion",
             content={},
             store_dir=_store_dir(td),
         )
-        assert tr_result["transition"]["output_node_id"].startswith("n_")
+        assert tr_result["step"]["output_node_id"].startswith("n_")
 
 
-def test_transition_unknown_run_raises():
+def test_step_unknown_run_raises():
     with tempfile.TemporaryDirectory() as td:
         with pytest.raises(KeyError, match="unknown run_id"):
-            run_transition_command(
+            run_step_command(
                 run_id="no_such_run",
                 input_node_ids=["n_x"],
                 payload_type="experiment",
@@ -126,14 +125,14 @@ def test_cut_node():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        tr_result = run_transition_command(
+        tr_result = run_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
             payload_type="suggestion",
             content={},
             store_dir=_store_dir(td),
         )
-        output_node_id = tr_result["transition"]["output_node_id"]
+        output_node_id = tr_result["step"]["output_node_id"]
         cut_result = run_cut_command(
             run_id="test_run",
             target_id=output_node_id,
@@ -177,7 +176,7 @@ def test_dump_outline():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        run_transition_command(
+        run_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
             payload_type="experiment",
@@ -197,7 +196,7 @@ def test_dump_mermaid():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        run_transition_command(
+        run_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
             payload_type="experiment",
@@ -211,39 +210,3 @@ def test_dump_mermaid():
         )
         assert "```mermaid" in out
         assert "flowchart TD" in out
-
-
-# ---------------------------------------------------------------------------
-# arctx guide
-# ---------------------------------------------------------------------------
-
-
-def test_guide_uses_current_cli_commands():
-    result = run_guide_command(lang="en", topic="overview")
-    guide = result["guide"]
-    assert "arctx transition create" in guide
-    assert "arctx payload add" in guide
-    assert "arctx graph dump" in guide
-    assert "arctx work-session env" in guide
-    assert "arctx attach" not in guide
-
-
-def test_guide_ja_topics_are_localized():
-    result = run_guide_command(lang="ja", topic="record")
-    assert "1 つの実験を記録する" in result["guide"]
-    assert "arctx transition create" in result["guide"]
-
-
-def test_guide_list_uses_selected_language_summaries():
-    result = run_guide_list(lang="ja")
-    summaries = {entry["id"]: entry["summary"] for entry in result["topics"]}
-    assert summaries["record"] == "1 つの実験を記録する基本フロー"
-    assert summaries["work-session"] == "同じ run 内で並列プロセスの履歴を分ける"
-
-
-def test_guide_work_session_topic_explains_both_modes():
-    result = run_guide_command(lang="ja", topic="work-session")
-    guide = result["guide"]
-    assert "毎回明示モード" in guide
-    assert "固定モード" in guide
-    assert "arctx work-session spawn" in guide

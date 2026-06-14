@@ -12,7 +12,7 @@ import pytest
 
 from arctx_cli.ext.git.commit import run_commit_command
 from arctx_cli.commands.init import run_init_command
-from arctx.ext.git.verbs._forward_transition import ParallelSessionConflict
+from arctx.ext.git.verbs._forward_step import ParallelSessionConflict
 from arctx.core.schema.work_helpers import make_session_pointer_event
 
 
@@ -48,7 +48,7 @@ class TestCommitGuardCLI:
             dry_run=True,
             head_commit="sha_a1",
         )
-        assert "transition_id" in result_a
+        assert "step_id" in result_a
 
         # Session B tries to commit — its pointer was never updated, so it's
         # still at root while the branch tip is at t_a.output_node_id.
@@ -112,7 +112,7 @@ class TestCommitGuardCLI:
             dry_run=True,
             head_commit="sha_b",
         )
-        assert "transition_id" in result_b
+        assert "step_id" in result_b
         assert result_b["output_node_id"] != tip_node
 
     def test_first_commit_on_branch_no_guard(self, tmp_path):
@@ -130,4 +130,4 @@ class TestCommitGuardCLI:
             dry_run=True,
             head_commit="sha_first",
         )
-        assert "transition_id" in result
+        assert "step_id" in result
