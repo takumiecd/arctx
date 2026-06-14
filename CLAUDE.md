@@ -80,7 +80,6 @@ Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`)
 - `transition(input_node_ids, payload, *, user_id=None, work_session_id=None) -> Transition` — create one Transition and one output Node from input nodes; `payload` must be transition-targeting
 - `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
 - `cut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> CutPayload` — mark a Node or Transition inactive
-- `anchor(from_node_id, label, ...)` — create a lightweight scope anchor node
 - `trace(node_id, ...)` (alias: `history`) — walk history backwards
 - `outcomes(transition_id)` — return output node info for a transition
 
@@ -117,7 +116,6 @@ Current commands:
 - `trace` / `outcomes` / `reachable` — compatibility derived queries
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html`. `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
-- `anchor` — create a scope anchor node
 - `migrate` — convert a jsonl run dir to sqlite
 
 Deleted commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `tui` (moved to standalone `arctx-tui` command).

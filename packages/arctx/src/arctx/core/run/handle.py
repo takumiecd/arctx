@@ -128,7 +128,6 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 
 
 # Bind verb implementations.
-from arctx.core.run.anchor import anchor_impl as _anchor_impl  # noqa: E402
 from arctx.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from arctx.core.run.cut import cut_impl as _cut_impl  # noqa: E402
 from arctx.core.run.node import add_node_impl as _add_node_impl  # noqa: E402
@@ -139,7 +138,6 @@ from arctx.core.run.transition import transition_impl as _transition_impl  # noq
 RunHandle.transition = _transition_impl
 RunHandle.add_node = _add_node_impl
 RunHandle.attach = _attach_impl
-RunHandle.anchor = _anchor_impl
 RunHandle.cut = _cut_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl
