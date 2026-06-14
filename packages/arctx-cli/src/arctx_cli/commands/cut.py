@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from arctx_cli.commands._targets import resolve_target_kind
 from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
@@ -16,7 +17,7 @@ from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("cut", help="Cut a Node or Transition")
-    parser.add_argument("kind", nargs="?", choices=["node", "transition"])
+    parser.add_argument("kind", nargs="?")
     parser.add_argument("id", nargs="?")
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument("--node", dest="node_id", metavar="NODE_ID")
@@ -62,22 +63,34 @@ def run_cut_command(
 
 
 def cli_cut(args) -> int:
-    if args.kind is not None:
-        if args.id is None:
-            raise ValueError("cut requires an id when using positional target")
-        target_id = args.id
-        target_kind = args.kind
-    elif args.node_id is not None:
+    run_id = resolve_run_id_from_args(args)
+    store_dir = args.store_dir
+    if args.node_id is not None:
         target_id = args.node_id
         target_kind = "node"
     elif args.transition_id is not None:
         target_id = args.transition_id
         target_kind = "transition"
+    elif args.kind is not None and args.id is not None:
+        if args.kind not in ("node", "transition", "step"):
+            raise ValueError("cut target kind must be node, transition, or step")
+        target_id = args.id
+        target_kind = "transition" if args.kind == "step" else args.kind
+    elif args.kind is not None:
+        target_id = args.kind
+        store = resolve_store(store_dir)
+        if not store.run_path(run_id).exists():
+            raise KeyError(f"unknown run_id: {run_id}")
+        handle = store.load_run(run_id)
+        resolved = resolve_target_kind(handle, target_id)
+        if resolved == "payload":
+            raise ValueError("cannot cut a payload")
+        target_kind = resolved
     else:
-        raise ValueError("provide 'node <id>', 'transition <id>', --node, or --transition")
+        raise ValueError("provide '<id>', 'node <id>', 'transition <id>', --node, or --transition")
 
     result = run_cut_command(
-        run_id=resolve_run_id_from_args(args),
+        run_id=run_id,
         target_id=target_id,
         target_kind=target_kind,
         reason=args.reason,

@@ -31,6 +31,9 @@ def _node_summary(graph: RunGraph, node_id: str) -> str | None:
             text = payload.content.get("text")
             if isinstance(text, str) and text:
                 return text
+            title = payload.content.get("title")
+            if isinstance(title, str) and title:
+                return title
             return payload.type
     return None
 
@@ -42,7 +45,14 @@ def _transition_summary(graph: RunGraph, transition_id: str, full: bool) -> str:
         if isinstance(payload, CutPayload):
             parts.append("✂cut")
         elif isinstance(payload, TransitionPayload):
-            parts.append(payload.type)
+            title = payload.content.get("title")
+            text = payload.content.get("text")
+            if isinstance(title, str) and title:
+                parts.append(title)
+            elif isinstance(text, str) and text:
+                parts.append(text)
+            else:
+                parts.append(payload.type)
             if full and payload.content:
                 import json
                 parts.append(json.dumps(payload.content)[:60])

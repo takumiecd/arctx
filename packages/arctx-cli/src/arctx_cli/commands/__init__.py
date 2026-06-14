@@ -7,10 +7,14 @@ from arctx.ext import CliCommand
 
 def core_cli_commands() -> list[CliCommand]:
     """Return the built-in, extension-independent CLI commands."""
+    from arctx_cli.commands.add import add_parser as add_add_parser
+    from arctx_cli.commands.add import cli_add
     from arctx_cli.commands.alias_cmd import add_parser as add_alias_parser
     from arctx_cli.commands.alias_cmd import cli_alias
     from arctx_cli.commands.anchor import add_parser as add_anchor_parser
     from arctx_cli.commands.anchor import cli_anchor
+    from arctx_cli.commands.attach import add_parser as add_attach_parser
+    from arctx_cli.commands.attach import cli_attach
     from arctx_cli.commands.current import add_parser as add_current_parser
     from arctx_cli.commands.current import cli_current
     from arctx_cli.commands.cut import add_parser as add_cut_parser
@@ -29,6 +33,8 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.init import cli_init
     from arctx_cli.commands.list import add_parser as add_list_parser
     from arctx_cli.commands.list import cli_list
+    from arctx_cli.commands.log import add_parser as add_log_parser
+    from arctx_cli.commands.log import cli_log
     from arctx_cli.commands.migrate import add_parser as add_migrate_parser
     from arctx_cli.commands.migrate import cli_migrate
     from arctx_cli.commands.node import add_parser as add_node_parser
@@ -55,8 +61,10 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.work_session import cli_work_session
 
     return [
+        CliCommand("add", add_add_parser, cli_add),
         CliCommand("alias", add_alias_parser, cli_alias),
         CliCommand("anchor", add_anchor_parser, cli_anchor),
+        CliCommand("attach", add_attach_parser, cli_attach),
         CliCommand("current", add_current_parser, cli_current),
         CliCommand("ext", add_ext_parser, cli_ext),
         CliCommand("dump", add_dump_parser, cli_dump),
@@ -65,6 +73,7 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("guide", add_guide_parser, cli_guide),
         CliCommand("init", add_init_parser, cli_init),
         CliCommand("list", add_list_parser, cli_list),
+        CliCommand("log", add_log_parser, cli_log),
         CliCommand("migrate", add_migrate_parser, cli_migrate),
         CliCommand("node", add_node_parser, cli_node),
         CliCommand("outcomes", add_outcomes_parser, cli_outcomes),

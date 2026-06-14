@@ -5,11 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 
+from arctx.core.cuts import is_active_node, is_inactive_transition
+from arctx_cli.commands._targets import resolve_target_kind, step_view
 from arctx_cli.context import resolve_store, resolve_run_id_from_args
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser("show", help="Show run details")
+    parser.add_argument("record_id", nargs="?")
     parser.add_argument("--run", default=None)
     parser.add_argument("--node", dest="node_id", default=None)
     parser.add_argument("--transition", dest="transition_id", default=None)
@@ -25,6 +28,49 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     )
     parser.add_argument("--store-dir", default=None)
     return parser
+
+
+def run_show_record_command(
+    *,
+    run_id: str,
+    record_id: str,
+    store_dir: str,
+) -> dict:
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+    graph = handle.run_graph
+    kind = resolve_target_kind(handle, record_id)
+
+    if kind == "node":
+        node = graph.nodes[record_id]
+        return {
+            "kind": "node",
+            "id": record_id,
+            "active": is_active_node(graph, record_id),
+            "node": node.to_dict(),
+            "payloads": [p.to_dict() for p in graph.payloads_for_node(record_id)],
+            "incoming_step_id": graph.transition_to_node(record_id),
+            "outgoing_step_ids": graph.transitions_from_node(record_id),
+        }
+
+    if kind == "transition":
+        transition = graph.transitions[record_id]
+        return {
+            "kind": "step",
+            "id": record_id,
+            "active": not is_inactive_transition(graph, record_id),
+            "step": step_view(transition),
+            "payloads": [p.to_dict() for p in graph.payloads_for_transition(record_id)],
+        }
+
+    payload = graph.payloads[record_id]
+    return {
+        "kind": "payload",
+        "id": record_id,
+        "payload": payload.to_dict(),
+    }
 
 
 def run_show_command(
@@ -99,6 +145,15 @@ def run_show_command(
 
 
 def cli_show(args) -> int:
+    if args.record_id is not None:
+        result = run_show_record_command(
+            run_id=resolve_run_id_from_args(args),
+            record_id=args.record_id,
+            store_dir=args.store_dir,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
     result = run_show_command(
         run_id=resolve_run_id_from_args(args),
         node_id=args.node_id,
