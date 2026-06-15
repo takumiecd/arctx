@@ -232,7 +232,10 @@ checkout を与えます。
 `arctx export` は `dump` とは別物です: `dump` は検査と LLM コンテキスト用、`export` は
 人に渡す成果物を生成します。
 
-- `--format md|tex|html`（デフォルト `md`）
+- `--format md|tex|html|json`（デフォルト `md`）。`md/tex/html` は人向けの spanning-tree
+  アウトライン。`json` は GUI 向けの機械可読データ契約で、node/step/payload を全件
+  そのまま出力する（GUI 側が DAG を自前描画できる）。cut の伝播は core 側で事前計算され、
+  各 node/step に `inactive` フラグとして付与される。
 - `--exclude-cut`: cut された node/step を除外する。
 - `--include-local`: repo の `local_path` 値を含める。
 - `--node` / `--depth` / `--full-payloads`: `dump` と共通の走査オプション。

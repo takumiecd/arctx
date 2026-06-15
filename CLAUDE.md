@@ -112,7 +112,7 @@ Current commands:
 - `show` — inspect a node / step / payload as JSON
 - `graph` — dump / trace / reachable graph queries
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
-- `export` — render the run as a shareable document: `md` (default) / `tex` / `html`. `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
+- `export` — render the run as a shareable document: `md` (default) / `tex` / `html` / `json`. `md/tex/html` emit the human-facing spanning-tree outline; `json` emits the machine-readable data contract for GUI surfaces (all nodes/steps/payloads in full, with a precomputed `inactive` flag per node/step). `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `migrate` — convert a jsonl run dir to sqlite
 
 Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
