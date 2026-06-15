@@ -1,0 +1,106 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+header {
+  padding: 8px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 14px;
+}
+main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.canvas {
+  flex: 1;
+  min-width: 0;
+}
+.panel {
+  width: 340px;
+  border-left: 1px solid #e2e8f0;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+.panel h2 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+.panel h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 16px 0 6px;
+}
+.muted {
+  color: #94a3b8;
+}
+.error {
+  color: #dc2626;
+}
+code {
+  background: #f1f5f9;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+.payload {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 11px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.actions label {
+  display: block;
+  font-size: 12px;
+  color: #475569;
+  margin: 6px 0;
+}
+.actions input,
+.actions textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  margin-top: 2px;
+}
+.actions button {
+  margin-top: 6px;
+  padding: 6px 12px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.actions button.danger {
+  background: #fff;
+  color: #dc2626;
+  border-color: #dc2626;
+}
+.center {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  color: #64748b;
+}

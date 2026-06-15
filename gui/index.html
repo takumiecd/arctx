@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>arctx</title>
+  </head>
+  <body>
+    <!--
+      Static (share) mode: `arctx export` can inline a run document here as
+      <script id="arctx-run" type="application/json">…</script> and the app will
+      render it read-only with no backend. Absent that, the app runs in live
+      mode against `arctx serve`.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

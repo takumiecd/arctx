@@ -6,7 +6,9 @@ This file provides guidance to Claude Code when working in this repository.
 
 The packages are usually not installed during local development. Use `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src`.
 
-This repo contains three packages. The primary, must-ship surface is **`arctx` (core) + `arctx-cli`**; `arctx-tui` is an experimental, de-prioritized secondary surface (the intended interactive direction is a GUI, not the TUI). Focus releases, tests, and docs on core + CLI.
+This repo contains three Python packages plus one web frontend. The primary, must-ship surface is **`arctx` (core) + `arctx-cli`**; `arctx-tui` is an experimental, de-prioritized secondary surface (the intended interactive direction is a GUI, not the TUI). Focus releases, tests, and docs on core + CLI.
+
+The GUI lives in **`gui/`** (React + React Flow + Vite, import-free of the Python packages). It consumes the `arctx export --format json` document and, in live mode, the `arctx serve` HTTP API. The data contract is `arctx.core.run.export.json_document`, mirrored in `gui/src/types.ts` — keep the two in sync. See `gui/README.md`.
 - `arctx` (import name `arctx`) — core API, payloads, extensions. See `packages/arctx/`. **Primary.**
 - `arctx-cli` (import name `arctx_cli`, provides the `arctx` command) — argparse CLI. See `packages/arctx-cli/`. Depends only on `arctx`. **Primary.**
 - `arctx-tui` (import name `arctx_tui`, provides the `arctx-tui` command) — Textual TUI. See `packages/arctx-tui/`. Depends only on `arctx` and `textual`. Install separately: `pip install arctx-tui`. **Experimental / secondary — not a release blocker; may lag behind core+CLI.**
