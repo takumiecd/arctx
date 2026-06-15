@@ -243,6 +243,25 @@ checkout を与えます。
 
 repo が登録されている場合、export には Repos セクションが含まれます。
 
+## Serve
+
+`arctx serve` は 1 つの run を読み書きできるローカル HTTP API として公開します。
+GUI の live モード用バックエンドです（共有用の静的 JSON とは別物）。標準ライブラリ
+（`http.server`）のみで動き、追加インストール不要・CORS 対応です。
+
+- `GET /run` — `export --format json` と同じデータ契約（全 node/step/payload）を返す。
+- `POST /step` — `{ "input_node_ids": [...], "type": ..., "content": {...} }` で Step を作成。
+- `POST /attach` — `{ "node_id": ..., "type": ..., "content": {...} }` で node に payload を付与。
+- `POST /cut` — `{ "target_id": ..., "target_kind": "node"|"step", "reason": ... }` で cut。
+- `GET /health` — 死活確認。
+
+書き込み系は `arctx add` / `arctx cut` と同じ verb・同じ永続化経路を通るため、CLI と
+API が記録方法でズレることはありません。
+
+- `--host`（デフォルト `127.0.0.1`）/ `--port`（デフォルト `8787`）
+- `--cors-origin`（デフォルト `*`）: 別オリジンのフロント開発サーバから叩けるようにする。
+- `--run` / `--store-dir` / `--user` / `--work-session`: 他の変更系コマンドと共通。
+
 ## Graph
 
 - `arctx graph dump [--format outline|mermaid]`

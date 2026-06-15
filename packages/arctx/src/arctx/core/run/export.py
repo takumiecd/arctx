@@ -349,12 +349,14 @@ def render_latex(handle: RunHandle, opts: ExportOptions) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_json(handle: RunHandle, opts: ExportOptions) -> str:
-    """Render the run as a machine-readable JSON document.
+def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
+    """Build the machine-readable run document as a plain dict.
 
     Unlike the md/tex/html renderers (which emit a human-facing spanning-tree
     outline), this is the *data contract* for GUI surfaces: every node, step,
-    and payload is emitted in full so a frontend can draw the DAG itself.
+    and payload is emitted in full so a frontend can draw the DAG itself. It is
+    the shared source of truth for both ``export --format json`` and the
+    ``arctx serve`` HTTP API (``GET /run``).
 
     Cut propagation is precomputed here via core's ``inactive_*`` helpers and
     exposed as an ``inactive`` flag on each node/step, so frontends never have
@@ -366,8 +368,6 @@ def render_json(handle: RunHandle, opts: ExportOptions) -> str:
     unless ``include_local`` is set, their environment-specific ``local_path``
     is stripped (mirroring ``RepoPayload.shareable()``).
     """
-    import json
-
     graph = handle.run_graph
     inactive_nodes = inactive_node_ids(graph)
     inactive_trans = inactive_step_ids(graph)
@@ -421,7 +421,7 @@ def render_json(handle: RunHandle, opts: ExportOptions) -> str:
             e = {k: v for k, v in e.items() if k != "local_path"}
         repos_out.append(e)
 
-    doc = {
+    return {
         "arctx_export_version": 1,
         "run_id": handle.run_id,
         "root_node_id": handle.root_node_id,
@@ -435,7 +435,13 @@ def render_json(handle: RunHandle, opts: ExportOptions) -> str:
         "payloads": payloads_out,
         "repos": repos_out,
     }
-    return json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
+
+
+def render_json(handle: RunHandle, opts: ExportOptions) -> str:
+    """Serialize :func:`json_document` to an indented JSON string."""
+    import json
+
+    return json.dumps(json_document(handle, opts), ensure_ascii=False, indent=2) + "\n"
 
 
 def export(handle: RunHandle, fmt: str, opts: ExportOptions) -> str:

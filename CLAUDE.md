@@ -113,6 +113,7 @@ Current commands:
 - `graph` — dump / trace / reachable graph queries
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html` / `json`. `md/tex/html` emit the human-facing spanning-tree outline; `json` emits the machine-readable data contract for GUI surfaces (all nodes/steps/payloads in full, with a precomputed `inactive` flag per node/step). `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
+- `serve` — local read/write HTTP API for one run (live-mode backend for GUIs). `GET /run` returns the same JSON document as `export --format json`; `POST /step` / `POST /attach` / `POST /cut` write through the same verbs as `add` / `cut`; `GET /health` for liveness. Stdlib-only (`http.server`), CORS-enabled (`--cors-origin`), default bind `127.0.0.1:8787`. Two layers: harness-neutral pure dispatcher `arctx_cli/serve/api.py` (`dispatch(...)`, socket-free and unit-tested) + thin `http.server` shell `arctx_cli/serve/server.py`. The JSON shapes are the contract a future FastAPI port would expose unchanged.
 - `migrate` — convert a jsonl run dir to sqlite
 
 Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
