@@ -18,6 +18,20 @@ header {
   border-bottom: 1px solid #e2e8f0;
   font-size: 14px;
 }
+header .add-node {
+  margin-left: 12px;
+  padding: 3px 10px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+header .add-node:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 main {
   flex: 1;
   display: flex;

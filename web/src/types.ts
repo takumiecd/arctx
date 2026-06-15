@@ -52,6 +52,12 @@ export interface RunDocument {
 
 // ----- write request bodies (POST routes of `arctx serve`) -----
 
+export interface AddNodeRequest {
+  type?: string;
+  content?: Record<string, unknown>;
+  payload_type?: string;
+}
+
 export interface AddStepRequest {
   input_node_ids: string[];
   type?: string;
@@ -60,7 +66,8 @@ export interface AddStepRequest {
 }
 
 export interface AttachRequest {
-  node_id: string;
+  target_id: string;
+  target_kind: "node" | "step";
   type?: string;
   content?: Record<string, unknown>;
   payload_type?: string;

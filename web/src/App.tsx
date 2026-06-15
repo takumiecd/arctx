@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { pickClient } from "./api";
 import { Graph, type Selection } from "./Graph";
@@ -9,10 +9,18 @@ const client = pickClient();
 
 export function App() {
   const [selection, setSelection] = useState<Selection>(null);
+  const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["run"],
     queryFn: () => client.getRun(),
     refetchInterval: client.writable ? 5000 : false,
+  });
+
+  // Standalone node creation isn't tied to a selection, so it lives in the
+  // header rather than the per-selection panel.
+  const addNode = useMutation({
+    mutationFn: () => client.addNode({}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["run"] }),
   });
 
   if (isLoading) return <div className="center">loading run…</div>;
@@ -28,6 +36,18 @@ export function App() {
           · {data.counts.nodes} nodes · {data.counts.steps} steps
           {!client.writable && " · read-only"}
         </span>
+        {client.writable && (
+          <button
+            className="add-node"
+            disabled={addNode.isPending}
+            onClick={() => addNode.mutate()}
+          >
+            + node
+          </button>
+        )}
+        {addNode.isError && (
+          <span className="error"> {(addNode.error as Error).message}</span>
+        )}
       </header>
       <main>
         <div className="canvas">

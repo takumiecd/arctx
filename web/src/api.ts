@@ -7,6 +7,7 @@
 // `pickClient()` chooses based on what the page provides.
 
 import type {
+  AddNodeRequest,
   AddStepRequest,
   AttachRequest,
   CutRequest,
@@ -16,6 +17,7 @@ import type {
 export interface RunClient {
   readonly writable: boolean;
   getRun(): Promise<RunDocument>;
+  addNode(req: AddNodeRequest): Promise<void>;
   addStep(req: AddStepRequest): Promise<void>;
   attach(req: AttachRequest): Promise<void>;
   cut(req: CutRequest): Promise<void>;
@@ -46,6 +48,9 @@ export class LiveClient implements RunClient {
   getRun() {
     return this.req<RunDocument>("/run");
   }
+  async addNode(req: AddNodeRequest) {
+    await this.req("/node", { method: "POST", body: JSON.stringify(req) });
+  }
   async addStep(req: AddStepRequest) {
     await this.req("/step", { method: "POST", body: JSON.stringify(req) });
   }
@@ -62,6 +67,9 @@ export class StaticClient implements RunClient {
   constructor(private readonly doc: RunDocument) {}
   async getRun() {
     return this.doc;
+  }
+  async addNode(): Promise<void> {
+    throw new ReadOnlyError();
   }
   async addStep(): Promise<void> {
     throw new ReadOnlyError();

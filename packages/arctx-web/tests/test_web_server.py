@@ -127,6 +127,15 @@ class TestApiDelegation:
                 assert status == 201
                 assert body["step"]["input_node_ids"] == [root]
 
+    def test_post_node_routes_to_api(self):
+        # Regression: /node must be treated as an API route, not a static path.
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            with _Server(store, run_id, _fake_static(td)) as s:
+                status, body = s.post("/node", {})
+                assert status == 201
+                assert "node" in body
+
 
 class TestAssets:
     def test_env_override(self, monkeypatch):

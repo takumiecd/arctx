@@ -1,5 +1,6 @@
 // Detail + action panel for the current selection. Shows payloads, and (in
-// live mode) lets you add a step, attach a note, or cut the selected record.
+// live mode) lets you add a step (from a node), attach a payload (to a node or
+// step), or cut the selected record.
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,10 +21,12 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
   const qc = useQueryClient();
   const [stepType, setStepType] = useState("experiment");
   const [stepContent, setStepContent] = useState("{}");
-  const [noteText, setNoteText] = useState("");
+  const [attachType, setAttachType] = useState("note");
+  const [attachContent, setAttachContent] = useState('{"text": ""}');
   const [error, setError] = useState<string | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
+  const fail = (e: Error) => setError(e.message);
 
   const addStep = useMutation({
     mutationFn: (nodeId: string) =>
@@ -36,18 +39,22 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
       setError(null);
       invalidate();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: fail,
   });
 
   const attach = useMutation({
-    mutationFn: (nodeId: string) =>
-      client.attach({ node_id: nodeId, type: "note", content: { text: noteText } }),
+    mutationFn: (sel: Exclude<Selection, null>) =>
+      client.attach({
+        target_id: sel.id,
+        target_kind: sel.kind,
+        type: attachType,
+        content: parseJson(attachContent),
+      }),
     onSuccess: () => {
-      setNoteText("");
       setError(null);
       invalidate();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: fail,
   });
 
   const cut = useMutation({
@@ -57,7 +64,7 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
       setError(null);
       invalidate();
     },
-    onError: (e: Error) => setError(e.message),
+    onError: fail,
   });
 
   if (!selection) {
@@ -108,28 +115,28 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
                   onChange={(e) => setStepContent(e.target.value)}
                 />
               </label>
-              <button
-                disabled={addStep.isPending}
-                onClick={() => addStep.mutate(selection.id)}
-              >
+              <button disabled={addStep.isPending} onClick={() => addStep.mutate(selection.id)}>
                 add step
-              </button>
-
-              <h3>attach note</h3>
-              <textarea
-                rows={2}
-                value={noteText}
-                placeholder="note text"
-                onChange={(e) => setNoteText(e.target.value)}
-              />
-              <button
-                disabled={attach.isPending || !noteText}
-                onClick={() => attach.mutate(selection.id)}
-              >
-                attach note
               </button>
             </>
           )}
+
+          <h3>attach payload to this {selection.kind}</h3>
+          <label>
+            type
+            <input value={attachType} onChange={(e) => setAttachType(e.target.value)} />
+          </label>
+          <label>
+            content (JSON)
+            <textarea
+              rows={3}
+              value={attachContent}
+              onChange={(e) => setAttachContent(e.target.value)}
+            />
+          </label>
+          <button disabled={attach.isPending} onClick={() => attach.mutate(selection)}>
+            attach payload
+          </button>
 
           <h3>cut</h3>
           <button

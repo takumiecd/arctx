@@ -17,7 +17,7 @@ from typing import Any
 from arctx_cli.serve.api import dispatch
 
 # Paths handled by the JSON API; everything else is a static asset request.
-API_PATHS = frozenset({"/run", "/step", "/attach", "/cut", "/health"})
+API_PATHS = frozenset({"/run", "/node", "/step", "/attach", "/cut", "/health"})
 
 
 def build_handler(
