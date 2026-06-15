@@ -15,17 +15,20 @@ git clone https://github.com/takumiecd/arctx && cd arctx
 ./examples/quickstart_demo.sh      # prints the graph + writes a shareable HTML
 ```
 
+![ARCTX benchmark graph — baseline, a cut dead-end, and the winning branch](examples/arctx-benchmark-graph.png)
+
+*What `quickstart_demo.sh` records: both hypotheses fan out from one baseline; the slower cache attempt is cut (✂) **with its reason** while the built-in `sum()` winner stays active — the whole decision survives in one graph.*
+
 ## Packages
 
-The primary surface is two packages — **`arctx` (core) and `arctx-cli`**. A third package, `arctx-tui`, is experimental and not a focus of the current beta.
+The primary surface is two packages — **`arctx` (core) and `arctx-cli`**.
 
 | Package | Install | Import | Purpose |
 |---------|---------|--------|---------|
-| `arctx` | `pip install arctx` | `import arctx` | Core API, storage, extensions (no CLI/TUI deps) |
+| `arctx` | `pip install arctx` | `import arctx` | Core API, storage, extensions (no CLI deps) |
 | `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` command, argparse CLI |
-| `arctx-tui` | `pip install arctx-tui` | `import arctx_tui` | _Experimental_ `arctx-tui` command (Textual TUI) — secondary; a GUI is the intended direction |
 
-`arctx-cli` and `arctx-tui` both depend on `arctx` but not on each other. For normal use, install `arctx-cli` (it pulls in `arctx`).
+`arctx-cli` depends on `arctx`. For normal use, install `arctx-cli` (it pulls in `arctx`).
 
 ```python
 import arctx
@@ -41,10 +44,6 @@ It is the graph layer underneath them.
 ![ARCTX CLI Demo](examples/demo_cli.gif)
 
 *Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `work-session`; both branches land as sibling steps in the same `RunGraph` — no race, no overwrite.*
-
-![ARCTX TUI Demo](examples/demo_tui.gif)
-
-*Experimental TUI walking the DAG. The TUI is secondary; the intended interactive direction is a GUI.*
 
 > 0.3 beta — the DAG core (Node / Step / Payload) is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
 
@@ -218,7 +217,7 @@ arctx dump --format outline            # or dump it as an LLM-friendly outline
 arctx dump --format mermaid            # or a visual mermaid flowchart
 ```
 
-`arctx dump` is kept as a compatibility shortcut for `arctx graph dump`.
+`arctx dump` is the canonical whole-run renderer; `arctx graph dump` is the same thing under the `graph` namespace.
 
 Two agents on the same repo? Each gets an isolated work-session that doesn't touch the others' attribution:
 
@@ -237,6 +236,10 @@ git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 ```
 
 Both branches land in the same `RunGraph` as sibling steps off `$BASE`. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
+
+![ARCTX multi-agent graph — Claude and Codex as sibling steps off one baseline](examples/arctx-multi-agent-graph.png)
+
+*Two agents, one run: each commit is attributed to its own `work-session` and both land as sibling steps off the shared baseline — no race, no overwrite.*
 
 > **Note on isolation.** A ARCTX `work-session` isolates ARCTX run/session attribution (who did what, in which session). It does **not** isolate the Git working tree by itself — both terminals above share the same checkout unless you attach each session to its own `git worktree`. See the next section for the worktree-aware variant.
 
@@ -299,11 +302,10 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx git commit -m ...` | Drive a real `git commit` and record a `Step` with `GitChangePayload`. |
 | `arctx work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
 | `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
-| `arctx graph dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
-| `arctx graph dump --format mermaid` | Mermaid flowchart for humans / docs. |
-| `arctx-tui` | _Experimental_ interactive explorer (separate `pip install arctx-tui`). Secondary surface; a GUI is the intended direction. |
+| `arctx dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
+| `arctx dump --format mermaid` | Mermaid flowchart for humans / docs. |
 
-`arctx dump ...` is retained as a compatibility shortcut for `arctx graph dump ...`.
+`arctx graph dump ...` is the equivalent form under the `graph` namespace.
 
 Full reference: [docs/en/CLI.md](docs/en/CLI.md).
 
@@ -408,7 +410,6 @@ PYTHONPATH=src python3 -m arctx_cli.main ...
 ```bash
 uv run --package arctx --extra dev pytest packages/arctx/tests -q
 uv run --package arctx-cli --extra dev pytest packages/arctx-cli/tests -q
-uv run --package arctx-tui --extra dev pytest packages/arctx-tui/tests -q
 ```
 
 ## Release
