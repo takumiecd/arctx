@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from arctx.session import resolve_store
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.serve.api import dispatch
@@ -131,6 +130,61 @@ class TestWriteRoutes:
             })
             assert status == 400
             assert "target_kind" in body["error"]
+
+    def test_post_node_bare(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/node", {})
+            assert status == 201
+            new_id = body["node"]["node_id"]
+            assert "payload" not in body
+
+            _, run = _call(store, run_id, "GET", "/run")
+            assert any(n["node_id"] == new_id for n in run["nodes"])
+
+    def test_post_node_with_payload(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/node", {
+                "type": "note", "content": {"text": "seed"},
+            })
+            assert status == 201
+            assert body["payload"]["content"] == {"text": "seed"}
+            node_id = body["node"]["node_id"]
+
+            _, run = _call(store, run_id, "GET", "/run")
+            pl = next(p for p in run["payloads"] if p["target_id"] == node_id)
+            assert pl["content"] == {"text": "seed"}
+
+    def test_post_attach_to_step(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, made = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "x",
+            })
+            step_id = made["step"]["step_id"]
+
+            status, body = _call(store, run_id, "POST", "/attach", {
+                "target_id": step_id, "target_kind": "step",
+                "type": "metric", "content": {"score": 0.9},
+            })
+            assert status == 201
+            assert body["payload"]["target_kind"] == "step"
+            assert body["payload"]["content"] == {"score": 0.9}
+
+            _, run = _call(store, run_id, "GET", "/run")
+            pls = [p for p in run["payloads"] if p["target_id"] == step_id]
+            assert any(p.get("content") == {"score": 0.9} for p in pls)
+
+    def test_post_attach_resolves_kind_from_id(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            # No target_kind given -> resolved from the record id (a node).
+            status, body = _call(store, run_id, "POST", "/attach", {
+                "target_id": root, "type": "note", "content": {"text": "hi"},
+            })
+            assert status == 201
+            assert body["payload"]["target_kind"] == "node"
 
 
 if __name__ == "__main__":  # pragma: no cover

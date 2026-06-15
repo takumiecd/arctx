@@ -9,13 +9,15 @@ Routes (the GUI data contract):
 
 - ``GET  /health``  -> ``{"status": "ok", "run_id": ...}``
 - ``GET  /run``     -> the full :func:`arctx.core.run.export.json_document`
+- ``POST /node``    -> create a standalone Node (with an optional payload)
 - ``POST /step``    -> create a Step from input nodes; returns the new step
-- ``POST /attach``  -> attach a node payload; returns the new payload
+- ``POST /attach``  -> attach a payload to a Node or Step; returns the payload
 - ``POST /cut``     -> cut a node or step; returns the cut payload
 
 Write routes reuse the exact same building blocks as the ``arctx add`` /
-``arctx cut`` CLI commands (``build_payload`` + ``maybe_append_or_save``) so
-the HTTP surface and the CLI can never drift in how records are written.
+``arctx attach`` / ``arctx cut`` CLI commands (``build_payload`` +
+``maybe_append_or_save``) so the HTTP surface and the CLI can never drift in
+how records are written.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from arctx.core.run.export import ExportOptions, json_document
 from arctx.payload_builder import build_payload
 
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
-from arctx_cli.commands._targets import step_view
+from arctx_cli.commands._targets import resolve_target_kind, step_view
 
 
 class ApiError(Exception):
@@ -60,6 +62,8 @@ def dispatch(
             return 200, {"status": "ok", "run_id": run_id}
         if route == ("GET", "/run"):
             return 200, _get_run(store, run_id)
+        if route == ("POST", "/node"):
+            return 201, _post_node(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/step"):
             return 201, _post_step(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/attach"):
@@ -101,6 +105,38 @@ def _payload_fields(body: dict) -> dict:
     return data
 
 
+def _has_payload_fields(body: dict) -> bool:
+    return any(body.get(k) is not None for k in ("type", "content", "metadata", "payload_type"))
+
+
+def _post_node(store, run_id, body, user_id, work_session_id) -> dict:
+    """Create a standalone Node, optionally with an initial node payload."""
+    handle = _load(store, run_id)
+    before = graph_counts(handle)
+    node = handle.add_node(user_id=user_id, work_session_id=work_session_id)
+
+    result: dict = {"node": node.to_dict()}
+    if _has_payload_fields(body):
+        payload = build_payload(
+            payload_type=str(body.get("payload_type", "node_payload")),
+            target_kind="node",
+            target_id="pending",
+            payload_id="pending",
+            json_data=_payload_fields(body),
+        )
+        attached = handle.attach(
+            node.node_id, payload,
+            user_id=user_id, work_session_id=work_session_id,
+        )
+        result["payload"] = attached.to_dict()
+
+    maybe_append_or_save(
+        store=store, handle=handle,
+        user_id=user_id, work_session_id=work_session_id, before=before,
+    )
+    return result
+
+
 def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
     inputs = body.get("input_node_ids")
     if not isinstance(inputs, list) or not inputs:
@@ -129,23 +165,53 @@ def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
 
 
 def _post_attach(store, run_id, body, user_id, work_session_id) -> dict:
-    node_id = body.get("node_id")
-    if not node_id:
-        raise ApiError(400, "node_id is required")
+    """Attach a payload to a Node or Step.
+
+    Accepts ``target_id`` (preferred) or the legacy ``node_id``. The target
+    kind is taken from ``target_kind`` if given, else resolved from the record
+    id. Node targets go through ``handle.attach`` (active-node validation);
+    step targets mirror ``arctx payload add`` (run_graph.attach_payload + a
+    work event) since core's attach verb is node-only.
+    """
+    target_id = body.get("target_id") or body.get("node_id")
+    if not target_id:
+        raise ApiError(400, "target_id is required")
+    target_id = str(target_id)
 
     handle = _load(store, run_id)
+    target_kind = body.get("target_kind")
+    if target_kind not in ("node", "step"):
+        target_kind = resolve_target_kind(handle, target_id)
+    if target_kind not in ("node", "step"):
+        raise ApiError(400, "target must be a node or a step")
+
+    default_type = "node_payload" if target_kind == "node" else "step_payload"
     payload = build_payload(
-        payload_type=str(body.get("payload_type", "node_payload")),
-        target_kind="node",
-        target_id="pending",
-        payload_id="pending",
+        payload_type=str(body.get("payload_type", default_type)),
+        target_kind=target_kind,
+        target_id=target_id,
+        payload_id=handle._next_id("pl"),
         json_data=_payload_fields(body),
     )
+
     before = graph_counts(handle)
-    attached = handle.attach(
-        str(node_id), payload,
-        user_id=user_id, work_session_id=work_session_id,
-    )
+    if target_kind == "node":
+        attached = handle.attach(
+            target_id, payload,
+            user_id=user_id, work_session_id=work_session_id,
+        )
+    else:
+        if target_id not in handle.run_graph.steps:
+            raise ApiError(404, f"unknown step_id: {target_id}")
+        handle.run_graph.attach_payload(payload)
+        handle.record_work_event(
+            user_id=user_id, work_session_id=work_session_id,
+            event_type="payload_attached", target_kind="step",
+            target_id=target_id, created_records=(payload.payload_id,),
+            summary=payload.payload_type,
+        )
+        attached = payload
+
     maybe_append_or_save(
         store=store, handle=handle,
         user_id=user_id, work_session_id=work_session_id, before=before,
