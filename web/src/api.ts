@@ -9,6 +9,7 @@
 import type {
   AddNodeRequest,
   AddStepRequest,
+  AddStepResponse,
   AttachRequest,
   CutRequest,
   RunDocument,
@@ -18,7 +19,7 @@ export interface RunClient {
   readonly writable: boolean;
   getRun(): Promise<RunDocument>;
   addNode(req: AddNodeRequest): Promise<void>;
-  addStep(req: AddStepRequest): Promise<void>;
+  addStep(req: AddStepRequest): Promise<AddStepResponse>;
   attach(req: AttachRequest): Promise<void>;
   cut(req: CutRequest): Promise<void>;
 }
@@ -52,7 +53,7 @@ export class LiveClient implements RunClient {
     await this.req("/node", { method: "POST", body: JSON.stringify(req) });
   }
   async addStep(req: AddStepRequest) {
-    await this.req("/step", { method: "POST", body: JSON.stringify(req) });
+    return this.req<AddStepResponse>("/step", { method: "POST", body: JSON.stringify(req) });
   }
   async attach(req: AttachRequest) {
     await this.req("/attach", { method: "POST", body: JSON.stringify(req) });
@@ -71,7 +72,7 @@ export class StaticClient implements RunClient {
   async addNode(): Promise<void> {
     throw new ReadOnlyError();
   }
-  async addStep(): Promise<void> {
+  async addStep(): Promise<AddStepResponse> {
     throw new ReadOnlyError();
   }
   async attach(): Promise<void> {

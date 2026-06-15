@@ -29,7 +29,6 @@ export function App() {
   const createStep = useMutation({
     mutationFn: ({ inputs, output }: { inputs: string[]; output?: string }) =>
       client.addStep({ input_node_ids: inputs, output_node_id: output, type: "step" }),
-    onSuccess: invalidate,
   });
 
   if (isLoading) return <div className="center">loading run…</div>;
@@ -62,7 +61,11 @@ export function App() {
           <Graph
             doc={data}
             onSelect={setSelection}
-            onCreateStep={(inputs, output) => createStep.mutate({ inputs, output })}
+            onCreateStep={async (inputs, output) => {
+              const res = await createStep.mutateAsync({ inputs, output });
+              return { outputNodeId: res.step.output_node_id };
+            }}
+            onRunChanged={invalidate}
             writable={client.writable}
           />
         </div>

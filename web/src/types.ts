@@ -68,6 +68,17 @@ export interface AddStepRequest {
   payload_type?: string;
 }
 
+export interface AddStepResponse {
+  step: {
+    kind: "step";
+    id: string;
+    step_id: string;
+    input_node_ids: string[];
+    output_node_id: string;
+    metadata: Record<string, unknown>;
+  };
+}
+
 export interface AttachRequest {
   target_id: string;
   target_kind: "node" | "step";

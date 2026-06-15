@@ -19,18 +19,21 @@ import {
   Handle,
   Position,
   ReactFlow,
+  ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Connection,
   type Edge,
   type FinalConnectionState,
+  MarkerType,
   type Node,
   type NodeProps,
   type OnSelectionChangeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { layout } from "./layout";
+import { layout, type Pos } from "./layout";
 import { stepType } from "./model";
 import type { RunDocument } from "./types";
 
@@ -39,15 +42,24 @@ export type Selection =
   | { kind: "step"; id: string }
   | null;
 
-// Custom node with a handle on each side. ConnectionMode.Loose lets any handle
-// act as both source and target, so you can drag from/onto any side.
+// Custom node with source/target handles on each side. ConnectionMode.Loose
+// keeps dragging ergonomic while fixed handle IDs let rendered edges enter the
+// side that matches graph direction.
 function DagNode({ data }: NodeProps) {
   const d = data as { label: string; isRoot: boolean; inactive: boolean };
-  const sides = [Position.Top, Position.Right, Position.Bottom, Position.Left];
+  const sides = [
+    ["top", Position.Top],
+    ["right", Position.Right],
+    ["bottom", Position.Bottom],
+    ["left", Position.Left],
+  ] as const;
   return (
     <div className={`dag-node${d.isRoot ? " root" : ""}${d.inactive ? " inactive" : ""}`}>
-      {sides.map((p) => (
-        <Handle key={p} type="source" position={p} id={p} />
+      {sides.map(([id, p]) => (
+        <Handle key={`source-${id}`} type="source" position={p} id={id} />
+      ))}
+      {sides.map(([id, p]) => (
+        <Handle key={`target-${id}`} type="target" position={p} id={id} />
       ))}
       <span>{d.label}</span>
     </div>
@@ -55,29 +67,71 @@ function DagNode({ data }: NodeProps) {
 }
 
 const nodeTypes = { dag: DagNode };
+const NODE_WIDTH = 76;
+const NODE_HEIGHT = 34;
 
 interface Props {
   doc: RunDocument;
   onSelect: (sel: Selection) => void;
-  onCreateStep: (inputNodeIds: string[], outputNodeId?: string) => void;
+  onCreateStep: (
+    inputNodeIds: string[],
+    outputNodeId?: string,
+  ) => Promise<{ outputNodeId: string } | void>;
+  onRunChanged: () => void;
   writable: boolean;
 }
 
-function buildEdges(doc: RunDocument): Edge[] {
+type Side = "top" | "right" | "bottom" | "left";
+
+function edgeSides(source: Pos | undefined, target: Pos | undefined): [Side, Side] {
+  if (!source || !target) return ["right", "left"];
+
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+
+  // Forward edges should usually leave toward the reading direction, but the
+  // receiving side should be whichever side makes the route shortest. A child
+  // that is down-and-right from its parent reads better as right -> top than as
+  // right -> left with an unnecessary wrap around the node.
+  if (Math.abs(dx) > 40) {
+    const sourceSide = dx > 0 ? "right" : "left";
+    if (Math.abs(dy) > 50) {
+      return [sourceSide, dy > 0 ? "top" : "bottom"];
+    }
+    return [sourceSide, dx > 0 ? "left" : "right"];
+  }
+
+  return dy >= 0 ? ["bottom", "top"] : ["top", "bottom"];
+}
+
+function buildEdges(doc: RunDocument, positions: Record<string, Pos>): Edge[] {
   const out: Edge[] = [];
   for (const s of doc.steps) {
+    const edgeColor = s.inactive ? "#94a3b8" : "#475569";
     for (const input of s.input_node_ids) {
+      const [sourceHandle, targetHandle] = edgeSides(positions[input], positions[s.output_node_id]);
       out.push({
         id: `${s.step_id}:${input}`,
         source: input,
         target: s.output_node_id,
+        sourceHandle,
+        targetHandle,
+        type: "smoothstep",
         label: stepType(doc, s.step_id),
         data: { stepId: s.step_id },
         labelStyle: { fontSize: 11 },
+        labelBgPadding: [6, 3],
+        labelBgBorderRadius: 4,
         style: {
           opacity: s.inactive ? 0.35 : 1,
-          stroke: "#64748b",
-          strokeWidth: 1.5,
+          stroke: edgeColor,
+          strokeWidth: 1.8,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: edgeColor,
+          width: 16,
+          height: 16,
         },
       });
     }
@@ -85,7 +139,16 @@ function buildEdges(doc: RunDocument): Edge[] {
   return out;
 }
 
-export function Graph({ doc, onSelect, onCreateStep, writable }: Props) {
+function eventClientPosition(event: MouseEvent | TouchEvent): Pos | null {
+  if ("clientX" in event) {
+    return { x: event.clientX, y: event.clientY };
+  }
+  const touch = event.changedTouches[0] ?? event.touches[0];
+  return touch ? { x: touch.clientX, y: touch.clientY } : null;
+}
+
+function GraphCanvas({ doc, onSelect, onCreateStep, onRunChanged, writable }: Props) {
+  const reactFlow = useReactFlow<Node, Edge>();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
@@ -93,6 +156,7 @@ export function Graph({ doc, onSelect, onCreateStep, writable }: Props) {
   // selection (used as step inputs when several nodes are selected).
   const dragSource = useRef<string | null>(null);
   const selectedNodeIds = useRef<string[]>([]);
+  const pendingNodePositions = useRef<Map<string, Pos>>(new Map());
 
   // Rebuild from the run document, preserving manual positions and selection
   // across polled refetches so the canvas doesn't jump.
@@ -101,20 +165,37 @@ export function Graph({ doc, onSelect, onCreateStep, writable }: Props) {
     setNodes((prev) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
       const prevSel = new Map(prev.map((n) => [n.id, n.selected]));
-      return doc.nodes.map((n) => ({
-        id: n.node_id,
-        type: "dag",
-        position: prevPos.get(n.node_id) ?? pos[n.node_id] ?? { x: 0, y: 0 },
-        selected: prevSel.get(n.node_id) ?? false,
-        data: {
-          label: n.node_id === doc.root_node_id ? "root" : n.node_id.slice(0, 8),
-          isRoot: n.node_id === doc.root_node_id,
-          inactive: n.inactive,
-        },
-      }));
+      return doc.nodes.map((n) => {
+        const pendingPos = pendingNodePositions.current.get(n.node_id);
+        if (pendingPos) {
+          pendingNodePositions.current.delete(n.node_id);
+        }
+        return {
+          id: n.node_id,
+          type: "dag",
+          position: pendingPos ?? prevPos.get(n.node_id) ?? pos[n.node_id] ?? { x: 0, y: 0 },
+          selected: prevSel.get(n.node_id) ?? false,
+          data: {
+            label: n.node_id === doc.root_node_id ? "root" : n.node_id.slice(0, 8),
+            isRoot: n.node_id === doc.root_node_id,
+            inactive: n.inactive,
+          },
+        };
+      });
     });
-    setEdges(buildEdges(doc));
-  }, [doc, setNodes, setEdges]);
+  }, [doc, setNodes]);
+
+  // Edge paths should follow where nodes actually are, including after a user
+  // drags nodes around. Use the nearest side instead of letting React Flow
+  // default every target toward the top.
+  useEffect(() => {
+    const fallbackPos = layout(doc);
+    const positions: Record<string, Pos> = { ...fallbackPos };
+    for (const n of nodes) {
+      positions[n.id] = n.position;
+    }
+    setEdges(buildEdges(doc, positions));
+  }, [doc, nodes, setEdges]);
 
   const inputsFor = (source: string | null): string[] => {
     if (!source) return [];
@@ -140,10 +221,12 @@ export function Graph({ doc, onSelect, onCreateStep, writable }: Props) {
   const onConnect = useCallback(
     (c: Connection) => {
       if (c.source && c.target && c.source !== c.target) {
-        onCreateStep(inputsFor(c.source), c.target);
+        void onCreateStep(inputsFor(c.source), c.target)
+          .then(() => onRunChanged())
+          .catch(() => undefined);
       }
     },
-    [onCreateStep],
+    [onCreateStep, onRunChanged],
   );
 
   const onConnectStart = useCallback(
@@ -155,13 +238,29 @@ export function Graph({ doc, onSelect, onCreateStep, writable }: Props) {
 
   // Dropped on empty canvas (no target node) -> mint a new output node.
   const onConnectEnd = useCallback(
-    (_: unknown, state: FinalConnectionState) => {
+    async (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
       if (!state.toNode && dragSource.current) {
-        onCreateStep(inputsFor(dragSource.current));
+        const clientPosition = eventClientPosition(event);
+        const flowPosition = clientPosition
+          ? reactFlow.screenToFlowPosition(clientPosition)
+          : null;
+        try {
+          const result = await onCreateStep(inputsFor(dragSource.current));
+          if (result?.outputNodeId && flowPosition) {
+            pendingNodePositions.current.set(result.outputNodeId, {
+              x: flowPosition.x - NODE_WIDTH / 2,
+              y: flowPosition.y - NODE_HEIGHT / 2,
+            });
+          }
+          onRunChanged();
+        } catch {
+          // The mutation stores the error for the header; avoid an unhandled
+          // rejection from the event callback.
+        }
       }
       dragSource.current = null;
     },
-    [onCreateStep],
+    [onCreateStep, onRunChanged, reactFlow],
   );
 
   return (
@@ -183,5 +282,13 @@ export function Graph({ doc, onSelect, onCreateStep, writable }: Props) {
       <Background />
       <Controls />
     </ReactFlow>
+  );
+}
+
+export function Graph(props: Props) {
+  return (
+    <ReactFlowProvider>
+      <GraphCanvas {...props} />
+    </ReactFlowProvider>
   );
 }

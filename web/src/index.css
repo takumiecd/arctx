@@ -45,6 +45,10 @@ main {
   font-size: 12px;
 }
 .dag-node {
+  display: grid;
+  place-items: center;
+  min-width: 76px;
+  min-height: 34px;
   padding: 6px 10px;
   font-size: 12px;
   border: 1px solid #94a3b8;
