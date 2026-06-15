@@ -280,7 +280,7 @@ RunGraph
 ```
 
 - Each **attempt / experiment / action is recorded as a step**, producing an output node that represents the resulting state.
-- `NodePayload` / `StepPayload` — generic annotations, distinguished by a `type` string. The current internal model still stores steps as `Step` records while the public surface moves to `Step`.
+- `NodePayload` / `StepPayload` — generic annotations, distinguished by a `type` string.
 - `CutPayload` — append-only invalidation. The target isn't deleted; it's filtered out at read time.
 - `GitChangePayload` — attached by the `git` extension on every `arctx git commit`.
 

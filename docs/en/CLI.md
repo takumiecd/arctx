@@ -10,7 +10,7 @@ arctx init req_demo --run-id demo --extension git
 arctx git init
 arctx current
 arctx git commit -m "implement first step"
-arctx graph dump --format outline
+arctx dump --format outline
 ```
 
 What those setup commands do:
@@ -63,7 +63,7 @@ STEP=$(arctx add step --run demo --from "$ROOT" --type experiment --field lr=0.0
 NODE=$(arctx show "$STEP" --run demo | jq -r .step.output_node_id)
 arctx attach "$NODE" --run demo --type note --field text="observed result"
 arctx cut "$NODE" --run demo --reason "discarded"
-arctx log --run demo --format outline
+arctx log --run demo
 ```
 
 Core commands:
@@ -253,7 +253,8 @@ When repos are registered, export includes a Repos section.
 - `arctx graph trace <node_id>`
 - `arctx graph reachable <node_id>`
 
-`arctx dump` remains as a compatibility shortcut for `arctx graph dump`.
+`arctx dump` is the canonical whole-run renderer; `arctx graph dump` is the
+same thing under the `graph` namespace.
 Top-level `trace`, `reachable`, and `outcomes` are unregistered; use
 `arctx log --to`, `arctx graph trace`, `arctx graph reachable`, and `arctx show`.
 

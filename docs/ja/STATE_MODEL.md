@@ -1,71 +1,32 @@
 # State Model
 
-Phase 1 の実装では、外向きの用語と内部名が一部ずれています。
+`RunGraph` は次の append-only な辞書を保持します:
 
-外向き:
-
-- `Node`
-- `Step`
-- `Payload`
-
-内部実装:
-
-- `Node`
-- `Step`
-- `Payload`
-
-`Step` は現行コード上の `Step` に対応します。
-
-## RunGraph
-
-`RunGraph` は以下を append-only に保持します。
-
-- `nodes: dict[str, Node]`
-- `steps: dict[str, Step]`
-- `payloads: dict[str, PayloadBase]`
+- `nodes`
+- `steps`（公開サーフェス: steps）
+- `payloads`
 - `work_sessions`
 - `work_events`
 
-Phase 1 の途中で `GraphView` / `views` は core model から削除しました。
+各 `Step` は `input_node_ids` と、ちょうど 1 つの `output_node_id` を保持します。
+現行スキーマには永続化された `Edge` record はありません。
 
-## Step as Step
+Payload のインデックスは target から導出されます: `payloads_by_node` と
+`payloads_by_step`。
 
-内部 `Step` は次の制約を持ちます。
+トポロジのインデックスは step の端点から導出されます:
+`steps_by_input_node` と `step_by_output_node`。
 
-- `input_node_ids`: 1 つ以上の入力 Node。
-- `output_node_id`: 必ず 1 つの出力 Node。
-- fan-out は同じ入力 Node から複数の Step を作ることで表す。
-- join は複数入力の Step で表す。
+コア payload は汎用の `NodePayload` / `StepPayload` に加えて `CutPayload` です。
+`CutPayload` は node または step を無効化する append-only な手段で、対象は
+ストレージから削除されません。
+Git の状態は extension の状態です: `GitChangePayload`、branch payload、git の
+work event は `arctx.ext.git` が登録します。
 
-外向きJSONでは、Phase 1 の新CLIは `kind: "step"` を返します。ただし互換のため、内部IDや一部field名には `step_id` が残る場合があります。
+永続化は JSONL ストレージでは `nodes.jsonl`, `steps.jsonl`, `payloads.jsonl`,
+`work_sessions.jsonl`, `work_events.jsonl` を、あるいは同等の SQLite テーブルを
+使います。
 
-## Payload
-
-Payload は Node / Step に付く意味情報です。
-
-現行内部の `target_kind` は以下です。
-
-- Node payload: `target_kind="node"`
-- Step payload: `target_kind="step"`
-
-Phase 2 で内部名を変更する場合、`target_kind="step"` への移行を検討します。
-
-## Cut
-
-Cut は `CutPayload` として保存されます。
-
-削除ではありません。read-time に active / inactive を計算します。
-
-## Storage
-
-Phase 1 では既存schemaを維持します。
-
-- `nodes.jsonl`
-- `steps.jsonl`
-- `payloads.jsonl`
-- `work_sessions.jsonl`
-- `work_events.jsonl`
-
-旧 run に `views.jsonl` が残っていても、新しい loader は core graph には取り込みません。
-
-Phase 2 で `steps.jsonl` を `steps.jsonl` に変えるかどうかを決めます。
+`GraphView` / `views` は 0.3 beta の再設計で削除されました。既存の run には
+古い `views.jsonl` が残る場合がありますが、新しいローダーはそれらをコアグラフへ
+読み込みません。

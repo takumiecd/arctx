@@ -1,19 +1,17 @@
 # Concept
 
-Arctx は、append-only な DAG を編集・整理・共有するための core layer です。
+arctx は作業を append-only な RunGraph として記録します。
 
-MVP の基本概念は 3 つです。
+グラフの骨格は意図的に小さく保たれています:
 
-- `Node`: DAG 上の点。状態、成果物、判断、観測、設計断片などを表す。
-- `Step`: 1 つ以上の Node から、新しい Node を生む操作。現行内部実装では `Step` として保存される。
-- `Payload`: Node / Step に付く意味情報。note、result、rationale、repo-ref、agent event、cut などを表す。
+- `Node`: 作業履歴上の状態、または地点。
+- `Step`: 1 つ以上の入力 Node から、ちょうど 1 つの出力 Node への作業ステップ。
 
-接続情報は Step が持ちます。独立した `Edge` record はありません。
+接続情報は `Step` 自身が持ちます (`input_node_ids` + `output_node_id`)。独立した
+`Edge` record はありません。
 
-```text
-Node(s) -- Step --> Node
-```
+意味は payload で付与します。同じ構造的な形が、payload の type に応じて
+plan・prediction・result・note・cut・Git change を表現できます。
 
-`CutPayload` は Payload の一種です。削除ではなく、対象 Node / Step とその下流を現在の有効 DAG から外す append-only marker です。
-
-Phase 1 では、外向きのCLIとdocsでは `Step` と呼びますが、内部 class / storage には `Step` という名前が残ります。内部名の全面変更は Phase 2 で扱います。
+並列ワーカーは Node・Step・payload・work event のバッチを append します。
+何も書き換えられません。
