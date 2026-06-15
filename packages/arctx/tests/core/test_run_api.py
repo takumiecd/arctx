@@ -88,6 +88,60 @@ def test_step_rejects_cut_node():
 
 
 # ---------------------------------------------------------------------------
+# step with an explicit existing output node (connect into an orphan node)
+# ---------------------------------------------------------------------------
+
+
+def test_step_into_existing_output_node():
+    run = init(_req())
+    orphan = run.add_node()  # standalone node, no producer
+    t = run.add_step([run.root_node_id], _tp(), output_node_id=orphan.node_id)
+    assert t.output_node_id == orphan.node_id
+    assert t.input_node_ids == (run.root_node_id,)
+    # No new node was minted: the orphan is now the step's output.
+    assert run.run_graph.step_by_output_node[orphan.node_id] == t.step_id
+
+
+def test_step_into_existing_multi_input():
+    run = init(_req())
+    a = run.add_step([run.root_node_id], _tp()).output_node_id
+    b = run.add_step([run.root_node_id], _tp()).output_node_id
+    sink = run.add_node()
+    t = run.add_step([a, b], _tp("join"), output_node_id=sink.node_id)
+    assert set(t.input_node_ids) == {a, b}
+    assert t.output_node_id == sink.node_id
+
+
+def test_step_output_node_rejects_existing_producer():
+    run = init(_req())
+    t1 = run.add_step([run.root_node_id], _tp())
+    # t1.output_node_id already has a producing step.
+    with pytest.raises(ValueError, match="already has a producing step"):
+        run.add_step([run.root_node_id], _tp(), output_node_id=t1.output_node_id)
+
+
+def test_step_output_node_rejects_self_input():
+    run = init(_req())
+    orphan = run.add_node()
+    with pytest.raises(ValueError, match="cannot also be an input"):
+        run.add_step([orphan.node_id], _tp(), output_node_id=orphan.node_id)
+
+
+def test_step_output_node_rejects_cycle():
+    run = init(_req())
+    # root -> a. Connecting a -> root would close a cycle (root is a's ancestor).
+    a = run.add_step([run.root_node_id], _tp()).output_node_id
+    with pytest.raises(ValueError, match="cycle"):
+        run.add_step([a], _tp(), output_node_id=run.root_node_id)
+
+
+def test_step_output_node_rejects_unknown():
+    run = init(_req())
+    with pytest.raises(KeyError, match="unknown output_node_id"):
+        run.add_step([run.root_node_id], _tp(), output_node_id="n_bogus")
+
+
+# ---------------------------------------------------------------------------
 # attach
 # ---------------------------------------------------------------------------
 

@@ -60,6 +60,9 @@ export interface AddNodeRequest {
 
 export interface AddStepRequest {
   input_node_ids: string[];
+  // When set, the step connects into this existing (producer-less) node instead
+  // of minting a new output node.
+  output_node_id?: string;
   type?: string;
   content?: Record<string, unknown>;
   payload_type?: string;

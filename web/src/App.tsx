@@ -10,6 +10,7 @@ const client = pickClient();
 export function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
   const { data, isLoading, error } = useQuery({
     queryKey: ["run"],
     queryFn: () => client.getRun(),
@@ -20,12 +21,22 @@ export function App() {
   // header rather than the per-selection panel.
   const addNode = useMutation({
     mutationFn: () => client.addNode({}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["run"] }),
+    onSuccess: invalidate,
+  });
+
+  // Step creation by dragging on the canvas. Output node omitted -> new node;
+  // present -> connect into that existing node.
+  const createStep = useMutation({
+    mutationFn: ({ inputs, output }: { inputs: string[]; output?: string }) =>
+      client.addStep({ input_node_ids: inputs, output_node_id: output, type: "step" }),
+    onSuccess: invalidate,
   });
 
   if (isLoading) return <div className="center">loading run…</div>;
   if (error) return <div className="center error">{(error as Error).message}</div>;
   if (!data) return <div className="center">no run</div>;
+
+  const actionError = (addNode.error ?? createStep.error) as Error | null;
 
   return (
     <div className="layout">
@@ -37,21 +48,23 @@ export function App() {
           {!client.writable && " · read-only"}
         </span>
         {client.writable && (
-          <button
-            className="add-node"
-            disabled={addNode.isPending}
-            onClick={() => addNode.mutate()}
-          >
+          <button className="add-node" disabled={addNode.isPending} onClick={() => addNode.mutate()}>
             + node
           </button>
         )}
-        {addNode.isError && (
-          <span className="error"> {(addNode.error as Error).message}</span>
+        {client.writable && (
+          <span className="muted hint"> · drag from a node to make a step</span>
         )}
+        {actionError && <span className="error"> {actionError.message}</span>}
       </header>
       <main>
         <div className="canvas">
-          <Graph doc={data} selection={selection} onSelect={setSelection} />
+          <Graph
+            doc={data}
+            onSelect={setSelection}
+            onCreateStep={(inputs, output) => createStep.mutate({ inputs, output })}
+            writable={client.writable}
+          />
         </div>
         <Panel doc={data} selection={selection} client={client} onSelect={setSelection} />
       </main>

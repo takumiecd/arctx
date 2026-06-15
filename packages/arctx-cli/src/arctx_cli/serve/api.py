@@ -141,6 +141,7 @@ def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
     inputs = body.get("input_node_ids")
     if not isinstance(inputs, list) or not inputs:
         raise ApiError(400, "input_node_ids must be a non-empty list")
+    output_node_id = body.get("output_node_id")
 
     handle = _load(store, run_id)
     payload = build_payload(
@@ -154,6 +155,7 @@ def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
     step = handle.add_step(
         [str(n) for n in inputs],
         payload,
+        output_node_id=str(output_node_id) if output_node_id else None,
         user_id=user_id,
         work_session_id=work_session_id,
     )

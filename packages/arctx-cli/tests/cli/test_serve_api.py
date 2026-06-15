@@ -176,6 +176,30 @@ class TestWriteRoutes:
             pls = [p for p in run["payloads"] if p["target_id"] == step_id]
             assert any(p.get("content") == {"score": 0.9} for p in pls)
 
+    def test_post_step_into_existing_output_node(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, made = _call(store, run_id, "POST", "/node", {})
+            orphan = made["node"]["node_id"]
+
+            status, body = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "output_node_id": orphan, "type": "derive",
+            })
+            assert status == 201
+            assert body["step"]["output_node_id"] == orphan
+            assert body["step"]["input_node_ids"] == [root]
+
+    def test_post_step_into_existing_rejects_producer(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, made = _call(store, run_id, "POST", "/step", {"input_node_ids": [root]})
+            existing_out = made["step"]["output_node_id"]
+            status, body = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "output_node_id": existing_out,
+            })
+            assert status == 400
+            assert "producing step" in body["error"]
+
     def test_post_attach_resolves_kind_from_id(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
