@@ -88,9 +88,9 @@ Sleep 1.8s
 
 Type "# Separate checkouts, no shared working tree — both branches"
 Enter
-Type "# land as sibling transitions in the same RunGraph."
+Type "# land as sibling steps in the same RunGraph."
 Enter
-Type "arctx graph dump --run ws_demo --format outline"
+Type "arctx dump --run ws_demo --format outline"
 Enter
 Sleep 5s
 

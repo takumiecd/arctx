@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Basic CLI loop example for arctx 0.1 alpha.
+# Basic CLI loop example for arctx 0.3.0b1.
 #
-# Demonstrates:
-#   init -> transition create -> payload add -> graph trace -> cut -> graph dump -> list
+# Demonstrates the pure DAG core surface:
+#   init -> add step -> attach -> show -> graph trace -> dump -> list
 
 set -euo pipefail
 
@@ -15,50 +15,59 @@ STORE_DIR="${STORE_DIR:-/tmp/arctx_demo_runs}"
 rm -rf "$STORE_DIR/$RUN_ID"
 
 echo "=== 1. init ==="
-INIT_RESULT=$(python3 -m arctx_cli.main init \
+# init prints the run id; the root node id is read back from `show`.
+python3 -m arctx_cli.main init \
   "req_optimize_kernel" \
   --target-type "kernel" \
   --target-id "matmul_v1" \
   --run-id "$RUN_ID" \
-  --store-dir "$STORE_DIR")
-echo "$INIT_RESULT"
-ROOT_NODE_ID=$(echo "$INIT_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['root_node_id'])")
+  --store-dir "$STORE_DIR"
+ROOT_NODE_ID=$(python3 -m arctx_cli.main show \
+  --run "$RUN_ID" \
+  --store-dir "$STORE_DIR" \
+  | python3 -c "import sys, json; print(json.load(sys.stdin)['root_node_id'])")
+echo "root node: $ROOT_NODE_ID"
 
 echo ""
-echo "=== 2. transition create ==="
-TRANSITION_RESULT=$(python3 -m arctx_cli.main transition create \
+echo "=== 2. add step ==="
+STEP_RESULT=$(python3 -m arctx_cli.main add step \
+  --run "$RUN_ID" \
   --from "$ROOT_NODE_ID" \
-  --payload-type transition_payload \
-  --field type=experiment \
+  --type experiment \
   --field intent="run baseline benchmark" \
   --store-dir "$STORE_DIR")
-echo "$TRANSITION_RESULT"
-TRANSITION_ID=$(echo "$TRANSITION_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['transition_id'])")
-OUTPUT_NODE_ID=$(echo "$TRANSITION_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['output_node_id'])")
+echo "$STEP_RESULT"
+STEP_ID=$(echo "$STEP_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['step_id'])")
+OUTPUT_NODE_ID=$(echo "$STEP_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['output_node_id'])")
 
 echo ""
-echo "=== 3. payload add ==="
-python3 -m arctx_cli.main payload add \
-  --node "$OUTPUT_NODE_ID" \
-  --payload-type node_payload \
-  --field type=result \
+echo "=== 3. attach payload to the output node ==="
+python3 -m arctx_cli.main attach "$OUTPUT_NODE_ID" \
+  --run "$RUN_ID" \
+  --type result \
   --field speedup=1.15 \
   --field status=completed \
   --store-dir "$STORE_DIR"
 
 echo ""
-echo "=== 4. transition payloads ==="
-python3 -m arctx_cli.main transition payloads "$TRANSITION_ID" \
+echo "=== 4. step payloads ==="
+python3 -m arctx_cli.main show \
+  --step "$STEP_ID" \
+  --run "$RUN_ID" \
+  --with-payloads \
   --store-dir "$STORE_DIR"
 
 echo ""
 echo "=== 5. graph trace ==="
 python3 -m arctx_cli.main graph trace "$OUTPUT_NODE_ID" \
+  --run "$RUN_ID" \
   --store-dir "$STORE_DIR"
 
 echo ""
-echo "=== 6. graph dump ==="
-python3 -m arctx_cli.main graph dump \
+echo "=== 6. dump ==="
+python3 -m arctx_cli.main dump \
+  --run "$RUN_ID" \
+  --format outline \
   --store-dir "$STORE_DIR"
 
 echo ""
