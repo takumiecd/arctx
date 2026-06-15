@@ -45,12 +45,13 @@ jobs:
       - name: Run tests
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src
+          PYTHONPATH: packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src:packages/arctx-gui/src
         run: |
           python -m pytest \
             packages/arctx/tests \
             packages/arctx-cli/tests \
             packages/arctx-tui/tests \
+            packages/arctx-gui/tests \
             --import-mode=importlib -q
 
   build:
@@ -61,10 +62,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - run: python -m pip install --upgrade pip build twine
-      - name: Build all three packages
+      - name: Bundle the arctx-gui frontend
+        # arctx-gui ships the built React app (gui/dist) inside its wheel.
+        # Build + copy it into the package before packaging.
+        env:
+          PYTHONPATH: packages/arctx-gui/src
+        run: python -m arctx_gui.bundle
+      - name: Build all packages
         run: |
-          for pkg in arctx arctx-cli arctx-tui; do
+          for pkg in arctx arctx-cli arctx-tui arctx-gui; do
             python -m build "packages/$pkg"
           done
       - name: twine check

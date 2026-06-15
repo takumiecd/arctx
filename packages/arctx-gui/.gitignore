@@ -1,0 +1,2 @@
+# Built frontend, copied in by `python -m arctx_gui.bundle` at packaging time.
+src/arctx_gui/static/
