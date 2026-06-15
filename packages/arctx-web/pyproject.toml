@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "arctx-gui"
+name = "arctx-web"
 version = "0.3.0b1"
 description = "Web GUI for ARCTX — read/write DAG editing in the browser"
 readme = "README.md"
@@ -40,18 +40,18 @@ dev = [
 ]
 
 [project.scripts]
-arctx-gui = "arctx_gui.main:main"
+arctx-web = "arctx_web.main:main"
 
 [project.urls]
 Homepage = "https://github.com/takumiecd/arctx"
 Repository = "https://github.com/takumiecd/arctx"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/arctx_gui"]
-# The built frontend is copied into src/arctx_gui/static/ before packaging
-# (see `python -m arctx_gui.bundle`). Force-include it so wheels are
+packages = ["src/arctx_web"]
+# The built frontend is copied into src/arctx_web/static/ before packaging
+# (see `python -m arctx_web.bundle`). Force-include it so wheels are
 # self-contained even though it is git-ignored.
-artifacts = ["src/arctx_gui/static/**"]
+artifacts = ["src/arctx_web/static/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

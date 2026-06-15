@@ -1,0 +1,2 @@
+# Built frontend, copied in by `python -m arctx_web.bundle` at packaging time.
+src/arctx_web/static/

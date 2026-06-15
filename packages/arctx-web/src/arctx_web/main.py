@@ -1,4 +1,4 @@
-"""``arctx-gui`` entry point.
+"""``arctx-web`` entry point.
 
 Resolves a run (reusing arctx-cli's run/user resolution), locates the built
 frontend, serves both over HTTP, and opens a browser.
@@ -17,13 +17,13 @@ from arctx_cli.context import (
     resolve_work_session_id_from_args,
 )
 
-from arctx_gui.assets import find_static_dir
-from arctx_gui.server import serve_gui
+from arctx_web.assets import find_static_dir
+from arctx_web.server import serve_gui
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="arctx-gui",
+        prog="arctx-web",
         description="Serve the arctx web GUI for one run (read/write).",
     )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
@@ -45,10 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     static_dir = find_static_dir()
     if static_dir is None:
         print(
-            "arctx-gui: no built frontend found.\n"
-            "  Build it first:  npm --prefix gui install && npm --prefix gui run build\n"
-            "  or bundle it:    python -m arctx_gui.bundle\n"
-            "  or point at one: ARCTX_GUI_STATIC=/path/to/dist arctx-gui",
+            "arctx-web: no built frontend found.\n"
+            "  Build it first:  npm --prefix web install && npm --prefix web run build\n"
+            "  or bundle it:    python -m arctx_web.bundle\n"
+            "  or point at one: ARCTX_WEB_STATIC=/path/to/dist arctx-web",
             file=sys.stderr,
         )
         return 1
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     store = resolve_store(args.store_dir)
     run_id = resolve_run_id_from_args(args)
     if not store.run_path(run_id).exists():
-        print(f"arctx-gui: unknown run_id: {run_id}", file=sys.stderr)
+        print(f"arctx-web: unknown run_id: {run_id}", file=sys.stderr)
         return 1
 
     def _open(url: str) -> None:

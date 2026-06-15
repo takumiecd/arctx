@@ -1,4 +1,4 @@
-"""Tests for the arctx-gui HTTP server.
+"""Tests for the arctx-web HTTP server.
 
 Uses a tiny fake static dir (so no real frontend build is needed) and a real
 ThreadingHTTPServer on an ephemeral port. Verifies that API routes delegate to
@@ -18,8 +18,8 @@ from pathlib import Path
 import pytest
 from arctx.session import resolve_store
 from arctx_cli.commands.init import run_init_command
-from arctx_gui.assets import find_static_dir
-from arctx_gui.server import build_handler
+from arctx_web.assets import find_static_dir
+from arctx_web.server import build_handler
 
 
 def _make_run(td: str):
@@ -132,12 +132,12 @@ class TestAssets:
     def test_env_override(self, monkeypatch):
         with tempfile.TemporaryDirectory() as td:
             static = _fake_static(td)
-            monkeypatch.setenv("ARCTX_GUI_STATIC", str(static))
+            monkeypatch.setenv("ARCTX_WEB_STATIC", str(static))
             assert find_static_dir() == static
 
     def test_env_override_missing_index(self, monkeypatch):
         with tempfile.TemporaryDirectory() as td:
-            monkeypatch.setenv("ARCTX_GUI_STATIC", td)  # no index.html
+            monkeypatch.setenv("ARCTX_WEB_STATIC", td)  # no index.html
             assert find_static_dir() is None
 
 

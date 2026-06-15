@@ -1,10 +1,10 @@
-"""Build the frontend and copy it into the package (``arctx_gui/static/``).
+"""Build the frontend and copy it into the package (``arctx_web/static/``).
 
 Run before packaging so the wheel ships a self-contained GUI:
 
-    python -m arctx_gui.bundle
+    python -m arctx_web.bundle
 
-Requires Node/npm and the ``gui/`` source tree (only present in a source
+Requires Node/npm and the ``web/`` source tree (only present in a source
 checkout). This is a packaging-time tool, not a runtime dependency.
 """
 
@@ -15,29 +15,29 @@ import subprocess
 import sys
 from pathlib import Path
 
-from arctx_gui.assets import PACKAGED_STATIC
+from arctx_web.assets import PACKAGED_STATIC
 
 
-def _find_gui_src() -> Path | None:
+def _find_web_src() -> Path | None:
     for parent in Path(__file__).resolve().parents:
-        candidate = parent / "gui"
+        candidate = parent / "web"
         if (candidate / "package.json").is_file():
             return candidate
     return None
 
 
 def bundle() -> int:
-    gui = _find_gui_src()
-    if gui is None:
-        print("arctx_gui.bundle: could not find the gui/ source tree", file=sys.stderr)
+    web = _find_web_src()
+    if web is None:
+        print("arctx_web.bundle: could not find the web/ source tree", file=sys.stderr)
         return 1
 
-    dist = gui / "dist"
-    print(f"building frontend in {gui} …")
-    subprocess.run(["npm", "install"], cwd=gui, check=True)
-    subprocess.run(["npm", "run", "build"], cwd=gui, check=True)
+    dist = web / "dist"
+    print(f"building frontend in {web} …")
+    subprocess.run(["npm", "install"], cwd=web, check=True)
+    subprocess.run(["npm", "run", "build"], cwd=web, check=True)
     if not (dist / "index.html").is_file():
-        print("arctx_gui.bundle: build produced no dist/index.html", file=sys.stderr)
+        print("arctx_web.bundle: build produced no dist/index.html", file=sys.stderr)
         return 1
 
     if PACKAGED_STATIC.exists():

@@ -6,19 +6,19 @@ This file provides guidance to Claude Code when working in this repository.
 
 The packages are usually not installed during local development. Use `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src`.
 
-This repo contains four Python packages plus one web frontend. The primary, must-ship surface is **`arctx` (core) + `arctx-cli`**; `arctx-tui` and `arctx-gui` are de-prioritized secondary surfaces. The GUI is the intended interactive direction (the TUI is experimental/legacy). Focus releases, tests, and docs on core + CLI.
+This repo contains four Python packages plus one web frontend. The primary, must-ship surface is **`arctx` (core) + `arctx-cli`**; `arctx-tui` and `arctx-web` are de-prioritized secondary surfaces. The web GUI is the intended interactive direction (the TUI is experimental/legacy). Focus releases, tests, and docs on core + CLI.
 
-The web frontend lives in **`gui/`** (React + React Flow + Vite, import-free of the Python packages). It consumes the `arctx export --format json` document and, in live mode, the `arctx serve` HTTP API. The data contract is `arctx.core.run.export.json_document`, mirrored in `gui/src/types.ts` — keep the two in sync. See `gui/README.md`.
+The web frontend lives in **`web/`** (React + React Flow + Vite, import-free of the Python packages). It consumes the `arctx export --format json` document and, in live mode, the `arctx serve` HTTP API. The data contract is `arctx.core.run.export.json_document`, mirrored in `web/src/types.ts` — keep the two in sync. See `web/README.md`.
 - `arctx` (import name `arctx`) — core API, payloads, extensions. See `packages/arctx/`. **Primary.**
 - `arctx-cli` (import name `arctx_cli`, provides the `arctx` command) — argparse CLI. See `packages/arctx-cli/`. Depends only on `arctx`. **Primary.** Also hosts `arctx serve` (the dependency-free JSON API primitive every GUI frontend shares).
 - `arctx-tui` (import name `arctx_tui`, provides the `arctx-tui` command) — Textual TUI. See `packages/arctx-tui/`. Depends only on `arctx` and `textual`. Install separately: `pip install arctx-tui`. **Experimental / secondary — not a release blocker; may lag behind core+CLI.**
-- `arctx-gui` (import name `arctx_gui`, provides the `arctx-gui` command) — serves the built `gui/` frontend + the run API + opens a browser. See `packages/arctx-gui/`. Depends on `arctx` and `arctx-cli` (reuses `arctx_cli.serve.api.dispatch`, so the API contract has one source of truth). Bundles built frontend assets via `python -m arctx_gui.bundle` (git-ignored; falls back to `gui/dist` in a source checkout). Install separately: `pip install arctx-gui`. **Secondary — the batteries-included GUI surface.**
+- `arctx-web` (import name `arctx_web`, provides the `arctx-web` command) — serves the built `web/` frontend + the run API + opens a browser. See `packages/arctx-web/`. Depends on `arctx` and `arctx-cli` (reuses `arctx_cli.serve.api.dispatch`, so the API contract has one source of truth). Bundles built frontend assets via `python -m arctx_web.bundle` (git-ignored; falls back to `web/dist` in a source checkout). Install separately: `pip install arctx-web`. **Secondary — the batteries-included GUI surface.**
 
-- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src:packages/arctx-gui/src python3 -m pytest packages/arctx/tests packages/arctx-cli/tests packages/arctx-tui/tests packages/arctx-gui/tests --import-mode=importlib -q`
+- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src:packages/arctx-web/src python3 -m pytest packages/arctx/tests packages/arctx-cli/tests packages/arctx-tui/tests packages/arctx-web/tests --import-mode=importlib -q`
 - Run one test file: `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m pytest packages/arctx/tests/core/test_run_api.py -q`
 - CLI: `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m arctx_cli.main <subcommand> ...`
 - TUI (requires textual installed): `PYTHONPATH=packages/arctx/src:packages/arctx-tui/src python3 -m arctx_tui.main`
-- GUI (requires a built frontend — `npm --prefix gui run build` first): `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-gui/src python3 -m arctx_gui.main --run <run> --no-browser`
+- GUI (requires a built frontend — `npm --prefix web run build` first): `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-web/src python3 -m arctx_web.main --run <run> --no-browser`
 - Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/arctx/src packages/arctx-cli/src packages/arctx-tui/src`
 
 Docs are Japanese-first and should match the current implementation:

@@ -155,12 +155,12 @@ def serve_gui(
     )
     httpd = ThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}/"
-    print(f"arctx-gui: {url}  (run {run_id})")
+    print(f"arctx-web: {url}  (run {run_id})")
     if on_ready is not None:
         on_ready(url)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\narctx-gui: stopped")
+        print("\narctx-web: stopped")
     finally:
         httpd.server_close()

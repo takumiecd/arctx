@@ -1,12 +1,12 @@
-# arctx-gui
+# arctx-web
 
 Web GUI surface for ARCTX. A thin Python package that serves the built React
-frontend (`gui/`) together with the run HTTP API, then opens a browser — the
+frontend (`web/`) together with the run HTTP API, then opens a browser — the
 batteries-included counterpart to the raw `arctx serve` data API.
 
 ```sh
-pip install arctx-gui
-arctx-gui --run <RUN_ID>        # serves http://127.0.0.1:8788 and opens a browser
+pip install arctx-web
+arctx-web --run <RUN_ID>        # serves http://127.0.0.1:8788 and opens a browser
 ```
 
 It depends on `arctx-cli` and reuses its `arctx serve` dispatcher, so the HTTP
@@ -15,16 +15,16 @@ serving and browser launching.
 
 ## Frontend assets
 
-The React app lives in the repo's `gui/` directory. Its build output is copied
-into `arctx_gui/static/` at packaging time and shipped in the wheel. From a
-source checkout you can either bundle it or rely on the `gui/dist` fallback:
+The React app lives in the repo's `web/` directory. Its build output is copied
+into `arctx_web/static/` at packaging time and shipped in the wheel. From a
+source checkout you can either bundle it or rely on the `web/dist` fallback:
 
 ```sh
-python -m arctx_gui.bundle                 # npm build + copy into the package
+python -m arctx_web.bundle                 # npm build + copy into the package
 # or
-npm --prefix gui run build                 # arctx-gui falls back to gui/dist
+npm --prefix web run build                 # arctx-web falls back to web/dist
 # or
-ARCTX_GUI_STATIC=/path/to/dist arctx-gui   # point at any prebuilt dist
+ARCTX_WEB_STATIC=/path/to/dist arctx-web   # point at any prebuilt dist
 ```
 
 ## Options
@@ -38,4 +38,4 @@ ARCTX_GUI_STATIC=/path/to/dist arctx-gui   # point at any prebuilt dist
 
 - `arctx serve` (in **arctx-cli**) — the dependency-free JSON API primitive that
   every GUI frontend shares.
-- `arctx-gui` (this package) — bundles a frontend and serves it alongside that API.
+- `arctx-web` (this package) — bundles a frontend and serves it alongside that API.

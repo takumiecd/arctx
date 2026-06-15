@@ -1,4 +1,4 @@
-# arctx-gui
+# arctx-web
 
 Web GUI for arctx runs (React + React Flow + Vite). One frontend, two data
 modes — the UI only talks to a `RunClient`, so the same components serve both:
@@ -23,7 +23,7 @@ In another, start the frontend (the Vite dev server proxies API routes to
 `arctx serve`):
 
 ```sh
-cd gui
+cd web
 npm install
 npm run dev                         # http://localhost:5173
 ```
