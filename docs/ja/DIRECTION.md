@@ -1,49 +1,41 @@
 # Direction
 
-Arctx は v0.3.0b1 から DAG Core Redesign に入ります。
-
-旧来の「仕様履歴を残すツール」という説明ではなく、今後は次の定義を中心にします。
+正準のグラフモデルは現在次の通りです:
 
 ```text
-Arctx = one append-only DAG log
+Node -> Step -> Node -> Step -> Node
 ```
 
-ユーザーが扱う基本モデル:
+専用の step record 型はありません。Payload が素の `Step` に意味を付与します。
 
-```text
-Node(s) -- Step --> Node
-Payload attaches to Node / Step
-Cut is a Payload
-```
+コアは standalone で git に依存しません。Git 連携は `arctx.ext.git` 配下の
+標準 extension で、正準 CLI は `arctx git <verb>`、一般的なワークフロー向けに
+`arctx commit` などのデフォルト alias があります。
 
-## Phase 1
+将来の UI 作業では DAG を視覚的に描画し、focus した node / step の payload
+詳細のみを表示すべきです。
 
-まず表現とCLIを新仕様へ寄せます。
+## Git worktree 対応ワークフロー
 
-- 外向きには `Step` ではなく `Step` と呼ぶ。
-- `arctx add node` で依存を持たない Node を作れるようにする。
-- `arctx add step` で Node から Step を作り、出力 Node を自動生成する。
-- `arctx attach <id>` で Node / Step に Payload を付ける。
-- `arctx cut <id>` で CutPayload を付ける。
-- `arctx show <id>` と `arctx log` で確認する。
+Git extension は worktree 対応です。`WorkSession` を特定の `git worktree` に
+attach でき、そのセッション内の ARCTX コマンドは git サブプロセスを紐づいた
+working tree の中で実行します:
 
-この段階では内部実装の `Step`, `step_id`, `steps.jsonl`, `target_kind="step"` は残します。
+- `ARCTX_GIT_WORKTREE` はすべての git verb
+  (`arctx git commit / revert / cherry-pick / merge / reset / verify`) の cwd を
+  上書きします。
+- `arctx work-session start / env / spawn --worktree PATH` は解決済みのパス
+  （加えて現在のブランチと `git --git-common-dir`）を
+  `WorkSession.metadata["worktree"]` に記録し、下流プロセス向けに
+  `ARCTX_GIT_WORKTREE` を export します。
+- `arctx git worktree {add,list,remove}` は上流の `git worktree` plumbing の
+  薄いラッパーです。ライフサイクルは git 側に残るため、ARCTX の外で作成された
+  worktree も attach できます。
 
-## Phase 2
+考えられるフォローアップ:
 
-Phase 1 のCLIと用語が固まったら、内部実装も Step に寄せます。
-
-候補:
-
-- `Step` -> `Step`
-- `step_id` -> `step_id`
-- `StepPayload` -> `StepPayload`
-- `target_kind="step"` -> `target_kind="step"`
-- `steps` -> `steps`
-
-この変更は storage schema、extension API、tests に広く影響するため、Phase 1 とは分けます。
-
-詳細は以下を参照してください。
-
-- `docs/ja/DAG_CORE_REDESIGN.md`
-- `docs/ja/DAG_CORE_MIGRATION_PLAN.md`
+- worktree パスを `arctx work-session list` / TUI ビューで表示する。
+- agent が単一セッション中に worktree を移動した際、step ごとの workspace
+  パスを記録する。
+- `work-session env --new --worktree PATH` が存在しないディレクトリを指す場合に
+  worktree を自動生成する。

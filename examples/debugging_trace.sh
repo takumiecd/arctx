@@ -13,6 +13,9 @@ set -e
 rm -rf .arctx-id
 rm -rf /tmp/arctx-debug-demo
 
+step_id() { python3 -c "import sys, json; print(json.load(sys.stdin)['step_id'])"; }
+node_id() { python3 -c "import sys, json; print(json.load(sys.stdin)['output_node_id'])"; }
+
 # 1. Initialize the run
 arctx init debug --extension git --run-id bug-42-demo
 
@@ -41,11 +44,11 @@ def process(items):
             result.append(items[i] * 2)
         return result
 PY
-git add repro.py && arctx git commit -m "hypothesis: add lock around cache"
+git add repro.py
+STEP_1=$(arctx git commit -m "hypothesis: add lock around cache" | step_id)
 
-LATEST_T=$(arctx show --latest transition | grep transition_id | awk '{print $2}')
-arctx payload add --target "transition:${LATEST_T}" \
-  --payload-type observation \
+arctx attach "$STEP_1" \
+  --type observation \
   --field result="still flaky — lock didn't help"
 
 # 4. Hypothesis 2: off-by-one in loop bound (correct!)
@@ -57,20 +60,21 @@ def process(items):
         result.append(items[i] * 2)
     return result
 PY
-git add repro.py && arctx git commit -m "fix: correct loop bound"
+git add repro.py
+FIX=$(arctx git commit -m "fix: correct loop bound")
+STEP_FIX=$(echo "$FIX" | step_id)
+FIX_NODE=$(echo "$FIX" | node_id)
 
-LATEST_T=$(arctx show --latest transition | grep transition_id | awk '{print $2}')
-arctx payload add --target "transition:${LATEST_T}" \
-  --payload-type observation \
+arctx attach "$STEP_FIX" \
+  --type observation \
   --field result="bug gone — 3 consecutive green runs"
 
 # 5. Show the trace
 
 echo ""
 echo "=== The debugging trace ==="
-arctx graph dump --format outline --run bug-42-demo
+arctx dump --format outline --run bug-42-demo --full-payloads
 
 echo ""
 echo "=== Walk backwards from the fix ==="
-LATEST_NODE=$(arctx show --latest node | grep node_id | awk '{print $2}')
-arctx trace "${LATEST_NODE}" --run bug-42-demo
+arctx graph trace "$FIX_NODE" --run bug-42-demo

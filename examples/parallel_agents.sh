@@ -20,7 +20,7 @@ cat <<'INSTRUCTIONS'
 
 This demo shows how Claude and Codex can drive the same ARCTX run
 in parallel. Each agent gets its own work-session; both attempts
-land as sibling transitions in the same RunGraph.
+land as sibling steps in the same RunGraph.
 
 Prerequisites:
   1. arctx-cli installed:   pip install arctx-cli
@@ -52,9 +52,9 @@ Prerequisites:
 
 --- Step 4: Inspect the graph (either terminal) ---
 
-  arctx graph dump --format outline --run multi-agent-demo
+  arctx dump --format outline --run multi-agent-demo
 
-You will see both attempts as sibling transitions branching from
+You will see both attempts as sibling steps branching from
 baseline. No merge conflicts in the graph — both stay reviewable.
 
 --- Optional: Use separate worktrees for physical isolation ---

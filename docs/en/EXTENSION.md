@@ -8,7 +8,7 @@ First, create an extension class by inheriting from `arctx.ext.base.ExtensionBas
 
 ```python
 # my_arctx_ext/extension.py
-from arctx.ext.base import ExtensionBase, InitContext
+from arctx.ext.base import CliCommand, ExtensionBase, InitContext
 from arctx.core.run.handle import RunHandle
 
 class MyExtension(ExtensionBase):
@@ -23,9 +23,11 @@ class MyExtension(ExtensionBase):
         # Add functionality to the Python API (e.g., handle.myext.do_something())
         pass
 
-    def register_cli(self, subparsers) -> None:
+    def cli_commands(self) -> list["CliCommand"]:
         # Register CLI subcommands (e.g., arctx myext do-something)
-        pass
+        # Each element is CliCommand(name, add_parser, handler):
+        # add_parser(subparsers) -> ArgumentParser, handler(args) -> int.
+        return []
 
     def default_aliases(self) -> dict[str, str]:
         # Default CLI aliases (e.g., arctx do -> arctx myext do-something)

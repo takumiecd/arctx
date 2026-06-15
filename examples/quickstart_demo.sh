@@ -6,7 +6,7 @@
 #   - Codex tries the builtin sum().      It's 5x faster.
 #
 # Git would only show you the surviving file on whatever branch you keep.
-# ARCTX keeps BOTH attempts — as sibling transitions in one graph — *and why*
+# ARCTX keeps BOTH attempts — as sibling steps in one graph — *and why*
 # the cache was abandoned (a benchmark payload + a cut with a reason). Then it
 # exports a shareable HTML document you can drop into a PR or a blog post.
 #
@@ -38,7 +38,7 @@ else
 fi
 
 node_id() { python3 -c "import sys,json;print(json.load(sys.stdin)['output_node_id'])"; }
-tx_id()   { python3 -c "import sys,json;print(json.load(sys.stdin)['transition_id'])"; }
+step_id() { python3 -c "import sys,json;print(json.load(sys.stdin)['step_id'])"; }
 
 # --- Throwaway sandbox ------------------------------------------------------
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/arctx-demo.XXXXXX")"
@@ -81,10 +81,10 @@ def sum_list(data):
 PY
 git add work.py
 CACHE_NODE="$(ARCTX git commit -m "Claude: memoization cache" --from "$BASE" | node_id)"
-ARCTX payload add --node "$CACHE_NODE" \
-  --payload-type node_payload \
-  --field type=benchmark \
-  --field 'content={"elapsed_ms": 1300, "verdict": "SLOWER + stale results on mutation"}' >/dev/null
+ARCTX attach "$CACHE_NODE" \
+  --type benchmark \
+  --field elapsed_ms=1300 \
+  --field 'verdict=SLOWER + stale results on mutation' >/dev/null
 echo "[2/4] Claude's attempt recorded (benchmark attached)"
 
 # --- Agent 2 (Codex): builtin sum() — the winner ----------------------------
@@ -97,10 +97,10 @@ def sum_list(data):
 PY
 git add work.py
 WIN_NODE="$(ARCTX git commit -m "Codex: builtin sum()" --from "$BASE" | node_id)"
-ARCTX payload add --node "$WIN_NODE" \
-  --payload-type node_payload \
-  --field type=benchmark \
-  --field 'content={"elapsed_ms": 260, "verdict": "5x faster, correct"}' >/dev/null
+ARCTX attach "$WIN_NODE" \
+  --type benchmark \
+  --field elapsed_ms=260 \
+  --field 'verdict=5x faster, correct' >/dev/null
 echo "[3/4] Codex's attempt recorded (winner)"
 
 # --- Abandon the dead end — it stays in the graph, marked inactive ----------
