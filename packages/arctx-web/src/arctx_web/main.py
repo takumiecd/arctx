@@ -18,6 +18,7 @@ from arctx_cli.context import (
 )
 
 from arctx_web.assets import find_static_dir
+from arctx_web.extensions import load_enabled_scripts
 from arctx_web.server import serve_gui
 
 
@@ -58,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     if not store.run_path(run_id).exists():
         print(f"arctx-web: unknown run_id: {run_id}", file=sys.stderr)
         return 1
+    extension_scripts = load_enabled_scripts(store.run_path(run_id))
 
     def _open(url: str) -> None:
         if not args.no_browser:
@@ -71,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         port=args.port,
         user_id=resolve_user_id_from_args(args),
         work_session_id=resolve_work_session_id_from_args(args),
+        extension_scripts=extension_scripts,
         cors_origin=args.cors_origin,
         on_ready=_open,
     )

@@ -17,7 +17,9 @@ from pathlib import Path
 
 import pytest
 from arctx.session import resolve_store
+from arctx.ext.enabled import EnabledExtension, save_enabled
 from arctx_cli.commands.init import run_init_command
+from arctx_web import extensions as web_extensions
 from arctx_web.assets import find_static_dir
 from arctx_web.server import build_handler
 
@@ -40,10 +42,11 @@ def _fake_static(td: str) -> Path:
 
 
 class _Server:
-    def __init__(self, store, run_id, static_dir):
+    def __init__(self, store, run_id, static_dir, extension_scripts=()):
         handler = build_handler(
             store, run_id, static_dir=static_dir,
             user_id="tester", work_session_id="ws_test",
+            extension_scripts=extension_scripts,
         )
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.port = self.httpd.server_address[1]
@@ -99,6 +102,25 @@ class TestStatic:
                 assert status == 200
                 assert b"<title>app</title>" in body
 
+    def test_extension_scripts_injected_into_index(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            script = "window.arctxWebExtensions = window.arctxWebExtensions || [];"
+            with _Server(store, run_id, _fake_static(td), extension_scripts=[script]) as s:
+                status, body, ctype = s.get("/")
+                assert status == 200
+                assert "text/html" in ctype
+                assert b"data-arctx-web-extension" in body
+                assert script.encode() in body
+
+    def test_extension_scripts_not_injected_into_assets(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            with _Server(store, run_id, _fake_static(td), extension_scripts=["window.x = 1;"]) as s:
+                status, body, _ = s.get("/asset.js")
+                assert status == 200
+                assert body == b"console.log(1)"
+
 
 class TestApiDelegation:
     def test_health(self):
@@ -148,6 +170,28 @@ class TestAssets:
         with tempfile.TemporaryDirectory() as td:
             monkeypatch.setenv("ARCTX_WEB_STATIC", td)  # no index.html
             assert find_static_dir() is None
+
+
+class TestWebExtensions:
+    def test_load_enabled_scripts_matches_entry_point_name(self, monkeypatch, tmp_path):
+        class _Provider:
+            def scripts(self):
+                return ["window.fromWebExt = true;"]
+
+        class _EntryPoint:
+            def load(self):
+                return _Provider
+
+        save_enabled(
+            tmp_path,
+            [
+                EnabledExtension(name="demo", version="0.1"),
+                EnabledExtension(name="missing", version="0.1"),
+            ],
+        )
+        monkeypatch.setattr(web_extensions, "_get_entry_points", lambda: {"demo": _EntryPoint()})
+
+        assert web_extensions.load_enabled_scripts(tmp_path) == ["window.fromWebExt = true;"]
 
 
 if __name__ == "__main__":  # pragma: no cover

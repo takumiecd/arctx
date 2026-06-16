@@ -27,6 +27,7 @@ def build_handler(
     static_dir: Path,
     user_id: str,
     work_session_id: str,
+    extension_scripts: list[str] | tuple[str, ...] = (),
     cors_origin: str = "*",
 ):
     """Build a request handler class bound to one run and a static dir."""
@@ -108,7 +109,10 @@ def build_handler(
                 self._send_bytes(404, b"not found", "text/plain")
                 return
             ctype, _ = mimetypes.guess_type(str(target))
-            self._send_bytes(200, target.read_bytes(), ctype or "application/octet-stream")
+            data = target.read_bytes()
+            if target.name == "index.html" and extension_scripts:
+                data = _inject_extension_scripts(data, extension_scripts)
+            self._send_bytes(200, data, ctype or "application/octet-stream")
 
         # ----- verbs -----
 
@@ -141,6 +145,7 @@ def serve_gui(
     port: int = 8788,
     user_id: str = "user",
     work_session_id: str = "default",
+    extension_scripts: list[str] | tuple[str, ...] = (),
     cors_origin: str = "*",
     on_ready=None,
 ) -> None:
@@ -152,6 +157,7 @@ def serve_gui(
     handler = build_handler(
         store, run_id, static_dir=static_dir,
         user_id=user_id, work_session_id=work_session_id, cors_origin=cors_origin,
+        extension_scripts=extension_scripts,
     )
     httpd = ThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}/"
@@ -164,3 +170,24 @@ def serve_gui(
         print("\narctx-web: stopped")
     finally:
         httpd.server_close()
+
+
+def _inject_extension_scripts(data: bytes, scripts: list[str] | tuple[str, ...]) -> bytes:
+    html = data.decode("utf-8")
+    tags = "\n".join(
+        f'<script data-arctx-web-extension>{_escape_script(script)}</script>' for script in scripts
+    )
+    if not tags:
+        return data
+    marker = "</head>"
+    if marker in html:
+        html = html.replace(marker, tags + "\n" + marker, 1)
+    elif "</html>" in html:
+        html = html.replace("</html>", tags + "\n</html>", 1)
+    else:
+        html = html + "\n" + tags
+    return html.encode("utf-8")
+
+
+def _escape_script(script: str) -> str:
+    return script.replace("</script", "<\\/script")

@@ -34,6 +34,41 @@ ARCTX_WEB_STATIC=/path/to/dist arctx-web   # point at any prebuilt dist
 - `--no-browser` — don't open a browser
 - `--cors-origin` — `Access-Control-Allow-Origin` value (default `*`)
 
+## Web extensions
+
+`arctx-web` owns browser-side extension behavior. The core run JSON still
+contains raw payload records; the frontend decides how to display those
+payloads. Built-in renderers handle core, `git`, and `command` payloads.
+
+Third-party extensions can ship web renderers through the
+`arctx_web.extensions` entry point group. The entry point name must match the
+ARCTX extension name stored in the run's `extensions.json`; `arctx-web` loads
+only renderers for extensions enabled on the current run and injects their
+scripts into `index.html`.
+
+```toml
+[project.entry-points."arctx_web.extensions"]
+myext = "my_arctx_ext.web:MyExtWeb"
+```
+
+```python
+class MyExtWeb:
+    def scripts(self) -> list[str]:
+        return [
+            """
+            window.arctxWebExtensions = window.arctxWebExtensions || [];
+            window.arctxWebExtensions.push((api) => {
+              api.registerPayloadRenderer("myext_experiment", (payload) => ({
+                title: "experiment",
+                summary: payload.name,
+                fields: [{ label: "score", value: payload.score }],
+                sections: [{ title: "raw", kind: "json", value: payload }],
+              }));
+            });
+            """
+        ]
+```
+
 ## Relationship to other surfaces
 
 - `arctx serve` (in **arctx-cli**) — the dependency-free JSON API primitive that
