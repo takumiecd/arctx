@@ -55,11 +55,20 @@ arctx cut --node <tip> --reason "grow-score not smooth at scale"  # deactivate, 
 
 Accept (merge) = simply don't cut. To continue, stack more `add` on the tip.
 
-## 5. Sync = union
+## 5. Sync = union (arctx-native)
 
-Merging across people/machines is an **ID-aware union** (append-only, idempotent):
-commutative, idempotent, convergent. Transport is git (push/pull). **No hand
-reconciliation** — a rejection just stays as a cut.
+```bash
+arctx remote add origin <dir>   # register a remote (v1: a file-backed shared log)
+arctx push                      # send records the remote lacks (id diff, idempotent)
+arctx pull                      # union the remote's records in
+```
+
+Merging across people/machines is an **ID-aware union** (append-only, idempotent,
+commutative, convergent). Modeled on git's UX but arctx-native — **git is not
+reused**. Being a CRDT means **no conflicts, no history rewrite, no hand
+reconciliation**; a rejection just stays as a cut. After `pull` brings records
+in, the target owner runs `accept`/`reject` (a PR is the decision layer, not
+transport).
 
 ---
 
@@ -77,7 +86,7 @@ A PR is an append-only review STATE in the DAG. Proposing is not a transport
 | review | `arctx log` / `arctx dump` |
 | accept (guarded merge) | `arctx accept <source>` (refused → rebase & re-propose) |
 | reject (kept) | `arctx reject <source> --reason ...` (= cut) |
-| sync | `git pull`/`push` for now (`arctx pull`/`push` after real sync) |
+| sync | `arctx push` / `arctx pull` (`arctx remote add` first; union converges) |
 
 `accept` runs a multi-input `add step` (join); if the base was cut, it would
 cycle, or the target advanced, it is **refused** (never silent corruption).
