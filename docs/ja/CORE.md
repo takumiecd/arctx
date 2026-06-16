@@ -61,14 +61,21 @@ arctx cut --node <tip> --reason "grow-score not smooth at scale"  # 非活性化
 
 ---
 
-### PR の流れ（新コマンド不要）
+### PR の流れ（ゲート型・arctx ネイティブ）
+
+PR は **DAG の中の append-only な審査状態**。提案は転送(push)ではなく、`proposal`
+を貼ること。採用まで target の tip は進まない（＝pending）。
 
 | やること | コマンド |
 |---|---|
 | ワークスペースを開く | `arctx lane <name>` |
-| 提案（PR） | `git push`（store が repo 管理） |
+| 提案（pending な PR を開く） | `arctx propose <source> --into <target>` |
+| 未審査の提案を見る | `arctx propose --list` |
 | レビュー | `arctx log` / `arctx dump` |
-| 採用 | 何もしない（active のまま） |
-| 却下 | `arctx cut --reason ...` |
-| 結果の統合 | `arctx add step --from A --from B` |
-| 同期 | `git pull` / `push`（union 収束） |
+| 採用（整合性チェック付き統合） | `arctx accept <source>`（NGなら拒否→rebase 再提案） |
+| 却下（残す） | `arctx reject <source> --reason ...`（＝cut） |
+| 同期 | 当面 `git pull`/`push`（`arctx pull`/`push` は sync 本実装後） |
+
+`accept` は内部で多入力 `add step`（join）を走らせ、土台が cut／サイクル／target が
+前進していたら **拒否**（黙ってグラフを壊さない）。`reject` は `cut`。整合性の検査は
+**accept 時に target に対して**行う — それが分散(remote/local)でも唯一正しい場所。

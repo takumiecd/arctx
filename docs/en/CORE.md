@@ -63,14 +63,23 @@ reconciliation** — a rejection just stays as a cut.
 
 ---
 
-### PR flow (no new command needed)
+### PR flow (gate-type, arctx-native)
+
+A PR is an append-only review STATE in the DAG. Proposing is not a transport
+(push) — it attaches a `proposal`. The target tip does NOT advance until accept
+(that is what "pending" means).
 
 | Step | Command |
 |---|---|
 | open a workspace | `arctx lane <name>` |
-| propose (PR) | `git push` (store tracked in the repo) |
+| propose (open a pending PR) | `arctx propose <source> --into <target>` |
+| see pending proposals | `arctx propose --list` |
 | review | `arctx log` / `arctx dump` |
-| accept | do nothing (stays active) |
-| reject | `arctx cut --reason ...` |
-| combine results | `arctx add step --from A --from B` |
-| sync | `git pull` / `push` (union converges) |
+| accept (guarded merge) | `arctx accept <source>` (refused → rebase & re-propose) |
+| reject (kept) | `arctx reject <source> --reason ...` (= cut) |
+| sync | `git pull`/`push` for now (`arctx pull`/`push` after real sync) |
+
+`accept` runs a multi-input `add step` (join); if the base was cut, it would
+cycle, or the target advanced, it is **refused** (never silent corruption).
+`reject` is a `cut`. Consistency is checked **at accept time against the target**
+— the only correct place once replicas are split (remote/local).
