@@ -62,12 +62,39 @@ class MyExtWeb:
                 title: "experiment",
                 summary: payload.name,
                 graphLabel: payload.name,
+                media: [{ kind: "image", src: payload.plot, alt: "experiment plot" }],
                 fields: [{ label: "score", value: payload.score }],
-                sections: [{ title: "raw", kind: "json", value: payload }],
+                sections: [
+                  { title: "raw", kind: "json", value: payload, collapsed: true },
+                ],
               }));
             });
             """
         ]
+```
+
+Renderer images may use `data:image/png|jpeg|webp` or run artifacts such as
+`artifact://plots/loss.png`. `arctx-web` serves those from
+`<run_dir>/artifacts/plots/loss.png` through `/artifacts/plots/loss.png`.
+Sections support `json`, `list`, `text`, `table`, `markdown`, `diff`, and
+`image`; markdown is rendered as safe text.
+
+Trusted local extensions can also register a custom element for a richer body
+renderer:
+
+```javascript
+customElements.define("myext-report", class extends HTMLElement {
+  set payload(value) {
+    this.textContent = `score: ${value.score}`;
+  }
+});
+
+window.arctxWebExtensions.push((api) => {
+  api.registerPayloadElement("myext_report", {
+    tagName: "myext-report",
+    fallbackRenderer: (payload) => ({ title: "report", summary: String(payload.score) }),
+  });
+});
 ```
 
 ## Relationship to other surfaces

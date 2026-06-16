@@ -121,6 +121,18 @@ class TestStatic:
                 assert status == 200
                 assert body == b"console.log(1)"
 
+    def test_artifact_served_from_run_artifacts(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            art = store.run_path(run_id) / "artifacts" / "plots"
+            art.mkdir(parents=True)
+            (art / "loss.png").write_bytes(b"fakepng")
+            with _Server(store, run_id, _fake_static(td)) as s:
+                status, body, ctype = s.get("/artifacts/plots/loss.png")
+                assert status == 200
+                assert body == b"fakepng"
+                assert "image/png" in ctype
+
 
 class TestApiDelegation:
     def test_health(self):

@@ -2,14 +2,20 @@
 // live mode) lets you add a step (from a node), attach a payload (to a node or
 // step), or cut the selected record.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import type { RunClient } from "./api";
 import type { RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
 import { payloadsForNode, payloadsForStep } from "./model";
-import { payloadDisplayFor, type PayloadDisplay, type PayloadSection } from "./payloadExtensions";
+import {
+  payloadDisplayFor,
+  payloadElementFor,
+  type PayloadDisplay,
+  type PayloadMedia,
+  type PayloadSection,
+} from "./payloadExtensions";
 
 interface Props {
   doc: RunDocument;
@@ -90,7 +96,7 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
       <h3>payloads ({payloads.length})</h3>
       {payloads.length === 0 && <p className="muted">none</p>}
       {payloads.map((p) => (
-        <PayloadCard key={p.payload_id} payload={p} display={payloadDisplayFor(p, doc)} />
+        <PayloadCard key={p.payload_id} doc={doc} payload={p} display={payloadDisplayFor(p, doc)} />
       ))}
 
       {!client.writable && <p className="muted">read-only (share mode)</p>}
@@ -164,7 +170,16 @@ function parseJson(raw: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-function PayloadCard({ payload, display }: { payload: RunPayload; display: PayloadDisplay }) {
+function PayloadCard({
+  doc,
+  payload,
+  display,
+}: {
+  doc: RunDocument;
+  payload: RunPayload;
+  display: PayloadDisplay;
+}) {
+  const element = payloadElementFor(payload);
   return (
     <section className={`payload-card${display.raw ? " raw" : ""}`}>
       <div className="payload-card-head">
@@ -172,6 +187,9 @@ function PayloadCard({ payload, display }: { payload: RunPayload; display: Paylo
         <code>{payload.payload_id.slice(0, 12)}</code>
       </div>
       {display.summary && <p className="payload-summary">{display.summary}</p>}
+      {display.media?.map((media, index) => (
+        <PayloadMediaView key={`${media.src}:${index}`} media={media} />
+      ))}
       {display.fields && display.fields.length > 0 && (
         <dl className="payload-fields">
           {display.fields.map((field) => (
@@ -182,8 +200,16 @@ function PayloadCard({ payload, display }: { payload: RunPayload; display: Paylo
           ))}
         </dl>
       )}
-      {display.sections?.map((section) => (
-        <PayloadSectionView key={section.title} section={section} />
+      {element && (
+        <PayloadCustomElement
+          tagName={element.tagName}
+          doc={doc}
+          payload={payload}
+          display={display}
+        />
+      )}
+      {display.sections?.map((section, index) => (
+        <PayloadSectionView key={`${section.title}:${index}`} section={section} />
       ))}
       {!display.raw && (
         <details className="payload-raw">
@@ -196,16 +222,172 @@ function PayloadCard({ payload, display }: { payload: RunPayload; display: Paylo
 }
 
 function PayloadSectionView({ section }: { section: PayloadSection }) {
-  return (
+  const body = (
     <div className="payload-section">
       <h4>{section.title}</h4>
-      {section.kind === "text" ? (
-        <pre className="payload payload-text">{formatValue(section.value)}</pre>
-      ) : (
-        <pre className="payload">{JSON.stringify(section.value, null, 2)}</pre>
-      )}
+      <PayloadSectionBody section={section} />
     </div>
   );
+  if (!section.collapsed) return body;
+  return (
+    <details className="payload-section-details">
+      <summary>{section.title}</summary>
+      <PayloadSectionBody section={section} />
+    </details>
+  );
+}
+
+function PayloadSectionBody({ section }: { section: PayloadSection }) {
+  if (section.kind === "image") {
+    return <PayloadMediaView media={mediaFromSection(section)} />;
+  }
+  if (section.kind === "text" || section.kind === "markdown" || section.kind === "diff") {
+    return (
+      <pre className={`payload payload-text${section.kind === "diff" ? " payload-diff" : ""}`}>
+        {formatValue(section.value)}
+      </pre>
+    );
+  }
+  if (section.kind === "table") {
+    return <PayloadTable value={section.value} />;
+  }
+  return <pre className="payload">{JSON.stringify(section.value, null, 2)}</pre>;
+}
+
+function PayloadMediaView({ media }: { media: PayloadMedia }) {
+  const src = safeImageSrc(media.src);
+  if (!src) {
+    return <p className="muted payload-media-blocked">blocked image source</p>;
+  }
+  return (
+    <figure className="payload-media">
+      <img src={src} alt={media.alt ?? ""} loading="lazy" />
+      {media.caption && <figcaption>{media.caption}</figcaption>}
+    </figure>
+  );
+}
+
+function PayloadTable({ value }: { value: unknown }) {
+  const table = tableData(value);
+  if (!table) {
+    return <pre className="payload">{JSON.stringify(value, null, 2)}</pre>;
+  }
+  return (
+    <div className="payload-table-wrap">
+      <table className="payload-table">
+        <thead>
+          <tr>
+            {table.columns.map((col) => (
+              <th key={col}>{col}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, index) => (
+            <tr key={index}>
+              {table.columns.map((col) => (
+                <td key={col}>{formatValue(row[col])}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PayloadCustomElement({
+  tagName,
+  doc,
+  payload,
+  display,
+}: {
+  tagName: string;
+  doc: RunDocument;
+  payload: RunPayload;
+  display: PayloadDisplay;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const host = ref.current;
+    if (!host) return;
+    host.replaceChildren();
+    const element = document.createElement(tagName) as HTMLElement & {
+      doc?: RunDocument;
+      payload?: RunPayload;
+      display?: PayloadDisplay;
+    };
+    element.doc = doc;
+    element.payload = payload;
+    element.display = display;
+    host.appendChild(element);
+    return () => host.replaceChildren();
+  }, [tagName, doc, payload, display]);
+  return <div className="payload-custom-element-host" ref={ref} />;
+}
+
+function mediaFromSection(section: PayloadSection): PayloadMedia {
+  if (typeof section.value === "string") {
+    return { kind: "image", src: section.value, alt: section.title };
+  }
+  if (typeof section.value === "object" && section.value !== null && !Array.isArray(section.value)) {
+    const raw = section.value as Record<string, unknown>;
+    return {
+      kind: "image",
+      src: typeof raw.src === "string" ? raw.src : "",
+      alt: typeof raw.alt === "string" ? raw.alt : section.title,
+      caption: typeof raw.caption === "string" ? raw.caption : undefined,
+    };
+  }
+  return { kind: "image", src: "", alt: section.title };
+}
+
+function safeImageSrc(src: string): string | null {
+  if (src.length > 7_000_000) return null;
+  if (/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) {
+    return src;
+  }
+  if (src.startsWith("artifact://")) {
+    const path = src.slice("artifact://".length).replace(/^\/+/, "");
+    return artifactPath(path);
+  }
+  if (src.startsWith("/artifacts/")) {
+    return artifactPath(src.slice("/artifacts/".length));
+  }
+  return null;
+}
+
+function artifactPath(path: string): string | null {
+  const parts = path.split("/").filter(Boolean);
+  if (!parts.length || parts.some((part) => part === "." || part === "..")) return null;
+  return `/artifacts/${parts.map(encodeURIComponent).join("/")}`;
+}
+
+function tableData(value: unknown): { columns: string[]; rows: Record<string, unknown>[] } | null {
+  if (Array.isArray(value)) {
+    const rows = value
+      .filter((row) => typeof row === "object" && row !== null && !Array.isArray(row))
+      .map((row) => row as Record<string, unknown>);
+    if (!rows.length) return null;
+    const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+    return { columns, rows };
+  }
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const raw = value as Record<string, unknown>;
+    const rawColumns = Array.isArray(raw.columns) ? raw.columns.map(String) : [];
+    const rawRows = Array.isArray(raw.rows) ? raw.rows : [];
+    const rows = rawRows.map((row) => {
+      if (Array.isArray(row)) {
+        return Object.fromEntries(rawColumns.map((col, index) => [col, row[index]]));
+      }
+      return typeof row === "object" && row !== null ? (row as Record<string, unknown>) : {};
+    });
+    const columns = rawColumns.length
+      ? rawColumns
+      : Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+    return columns.length && rows.length ? { columns, rows } : null;
+  }
+  return null;
 }
 
 function formatValue(value: unknown): string {

@@ -62,11 +62,22 @@ script loaded by the page:
       title: "benchmark",
       summary: payload.content?.name,
       graphLabel: payload.content?.name,
+      media: [
+        {
+          kind: "image",
+          src: payload.content?.plot,
+          alt: "benchmark plot",
+          caption: "latest run",
+        },
+      ],
       fields: [
         { label: "score", value: payload.content?.score },
         { label: "unit", value: payload.content?.unit },
       ],
-      sections: [{ title: "content", kind: "json", value: payload.content }],
+      sections: [
+        { title: "content", kind: "json", value: payload.content, collapsed: true },
+        { title: "samples", kind: "table", value: payload.content?.samples },
+      ],
     }));
   });
 </script>
@@ -74,6 +85,36 @@ script loaded by the page:
 
 If the app has already loaded, call `window.arctxWeb.registerPayloadRenderer`
 directly.
+
+Image sources are intentionally restricted to `data:image/png|jpeg|webp` and
+run artifacts (`artifact://plots/loss.png`, served as `/artifacts/plots/loss.png`
+by `arctx-web`). Sections support `json`, `list`, `text`, `table`, `markdown`,
+`diff`, and `image`; markdown is rendered as safe text, not raw HTML.
+
+For trusted local extensions that need richer UI, register a custom element.
+The web app still owns the card shell and raw JSON fallback; the custom element
+only renders the payload-specific body.
+
+```html
+<script>
+  customElements.define("myext-report", class extends HTMLElement {
+    set payload(value) {
+      this.textContent = `score: ${value.score}`;
+    }
+  });
+
+  window.arctxWebExtensions = window.arctxWebExtensions || [];
+  window.arctxWebExtensions.push((api) => {
+    api.registerPayloadElement("myext_report", {
+      tagName: "myext-report",
+      fallbackRenderer: (payload) => ({
+        title: "report",
+        summary: String(payload.score),
+      }),
+    });
+  });
+</script>
+```
 
 ## Scripts
 

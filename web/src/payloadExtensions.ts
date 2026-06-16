@@ -7,14 +7,23 @@ export interface PayloadField {
 
 export interface PayloadSection {
   title: string;
-  kind?: "json" | "list" | "text";
+  kind?: "json" | "list" | "text" | "table" | "markdown" | "diff" | "image";
   value: unknown;
+  collapsed?: boolean;
+}
+
+export interface PayloadMedia {
+  kind: "image";
+  src: string;
+  alt?: string;
+  caption?: string;
 }
 
 export interface PayloadDisplay {
   title: string;
   summary?: string | null;
   graphLabel?: string | null;
+  media?: PayloadMedia[];
   fields?: PayloadField[];
   sections?: PayloadSection[];
   raw?: boolean;
@@ -29,8 +38,14 @@ export type PayloadRenderer = (
   context: PayloadRenderContext,
 ) => PayloadDisplay | null | undefined;
 
+export interface PayloadElementRegistration {
+  tagName: string;
+  fallbackRenderer?: PayloadRenderer;
+}
+
 export interface ArctxWebExtensionApi {
   registerPayloadRenderer: (key: string, renderer: PayloadRenderer) => void;
+  registerPayloadElement: (key: string, registration: PayloadElementRegistration) => void;
 }
 
 export type ArctxWebExtensionInstaller = (api: ArctxWebExtensionApi) => void;
@@ -43,13 +58,28 @@ declare global {
 }
 
 const renderers = new Map<string, PayloadRenderer>();
+const elements = new Map<string, PayloadElementRegistration>();
 
 export function registerPayloadRenderer(key: string, renderer: PayloadRenderer): void {
   renderers.set(key, renderer);
 }
 
+export function registerPayloadElement(
+  key: string,
+  registration: PayloadElementRegistration,
+): void {
+  if (!isCustomElementName(registration.tagName)) {
+    console.warn(`invalid arctx-web payload element tag: ${registration.tagName}`);
+    return;
+  }
+  elements.set(key, registration);
+  if (registration.fallbackRenderer) {
+    renderers.set(key, registration.fallbackRenderer);
+  }
+}
+
 export function installGlobalPayloadExtensionApi(): void {
-  const api: ArctxWebExtensionApi = { registerPayloadRenderer };
+  const api: ArctxWebExtensionApi = { registerPayloadRenderer, registerPayloadElement };
   window.arctxWeb = api;
   const queued = window.arctxWebExtensions ?? [];
   window.arctxWebExtensions = [];
@@ -69,6 +99,14 @@ export function payloadDisplayFor(payload: RunPayload, doc: RunDocument): Payloa
   return fallbackDisplay(payload);
 }
 
+export function payloadElementFor(payload: RunPayload): PayloadElementRegistration | null {
+  for (const key of rendererKeys(payload)) {
+    const registration = elements.get(key);
+    if (registration) return registration;
+  }
+  return null;
+}
+
 function rendererKeys(payload: RunPayload): string[] {
   const keys: string[] = [];
   if (typeof payload.type === "string" && payload.type) {
@@ -76,6 +114,10 @@ function rendererKeys(payload: RunPayload): string[] {
   }
   keys.push(payload.payload_type);
   return keys;
+}
+
+function isCustomElementName(tagName: string): boolean {
+  return /^[a-z][a-z0-9]*-[a-z0-9-]+$/.test(tagName);
 }
 
 function fallbackDisplay(payload: RunPayload): PayloadDisplay {
