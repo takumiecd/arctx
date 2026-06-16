@@ -100,6 +100,71 @@ code {
   overflow-x: auto;
   margin: 6px 0;
 }
+.payload-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 8px 0;
+  background: #fff;
+}
+.payload-card.raw {
+  border-style: dashed;
+}
+.payload-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.payload-card-head code {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+.payload-summary {
+  margin: 6px 0 0;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.payload-fields {
+  display: grid;
+  grid-template-columns: minmax(82px, auto) 1fr;
+  gap: 4px 8px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.payload-fields div {
+  display: contents;
+}
+.payload-fields dt {
+  color: #64748b;
+}
+.payload-fields dd {
+  margin: 0;
+  min-width: 0;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+.payload-section h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 10px 0 4px;
+}
+.payload-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.payload-raw {
+  margin-top: 8px;
+}
+.payload-raw summary {
+  cursor: pointer;
+  color: #64748b;
+  font-size: 12px;
+}
 .actions label {
   display: block;
   font-size: 12px;

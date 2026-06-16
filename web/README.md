@@ -41,6 +41,39 @@ and renders read-only — suitable for sharing a single self-contained HTML file
 npm run build                       # -> dist/
 ```
 
+## Payload display extensions
+
+Payload rendering is owned by the web app. The run JSON keeps raw payloads; the
+frontend chooses how to display them by `payload_type`, or by
+`payload_type:type` for generic `node_payload` / `step_payload` records.
+Unknown payloads fall back to raw JSON.
+
+Built-in renderers cover core payloads plus the standard `git` and `command`
+extension payloads. When served through `arctx-web`, third-party renderer
+scripts are loaded from the `arctx_web.extensions` entry point group for
+extensions enabled on the run. Extra renderers can also be registered from any
+script loaded by the page:
+
+```html
+<script>
+  window.arctxWebExtensions = window.arctxWebExtensions || [];
+  window.arctxWebExtensions.push((api) => {
+    api.registerPayloadRenderer("step_payload:benchmark", (payload) => ({
+      title: "benchmark",
+      summary: payload.content?.name,
+      fields: [
+        { label: "score", value: payload.content?.score },
+        { label: "unit", value: payload.content?.unit },
+      ],
+      sections: [{ title: "content", kind: "json", value: payload.content }],
+    }));
+  });
+</script>
+```
+
+If the app has already loaded, call `window.arctxWeb.registerPayloadRenderer`
+directly.
+
 ## Scripts
 
 - `npm run dev` — dev server

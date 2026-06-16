@@ -6,9 +6,10 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import type { RunClient } from "./api";
-import type { RunDocument } from "./types";
+import type { RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
 import { payloadsForNode, payloadsForStep } from "./model";
+import { payloadDisplayFor, type PayloadDisplay, type PayloadSection } from "./payloadExtensions";
 
 interface Props {
   doc: RunDocument;
@@ -89,9 +90,7 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
       <h3>payloads ({payloads.length})</h3>
       {payloads.length === 0 && <p className="muted">none</p>}
       {payloads.map((p) => (
-        <pre key={p.payload_id} className="payload">
-          {JSON.stringify(p, null, 2)}
-        </pre>
+        <PayloadCard key={p.payload_id} payload={p} display={payloadDisplayFor(p, doc)} />
       ))}
 
       {!client.writable && <p className="muted">read-only (share mode)</p>}
@@ -163,4 +162,55 @@ function parseJson(raw: string): Record<string, unknown> {
     throw new Error("content must be a JSON object");
   }
   return parsed as Record<string, unknown>;
+}
+
+function PayloadCard({ payload, display }: { payload: RunPayload; display: PayloadDisplay }) {
+  return (
+    <section className={`payload-card${display.raw ? " raw" : ""}`}>
+      <div className="payload-card-head">
+        <strong>{display.title}</strong>
+        <code>{payload.payload_id.slice(0, 12)}</code>
+      </div>
+      {display.summary && <p className="payload-summary">{display.summary}</p>}
+      {display.fields && display.fields.length > 0 && (
+        <dl className="payload-fields">
+          {display.fields.map((field) => (
+            <div key={field.label}>
+              <dt>{field.label}</dt>
+              <dd>{formatValue(field.value)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {display.sections?.map((section) => (
+        <PayloadSectionView key={section.title} section={section} />
+      ))}
+      {!display.raw && (
+        <details className="payload-raw">
+          <summary>raw JSON</summary>
+          <pre className="payload">{JSON.stringify(payload, null, 2)}</pre>
+        </details>
+      )}
+    </section>
+  );
+}
+
+function PayloadSectionView({ section }: { section: PayloadSection }) {
+  return (
+    <div className="payload-section">
+      <h4>{section.title}</h4>
+      {section.kind === "text" ? (
+        <pre className="payload payload-text">{formatValue(section.value)}</pre>
+      ) : (
+        <pre className="payload">{JSON.stringify(section.value, null, 2)}</pre>
+      )}
+    </div>
+  );
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
 }
