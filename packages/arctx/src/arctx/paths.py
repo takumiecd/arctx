@@ -117,6 +117,32 @@ def write_arctx_id(repo_root: Path, run_id: str) -> None:
             pass
 
 
+def arctx_lane_path(repo_root: Path) -> Path:
+    """Return the path to the active-lane pointer for *repo_root*.
+
+    Mirrors :func:`arctx_id_path` for the run: the active lane lives at
+    ``<gitdir>/arctx-lane`` so it persists across shells in the same checkout
+    (the ``source .venv``-style "current lane") without git tracking it.
+    """
+    return resolve_git_dir(repo_root) / "arctx-lane"
+
+
+def read_arctx_lane(repo_root: Path) -> str | None:
+    """Read the lane id from the active-lane pointer if present, else None."""
+    path = arctx_lane_path(repo_root)
+    if path.exists():
+        text = path.read_text(encoding="utf-8").strip()
+        return text if text else None
+    return None
+
+
+def write_arctx_lane(repo_root: Path, lane_id: str) -> None:
+    """Write *lane_id* to the active-lane pointer for *repo_root*."""
+    path = arctx_lane_path(repo_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(lane_id + "\n", encoding="utf-8")
+
+
 def find_repo_root(start: Path | None = None) -> Path:
     """Walk up from *start* (default: cwd) to find a ``.git`` entry.
 
