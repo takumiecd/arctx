@@ -34,7 +34,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { layout, type Pos } from "./layout";
-import { stepType } from "./model";
+import { nodeLabel, stepType } from "./model";
 import type { RunDocument } from "./types";
 
 export type Selection =
@@ -46,7 +46,7 @@ export type Selection =
 // keeps dragging ergonomic while fixed handle IDs let rendered edges enter the
 // side that matches graph direction.
 function DagNode({ data }: NodeProps) {
-  const d = data as { label: string; isRoot: boolean; inactive: boolean };
+  const d = data as { label: string; title: string; isRoot: boolean; inactive: boolean };
   const sides = [
     ["top", Position.Top],
     ["right", Position.Right],
@@ -54,7 +54,10 @@ function DagNode({ data }: NodeProps) {
     ["left", Position.Left],
   ] as const;
   return (
-    <div className={`dag-node${d.isRoot ? " root" : ""}${d.inactive ? " inactive" : ""}`}>
+    <div
+      className={`dag-node${d.isRoot ? " root" : ""}${d.inactive ? " inactive" : ""}`}
+      title={d.title}
+    >
       {sides.map(([id, p]) => (
         <Handle key={`source-${id}`} type="source" position={p} id={id} />
       ))}
@@ -176,7 +179,8 @@ function GraphCanvas({ doc, onSelect, onCreateStep, onRunChanged, writable }: Pr
           position: pendingPos ?? prevPos.get(n.node_id) ?? pos[n.node_id] ?? { x: 0, y: 0 },
           selected: prevSel.get(n.node_id) ?? false,
           data: {
-            label: n.node_id === doc.root_node_id ? "root" : n.node_id.slice(0, 8),
+            label: nodeLabel(doc, n.node_id),
+            title: n.node_id,
             isRoot: n.node_id === doc.root_node_id,
             inactive: n.inactive,
           },

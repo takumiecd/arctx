@@ -61,6 +61,7 @@ script loaded by the page:
     api.registerPayloadRenderer("step_payload:benchmark", (payload) => ({
       title: "benchmark",
       summary: payload.content?.name,
+      graphLabel: payload.content?.name,
       fields: [
         { label: "score", value: payload.content?.score },
         { label: "unit", value: payload.content?.unit },

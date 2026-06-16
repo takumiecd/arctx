@@ -61,6 +61,7 @@ class MyExtWeb:
               api.registerPayloadRenderer("myext_experiment", (payload) => ({
                 title: "experiment",
                 summary: payload.name,
+                graphLabel: payload.name,
                 fields: [{ label: "score", value: payload.score }],
                 sections: [{ title: "raw", kind: "json", value: payload }],
               }));

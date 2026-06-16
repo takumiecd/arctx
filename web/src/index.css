@@ -48,12 +48,19 @@ main {
   display: grid;
   place-items: center;
   min-width: 76px;
+  max-width: 150px;
   min-height: 34px;
   padding: 6px 10px;
   font-size: 12px;
   border: 1px solid #94a3b8;
   border-radius: 8px;
   background: #fff;
+}
+.dag-node span {
+  max-width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .dag-node.root {
   background: #ecfdf5;
