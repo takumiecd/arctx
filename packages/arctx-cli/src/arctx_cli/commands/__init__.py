@@ -27,14 +27,32 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.graph import cli_graph
     from arctx_cli.commands.init import add_parser as add_init_parser
     from arctx_cli.commands.init import cli_init
+    from arctx_cli.commands.lane import add_parser as add_lane_parser
+    from arctx_cli.commands.lane import cli_lane
     from arctx_cli.commands.list import add_parser as add_list_parser
     from arctx_cli.commands.list import cli_list
     from arctx_cli.commands.log import add_parser as add_log_parser
     from arctx_cli.commands.log import cli_log
     from arctx_cli.commands.migrate import add_parser as add_migrate_parser
     from arctx_cli.commands.migrate import cli_migrate
+    from arctx_cli.commands.pr import (
+        add_accept_parser,
+        add_propose_parser,
+        add_reject_parser,
+        cli_accept,
+        cli_propose,
+        cli_reject,
+    )
     from arctx_cli.commands.serve import add_parser as add_serve_parser
     from arctx_cli.commands.serve import cli_serve
+    from arctx_cli.commands.sync_cmd import (
+        add_pull_parser,
+        add_push_parser,
+        add_remote_parser,
+        cli_pull,
+        cli_push,
+        cli_remote,
+    )
     from arctx_cli.commands.show import add_parser as add_show_parser
     from arctx_cli.commands.show import cli_show
     from arctx_cli.commands.use import add_parser as add_use_parser
@@ -52,10 +70,17 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("export", add_export_parser, cli_export),
         CliCommand("graph", add_graph_parser, cli_graph),
         CliCommand("init", add_init_parser, cli_init),
+        CliCommand("lane", add_lane_parser, cli_lane),
         CliCommand("list", add_list_parser, cli_list),
         CliCommand("log", add_log_parser, cli_log),
         CliCommand("migrate", add_migrate_parser, cli_migrate),
         CliCommand("cut", add_cut_parser, cli_cut),
+        CliCommand("propose", add_propose_parser, cli_propose),
+        CliCommand("accept", add_accept_parser, cli_accept),
+        CliCommand("reject", add_reject_parser, cli_reject),
+        CliCommand("remote", add_remote_parser, cli_remote),
+        CliCommand("push", add_push_parser, cli_push),
+        CliCommand("pull", add_pull_parser, cli_pull),
         CliCommand("serve", add_serve_parser, cli_serve),
         CliCommand("show", add_show_parser, cli_show),
         CliCommand("use", add_use_parser, cli_use),

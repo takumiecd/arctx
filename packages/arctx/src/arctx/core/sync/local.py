@@ -191,12 +191,29 @@ def sync_pull(
     """Apply records missing from the shared run into the local graph."""
     shared_store = FileSharedRunStore(remote_dir)
     batches = shared_store.read_batches(remote, shared_run_id)
+    adopted_root: str | None = None
     if batches and batches[0].get("operation") == "seed" and _is_empty_seed_graph(handle.run_graph):
         _clear_graph(handle.run_graph)
+        seed_records = batches[0].get("records") or []
+        if seed_records:
+            adopted_root = str(seed_records[0]["body"].get("node_id") or "") or None
     pulled = 0
-    for record in flatten_batches(batches):
+    # Apply in dependency order regardless of batch/record order: nodes before
+    # steps (add_step requires its input/output nodes to exist) before payloads
+    # (attach_payload requires its target). Stable sort preserves arrival order
+    # within a kind. Union stays idempotent (_apply_record skips existing).
+    _kind_rank = {"node": 0, "step": 1, "payload": 2}
+    records = sorted(
+        flatten_batches(batches),
+        key=lambda r: _kind_rank.get(r["record_kind"], 99),
+    )
+    for record in records:
         if _apply_record(handle.run_graph, record["record_kind"], record["body"]):
             pulled += 1
+    # When a fresh local adopts the shared seed, inherit its root pointer so the
+    # graph renders/walks from the shared root (not the discarded local one).
+    if adopted_root and "root_node_id" not in handle.run_graph.metadata:
+        handle.run_graph.metadata["root_node_id"] = adopted_root
     _refresh_counters(handle)
     return {
         "run_id": handle.run_id,

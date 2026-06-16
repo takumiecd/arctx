@@ -55,16 +55,15 @@ class RunHandle:
         user_id: str | None,
         work_session_id: str | None,
         metadata: dict[str, JSONValue] | None = None,
+        name: str | None = None,
     ) -> WorkSession | None:
         if user_id is None or work_session_id is None:
             return None
         existing = self.run_graph.work_sessions.get(work_session_id)
         if existing is not None:
-            if existing.user_id != user_id:
-                raise ValueError(
-                    f"work_session_id {work_session_id!r} belongs to "
-                    f"user {existing.user_id!r}, not {user_id!r}"
-                )
+            # Lanes have OPEN membership: a different actor may append to a shared
+            # lane. Per-action attribution lives on each WorkEvent.user_id, so we
+            # do NOT lock the lane to its creator — just return the existing lane.
             return existing
         session = WorkSession(
             work_session_id=work_session_id,
@@ -72,9 +71,41 @@ class RunHandle:
             user_id=user_id,
             started_at=datetime.now(timezone.utc).isoformat(),
             metadata=dict(metadata or {}),
+            name=name,
         )
         self.run_graph.add_work_session(session)
         return session
+
+    def ensure_lane(
+        self,
+        *,
+        name: str | None = None,
+        lane_id: str | None = None,
+        created_by: str | None = None,
+        parent_lane_id: str | None = None,
+        metadata: dict[str, JSONValue] | None = None,
+    ) -> WorkSession:
+        """Create or return a Lane — a solo-or-collaborative append-only unit.
+
+        A lane is not owned by one user: ``created_by`` only records who opened
+        it, and any actor may later append events to the same lane (attribution
+        is per :class:`WorkEvent`). ``lane_id`` defaults to a fresh opaque id.
+        """
+        lid = lane_id or opaque_id("lane")
+        existing = self.run_graph.work_sessions.get(lid)
+        if existing is not None:
+            return existing
+        lane = WorkSession(
+            work_session_id=lid,
+            run_id=self.run_id,
+            user_id=created_by or "",
+            parent_work_session_id=parent_lane_id,
+            started_at=datetime.now(timezone.utc).isoformat(),
+            metadata=dict(metadata or {}),
+            name=name,
+        )
+        self.run_graph.add_work_session(lane)
+        return lane
 
     def record_work_event(
         self,

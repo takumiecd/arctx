@@ -125,6 +125,7 @@ def run_work_session_start_command(
     user_id: str,
     store_dir: str,
     worktree: str | None = None,
+    name: str | None = None,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -136,6 +137,7 @@ def run_work_session_start_command(
         user_id=user_id,
         work_session_id=ws_id,
         metadata=metadata or None,
+        name=name,
     )
     if session is None:
         raise RuntimeError("failed to create work session")

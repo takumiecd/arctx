@@ -12,7 +12,13 @@ import json
 import os
 from pathlib import Path
 
-from arctx.paths import find_repo_root, read_arctx_id, resolve_arctx_home, resolve_store_dir
+from arctx.paths import (
+    find_repo_root,
+    read_arctx_id,
+    read_arctx_lane,
+    resolve_arctx_home,
+    resolve_store_dir,
+)
 
 
 class ExtensionAwareStore:
@@ -92,12 +98,29 @@ def resolve_user_id(user_id: str | None) -> str:
 
 
 def resolve_work_session_id(work_session_id: str | None) -> str:
-    """Resolve work-session attribution for mutating commands."""
+    """Resolve the active lane (work-session) for mutating commands.
+
+    Chain (mirrors :func:`resolve_run_id`):
+    1. Explicit *work_session_id*.
+    2. ``ARCTX_WORK_SESSION_ID`` env var — shell-local, for parallel work
+       (set via ``eval "$(arctx lane <name> --shell)"``); beats the file pointer.
+    3. Active-lane pointer at ``<gitdir>/arctx-lane`` — persists across shells in
+       the checkout (set via ``arctx lane <name>``).
+    4. ``<ARCTX_HOME>/config.json`` ``work_session.id``.
+    5. ``"default"``.
+    """
     if work_session_id:
         return work_session_id
     env = os.environ.get("ARCTX_WORK_SESSION_ID")
     if env:
         return env
+    try:
+        repo_root = find_repo_root()
+        lane = read_arctx_lane(repo_root)
+        if lane:
+            return lane
+    except RuntimeError:
+        pass
     config_path = _config_path()
     if config_path.exists():
         data = json.loads(config_path.read_text(encoding="utf-8"))

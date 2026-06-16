@@ -138,14 +138,10 @@ class JsonlRunStore:
         run_path.mkdir(parents=True, exist_ok=True)
 
         with _run_lock(run_path):
-            existing_sessions = _existing_work_sessions(run_path)
             existing = _existing_ids(run_path)
-            session_user = existing_sessions.get(batch.work_session.work_session_id)
-            if session_user is not None and session_user != batch.work_session.user_id:
-                raise ValueError(
-                    f"work_session_id {batch.work_session.work_session_id!r} belongs to "
-                    f"user {session_user!r}, not {batch.work_session.user_id!r}"
-                )
+            # Lanes have open membership — no owner lock. A different actor
+            # appending to a shared lane is expected, not an error; the lane
+            # record is idempotent (added only if its id is new).
             if batch.work_session.work_session_id not in existing["work_sessions"]:
                 _append_dicts(
                     run_path / "work_sessions.jsonl",
@@ -338,14 +334,6 @@ def _ids_from_jsonl(path: Path, key: str) -> set[str]:
         str(row[key])
         for row in JsonlRunStore._read_jsonl(path)
         if key in row
-    }
-
-
-def _existing_work_sessions(run_path: Path) -> dict[str, str]:
-    return {
-        str(row["work_session_id"]): str(row["user_id"])
-        for row in JsonlRunStore._read_jsonl(run_path / "work_sessions.jsonl")
-        if "work_session_id" in row and "user_id" in row
     }
 
 
