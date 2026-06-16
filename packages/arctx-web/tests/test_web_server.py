@@ -75,6 +75,14 @@ class _Server:
         with urllib.request.urlopen(req) as r:
             return r.status, json.loads(r.read())
 
+    def put(self, path: str, obj: dict):
+        req = urllib.request.Request(
+            self.url(path), data=json.dumps(obj).encode(),
+            headers={"Content-Type": "application/json"}, method="PUT",
+        )
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+
 
 class TestStatic:
     def test_index_served_at_root(self):
@@ -169,6 +177,32 @@ class TestApiDelegation:
                 status, body = s.post("/node", {})
                 assert status == 201
                 assert "node" in body
+
+
+class TestWebLayoutApi:
+    def test_layout_roundtrip(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _make_run(td)
+            with _Server(store, run_id, _fake_static(td)) as s:
+                status, body, ctype = s.get("/web/layout")
+                assert status == 200
+                assert "application/json" in ctype
+                assert body and json.loads(body) == {"view": "default", "nodes": {}}
+
+                status, saved = s.put(
+                    "/web/layout",
+                    {
+                        "nodes": {
+                            root: {"x": 12, "y": 34.5},
+                            "bad": {"x": "nope", "y": 1},
+                        }
+                    },
+                )
+                assert status == 200
+                assert saved == {"view": "default", "nodes": {root: {"x": 12.0, "y": 34.5}}}
+
+                _, body, _ = s.get("/web/layout")
+                assert json.loads(body) == saved
 
 
 class TestAssets:

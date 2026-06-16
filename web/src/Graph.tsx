@@ -75,7 +75,9 @@ const NODE_HEIGHT = 34;
 
 interface Props {
   doc: RunDocument;
+  savedNodePositions: Record<string, Pos>;
   onSelect: (sel: Selection) => void;
+  onNodePositionsChanged: (positions: Record<string, Pos>) => void;
   onCreateStep: (
     inputNodeIds: string[],
     outputNodeId?: string,
@@ -150,7 +152,15 @@ function eventClientPosition(event: MouseEvent | TouchEvent): Pos | null {
   return touch ? { x: touch.clientX, y: touch.clientY } : null;
 }
 
-function GraphCanvas({ doc, onSelect, onCreateStep, onRunChanged, writable }: Props) {
+function GraphCanvas({
+  doc,
+  savedNodePositions,
+  onSelect,
+  onNodePositionsChanged,
+  onCreateStep,
+  onRunChanged,
+  writable,
+}: Props) {
   const reactFlow = useReactFlow<Node, Edge>();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -176,7 +186,12 @@ function GraphCanvas({ doc, onSelect, onCreateStep, onRunChanged, writable }: Pr
         return {
           id: n.node_id,
           type: "dag",
-          position: pendingPos ?? prevPos.get(n.node_id) ?? pos[n.node_id] ?? { x: 0, y: 0 },
+          position:
+            pendingPos ??
+            savedNodePositions[n.node_id] ??
+            prevPos.get(n.node_id) ??
+            pos[n.node_id] ??
+            { x: 0, y: 0 },
           selected: prevSel.get(n.node_id) ?? false,
           data: {
             label: nodeLabel(doc, n.node_id),
@@ -187,7 +202,7 @@ function GraphCanvas({ doc, onSelect, onCreateStep, onRunChanged, writable }: Pr
         };
       });
     });
-  }, [doc, setNodes]);
+  }, [doc, savedNodePositions, setNodes]);
 
   // Edge paths should follow where nodes actually are, including after a user
   // drags nodes around. Use the nearest side instead of letting React Flow
@@ -274,6 +289,14 @@ function GraphCanvas({ doc, onSelect, onCreateStep, onRunChanged, writable }: Pr
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
+      onNodeDragStop={
+        writable
+          ? (_event, _node, ns) =>
+              onNodePositionsChanged(
+                Object.fromEntries(ns.map((node) => [node.id, node.position])),
+              )
+          : undefined
+      }
       onSelectionChange={onSelectionChange}
       onConnect={writable ? onConnect : undefined}
       onConnectStart={writable ? onConnectStart : undefined}

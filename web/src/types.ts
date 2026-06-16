@@ -50,6 +50,11 @@ export interface RunDocument {
   repos: RunRepo[];
 }
 
+export interface WebLayout {
+  view: string;
+  nodes: Record<string, { x: number; y: number }>;
+}
+
 // ----- write request bodies (POST routes of `arctx serve`) -----
 
 export interface AddNodeRequest {

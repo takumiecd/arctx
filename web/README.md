@@ -31,6 +31,10 @@ npm run dev                         # http://localhost:5173
 Point at a non-default backend with `VITE_ARCTX_API` (dev proxy) or the `?api=`
 query param (built app), e.g. `?api=http://127.0.0.1:9000`.
 
+When served by `arctx-web`, manual node positions are persisted in
+`<run_dir>/web_layouts.json` through `/web/layout`. Plain `arctx serve` does not
+provide that endpoint, so the frontend simply uses automatic layout there.
+
 ## Static / share mode
 
 Build the app, then drop a run document into the page as

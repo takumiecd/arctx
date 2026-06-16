@@ -13,11 +13,14 @@ import type {
   AttachRequest,
   CutRequest,
   RunDocument,
+  WebLayout,
 } from "./types";
 
 export interface RunClient {
   readonly writable: boolean;
   getRun(): Promise<RunDocument>;
+  getLayout(): Promise<WebLayout>;
+  saveLayout(layout: WebLayout): Promise<WebLayout>;
   addNode(req: AddNodeRequest): Promise<void>;
   addStep(req: AddStepRequest): Promise<AddStepResponse>;
   attach(req: AttachRequest): Promise<void>;
@@ -49,6 +52,15 @@ export class LiveClient implements RunClient {
   getRun() {
     return this.req<RunDocument>("/run");
   }
+  getLayout() {
+    return this.req<WebLayout>("/web/layout").catch(() => ({ view: "default", nodes: {} }));
+  }
+  async saveLayout(layout: WebLayout) {
+    return this.req<WebLayout>("/web/layout", {
+      method: "PUT",
+      body: JSON.stringify(layout),
+    }).catch(() => layout);
+  }
   async addNode(req: AddNodeRequest) {
     await this.req("/node", { method: "POST", body: JSON.stringify(req) });
   }
@@ -68,6 +80,12 @@ export class StaticClient implements RunClient {
   constructor(private readonly doc: RunDocument) {}
   async getRun() {
     return this.doc;
+  }
+  async getLayout() {
+    return { view: "default", nodes: {} };
+  }
+  async saveLayout(layout: WebLayout) {
+    return layout;
   }
   async addNode(): Promise<void> {
     throw new ReadOnlyError();

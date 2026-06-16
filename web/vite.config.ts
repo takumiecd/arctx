@@ -11,10 +11,12 @@ export default defineConfig({
   server: {
     proxy: {
       "/run": apiTarget,
+      "/node": apiTarget,
       "/step": apiTarget,
       "/attach": apiTarget,
       "/cut": apiTarget,
       "/health": apiTarget,
+      "/web": apiTarget,
     },
   },
 });

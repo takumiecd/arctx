@@ -16,9 +16,11 @@ from pathlib import Path
 from typing import Any
 
 from arctx_cli.serve.api import dispatch
+from arctx_web.layouts import get_layout, save_layout
 
 # Paths handled by the JSON API; everything else is a static asset request.
 API_PATHS = frozenset({"/run", "/node", "/step", "/attach", "/cut", "/health"})
+WEB_API_PATHS = frozenset({"/web/layout"})
 ARTIFACT_PREFIX = "/artifacts/"
 
 
@@ -42,7 +44,7 @@ def build_handler(
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", cors_origin)
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
         def _send_json(self, status: int, payload: dict) -> None:
@@ -68,6 +70,9 @@ def build_handler(
 
         def _is_api(self) -> bool:
             return self._path() in API_PATHS
+
+        def _is_web_api(self) -> bool:
+            return self._path() in WEB_API_PATHS
 
         def _is_artifact(self) -> bool:
             return self._path().startswith(ARTIFACT_PREFIX)
@@ -95,6 +100,23 @@ def build_handler(
                 user_id=user_id, work_session_id=work_session_id,
             )
             self._send_json(status, payload)
+
+        def _web_api(self, method: str) -> None:
+            if self._path() != "/web/layout":
+                self._send_json(404, {"error": "not found"})
+                return
+            run_dir = store.run_path(run_id)
+            if method == "GET":
+                self._send_json(200, get_layout(run_dir))
+                return
+            if method == "PUT":
+                try:
+                    body = self._read_body() or {}
+                    self._send_json(200, save_layout(run_dir, body))
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._send_json(400, {"error": str(exc)})
+                return
+            self._send_json(405, {"error": "method not allowed"})
 
         def _resolve_static(self, url_path: str) -> Path:
             # Normalize and confine to static_dir (no path traversal).
@@ -137,6 +159,8 @@ def build_handler(
         def do_GET(self) -> None:  # noqa: N802
             if self._is_api():
                 self._api("GET")
+            elif self._is_web_api():
+                self._web_api("GET")
             elif self._is_artifact():
                 self._serve_artifact()
             else:
@@ -145,6 +169,12 @@ def build_handler(
         def do_POST(self) -> None:  # noqa: N802
             if self._is_api():
                 self._api("POST")
+            else:
+                self._send_json(404, {"error": "not found"})
+
+        def do_PUT(self) -> None:  # noqa: N802
+            if self._is_web_api():
+                self._web_api("PUT")
             else:
                 self._send_json(404, {"error": "not found"})
 

@@ -16,6 +16,11 @@ export function App() {
     queryFn: () => client.getRun(),
     refetchInterval: client.writable ? 5000 : false,
   });
+  const { data: savedLayout } = useQuery({
+    queryKey: ["web-layout"],
+    queryFn: () => client.getLayout(),
+    enabled: Boolean(data),
+  });
 
   // Standalone node creation isn't tied to a selection, so it lives in the
   // header rather than the per-selection panel.
@@ -29,6 +34,10 @@ export function App() {
   const createStep = useMutation({
     mutationFn: ({ inputs, output }: { inputs: string[]; output?: string }) =>
       client.addStep({ input_node_ids: inputs, output_node_id: output, type: "step" }),
+  });
+  const saveLayout = useMutation({
+    mutationFn: (nodes: Record<string, { x: number; y: number }>) =>
+      client.saveLayout({ view: "default", nodes }),
   });
 
   if (isLoading) return <div className="center">loading run…</div>;
@@ -60,7 +69,11 @@ export function App() {
         <div className="canvas">
           <Graph
             doc={data}
+            savedNodePositions={savedLayout?.nodes ?? {}}
             onSelect={setSelection}
+            onNodePositionsChanged={(positions) => {
+              if (client.writable) saveLayout.mutate(positions);
+            }}
             onCreateStep={async (inputs, output) => {
               const res = await createStep.mutateAsync({ inputs, output });
               return { outputNodeId: res.step.output_node_id };

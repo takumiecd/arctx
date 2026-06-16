@@ -34,6 +34,21 @@ ARCTX_WEB_STATIC=/path/to/dist arctx-web   # point at any prebuilt dist
 - `--no-browser` — don't open a browser
 - `--cors-origin` — `Access-Control-Allow-Origin` value (default `*`)
 
+## Saved graph layout
+
+Graph node positions are web view state, so `arctx-web` stores them outside the
+core append-only run graph in `<run_dir>/web_layouts.json`. The browser reads
+and writes the default layout through:
+
+```http
+GET /web/layout
+PUT /web/layout
+```
+
+If that endpoint is unavailable, such as when developing against plain
+`arctx serve`, the frontend falls back to automatic layout and skips
+persistence.
+
 ## Web extensions
 
 `arctx-web` owns browser-side extension behavior. The core run JSON still
