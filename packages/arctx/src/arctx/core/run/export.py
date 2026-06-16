@@ -349,6 +349,101 @@ def render_latex(handle: RunHandle, opts: ExportOptions) -> str:
     return "\n".join(lines) + "\n"
 
 
+def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
+    """Build the machine-readable run document as a plain dict.
+
+    Unlike the md/tex/html renderers (which emit a human-facing spanning-tree
+    outline), this is the *data contract* for GUI surfaces: every node, step,
+    and payload is emitted in full so a frontend can draw the DAG itself. It is
+    the shared source of truth for both ``export --format json`` and the
+    ``arctx serve`` HTTP API (``GET /run``).
+
+    Cut propagation is precomputed here via core's ``inactive_*`` helpers and
+    exposed as an ``inactive`` flag on each node/step, so frontends never have
+    to reimplement cut semantics. ``--exclude-cut`` drops inactive records (and
+    any payloads targeting them). ``--node``/``--depth`` restrict the export to
+    the spanning subtree, reusing the same walk as the other formats.
+
+    This module stays repo-agnostic: repo entries are read generically and,
+    unless ``include_local`` is set, their environment-specific ``local_path``
+    is stripped (mirroring ``RepoPayload.shareable()``).
+    """
+    graph = handle.run_graph
+    inactive_nodes = inactive_node_ids(graph)
+    inactive_trans = inactive_step_ids(graph)
+
+    # Determine the set of records to include.
+    if opts.node_id is None and opts.depth is None:
+        node_ids = set(graph.nodes)
+        step_ids = set(graph.steps)
+    else:
+        node_ids = set()
+        step_ids = set()
+        for row in _walk(handle, opts):
+            if row.kind == "node":
+                node_ids.add(row.ident)
+            elif row.kind == "step":
+                step_ids.add(row.ident)
+
+    if opts.exclude_cut:
+        node_ids -= inactive_nodes
+        step_ids -= inactive_trans
+
+    nodes_out = []
+    for nid in node_ids:
+        d = graph.nodes[nid].to_dict()
+        d["inactive"] = nid in inactive_nodes
+        nodes_out.append(d)
+    nodes_out.sort(key=lambda d: str(d["node_id"]))
+
+    steps_out = []
+    for sid in step_ids:
+        d = graph.steps[sid].to_dict()
+        d["inactive"] = sid in inactive_trans
+        steps_out.append(d)
+    steps_out.sort(key=lambda d: str(d["step_id"]))
+
+    payloads_out = []
+    for p in graph.payloads.values():
+        # Repo registry entries are surfaced in ``repos``; don't duplicate them.
+        if p.payload_type == "repo":
+            continue
+        if p.target_kind == "node" and p.target_id not in node_ids:
+            continue
+        if p.target_kind == "step" and p.target_id not in step_ids:
+            continue
+        payloads_out.append(p.to_dict())
+    payloads_out.sort(key=lambda d: str(d.get("payload_id")))
+
+    repos_out = []
+    for e in _repo_entries(graph):
+        if not opts.include_local:
+            e = {k: v for k, v in e.items() if k != "local_path"}
+        repos_out.append(e)
+
+    return {
+        "arctx_export_version": 1,
+        "run_id": handle.run_id,
+        "root_node_id": handle.root_node_id,
+        "counts": {
+            "nodes": len(nodes_out),
+            "steps": len(steps_out),
+            "payloads": len(payloads_out),
+        },
+        "nodes": nodes_out,
+        "steps": steps_out,
+        "payloads": payloads_out,
+        "repos": repos_out,
+    }
+
+
+def render_json(handle: RunHandle, opts: ExportOptions) -> str:
+    """Serialize :func:`json_document` to an indented JSON string."""
+    import json
+
+    return json.dumps(json_document(handle, opts), ensure_ascii=False, indent=2) + "\n"
+
+
 def export(handle: RunHandle, fmt: str, opts: ExportOptions) -> str:
     if fmt in ("md", "markdown"):
         return render_markdown(handle, opts)
@@ -356,4 +451,6 @@ def export(handle: RunHandle, fmt: str, opts: ExportOptions) -> str:
         return render_html(handle, opts)
     if fmt in ("tex", "latex"):
         return render_latex(handle, opts)
+    if fmt == "json":
+        return render_json(handle, opts)
     raise ValueError(f"unknown export format: {fmt!r}")

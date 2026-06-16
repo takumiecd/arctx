@@ -21,9 +21,9 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--format",
         dest="fmt",
-        choices=["md", "tex", "html"],
+        choices=["md", "tex", "html", "json"],
         default="md",
-        help="Output format (default: md)",
+        help="Output format (default: md). json = machine-readable data contract for GUIs",
     )
     parser.add_argument("--node", dest="node_id", default=None,
                         help="Export only the subtree rooted at this node")
