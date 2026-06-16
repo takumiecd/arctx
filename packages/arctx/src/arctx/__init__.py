@@ -7,6 +7,7 @@ from arctx.core.run import init as _core_init
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema import (
     CutPayload,
+    Lane,
     Node,
     NodePayload,
     Payload,
@@ -15,6 +16,8 @@ from arctx.core.schema import (
     TraceContext,
     Step,
     StepPayload,
+    WorkEvent,
+    WorkSession,
     register_payload_class,
 )
 from arctx.core.types import (
@@ -30,6 +33,7 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 
 __all__ = [
     "CutPayload",
+    "Lane",
     "Node",
     "NodePayload",
     "Payload",
@@ -41,6 +45,8 @@ __all__ = [
     "TraceContext",
     "Step",
     "StepPayload",
+    "WorkEvent",
+    "WorkSession",
     "init",
     "register_payload_class",
 ]

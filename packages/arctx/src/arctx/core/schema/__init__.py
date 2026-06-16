@@ -12,9 +12,11 @@ from arctx.core.schema.payloads import (
 )
 from arctx.core.schema.requirements import Requirement
 from arctx.core.schema.snapshots import TraceContext
+from arctx.core.schema.work import Lane, WorkEvent, WorkSession
 
 __all__ = [
     "CutPayload",
+    "Lane",
     "Node",
     "NodePayload",
     "Payload",
@@ -23,6 +25,8 @@ __all__ = [
     "TraceContext",
     "Step",
     "StepPayload",
+    "WorkEvent",
+    "WorkSession",
     "payload_from_dict",
     "register_payload_class",
 ]

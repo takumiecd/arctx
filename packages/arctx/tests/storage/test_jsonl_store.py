@@ -10,7 +10,7 @@ import pytest
 from arctx import init
 from arctx.core.append import AppendBatch
 from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
-from arctx.core.schema.work import WorkSession
+from arctx.core.schema.work import WorkEvent, WorkSession
 from arctx.core.schema.requirements import Requirement
 from arctx.storage.jsonl import JsonlRunStore
 
@@ -137,7 +137,7 @@ def test_incremental_save():
         assert len(loaded.run_graph.nodes) == 2  # root + output
 
 
-def test_append_batch_rejects_work_session_user_mismatch():
+def test_append_batch_allows_shared_lane_multi_actor():
     run = init(_req(), run_id="rt_ws_conflict")
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
@@ -149,21 +149,31 @@ def test_append_batch_rejects_work_session_user_mismatch():
                 work_session_id="ws_shared",
                 work_session=WorkSession("ws_shared", run.run_id, "user_a"),
                 records=(),
-                events=(),
+                events=(WorkEvent("we_a", run.run_id, "ws_shared", "user_a", "note"),),
             )
         )
 
-        with pytest.raises(ValueError, match="belongs to user"):
-            store.append_batch(
-                AppendBatch(
-                    run_id=run.run_id,
-                    user_id="user_b",
-                    work_session_id="ws_shared",
-                    work_session=WorkSession("ws_shared", run.run_id, "user_b"),
-                    records=(),
-                    events=(),
-                )
+        # A lane has OPEN membership: a different actor appending to the same
+        # shared lane must NOT raise — attribution lives on each event.
+        store.append_batch(
+            AppendBatch(
+                run_id=run.run_id,
+                user_id="user_b",
+                work_session_id="ws_shared",
+                work_session=WorkSession("ws_shared", run.run_id, "user_b"),
+                records=(),
+                events=(WorkEvent("we_b", run.run_id, "ws_shared", "user_b", "note"),),
             )
+        )
+
+        loaded = store.load_run("rt_ws_conflict")
+        assert "ws_shared" in loaded.run_graph.work_sessions
+        actors = {
+            e.user_id
+            for e in loaded.run_graph.work_events
+            if e.work_session_id == "ws_shared"
+        }
+        assert actors == {"user_a", "user_b"}
 
 
 def test_round_trip_preserves_objective():
