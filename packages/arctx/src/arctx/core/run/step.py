@@ -110,9 +110,9 @@ def _clone_payload(payload: PayloadBase, new_payload_id: str, new_target_id: str
 
 
 def _payload_summary(payload: PayloadBase) -> str | None:
-    # Best-effort: look for a 'type' or 'intent' field.
-    for attr in ("type", "intent"):
+    # Best-effort: look for a human-facing label.
+    for attr in ("type", "title", "intent"):
         val = getattr(payload, attr, None)
         if isinstance(val, str) and val:
             return val
-    return None
+    return payload.payload_type

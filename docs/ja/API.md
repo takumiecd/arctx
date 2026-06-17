@@ -4,6 +4,7 @@
 
 ```python
 from arctx import Requirement, StepPayload, NodePayload, init
+from arctx.ext.diagram.payloads import DiagramPayload
 
 run = init(Requirement("req_1", "task", "my_task"), run_id="my-run")
 
@@ -27,12 +28,26 @@ run.attach(
         content={"text": "accuracy=87.2%"},
     ),
 )
+
+run.attach(
+    node_id,
+    DiagramPayload(
+        payload_id="_",
+        target_id="_",
+        target_kind="node",
+        title="retry loop",
+        format="mermaid",
+        source="flowchart TD\n  fetch --> retry\n  retry --> fetch",
+    ),
+)
 ```
 
 `run.add_step(...)` は `Step` を 1 つと出力 `Node` を 1 つだけ生成します。
 同じ入力 Node ID で `run.add_step(...)` を複数回呼ぶと、兄弟となる代替を作れます。
 
 `cut(target_kind="node" | "step")` は `CutPayload` を append します。
+`diagram` extension は図・モデル用の `DiagramPayload` を提供します。中に持つ edge
+は ARCTX の `RunGraph` の edge ではないため、循環していても構いません。
 
 削除された API `plan`, `predict`, `observe`, `note` は `step(...)` と
 `attach(...)` で表現します。

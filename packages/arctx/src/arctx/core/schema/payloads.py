@@ -8,7 +8,6 @@ Built-in payload types defined here (core):
   - NodePayload: generic node payload with type + content dict
   - StepPayload: generic step payload with type + content dict
   - CutPayload: append-only inactivity marker (node or step)
-  - JoinPayload: multi-input step without a common ancestor (extension-agnostic)
 
 Extension-specific payload classes (e.g. GitChangePayload, BranchPayload,
 RevertPayload, CherryPickPayload, MergePayload) live with their owning
@@ -23,8 +22,9 @@ values fall back to the appropriate generic class.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Literal, Union
+from typing import Literal
 
 from arctx.core.types import JSONValue, to_jsonable
 
@@ -105,38 +105,11 @@ class CutPayload(PayloadBase):
         return to_jsonable(self)  # type: ignore[return-value]
 
 
-@dataclass(frozen=True)
-class JoinPayload(PayloadBase):
-    """Multi-input step without a common ancestor (extension-agnostic).
-
-    Used to integrate independent DAGs that don't share a common history.
-    Lives in core because the "logical join" concept is not git-specific.
-    """
-
-    payload_id: str
-    target_id: str
-    joined_views: tuple[str, ...]
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-    target_kind: Literal["step"] = field(default="step", init=False)
-    payload_type: str = field(default="join", init=False)
-
-    def to_dict(self) -> dict[str, JSONValue]:
-        return {
-            "payload_id": self.payload_id,
-            "payload_type": self.payload_type,
-            "target_kind": self.target_kind,
-            "target_id": self.target_id,
-            "joined_views": list(self.joined_views),
-            "metadata": dict(self.metadata),
-        }
-
-
 # ---------------------------------------------------------------------------
 # Payload union type (core only — extensions extend via registration)
 # ---------------------------------------------------------------------------
 
-Payload = Union[NodePayload, StepPayload, CutPayload, JoinPayload]
+Payload = NodePayload | StepPayload | CutPayload
 
 
 # ---------------------------------------------------------------------------
@@ -202,17 +175,6 @@ def _cut_from_dict(data: dict[str, JSONValue]) -> CutPayload:
     )
 
 
-def _join_from_dict(data: dict[str, JSONValue]) -> JoinPayload:
-    raw_views = data.get("joined_views") or []
-    joined_views = tuple(str(v) for v in raw_views)
-    return JoinPayload(
-        payload_id=str(data["payload_id"]),
-        target_id=str(data["target_id"]),
-        joined_views=joined_views,
-        metadata=dict(data.get("metadata") or {}),
-    )
-
-
 def _generic_custom_from_dict(cls: type[PayloadBase], data: dict[str, JSONValue]) -> PayloadBase:
     """Best-effort reconstruction for user-registered subclasses."""
     import dataclasses
@@ -231,12 +193,10 @@ def _generic_custom_from_dict(cls: type[PayloadBase], data: dict[str, JSONValue]
 register_payload_class(NodePayload)
 register_payload_class(StepPayload)
 register_payload_class(CutPayload)
-register_payload_class(JoinPayload)
 
 register_payload_decoder("node_payload", _node_payload_from_dict)
 register_payload_decoder("step_payload", _step_payload_from_dict)
 register_payload_decoder("cut", _cut_from_dict)
-register_payload_decoder("join", _join_from_dict)
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +229,15 @@ def payload_from_dict(data: dict[str, JSONValue]) -> PayloadBase:
     leftover = {
         k: v
         for k, v in data.items()
-        if k not in ("payload_id", "target_id", "target_kind", "payload_type", "type", "content", "metadata")
+        if k not in (
+            "payload_id",
+            "target_id",
+            "target_kind",
+            "payload_type",
+            "type",
+            "content",
+            "metadata",
+        )
     }
     if target_kind == "step":
         return StepPayload(

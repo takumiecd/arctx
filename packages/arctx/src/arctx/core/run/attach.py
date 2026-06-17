@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from arctx.core.schema.payloads import PayloadBase
 from arctx.core.run.step import _clone_payload
+from arctx.core.schema.payloads import PayloadBase
 
 
 def attach_impl(
@@ -42,8 +42,8 @@ def attach_impl(
 
 
 def _node_payload_summary(payload: PayloadBase) -> str | None:
-    for attr in ("type", "text"):
+    for attr in ("type", "title", "text"):
         val = getattr(payload, attr, None)
         if isinstance(val, str) and val:
             return val
-    return None
+    return payload.payload_type

@@ -296,6 +296,7 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx add node` | Add an independent DAG node. |
 | `arctx add step --from <node> --title ...` | Add a DAG step and its output node. |
 | `arctx attach <node-or-step> --title ...` | Attach a payload to an existing node or step. |
+| `arctx init <req-id> --extension diagram` | Enable the diagram extension for cyclic diagram/model payloads. |
 | `arctx cut <node-or-step>` | Mark a node or step inactive via append-only payload. |
 | `arctx show [id]` | Show the current run or a single node/step/payload. |
 | `arctx log` | Show the DAG as an ordered event stream. |

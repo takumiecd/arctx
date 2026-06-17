@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from arctx.core.schema.work_helpers import make_session_pointer_event
 
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.context import resolve_store
-from arctx.core.schema.work_helpers import make_session_pointer_event
 
 
 def _store_dir(tmp_path: Path) -> str:
@@ -63,8 +63,9 @@ def _build_two_branch_run(handle, ws_main: str = "ws_main", ws_feat: str = "ws_f
 class TestMergeCLIIntegration:
     def test_merge_records_multi_input_step(self, tmp_path):
         """run_merge_command creates a multi-input step with MergePayload."""
-        from arctx_cli.ext.git.merge import run_merge_command
         from arctx.ext.git.payloads import MergePayload
+
+        from arctx_cli.ext.git.merge import run_merge_command
 
         _init_arctx(tmp_path, run_id="run_mg1")
         sd = _store_dir(tmp_path)
@@ -82,7 +83,6 @@ class TestMergeCLIIntegration:
             store_dir=sd,
             user_id="user",
             work_session_id="ws_main",
-            join=False,
             dry_run=True,
             head_commit="sha_merged_1",
         )
@@ -99,51 +99,11 @@ class TestMergeCLIIntegration:
         assert len(merge_pls) == 1
         assert isinstance(merge_pls[0], MergePayload)
 
-    def test_join_records_join_payload(self, tmp_path):
-        """arctx merge --join records JoinPayload not MergePayload."""
-        from arctx_cli.ext.git.merge import run_merge_command
-        from arctx.core.schema.payloads import JoinPayload
-
-        _init_arctx(tmp_path, run_id="run_join1")
-        sd = _store_dir(tmp_path)
-
-        store = resolve_store(sd)
-        handle = store.load_run("run_join1")
-        n_main, n_feat = _build_two_branch_run(handle)
-        store.save_run(handle)
-
-        result = run_merge_command(
-            other=f"node:{n_feat}",
-            message="join",
-            branch="main",
-            run_id="run_join1",
-            store_dir=sd,
-            user_id="user",
-            work_session_id="ws_main",
-            join=True,
-            dry_run=True,
-            head_commit="sha_join_1",
-        )
-
-        assert result["merge_payload_type"] == "join"
-
-        handle2 = resolve_store(sd).load_run("run_join1")
-        join_pls = handle2.run_graph.payloads_for_step(
-            result["step_id"], payload_type="join"
-        )
-        assert len(join_pls) == 1
-        assert isinstance(join_pls[0], JoinPayload)
-
-        # No MergePayload.
-        merge_pls = handle2.run_graph.payloads_for_step(
-            result["step_id"], payload_type="merge"
-        )
-        assert len(merge_pls) == 0
-
     def test_commit_with_merge_flag(self, tmp_path):
         """run_commit_command --merge drives merge via commit CLI."""
-        from arctx_cli.ext.git.commit import run_commit_command
         from arctx.ext.git.payloads import MergePayload
+
+        from arctx_cli.ext.git.commit import run_commit_command
 
         _init_arctx(tmp_path, run_id="run_cm1")
         sd = _store_dir(tmp_path)
@@ -161,7 +121,6 @@ class TestMergeCLIIntegration:
             user_id="user",
             work_session_id="ws_main",
             merge=f"node:{n_feat}",
-            join=False,
             dry_run=True,
             head_commit="sha_cm_merge",
         )
@@ -201,7 +160,6 @@ class TestMergeCLIIntegration:
             store_dir=sd,
             user_id="user",
             work_session_id="ws_main",
-            join=False,
             dry_run=True,
             head_commit="sha_br_merge",
         )
@@ -230,7 +188,6 @@ class TestMergeCLIIntegration:
             store_dir=sd,
             user_id="user",
             work_session_id="ws_main",
-            join=False,
             dry_run=True,
             head_commit="sha_out",
         )
@@ -279,7 +236,6 @@ class TestMergeCLIIntegration:
             store_dir=sd,
             user_id="user",
             work_session_id="ws_main",
-            join=False,
             dry_run=True,
             head_commit="sha_dump",
         )

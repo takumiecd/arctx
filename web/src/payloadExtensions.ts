@@ -165,12 +165,35 @@ function cutDisplay(payload: RunPayload): PayloadDisplay {
   };
 }
 
-function joinDisplay(payload: RunPayload): PayloadDisplay {
-  const joined = Array.isArray(payload.joined_views) ? payload.joined_views : [];
+function diagramDisplay(payload: RunPayload): PayloadDisplay {
+  const title = stringValue(payload.title) || "diagram";
+  const format = stringValue(payload.format) || "mermaid";
+  const source = stringValue(payload.source);
+  const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+  const edges = Array.isArray(payload.edges) ? payload.edges : [];
+  const sections: PayloadSection[] = [];
+  if (source) {
+    sections.push({ title: "source", kind: "text", value: source });
+  }
+  if (nodes.length > 0) {
+    sections.push({ title: "nodes", kind: "json", value: nodes, collapsed: true });
+  }
+  if (edges.length > 0) {
+    sections.push({ title: "edges", kind: "json", value: edges, collapsed: true });
+  }
+  if (payload.metadata && Object.keys(payload.metadata).length > 0) {
+    sections.push({ title: "metadata", kind: "json", value: payload.metadata, collapsed: true });
+  }
   return {
-    title: "join",
-    summary: `${joined.length} joined view(s)`,
-    fields: [{ label: "joined_views", value: joined }],
+    title,
+    summary: source || `${nodes.length} node(s), ${edges.length} edge(s)`,
+    graphLabel: title,
+    fields: [
+      { label: "format", value: format },
+      { label: "nodes", value: nodes.length },
+      { label: "edges", value: edges.length },
+    ],
+    sections,
   };
 }
 
@@ -298,7 +321,7 @@ function commitSubject(commits: unknown[]): string | null {
 registerPayloadRenderer("node_payload", genericPayloadDisplay);
 registerPayloadRenderer("step_payload", genericPayloadDisplay);
 registerPayloadRenderer("cut", cutDisplay);
-registerPayloadRenderer("join", joinDisplay);
+registerPayloadRenderer("diagram", diagramDisplay);
 registerPayloadRenderer("git_change", gitChangeDisplay);
 registerPayloadRenderer("branch", branchDisplay);
 registerPayloadRenderer("revert", revertDisplay);

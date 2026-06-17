@@ -15,7 +15,6 @@ from arctx.core.schema.payloads import (
 )
 from arctx.ext.git.payloads import DiffSummary, GitChangePayload
 
-
 # ---------------------------------------------------------------------------
 # Node
 # ---------------------------------------------------------------------------
@@ -133,7 +132,6 @@ def test_cut_payload_step():
     assert c.target_kind == "step"
 
 
-# ---------------------------------------------------------------------------
 # GitChangePayload
 # ---------------------------------------------------------------------------
 
@@ -180,6 +178,21 @@ def test_payload_from_dict_cut():
     p = payload_from_dict(data)
     assert isinstance(p, CutPayload)
     assert p.reason == "old"
+
+
+def test_payload_from_dict_old_join_payload_falls_back_to_generic():
+    data = {
+        "payload_type": "join",
+        "payload_id": "pl_j",
+        "target_id": "t_x",
+        "target_kind": "step",
+        "joined_views": ["main", "experiment"],
+        "metadata": {},
+    }
+    p = payload_from_dict(data)
+    assert isinstance(p, StepPayload)
+    assert p.type == "join"
+    assert p.content["joined_views"] == ["main", "experiment"]
 
 
 def test_payload_from_dict_unknown_type_fallback_to_generic():

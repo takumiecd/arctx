@@ -4,6 +4,7 @@ Core API shape:
 
 ```python
 from arctx import Requirement, StepPayload, NodePayload, init
+from arctx.ext.diagram.payloads import DiagramPayload
 
 run = init(Requirement("req_1", "task", "my_task"), run_id="my-run")
 
@@ -27,6 +28,18 @@ run.attach(
         content={"text": "accuracy=87.2%"},
     ),
 )
+
+run.attach(
+    node_id,
+    DiagramPayload(
+        payload_id="_",
+        target_id="_",
+        target_kind="node",
+        title="retry loop",
+        format="mermaid",
+        source="flowchart TD\n  fetch --> retry\n  retry --> fetch",
+    ),
+)
 ```
 
 `run.add_step(...)` creates exactly one `Step` and one output `Node`.
@@ -34,6 +47,8 @@ Create sibling alternatives by calling `run.add_step(...)` multiple times with
 the same input node IDs.
 
 `cut(target_kind="node" | "step")` appends a `CutPayload`.
+The `diagram` extension provides `DiagramPayload` for diagrams/models. Embedded
+edges may be cyclic; they are not ARCTX `RunGraph` edges.
 
 The removed APIs `plan`, `predict`, `observe`, and `note` are represented by
 `step(...)` and `attach(...)`.
