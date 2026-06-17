@@ -11,6 +11,7 @@ _BUILTIN: dict[str, str] = {
     "claude-code": "arctx.ext.claude_code:ClaudeCodeExtension",
     "codex": "arctx.ext.codex:CodexExtension",
     "command": "arctx.ext.command:CommandExtension",
+    "diagram": "arctx.ext.diagram:DiagramExtension",
     "git": "arctx.ext.git:GitExtension",
 }
 

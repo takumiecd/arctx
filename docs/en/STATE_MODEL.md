@@ -20,6 +20,9 @@ Topology indexes are derived from step endpoints:
 Core payloads are generic `NodePayload` / `StepPayload` plus `CutPayload`.
 `CutPayload` is the append-only way to invalidate a node or step; the target is
 not deleted from storage.
+The `diagram` extension provides `DiagramPayload` for diagram/model artifacts.
+Its embedded node/edge data may be cyclic because it describes the target
+artifact, not the ARCTX `RunGraph`.
 Git state is extension state: `GitChangePayload`, branch payloads, and git work
 events are registered by `arctx.ext.git`.
 

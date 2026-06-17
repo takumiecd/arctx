@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from arctx.core.schema.graph import Step
-from arctx.core.schema.payloads import JoinPayload
-from arctx.ext.git.payloads import MergePayload
+from arctx.ext.git.events import latest_branch_tip
 from arctx.ext.git.helpers.repo import resolve_worktree_path
+from arctx.ext.git.payloads import MergePayload
+from arctx.ext.git.registry import resolve_repo_id
 from arctx.ext.git.verbs._forward_step import (
     capture_git_info,
     check_branch_tip_consistency,
@@ -16,17 +18,13 @@ from arctx.ext.git.verbs._forward_step import (
     resolve_current_branch,
     resolve_current_node_ids,
 )
-from arctx.ext.git.events import latest_branch_tip
-from arctx.ext.git.registry import resolve_repo_id
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from arctx.core.run.handle import RunHandle
 
 
 def _resolve_other_node_id(
-    self: "RunHandle",
+    self: RunHandle,
     *,
     other_node_id: str | None,
     other_branch: str | None,
@@ -54,7 +52,7 @@ def _resolve_other_node_id(
 
 
 def merge_impl(
-    self: "RunHandle",
+    self: RunHandle,
     *,
     other_node_id: str | None = None,
     other_branch: str | None = None,
@@ -65,7 +63,6 @@ def merge_impl(
     work_session_id: str | None = None,
     head_commit: str | None = None,
     dry_run: bool = False,
-    join: bool = False,
 ) -> Step:
     """Drive ``git merge <other>`` and record a multi-input Step."""
     resolved_repo_path: Path = resolve_worktree_path(repo_path)
@@ -150,37 +147,24 @@ def merge_impl(
         diff_summary=diff_summary,
         commit_log=commit_log,
         extra_payloads=[],
-        event_type="merge_created" if not join else "join_created",
-        event_summary=(
-            f"merge {merged_from_label} into {merged_into_label}"
-            if not join
-            else f"join {merged_from_label} into {merged_into_label}"
-        ),
+        event_type="merge_created",
+        event_summary=f"merge {merged_from_label} into {merged_into_label}",
         event_data={
             "merged_from": merged_from_label,
             "merged_into": merged_into_label,
             "head_commit": head_commit,
-            "join": join,
         },
         user_id=user_id,
         work_session_id=work_session_id,
         repo_id=repo_id,
     )
 
-    if join:
-        join_views = tuple(sorted({merged_into_label, merged_from_label}))
-        typed_payload: MergePayload | JoinPayload = JoinPayload(
-            payload_id=self._next_id("pl"),
-            target_id=step.step_id,
-            joined_views=join_views,
-        )
-    else:
-        typed_payload = MergePayload(
-            payload_id=self._next_id("pl"),
-            target_id=step.step_id,
-            merged_from=merged_from_label,
-            merged_into=merged_into_label,
-        )
+    typed_payload = MergePayload(
+        payload_id=self._next_id("pl"),
+        target_id=step.step_id,
+        merged_from=merged_from_label,
+        merged_into=merged_into_label,
+    )
     self.run_graph.attach_payload(typed_payload)
 
     return step

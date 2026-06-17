@@ -1,12 +1,11 @@
 """arctx CLI merge command.
 
-Drives a git merge (or arctx-only join) and records a multi-input Step
-with MergePayload or JoinPayload.
+Drives a git merge and records a multi-input Step with MergePayload.
 
 Usage:
-  arctx merge --other <ref> [-m <message>] [--join]
-  arctx merge --other branch:<name> [--join]
-  arctx merge --other node:<id> [--join]
+  arctx merge --other <ref> [-m <message>]
+  arctx merge --other branch:<name>
+  arctx merge --other node:<id>
 """
 
 from __future__ import annotations
@@ -65,15 +64,6 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         default=None,
         help="Override the current branch name (default: inferred from git)",
     )
-    p.add_argument(
-        "--join",
-        action="store_true",
-        help=(
-            "Treat as a arctx-only join (no common ancestor). "
-            "Records JoinPayload instead of MergePayload. "
-            "Does NOT run git merge."
-        ),
-    )
     p.add_argument("--run", default=None, help="Explicit run id")
     p.add_argument("--store-dir", default=None, help="Store directory")
     p.add_argument("--user", default=None, help="User id for attribution")
@@ -90,12 +80,11 @@ def run_merge_command(
     store_dir: str | None,
     user_id: str | None,
     work_session_id: str | None,
-    join: bool = False,
     # Test-only parameters; not exposed in the CLI parser.
     dry_run: bool = False,
     head_commit: str | None = None,
 ) -> dict:
-    """Execute a merge (or join) and persist the resulting graph records.
+    """Execute a merge and persist the resulting graph records.
 
     Parameters
     ----------
@@ -113,9 +102,6 @@ def run_merge_command(
         User id for work event attribution.
     work_session_id:
         Work session id.
-    join:
-        If True, use JoinPayload instead of MergePayload.
-
     Returns
     -------
     dict with step_id, output_node_id, branch, head_commit,
@@ -135,7 +121,6 @@ def run_merge_command(
         branch=branch,
         user_id=user_id,
         work_session_id=work_session_id,
-        join=join,
         dry_run=dry_run,
         head_commit=head_commit,
     )
@@ -157,15 +142,13 @@ def run_merge_command(
     )
     resolved_branch = branch_payloads[-1].branch if branch_payloads else ""
 
-    payload_type = "join" if join else "merge"
-
     return {
         "step_id": step.step_id,
         "output_node_id": step.output_node_id,
         "input_node_ids": list(step.input_node_ids),
         "branch": resolved_branch,
         "head_commit": head_commit,
-        "merge_payload_type": payload_type,
+        "merge_payload_type": "merge",
     }
 
 
@@ -186,7 +169,6 @@ def cli_merge(args) -> int:
             store_dir=args.store_dir,
             user_id=user_id,
             work_session_id=work_session_id,
-            join=args.join,
         )
     except ParallelSessionConflict as exc:
         print(f"error: {exc}", file=sys.stderr)

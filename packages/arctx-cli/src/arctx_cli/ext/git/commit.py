@@ -53,14 +53,6 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
             "multi-input step with MergePayload."
         ),
     )
-    p.add_argument(
-        "--join",
-        action="store_true",
-        help=(
-            "Treat the merge as a arctx-only join (no common ancestor). "
-            "Records JoinPayload instead of MergePayload. Only valid with --merge."
-        ),
-    )
     p.add_argument("--run", default=None, help="Explicit run id")
     p.add_argument("--store-dir", default=None, help="Store directory")
     p.add_argument("--user", default=None, help="User id for attribution")
@@ -93,7 +85,6 @@ def run_commit_command(
     user_id: str | None,
     work_session_id: str | None,
     merge: str | None = None,
-    join: bool = False,
     from_node_ids: tuple[str, ...] | None = None,
     # Test-only parameters; not exposed in the CLI parser.
     dry_run: bool = False,
@@ -118,8 +109,6 @@ def run_commit_command(
     merge:
         If set, drive a merge instead of a plain commit. Format:
         'branch:<name>', 'node:<id>', or '<name>' (branch auto-detect).
-    join:
-        If True and merge is set, use JoinPayload instead of MergePayload.
 
     Returns
     -------
@@ -139,7 +128,6 @@ def run_commit_command(
             branch=branch,
             user_id=user_id,
             work_session_id=work_session_id,
-            join=join,
             dry_run=dry_run,
             head_commit=head_commit,
         )
@@ -180,7 +168,6 @@ def run_commit_command(
     }
     if merge is not None:
         result["merge"] = merge
-        result["join"] = join
     return result
 
 
@@ -207,7 +194,6 @@ def cli_commit(args) -> int:
             user_id=user_id,
             work_session_id=work_session_id,
             merge=merge,
-            join=getattr(args, "join", False),
             from_node_ids=tuple(from_nodes) if from_nodes else None,
         )
     except ParallelSessionConflict as exc:

@@ -167,6 +167,47 @@ def test_payload_add_and_list_node_payload():
         assert listed["payloads"][0]["content"]["text"] == "hello"
 
 
+def test_payload_add_and_list_diagram_payload():
+    with tempfile.TemporaryDirectory() as td:
+        result = run_init_command(
+            requirement_id="req1",
+            target_type="task",
+            target_id="t",
+            run_id="test_run",
+            store_dir=_store_dir(td),
+            extensions=["diagram"],
+            extension_options={},
+        )
+        root_id = result["root_node_id"]
+        add_result = run_payload_add_command(
+            run_id="test_run",
+            target_kind="node",
+            target_id=root_id,
+            payload_type="diagram",
+            field_data={},
+            json_data={
+                "title": "retry loop",
+                "format": "nodes_edges",
+                "nodes": [{"id": "fetch"}, {"id": "retry"}],
+                "edges": [
+                    {"from": "fetch", "to": "retry"},
+                    {"from": "retry", "to": "fetch"},
+                ],
+            },
+            store_dir=_store_dir(td),
+        )
+
+        assert add_result["payload"]["payload_type"] == "diagram"
+        assert add_result["payload"]["edges"][1]["to"] == "fetch"
+        listed = run_payload_list_command(
+            run_id="test_run",
+            target_kind="node",
+            target_id=root_id,
+            store_dir=_store_dir(td),
+        )
+        assert listed["payloads"][0]["title"] == "retry loop"
+
+
 # ---------------------------------------------------------------------------
 # arctx dump
 # ---------------------------------------------------------------------------

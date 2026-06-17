@@ -81,6 +81,7 @@ arctx log --run demo
 - `arctx add step --from NODE --type TYPE --field key=value`: step とその出力 node を
   追加する。
 - `arctx attach <node-or-step-id> --type TYPE --field key=value`: payload を attach する。
+- `arctx payload add --node NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: `diagram` extension が有効な run で、循環可能な図・モデル artifact を attach する。
 - `arctx show <node-or-step-or-payload-id>`: 1 件の record を付随 payload とともに見る。
 
 各 step はちょうど 1 つの出力 node を持ちます。同じ入力 node から `add step` を

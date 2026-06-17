@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+import arctx as arctx
 from arctx.core.schema.graph import Node
-from arctx.core.schema.payloads import JoinPayload
-from arctx.ext.git.payloads import GitChangePayload, MergePayload
 from arctx.core.schema.requirements import Requirement
 from arctx.core.schema.work_helpers import (
     BRANCH_TIP_EVENT,
@@ -16,8 +15,8 @@ from arctx.core.schema.work_helpers import (
     make_branch_tip_event,
     make_session_pointer_event,
 )
-import arctx as arctx
 from arctx.ext import attach_extensions
+from arctx.ext.git.payloads import GitChangePayload, MergePayload
 
 
 def _make_handle(run_id: str = "run_merge_test"):
@@ -162,46 +161,6 @@ class TestMergeImplDryRun:
         # After merge, should be a single output node.
         assert sp.data["current_node_ids"] == [merge_t.output_node_id]
 
-    def test_join_true_records_join_payload(self):
-        handle, n_root, n1, n2, t1, t2 = _make_two_branch_run()
-
-        join_t = handle.git.merge(
-            other_node_id=n2,
-            branch="main",
-            user_id="user",
-            work_session_id="ws_main",
-            head_commit="sha_join",
-            dry_run=True,
-            join=True,
-        )
-        join_payloads = handle.run_graph.payloads_for_step(
-            join_t.step_id, payload_type="join"
-        )
-        assert len(join_payloads) == 1
-        assert isinstance(join_payloads[0], JoinPayload)
-        # MergePayload should NOT be present.
-        merge_payloads = handle.run_graph.payloads_for_step(
-            join_t.step_id, payload_type="merge"
-        )
-        assert len(merge_payloads) == 0
-
-    def test_join_false_no_join_payload(self):
-        handle, n_root, n1, n2, t1, t2 = _make_two_branch_run()
-
-        merge_t = handle.git.merge(
-            other_node_id=n2,
-            branch="main",
-            user_id="user",
-            work_session_id="ws_main",
-            head_commit="sha_merge2",
-            dry_run=True,
-            join=False,
-        )
-        join_payloads = handle.run_graph.payloads_for_step(
-            merge_t.step_id, payload_type="join"
-        )
-        assert len(join_payloads) == 0
-
     def test_resolve_other_node_via_branch_tip_event(self):
         """other_node_id resolution from BranchTipEvent when other_branch is given."""
         handle = _make_handle("run_tip_resolve")
@@ -270,7 +229,11 @@ class TestMergeImplDryRun:
         )
         # No BranchTipEvent or SessionPointerEvent should be added.
         new_events = handle.run_graph.work_events[initial_event_count:]
-        new_typed = [e for e in new_events if e.event_type in (SESSION_POINTER_EVENT, BRANCH_TIP_EVENT)]
+        new_typed = [
+            e
+            for e in new_events
+            if e.event_type in (SESSION_POINTER_EVENT, BRANCH_TIP_EVENT)
+        ]
         assert len(new_typed) == 0
 
     def test_merge_creates_output_node(self):

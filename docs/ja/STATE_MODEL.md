@@ -20,6 +20,9 @@ Payload のインデックスは target から導出されます: `payloads_by_n
 コア payload は汎用の `NodePayload` / `StepPayload` に加えて `CutPayload` です。
 `CutPayload` は node または step を無効化する append-only な手段で、対象は
 ストレージから削除されません。
+`diagram` extension は図・モデル artifact 用の `DiagramPayload` を提供します。
+中に持つ node/edge は対象 artifact の構造であり、ARCTX の `RunGraph` ではないため
+循環していても構いません。
 Git の状態は extension の状態です: `GitChangePayload`、branch payload、git の
 work event は `arctx.ext.git` が登録します。
 
