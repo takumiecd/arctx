@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { pickClient } from "./api";
 import { Graph, type Selection } from "./Graph";
 import { Panel } from "./Panel";
-import { laneGroups } from "./model";
+import { laneColors, laneGroups } from "./model";
+import type { RunDocument } from "./types";
 
 const client = pickClient();
 
@@ -86,6 +87,7 @@ export function App() {
                   className={`lane-chip${collapsed ? " collapsed" : ""}`}
                   type="button"
                   title={collapsed ? "expand lane" : "collapse lane"}
+                  style={laneChipStyle(data, laneId)}
                   onClick={() => toggleLane(laneId)}
                 >
                   {collapsed ? "▸" : "▾"} {lane.label}
@@ -127,4 +129,12 @@ export function App() {
       </main>
     </div>
   );
+}
+
+function laneChipStyle(doc: RunDocument, laneId: string): CSSProperties {
+  const colors = laneColors(doc, laneId);
+  return {
+    "--lane-color": colors.laneColor,
+    "--lane-bg": colors.laneBg,
+  } as CSSProperties;
 }

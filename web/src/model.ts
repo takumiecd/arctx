@@ -66,6 +66,22 @@ export function laneColorIndex(doc: RunDocument, laneId: string): number {
   return index >= 0 ? index % 8 : 0;
 }
 
+export function laneColors(doc: RunDocument, laneId: string): { laneColor: string; laneBg: string } {
+  const [laneColor, laneBg] = LANE_COLORS[laneColorIndex(doc, laneId)];
+  return { laneColor, laneBg };
+}
+
+const LANE_COLORS = [
+  ["#2563eb", "#dbeafe"],
+  ["#059669", "#d1fae5"],
+  ["#ca8a04", "#fef3c7"],
+  ["#dc2626", "#fee2e2"],
+  ["#7c3aed", "#ede9fe"],
+  ["#0891b2", "#cffafe"],
+  ["#db2777", "#fce7f3"],
+  ["#4f46e5", "#e0e7ff"],
+] as const;
+
 function firstMeaningfulPayload(payloads: RunPayload[]): RunPayload | null {
   return payloads.find((p) => p.payload_type !== "cut") ?? null;
 }

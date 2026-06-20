@@ -40,20 +40,21 @@ header .add-node:disabled {
   vertical-align: middle;
 }
 .lane-chip {
-  padding: 2px 8px;
-  border: 1px solid #cbd5e1;
+  padding: 2px 9px 2px 7px;
+  border: 1px solid var(--lane-color);
   border-radius: 999px;
-  background: #fff;
-  color: #334155;
+  background: var(--lane-bg);
+  color: #0f172a;
   cursor: pointer;
   font-size: 12px;
   line-height: 20px;
+  box-shadow: inset 4px 0 0 var(--lane-color);
 }
 .lane-chip:hover {
-  border-color: #2563eb;
+  filter: saturate(1.15);
 }
 .lane-chip.collapsed {
-  background: #f8fafc;
+  background: #fff;
   color: #64748b;
 }
 main {
@@ -73,8 +74,8 @@ main {
   place-items: center;
   min-width: 76px;
   max-width: 150px;
-  min-height: 34px;
-  padding: 6px 10px;
+  min-height: 38px;
+  padding: 6px 10px 7px;
   font-size: 12px;
   border: 1px solid #94a3b8;
   border-radius: 8px;
@@ -91,8 +92,24 @@ main {
 }
 .dag-node.lane {
   border-color: var(--lane-color);
-  box-shadow: inset 3px 0 0 var(--lane-color);
-  background: linear-gradient(90deg, var(--lane-bg), #fff 62%);
+  border-width: 2px;
+  box-shadow: inset 5px 0 0 var(--lane-color), 0 1px 3px rgb(15 23 42 / 0.14);
+  background: linear-gradient(90deg, var(--lane-bg), #fff 70%);
+}
+.dag-node em {
+  max-width: 118px;
+  margin-bottom: 2px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--lane-color);
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 14px;
 }
 .dag-node.inactive {
   opacity: 0.4;
@@ -103,19 +120,24 @@ main {
 .lane-group-box {
   width: 100%;
   height: 100%;
-  border: 1px solid var(--lane-color);
+  border: 2px solid var(--lane-color);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--lane-bg) 58%, transparent);
+  background: color-mix(in srgb, var(--lane-bg) 72%, transparent);
   pointer-events: none;
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--lane-bg) 28%, transparent);
 }
 .lane-group-box span {
   position: absolute;
   left: 10px;
   top: 8px;
-  padding: 1px 7px;
+  max-width: calc(100% - 20px);
+  padding: 2px 8px;
   border-radius: 999px;
-  background: #fff;
-  color: var(--lane-color);
+  background: var(--lane-color);
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 700;
 }

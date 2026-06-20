@@ -34,7 +34,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { layout, type Pos } from "./layout";
-import { laneColorIndex, laneGroups, laneIdForRecord, nodeLabel, stepType } from "./model";
+import { laneColors, laneGroups, laneIdForRecord, laneLabel, nodeLabel, stepType } from "./model";
 import type { RunDocument, RunGroup } from "./types";
 
 export type Selection =
@@ -51,6 +51,7 @@ function DagNode({ data }: NodeProps) {
     title: string;
     isRoot: boolean;
     inactive: boolean;
+    laneLabel?: string;
     laneColor?: string;
     laneBg?: string;
   };
@@ -67,11 +68,12 @@ function DagNode({ data }: NodeProps) {
       style={laneStyle(d)}
     >
       {sides.map(([id, p]) => (
-        <Handle key={`source-${id}`} type="source" position={p} id={id} isConnectable={false} />
+        <Handle key={`source-${id}`} type="source" position={p} id={id} />
       ))}
       {sides.map(([id, p]) => (
-        <Handle key={`target-${id}`} type="target" position={p} id={id} isConnectable={false} />
+        <Handle key={`target-${id}`} type="target" position={p} id={id} />
       ))}
+      {d.laneLabel && <em>{d.laneLabel}</em>}
       <span>{d.label}</span>
     </div>
   );
@@ -104,10 +106,10 @@ function LaneCollapsedNode({ data }: NodeProps) {
   return (
     <div className="lane-collapsed-node" title={d.title} style={laneStyle(d)}>
       {sides.map(([id, p]) => (
-        <Handle key={`source-${id}`} type="source" position={p} id={id} />
+        <Handle key={`source-${id}`} type="source" position={p} id={id} isConnectable={false} />
       ))}
       {sides.map(([id, p]) => (
-        <Handle key={`target-${id}`} type="target" position={p} id={id} />
+        <Handle key={`target-${id}`} type="target" position={p} id={id} isConnectable={false} />
       ))}
       <strong>{d.label}</strong>
       <span>
@@ -123,17 +125,6 @@ const NODE_HEIGHT = 34;
 const LANE_GROUP_PADDING_X = 34;
 const LANE_GROUP_PADDING_TOP = 38;
 const LANE_GROUP_PADDING_BOTTOM = 28;
-
-const LANE_COLORS = [
-  ["#2563eb", "#dbeafe"],
-  ["#059669", "#d1fae5"],
-  ["#ca8a04", "#fef3c7"],
-  ["#dc2626", "#fee2e2"],
-  ["#7c3aed", "#ede9fe"],
-  ["#0891b2", "#cffafe"],
-  ["#db2777", "#fce7f3"],
-  ["#4f46e5", "#e0e7ff"],
-] as const;
 
 interface Props {
   doc: RunDocument;
@@ -159,11 +150,6 @@ function laneStyle(data: { laneColor?: string; laneBg?: string }): CSSProperties
   } as CSSProperties;
 }
 
-function laneColors(doc: RunDocument, laneId: string): { laneColor: string; laneBg: string } {
-  const [laneColor, laneBg] = LANE_COLORS[laneColorIndex(doc, laneId)];
-  return { laneColor, laneBg };
-}
-
 function edgeSides(source: Pos | undefined, target: Pos | undefined): [Side, Side] {
   if (!source || !target) return ["right", "left"];
 
@@ -181,7 +167,9 @@ function buildEdges(
 ): Edge[] {
   const out: Edge[] = [];
   for (const s of doc.steps) {
-    const edgeColor = s.inactive ? "#94a3b8" : "#475569";
+    const stepLaneId = laneIdForRecord(doc, s.step_id) ?? laneIdForRecord(doc, s.output_node_id);
+    const laneColor = stepLaneId ? laneColors(doc, stepLaneId).laneColor : "#475569";
+    const edgeColor = s.inactive ? "#94a3b8" : laneColor;
     const label = stepType(doc, s.step_id);
     for (const input of s.input_node_ids) {
       const source = endpointFor(doc, input, collapsedLaneIds);
@@ -203,7 +191,7 @@ function buildEdges(
         style: {
           opacity: s.inactive ? 0.35 : 1,
           stroke: edgeColor,
-          strokeWidth: 1.8,
+          strokeWidth: stepLaneId ? 2.4 : 1.8,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -342,6 +330,7 @@ function GraphCanvas({
         const laneId = laneIdForRecord(doc, n.node_id);
         if (laneId && collapsedLaneIds.has(laneId)) continue;
         const colors = laneId ? laneColors(doc, laneId) : {};
+        const label = laneId ? laneLabel(doc, laneId) : undefined;
         nextNodes.push({
           id: n.node_id,
           type: "dag",
@@ -352,6 +341,7 @@ function GraphCanvas({
             title: n.node_id,
             isRoot: n.node_id === doc.root_node_id,
             inactive: n.inactive,
+            laneLabel: label,
             ...colors,
           },
           zIndex: 2,
