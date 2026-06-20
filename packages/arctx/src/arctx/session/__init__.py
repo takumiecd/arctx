@@ -1,6 +1,6 @@
 """Environment/config-level session resolution for ARCTX.
 
-These helpers resolve store backends, run IDs, user IDs, and work-session IDs
+These helpers resolve store backends, run IDs, user IDs, and lane IDs
 from environment variables and the ARCTX config file.  They carry no CLI /
 argparse dependency, so arctx-tui and other non-CLI consumers can import them
 directly.
@@ -102,12 +102,11 @@ def resolve_work_session_id(
     *,
     run_id: str | None = None,
 ) -> str:
-    """Resolve the active lane (work-session) for mutating commands.
+    """Resolve the active lane for mutating commands.
 
     Chain (mirrors :func:`resolve_run_id`):
     1. Explicit *work_session_id*.
-    2. ``ARCTX_WORK_SESSION_ID`` env var — shell-local, for parallel work
-       (set via ``eval "$(arctx lane <name> --shell)"``); beats the file pointer.
+    2. ``ARCTX_LANE_ID`` env var, then legacy ``ARCTX_WORK_SESSION_ID``.
     3. Active-lane pointer for *run_id* at ``<gitdir>/arctx-lanes.json`` when a
        run is known, falling back to the legacy ``<gitdir>/arctx-lane`` pointer.
     4. ``<ARCTX_HOME>/config.json`` ``work_session.id``.
@@ -115,7 +114,7 @@ def resolve_work_session_id(
     """
     if work_session_id:
         return work_session_id
-    env = os.environ.get("ARCTX_WORK_SESSION_ID")
+    env = os.environ.get("ARCTX_LANE_ID") or os.environ.get("ARCTX_WORK_SESSION_ID")
     if env:
         return env
     try:
@@ -132,6 +131,11 @@ def resolve_work_session_id(
         if configured:
             return str(configured)
     return "default"
+
+
+def resolve_lane_id(lane_id: str | None, *, run_id: str | None = None) -> str:
+    """Resolve the active lane id. Preferred alias for new code."""
+    return resolve_work_session_id(lane_id, run_id=run_id)
 
 
 def resolve_store(store_dir: str | None):

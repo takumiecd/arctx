@@ -15,6 +15,7 @@ from arctx.session import (  # noqa: F401
     resolve_run_id,
     resolve_store,
     resolve_user_id,
+    resolve_lane_id,
     resolve_work_session_id,
 )
 
@@ -33,12 +34,20 @@ def resolve_user_id_from_args(args) -> str:
     return resolve_user_id(getattr(args, "user", None))
 
 
-def resolve_work_session_id_from_args(args) -> str:
-    """Resolve work-session attribution from parsed CLI args."""
+def resolve_lane_id_from_args(args) -> str:
+    """Resolve lane attribution from parsed CLI args."""
     run_id = getattr(args, "run", None)
     if run_id is None:
         try:
             run_id = resolve_run_id_from_args(args)
         except RuntimeError:
             run_id = None
-    return resolve_work_session_id(getattr(args, "work_session", None), run_id=run_id)
+    return resolve_lane_id(
+        getattr(args, "lane", None) or getattr(args, "work_session", None),
+        run_id=run_id,
+    )
+
+
+def resolve_work_session_id_from_args(args) -> str:
+    """Back-compat wrapper for lane attribution resolution."""
+    return resolve_lane_id_from_args(args)

@@ -24,8 +24,8 @@ def _handle(run_id="run_lane"):
     )
 
 
-def test_lane_is_worksession_alias():
-    assert Lane is WorkSession
+def test_worksession_is_lane_alias():
+    assert WorkSession is Lane
 
 
 def test_ensure_lane_sets_name_and_aliases():
@@ -39,6 +39,7 @@ def test_ensure_lane_sets_name_and_aliases():
     assert again.lane_id == "lane_1"
     assert again.name == "mips-scd"
     assert len(h.run_graph.work_sessions) == 1
+    assert h.run_graph.lanes["lane_1"] is lane
 
 
 def test_shared_lane_accepts_multiple_actors():

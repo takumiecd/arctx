@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import PayloadBase
-from arctx.core.schema.work import WorkEvent, WorkSession
+from arctx.core.schema.work import Lane, WorkEvent, WorkSession
 from arctx.core.types import JSONValue, to_jsonable
 
 
@@ -18,7 +18,7 @@ class RunGraph:
     nodes: dict[str, Node] = field(default_factory=dict)
     steps: dict[str, Step] = field(default_factory=dict)
     payloads: dict[str, PayloadBase] = field(default_factory=dict)
-    work_sessions: dict[str, WorkSession] = field(default_factory=dict)
+    work_sessions: dict[str, Lane] = field(default_factory=dict)
     work_events: list[WorkEvent] = field(default_factory=list)
 
     # Reverse-lookup indices (not persisted; rebuilt on load).
@@ -28,6 +28,19 @@ class RunGraph:
     payloads_by_step: dict[str, list[str]] = field(default_factory=dict)
 
     metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    @property
+    def lanes(self) -> dict[str, Lane]:
+        """Lane records keyed by lane id.
+
+        ``work_sessions`` is the storage/back-compat field name; ``lanes`` is
+        the canonical vocabulary for new code.
+        """
+        return self.work_sessions
+
+    def add_lane(self, lane: Lane) -> None:
+        """Add a Lane record. Backed by the legacy work_sessions map."""
+        self.add_work_session(lane)
 
     def add_work_session(self, session: WorkSession) -> None:
         if session.work_session_id in self.work_sessions:

@@ -13,6 +13,7 @@ from arctx.session import resolve_work_session_id
 def _fake_repo(tmp_path, monkeypatch):
     (tmp_path / ".git").mkdir()
     monkeypatch.setenv("ARCTX_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("ARCTX_LANE_ID", raising=False)
     monkeypatch.delenv("ARCTX_WORK_SESSION_ID", raising=False)
     monkeypatch.chdir(tmp_path)
 
@@ -43,8 +44,14 @@ def test_run_scoped_pointer_beats_legacy_file_pointer(tmp_path, monkeypatch):
 def test_env_beats_file_pointer(tmp_path, monkeypatch):
     _fake_repo(tmp_path, monkeypatch)
     write_arctx_lane(find_repo_root(), "lane_file", run_id="run_x")
-    monkeypatch.setenv("ARCTX_WORK_SESSION_ID", "lane_env")
+    monkeypatch.setenv("ARCTX_LANE_ID", "lane_env")
     assert resolve_work_session_id(None, run_id="run_x") == "lane_env"
+
+
+def test_legacy_work_session_env_is_fallback(tmp_path, monkeypatch):
+    _fake_repo(tmp_path, monkeypatch)
+    monkeypatch.setenv("ARCTX_WORK_SESSION_ID", "lane_legacy_env")
+    assert resolve_work_session_id(None) == "lane_legacy_env"
 
 
 def test_explicit_beats_everything(tmp_path, monkeypatch):

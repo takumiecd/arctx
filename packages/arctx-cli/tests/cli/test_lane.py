@@ -36,7 +36,8 @@ def test_switch_creates_named_lane_and_is_idempotent_by_name():
         )
         assert r1["created"] is True
         assert r1["name"] == "geometry"
-        assert r1["export"].startswith("export ARCTX_WORK_SESSION_ID=")
+        assert r1["export"].startswith("export ARCTX_LANE_ID=")
+        assert "ARCTX_WORK_SESSION_ID=" in r1["export"]
 
         # bob switches to the SAME named lane — open membership: resolves the
         # existing lane (not a new one), no error.
@@ -59,6 +60,7 @@ def test_persistent_lane_pointer_is_scoped_by_run(monkeypatch):
         (root / ".git").mkdir()
         monkeypatch.chdir(root)
         monkeypatch.setenv("ARCTX_HOME", str(root / "home"))
+        monkeypatch.delenv("ARCTX_LANE_ID", raising=False)
         monkeypatch.delenv("ARCTX_WORK_SESSION_ID", raising=False)
 
         sd = _store_dir(td)

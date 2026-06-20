@@ -106,7 +106,10 @@ def run_lane_switch_command(
 
     result = {"lane_id": lane.work_session_id, "name": name, "created": created}
     if shell:
-        result["export"] = f"export ARCTX_WORK_SESSION_ID={lane.work_session_id}"
+        result["export"] = (
+            f"export ARCTX_LANE_ID={lane.work_session_id}; "
+            f"export ARCTX_WORK_SESSION_ID={lane.work_session_id}"
+        )
     else:
         repo_root = find_repo_root()
         write_arctx_lane(repo_root, lane.work_session_id, run_id=run_id)
@@ -116,7 +119,7 @@ def run_lane_switch_command(
 
 def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:
     """Resolve the active lane (env > file pointer) and return its id/name."""
-    lane_id = os.environ.get("ARCTX_WORK_SESSION_ID")
+    lane_id = os.environ.get("ARCTX_LANE_ID") or os.environ.get("ARCTX_WORK_SESSION_ID")
     source = "env"
     if not lane_id:
         try:
