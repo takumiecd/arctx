@@ -32,6 +32,30 @@ header .add-node:disabled {
   opacity: 0.5;
   cursor: default;
 }
+.lane-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+.lane-chip {
+  padding: 2px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 20px;
+}
+.lane-chip:hover {
+  border-color: #2563eb;
+}
+.lane-chip.collapsed {
+  background: #f8fafc;
+  color: #64748b;
+}
 main {
   flex: 1;
   display: flex;
@@ -65,11 +89,58 @@ main {
 .dag-node.root {
   background: #ecfdf5;
 }
+.dag-node.lane {
+  border-color: var(--lane-color);
+  box-shadow: inset 3px 0 0 var(--lane-color);
+  background: linear-gradient(90deg, var(--lane-bg), #fff 62%);
+}
 .dag-node.inactive {
   opacity: 0.4;
 }
 .react-flow__node.selected .dag-node {
   border: 2px solid #2563eb;
+}
+.lane-group-box {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--lane-color);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--lane-bg) 58%, transparent);
+  pointer-events: none;
+}
+.lane-group-box span {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--lane-color);
+  font-size: 11px;
+  font-weight: 700;
+}
+.lane-collapsed-node {
+  display: grid;
+  gap: 3px;
+  min-width: 140px;
+  min-height: 58px;
+  padding: 9px 12px;
+  border: 1px solid var(--lane-color);
+  border-radius: 8px;
+  background: var(--lane-bg);
+  color: #0f172a;
+  font-size: 12px;
+  box-shadow: inset 4px 0 0 var(--lane-color);
+}
+.lane-collapsed-node strong {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lane-collapsed-node span {
+  color: #475569;
+  font-size: 11px;
 }
 .panel {
   width: 340px;

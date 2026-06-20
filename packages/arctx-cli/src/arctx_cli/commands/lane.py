@@ -109,7 +109,7 @@ def run_lane_switch_command(
         result["export"] = f"export ARCTX_WORK_SESSION_ID={lane.work_session_id}"
     else:
         repo_root = find_repo_root()
-        write_arctx_lane(repo_root, lane.work_session_id)
+        write_arctx_lane(repo_root, lane.work_session_id, run_id=run_id)
         result["arctx_lane_path"] = str(arctx_lane_path(repo_root))
     return result
 
@@ -120,7 +120,7 @@ def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:
     source = "env"
     if not lane_id:
         try:
-            lane_id = read_arctx_lane(find_repo_root())
+            lane_id = read_arctx_lane(find_repo_root(), run_id=run_id)
             source = "pointer"
         except RuntimeError:
             lane_id = None

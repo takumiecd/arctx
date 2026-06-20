@@ -132,6 +132,22 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
 
     emit_node(root_id, "", True, 0)
 
+    orphan_starts = [
+        node_id
+        for node_id in graph.roots()
+        if node_id != root_id and node_id not in visited_nodes
+    ]
+    orphan_starts += [
+        node_id
+        for node_id in graph.nodes
+        if node_id not in visited_nodes and node_id not in orphan_starts
+    ]
+    if orphan_starts:
+        lines.append("")
+        lines.append("orphans:")
+        for index, node_id in enumerate(orphan_starts):
+            emit_node(node_id, "  ", index == len(orphan_starts) - 1, 0)
+
     if len(multi_input_trans) >= 3:
         lines.append("")
         lines.append("joins:")

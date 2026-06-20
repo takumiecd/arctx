@@ -11,7 +11,7 @@
 // Cut/inactive records are dimmed. Selecting exactly one node or one edge
 // drives the detail panel.
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties } from "react";
 import {
   Background,
   ConnectionMode,
@@ -34,8 +34,8 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { layout, type Pos } from "./layout";
-import { nodeLabel, stepType } from "./model";
-import type { RunDocument } from "./types";
+import { laneColorIndex, laneGroups, laneIdForRecord, nodeLabel, stepType } from "./model";
+import type { RunDocument, RunGroup } from "./types";
 
 export type Selection =
   | { kind: "node"; id: string }
@@ -46,7 +46,14 @@ export type Selection =
 // keeps dragging ergonomic while fixed handle IDs let rendered edges enter the
 // side that matches graph direction.
 function DagNode({ data }: NodeProps) {
-  const d = data as { label: string; title: string; isRoot: boolean; inactive: boolean };
+  const d = data as {
+    label: string;
+    title: string;
+    isRoot: boolean;
+    inactive: boolean;
+    laneColor?: string;
+    laneBg?: string;
+  };
   const sides = [
     ["top", Position.Top],
     ["right", Position.Right],
@@ -55,23 +62,78 @@ function DagNode({ data }: NodeProps) {
   ] as const;
   return (
     <div
-      className={`dag-node${d.isRoot ? " root" : ""}${d.inactive ? " inactive" : ""}`}
+      className={`dag-node${d.isRoot ? " root" : ""}${d.inactive ? " inactive" : ""}${d.laneColor ? " lane" : ""}`}
       title={d.title}
+      style={laneStyle(d)}
     >
       {sides.map(([id, p]) => (
-        <Handle key={`source-${id}`} type="source" position={p} id={id} />
+        <Handle key={`source-${id}`} type="source" position={p} id={id} isConnectable={false} />
       ))}
       {sides.map(([id, p]) => (
-        <Handle key={`target-${id}`} type="target" position={p} id={id} />
+        <Handle key={`target-${id}`} type="target" position={p} id={id} isConnectable={false} />
       ))}
       <span>{d.label}</span>
     </div>
   );
 }
 
-const nodeTypes = { dag: DagNode };
+function LaneGroupNode({ data }: NodeProps) {
+  const d = data as { label: string; laneColor: string; laneBg: string };
+  return (
+    <div className="lane-group-box" style={laneStyle(d)}>
+      <span>{d.label}</span>
+    </div>
+  );
+}
+
+function LaneCollapsedNode({ data }: NodeProps) {
+  const d = data as {
+    label: string;
+    title: string;
+    laneColor: string;
+    laneBg: string;
+    nodeCount: number;
+    stepCount: number;
+  };
+  const sides = [
+    ["top", Position.Top],
+    ["right", Position.Right],
+    ["bottom", Position.Bottom],
+    ["left", Position.Left],
+  ] as const;
+  return (
+    <div className="lane-collapsed-node" title={d.title} style={laneStyle(d)}>
+      {sides.map(([id, p]) => (
+        <Handle key={`source-${id}`} type="source" position={p} id={id} />
+      ))}
+      {sides.map(([id, p]) => (
+        <Handle key={`target-${id}`} type="target" position={p} id={id} />
+      ))}
+      <strong>{d.label}</strong>
+      <span>
+        {d.nodeCount} nodes · {d.stepCount} steps
+      </span>
+    </div>
+  );
+}
+
+const nodeTypes = { dag: DagNode, laneGroup: LaneGroupNode, laneCollapsed: LaneCollapsedNode };
 const NODE_WIDTH = 76;
 const NODE_HEIGHT = 34;
+const LANE_GROUP_PADDING_X = 34;
+const LANE_GROUP_PADDING_TOP = 38;
+const LANE_GROUP_PADDING_BOTTOM = 28;
+
+const LANE_COLORS = [
+  ["#2563eb", "#dbeafe"],
+  ["#059669", "#d1fae5"],
+  ["#ca8a04", "#fef3c7"],
+  ["#dc2626", "#fee2e2"],
+  ["#7c3aed", "#ede9fe"],
+  ["#0891b2", "#cffafe"],
+  ["#db2777", "#fce7f3"],
+  ["#4f46e5", "#e0e7ff"],
+] as const;
 
 interface Props {
   doc: RunDocument;
@@ -83,10 +145,24 @@ interface Props {
     outputNodeId?: string,
   ) => Promise<{ outputNodeId: string } | void>;
   onRunChanged: () => void;
+  collapsedLaneIds: Set<string>;
+  onToggleLane: (laneId: string) => void;
   writable: boolean;
 }
 
 type Side = "top" | "right" | "bottom" | "left";
+
+function laneStyle(data: { laneColor?: string; laneBg?: string }): CSSProperties {
+  return {
+    "--lane-color": data.laneColor,
+    "--lane-bg": data.laneBg,
+  } as CSSProperties;
+}
+
+function laneColors(doc: RunDocument, laneId: string): { laneColor: string; laneBg: string } {
+  const [laneColor, laneBg] = LANE_COLORS[laneColorIndex(doc, laneId)];
+  return { laneColor, laneBg };
+}
 
 function edgeSides(source: Pos | undefined, target: Pos | undefined): [Side, Side] {
   if (!source || !target) return ["right", "left"];
@@ -98,17 +174,24 @@ function edgeSides(source: Pos | undefined, target: Pos | undefined): [Side, Sid
   return dx >= 0 ? ["right", "left"] : ["left", "right"];
 }
 
-function buildEdges(doc: RunDocument, positions: Record<string, Pos>): Edge[] {
+function buildEdges(
+  doc: RunDocument,
+  positions: Record<string, Pos>,
+  collapsedLaneIds: Set<string>,
+): Edge[] {
   const out: Edge[] = [];
   for (const s of doc.steps) {
     const edgeColor = s.inactive ? "#94a3b8" : "#475569";
     const label = stepType(doc, s.step_id);
     for (const input of s.input_node_ids) {
-      const [sourceHandle, targetHandle] = edgeSides(positions[input], positions[s.output_node_id]);
+      const source = endpointFor(doc, input, collapsedLaneIds);
+      const target = endpointFor(doc, s.output_node_id, collapsedLaneIds);
+      if (source === target) continue;
+      const [sourceHandle, targetHandle] = edgeSides(positions[source], positions[target]);
       out.push({
-        id: `${s.step_id}:${input}`,
-        source: input,
-        target: s.output_node_id,
+        id: `${s.step_id}:${input}:${source}->${target}`,
+        source,
+        target,
         sourceHandle,
         targetHandle,
         type: "smoothstep",
@@ -134,6 +217,31 @@ function buildEdges(doc: RunDocument, positions: Record<string, Pos>): Edge[] {
   return out;
 }
 
+function endpointFor(doc: RunDocument, nodeId: string, collapsedLaneIds: Set<string>): string {
+  const laneId = laneIdForRecord(doc, nodeId);
+  return laneId && collapsedLaneIds.has(laneId) ? `lane:${laneId}` : nodeId;
+}
+
+function laneBounds(
+  group: RunGroup,
+  positions: Map<string, Pos>,
+): { x: number; y: number; width: number; height: number } | null {
+  const memberPositions = group.node_ids
+    .map((nodeId) => positions.get(nodeId))
+    .filter((p): p is Pos => Boolean(p));
+  if (memberPositions.length === 0) return null;
+  const minX = Math.min(...memberPositions.map((p) => p.x));
+  const minY = Math.min(...memberPositions.map((p) => p.y));
+  const maxX = Math.max(...memberPositions.map((p) => p.x + NODE_WIDTH));
+  const maxY = Math.max(...memberPositions.map((p) => p.y + NODE_HEIGHT));
+  return {
+    x: minX - LANE_GROUP_PADDING_X,
+    y: minY - LANE_GROUP_PADDING_TOP,
+    width: maxX - minX + LANE_GROUP_PADDING_X * 2,
+    height: maxY - minY + LANE_GROUP_PADDING_TOP + LANE_GROUP_PADDING_BOTTOM,
+  };
+}
+
 function eventClientPosition(event: MouseEvent | TouchEvent): Pos | null {
   if ("clientX" in event) {
     return { x: event.clientX, y: event.clientY };
@@ -149,6 +257,8 @@ function GraphCanvas({
   onNodePositionsChanged,
   onCreateStep,
   onRunChanged,
+  collapsedLaneIds,
+  onToggleLane,
   writable,
 }: Props) {
   const reactFlow = useReactFlow<Node, Edge>();
@@ -168,31 +278,89 @@ function GraphCanvas({
     setNodes((prev) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
       const prevSel = new Map(prev.map((n) => [n.id, n.selected]));
-      return doc.nodes.map((n) => {
+      const resolvedPositions = new Map<string, Pos>();
+      for (const n of doc.nodes) {
         const pendingPos = pendingNodePositions.current.get(n.node_id);
         if (pendingPos) {
           pendingNodePositions.current.delete(n.node_id);
         }
-        return {
-          id: n.node_id,
-          type: "dag",
-          position:
-            pendingPos ??
+        resolvedPositions.set(
+          n.node_id,
+          pendingPos ??
             savedNodePositions[n.node_id] ??
             prevPos.get(n.node_id) ??
             pos[n.node_id] ??
             { x: 0, y: 0 },
+        );
+      }
+
+      const groups = laneGroups(doc);
+      const nextNodes: Node[] = [];
+
+      for (const group of groups) {
+        if (!group.lane_id || collapsedLaneIds.has(group.lane_id)) continue;
+        const box = laneBounds(group, resolvedPositions);
+        if (!box) continue;
+        const colors = laneColors(doc, group.lane_id);
+        nextNodes.push({
+          id: group.group_id,
+          type: "laneGroup",
+          position: { x: box.x, y: box.y },
+          data: { label: group.label, ...colors },
+          draggable: false,
+          selectable: false,
+          zIndex: 0,
+          style: { width: box.width, height: box.height },
+        });
+      }
+
+      for (const group of groups) {
+        if (!group.lane_id || !collapsedLaneIds.has(group.lane_id)) continue;
+        const collapsedId = `lane:${group.lane_id}`;
+        const box = laneBounds(group, resolvedPositions);
+        const colors = laneColors(doc, group.lane_id);
+        nextNodes.push({
+          id: collapsedId,
+          type: "laneCollapsed",
+          position:
+            savedNodePositions[collapsedId] ??
+            prevPos.get(collapsedId) ??
+            (box ? { x: box.x + box.width / 2 - 70, y: box.y + box.height / 2 - 30 } : { x: 0, y: 0 }),
+          selected: prevSel.get(collapsedId) ?? false,
+          data: {
+            label: group.label,
+            title: `lane ${group.label} (double-click to expand)`,
+            nodeCount: group.node_ids.length,
+            stepCount: group.step_ids.length,
+            ...colors,
+          },
+          zIndex: 2,
+        });
+      }
+
+      for (const n of doc.nodes) {
+        const laneId = laneIdForRecord(doc, n.node_id);
+        if (laneId && collapsedLaneIds.has(laneId)) continue;
+        const colors = laneId ? laneColors(doc, laneId) : {};
+        nextNodes.push({
+          id: n.node_id,
+          type: "dag",
+          position: resolvedPositions.get(n.node_id) ?? { x: 0, y: 0 },
           selected: prevSel.get(n.node_id) ?? false,
           data: {
             label: nodeLabel(doc, n.node_id),
             title: n.node_id,
             isRoot: n.node_id === doc.root_node_id,
             inactive: n.inactive,
+            ...colors,
           },
-        };
-      });
+          zIndex: 2,
+        });
+      }
+
+      return nextNodes;
     });
-  }, [doc, savedNodePositions, setNodes]);
+  }, [collapsedLaneIds, doc, savedNodePositions, setNodes]);
 
   // Edge paths should follow where nodes actually are, including after a user
   // drags nodes around. Use the nearest side instead of letting React Flow
@@ -203,8 +371,8 @@ function GraphCanvas({
     for (const n of nodes) {
       positions[n.id] = n.position;
     }
-    setEdges(buildEdges(doc, positions));
-  }, [doc, nodes, setEdges]);
+    setEdges(buildEdges(doc, positions, collapsedLaneIds));
+  }, [collapsedLaneIds, doc, nodes, setEdges]);
 
   const inputsFor = (source: string | null): string[] => {
     if (!source) return [];
@@ -216,6 +384,10 @@ function GraphCanvas({
     ({ nodes: ns, edges: es }: OnSelectionChangeParams) => {
       selectedNodeIds.current = ns.map((n) => n.id);
       if (ns.length === 1 && es.length === 0) {
+        if (ns[0].id.startsWith("lane:")) {
+          onSelect(null);
+          return;
+        }
         onSelect({ kind: "node", id: ns[0].id });
       } else if (es.length === 1 && ns.length === 0) {
         onSelect({ kind: "step", id: (es[0].data as { stepId: string }).stepId });
@@ -283,10 +455,17 @@ function GraphCanvas({
         writable
           ? (_event, _node, ns) =>
               onNodePositionsChanged(
-                Object.fromEntries(ns.map((node) => [node.id, node.position])),
+                Object.fromEntries(
+                  ns
+                    .filter((node) => node.type !== "laneGroup")
+                    .map((node) => [node.id, node.position]),
+                ),
               )
           : undefined
       }
+      onNodeDoubleClick={(_event, node) => {
+        if (node.id.startsWith("lane:")) onToggleLane(node.id.slice("lane:".length));
+      }}
       onSelectionChange={onSelectionChange}
       onConnect={writable ? onConnect : undefined}
       onConnectStart={writable ? onConnectStart : undefined}

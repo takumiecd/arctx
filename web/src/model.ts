@@ -1,6 +1,6 @@
 // Small read helpers over a RunDocument: payload lookups and graph labeling.
 
-import type { RunDocument, RunPayload } from "./types";
+import type { RecordProvenance, RunDocument, RunGroup, RunPayload } from "./types";
 import { payloadDisplayFor } from "./payloadExtensions";
 
 export function payloadsForNode(doc: RunDocument, nodeId: string): RunPayload[] {
@@ -39,6 +39,31 @@ export function nodeLabel(doc: RunDocument, nodeId: string): string {
   }
 
   return "node";
+}
+
+export function laneGroups(doc: RunDocument): RunGroup[] {
+  return (doc.groups ?? []).filter((group) => group.kind === "lane" && group.lane_id);
+}
+
+export function provenanceFor(doc: RunDocument, recordId: string): RecordProvenance | null {
+  return doc.record_provenance?.[recordId] ?? null;
+}
+
+export function laneIdForRecord(doc: RunDocument, recordId: string): string | null {
+  return provenanceFor(doc, recordId)?.lane_id ?? null;
+}
+
+export function laneLabel(doc: RunDocument, laneId: string): string {
+  const group = laneGroups(doc).find((g) => g.lane_id === laneId);
+  if (group?.label) return group.label;
+  const session = (doc.work_sessions ?? []).find((s) => s.work_session_id === laneId);
+  return session?.name || laneId;
+}
+
+export function laneColorIndex(doc: RunDocument, laneId: string): number {
+  const ids = laneGroups(doc).map((group) => group.lane_id).filter(Boolean) as string[];
+  const index = ids.indexOf(laneId);
+  return index >= 0 ? index % 8 : 0;
 }
 
 function firstMeaningfulPayload(payloads: RunPayload[]): RunPayload | null {

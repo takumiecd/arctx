@@ -39,6 +39,53 @@ export interface RunRepo {
   [key: string]: unknown;
 }
 
+export interface RunWorkSession {
+  work_session_id: string;
+  run_id: string;
+  user_id: string;
+  parent_work_session_id?: string | null;
+  started_at?: string | null;
+  closed_at?: string | null;
+  status?: string;
+  metadata?: Record<string, unknown>;
+  name?: string | null;
+}
+
+export interface RunWorkEvent {
+  event_id: string;
+  run_id: string;
+  work_session_id: string;
+  user_id: string;
+  event_type: string;
+  target_kind?: string | null;
+  target_id?: string | null;
+  created_records?: string[];
+  summary?: string | null;
+  data?: Record<string, unknown>;
+  created_at?: string | null;
+  seq?: number | null;
+}
+
+export interface RecordProvenance {
+  record_id: string;
+  lane_id: string;
+  lane_name?: string | null;
+  user_id: string;
+  event_id: string;
+  event_type: string;
+  created_at?: string | null;
+}
+
+export interface RunGroup {
+  group_id: string;
+  kind: "lane" | string;
+  lane_id?: string;
+  label: string;
+  node_ids: string[];
+  step_ids: string[];
+  color_key?: string;
+}
+
 export interface RunDocument {
   arctx_export_version: number;
   run_id: string;
@@ -48,6 +95,10 @@ export interface RunDocument {
   steps: RunStep[];
   payloads: RunPayload[];
   repos: RunRepo[];
+  work_sessions?: RunWorkSession[];
+  work_events?: RunWorkEvent[];
+  record_provenance?: Record<string, RecordProvenance>;
+  groups?: RunGroup[];
 }
 
 export interface WebLayout {

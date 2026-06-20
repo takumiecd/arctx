@@ -18,6 +18,7 @@ Resolution priority for ARCTX_HOME:
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -127,8 +128,27 @@ def arctx_lane_path(repo_root: Path) -> Path:
     return resolve_git_dir(repo_root) / "arctx-lane"
 
 
-def read_arctx_lane(repo_root: Path) -> str | None:
-    """Read the lane id from the active-lane pointer if present, else None."""
+def arctx_lanes_path(repo_root: Path) -> Path:
+    """Return the per-run active-lane pointer map for *repo_root*."""
+    return resolve_git_dir(repo_root) / "arctx-lanes.json"
+
+
+def read_arctx_lane(repo_root: Path, run_id: str | None = None) -> str | None:
+    """Read the lane id from the active-lane pointer if present, else None.
+
+    When *run_id* is provided, prefer the per-run pointer map. The legacy
+    single-lane pointer remains as a fallback for existing checkouts.
+    """
+    if run_id:
+        lanes_path = arctx_lanes_path(repo_root)
+        if lanes_path.exists():
+            try:
+                data = json.loads(lanes_path.read_text(encoding="utf-8"))
+                lane = data.get(run_id) if isinstance(data, dict) else None
+                if lane:
+                    return str(lane)
+            except (OSError, json.JSONDecodeError):
+                pass
     path = arctx_lane_path(repo_root)
     if path.exists():
         text = path.read_text(encoding="utf-8").strip()
@@ -136,8 +156,27 @@ def read_arctx_lane(repo_root: Path) -> str | None:
     return None
 
 
-def write_arctx_lane(repo_root: Path, lane_id: str) -> None:
-    """Write *lane_id* to the active-lane pointer for *repo_root*."""
+def write_arctx_lane(repo_root: Path, lane_id: str, run_id: str | None = None) -> None:
+    """Write *lane_id* to the active-lane pointer for *repo_root*.
+
+    With *run_id*, the pointer is stored in a per-run map so `--run other`
+    does not accidentally reuse the last lane selected for a different run.
+    The legacy single-lane pointer is also updated for compatibility with older
+    callers and scripts.
+    """
+    if run_id:
+        lanes_path = arctx_lanes_path(repo_root)
+        lanes_path.parent.mkdir(parents=True, exist_ok=True)
+        data: dict[str, str] = {}
+        if lanes_path.exists():
+            try:
+                loaded = json.loads(lanes_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    data = {str(k): str(v) for k, v in loaded.items()}
+            except (OSError, json.JSONDecodeError):
+                data = {}
+        data[run_id] = lane_id
+        lanes_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     path = arctx_lane_path(repo_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(lane_id + "\n", encoding="utf-8")

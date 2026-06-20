@@ -74,6 +74,16 @@ def test_outline_depth_option():
     assert run.root_node_id in out
 
 
+def test_outline_lists_orphan_components():
+    run, t1, n1, t2 = _make_run()
+    orphan = run.add_node()
+
+    out = render_outline(run, DumpOptions())
+
+    assert "orphans:" in out
+    assert orphan.node_id in out
+
+
 # ---------------------------------------------------------------------------
 # render_mermaid
 # ---------------------------------------------------------------------------

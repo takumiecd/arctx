@@ -4,11 +4,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { pickClient } from "./api";
 import { Graph, type Selection } from "./Graph";
 import { Panel } from "./Panel";
+import { laneGroups } from "./model";
 
 const client = pickClient();
 
 export function App() {
   const [selection, setSelection] = useState<Selection>(null);
+  const [collapsedLaneIds, setCollapsedLaneIds] = useState<Set<string>>(() => new Set());
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
   const { data, isLoading, error } = useQuery({
@@ -45,6 +47,23 @@ export function App() {
   if (!data) return <div className="center">no run</div>;
 
   const actionError = (addNode.error ?? createStep.error) as Error | null;
+  const lanes = laneGroups(data);
+  const knownLaneIds = new Set(lanes.map((lane) => lane.lane_id).filter(Boolean) as string[]);
+  const visibleCollapsedLaneIds = new Set(
+    [...collapsedLaneIds].filter((laneId) => knownLaneIds.has(laneId)),
+  );
+  const toggleLane = (laneId: string) => {
+    setCollapsedLaneIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(laneId)) {
+        next.delete(laneId);
+      } else {
+        next.add(laneId);
+        setSelection(null);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="layout">
@@ -55,6 +74,26 @@ export function App() {
           · {data.counts.nodes} nodes · {data.counts.steps} steps
           {!client.writable && " · read-only"}
         </span>
+        {lanes.length > 0 && (
+          <span className="lane-toolbar" aria-label="lanes">
+            {lanes.map((lane) => {
+              const laneId = lane.lane_id;
+              if (!laneId) return null;
+              const collapsed = visibleCollapsedLaneIds.has(laneId);
+              return (
+                <button
+                  key={lane.group_id}
+                  className={`lane-chip${collapsed ? " collapsed" : ""}`}
+                  type="button"
+                  title={collapsed ? "expand lane" : "collapse lane"}
+                  onClick={() => toggleLane(laneId)}
+                >
+                  {collapsed ? "▸" : "▾"} {lane.label}
+                </button>
+              );
+            })}
+          </span>
+        )}
         {client.writable && (
           <button className="add-node" disabled={addNode.isPending} onClick={() => addNode.mutate()}>
             + node
@@ -79,6 +118,8 @@ export function App() {
               return { outputNodeId: res.step.output_node_id };
             }}
             onRunChanged={invalidate}
+            collapsedLaneIds={visibleCollapsedLaneIds}
+            onToggleLane={toggleLane}
             writable={client.writable}
           />
         </div>

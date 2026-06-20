@@ -35,4 +35,10 @@ def resolve_user_id_from_args(args) -> str:
 
 def resolve_work_session_id_from_args(args) -> str:
     """Resolve work-session attribution from parsed CLI args."""
-    return resolve_work_session_id(getattr(args, "work_session", None))
+    run_id = getattr(args, "run", None)
+    if run_id is None:
+        try:
+            run_id = resolve_run_id_from_args(args)
+        except RuntimeError:
+            run_id = None
+    return resolve_work_session_id(getattr(args, "work_session", None), run_id=run_id)

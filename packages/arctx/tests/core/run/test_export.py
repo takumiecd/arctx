@@ -126,6 +126,9 @@ class TestJsonExport:
         assert doc["root_node_id"] == h.root_node_id
         for key in ("nodes", "steps", "payloads", "repos"):
             assert isinstance(doc[key], list)
+        for key in ("work_sessions", "work_events", "groups"):
+            assert isinstance(doc[key], list)
+        assert isinstance(doc["record_provenance"], dict)
         assert doc["counts"]["nodes"] == len(doc["nodes"])
         # Root node is always present.
         assert any(n["node_id"] == h.root_node_id for n in doc["nodes"])
@@ -177,3 +180,29 @@ class TestJsonExport:
 
         with_local = json.loads(export(h, "json", ExportOptions(include_local=True)))
         assert with_local["repos"][0]["local_path"] == "/Users/secret/dev/proj"
+
+    def test_lane_groups_and_record_provenance(self):
+        h = _make_handle()
+        h.ensure_lane(name="math-analysis", lane_id="lane_math", created_by="alice")
+        t = h.add_step(
+            [h.root_node_id],
+            _step_payload(h, 7),
+            user_id="alice",
+            work_session_id="lane_math",
+        )
+
+        doc = json.loads(export(h, "json", ExportOptions()))
+
+        group = next(g for g in doc["groups"] if g["group_id"] == "lane:lane_math")
+        assert group["kind"] == "lane"
+        assert group["label"] == "math-analysis"
+        assert t.output_node_id in group["node_ids"]
+        assert t.step_id in group["step_ids"]
+
+        node_prov = doc["record_provenance"][t.output_node_id]
+        assert node_prov["lane_id"] == "lane_math"
+        assert node_prov["lane_name"] == "math-analysis"
+        assert node_prov["user_id"] == "alice"
+
+        assert any(s["work_session_id"] == "lane_math" for s in doc["work_sessions"])
+        assert any(e["target_id"] == t.step_id for e in doc["work_events"])

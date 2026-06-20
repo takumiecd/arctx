@@ -97,15 +97,19 @@ def resolve_user_id(user_id: str | None) -> str:
     return "user"
 
 
-def resolve_work_session_id(work_session_id: str | None) -> str:
+def resolve_work_session_id(
+    work_session_id: str | None,
+    *,
+    run_id: str | None = None,
+) -> str:
     """Resolve the active lane (work-session) for mutating commands.
 
     Chain (mirrors :func:`resolve_run_id`):
     1. Explicit *work_session_id*.
     2. ``ARCTX_WORK_SESSION_ID`` env var — shell-local, for parallel work
        (set via ``eval "$(arctx lane <name> --shell)"``); beats the file pointer.
-    3. Active-lane pointer at ``<gitdir>/arctx-lane`` — persists across shells in
-       the checkout (set via ``arctx lane <name>``).
+    3. Active-lane pointer for *run_id* at ``<gitdir>/arctx-lanes.json`` when a
+       run is known, falling back to the legacy ``<gitdir>/arctx-lane`` pointer.
     4. ``<ARCTX_HOME>/config.json`` ``work_session.id``.
     5. ``"default"``.
     """
@@ -116,7 +120,7 @@ def resolve_work_session_id(work_session_id: str | None) -> str:
         return env
     try:
         repo_root = find_repo_root()
-        lane = read_arctx_lane(repo_root)
+        lane = read_arctx_lane(repo_root, run_id=run_id)
         if lane:
             return lane
     except RuntimeError:
