@@ -47,8 +47,8 @@ ARCTX_RUN_ID          current shell / process tree
 - **1 つのターミナルで複数 repo を移動する:**
   `eval "$(arctx use <run_id> --shell)"` を実行する。環境変数が各 repo の pointer に
   優先します。
-- **並列 agent:** run と work-session の両方を process ローカルな環境変数に固定する
-  `arctx work-session env` または `arctx work-session spawn` を優先します。
+- **並列 agent:** run と lane の両方を process ローカルな環境変数に固定します。
+  既存 lane には `eval "$(arctx lane switch <name> --shell)"` を使います。
 
 `arctx current` は repo pointer (`<gitdir>/arctx-id`) を読み、その repo の永続
 デフォルトを表示します。`ARCTX_RUN_ID` の上書きは報告しません。
@@ -73,6 +73,11 @@ arctx log --run demo
 - `arctx use <run_id>`: repo スコープの current run pointer を書き込む。
 - `arctx use <run_id> --shell`: shell ローカル固定用の `ARCTX_RUN_ID` export を
   出力する。
+- `arctx lane create <name>`: run に lane を作成する。切替はしない。
+- `arctx lane switch <name-or-id>`: 既存 lane に切り替え、repo スコープの
+  current lane pointer を書き込む。存在しない名前はエラー。
+- `arctx lane <name-or-id>`: `switch` の省略形。typo 防止のため自動作成しない。
+- `arctx lane list` / `arctx lane show <name-or-id>`: lane を検査する。
 - `arctx export [--format md|tex|html]`: run を共有可能なドキュメントとして描画する。
 
 ## DAG Records
@@ -120,7 +125,7 @@ extension のコマンド名前空間は、解決された current run からロ
 日常の git verb:
 
 - `arctx git commit -m "message"` / `arctx commit -m "message"`
-  - 入力 node は通常 work-session / branch tip から解決されます。代わりに選んだ node
+  - 入力 node は通常 lane / branch tip から解決されます。代わりに選んだ node
     から分岐するには `--from NODE` を渡します（fan-in には繰り返す）。これが実験を
     共有ベースラインから兄弟として fan-out させる方法です。
 - `arctx git branch list` / `arctx branch list`

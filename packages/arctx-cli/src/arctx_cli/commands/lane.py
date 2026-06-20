@@ -3,12 +3,12 @@
 A **lane** is a solo-or-collaborative, append-only unit of work. Usage mirrors
 ``source .venv`` / ``git switch``:
 
-    arctx lane geometry        # switch to (create) lane "geometry" — persists
-                               # across shells via <gitdir>/arctx-lane, no eval
+    arctx lane create geometry # create lane "geometry"; does not switch
+    arctx lane switch geometry # switch to an existing lane
+    arctx lane geometry        # shorthand for switch; errors if absent
     arctx lane                 # show the current lane
-    arctx lane --list          # list lanes in the run
-    eval "$(arctx lane geometry --shell)"   # shell-local pin, for PARALLEL work
-                                            # (env beats the file pointer)
+    arctx lane list            # list lanes in the run
+    eval "$(arctx lane switch geometry --shell)"  # shell-local pin
 
 A lane is NOT owned by one user: any actor may switch to a shared lane; per-action
 attribution lives on each event. Persistent (file pointer) is the default; the
@@ -39,18 +39,22 @@ from arctx_cli.paths import (
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
-    """Register the ``lane`` command (flat: name = switch, no name = current)."""
+    """Register the ``lane`` command."""
     parser = subparsers.add_parser(
         "lane",
         help="Switch/show the active lane (solo or collaborative unit of work)",
         description=(
-            "`arctx lane NAME` switches to (creates) a lane and pins it for this "
-            "checkout via <gitdir>/arctx-lane — it persists across shells, no eval. "
-            "`arctx lane` shows the current lane. For PARALLEL work in separate "
-            'terminals, use `eval "$(arctx lane NAME --shell)"` (env beats the file).'
+            "`arctx lane create NAME` creates a lane. `arctx lane switch NAME` "
+            "switches to an existing lane and pins it for this checkout. "
+            "`arctx lane NAME` is switch shorthand and errors when NAME is absent."
         ),
     )
-    parser.add_argument("name", nargs="?", help="Lane name to switch to / create")
+    parser.add_argument(
+        "args",
+        nargs="*",
+        metavar="COMMAND|NAME",
+        help="No args = current lane. Commands: create NAME, switch NAME, list, show LANE.",
+    )
     parser.add_argument("--list", action="store_true", dest="list_lanes",
                         help="List lanes in the run")
     parser.add_argument("--shell", action="store_true",
@@ -64,16 +68,54 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 
 
 def _find_lane_by_name(handle, name: str):
-    for session in handle.run_graph.work_sessions.values():
+    for session in handle.run_graph.lanes.values():
         if session.name == name:
             return session
     return None
 
 
+def _find_lane(handle, name_or_id: str):
+    lane = handle.run_graph.lanes.get(name_or_id)
+    return lane if lane is not None else _find_lane_by_name(handle, name_or_id)
+
+
+def _append_or_save_lane(store, handle, run_id: str, user_id: str, lane) -> None:
+    if hasattr(store, "append_batch"):
+        store.append_batch(
+            AppendBatch(
+                run_id=run_id,
+                user_id=user_id or "",
+                work_session_id=lane.work_session_id,
+                work_session=lane,
+                records=(),
+                events=(),
+            )
+        )
+    else:
+        store.save_run(handle)
+
+
+def run_lane_create_command(
+    *, name: str, run_id: str, user_id: str, store_dir: str | None,
+) -> dict:
+    """Create a lane by name. Creation does not switch the active lane."""
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+
+    if _find_lane_by_name(handle, name) is not None:
+        raise ValueError(f"lane already exists: {name!r}")
+
+    lane = handle.ensure_lane(name=name, created_by=user_id)
+    _append_or_save_lane(store, handle, run_id, user_id, lane)
+    return {"lane_id": lane.work_session_id, "name": name, "created": True}
+
+
 def run_lane_switch_command(
     *, name: str, run_id: str, user_id: str, store_dir: str | None, shell: bool = False,
 ) -> dict:
-    """Switch to a lane by name (creating it if new), returning a result dict.
+    """Switch to an existing lane by name or id, returning a result dict.
 
     Persistent mode writes ``<gitdir>/arctx-lane``; ``shell`` mode returns an
     ``export`` line instead (terminal-scoped, for parallel work).
@@ -83,28 +125,15 @@ def run_lane_switch_command(
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
 
-    existing = _find_lane_by_name(handle, name)
-    if existing is not None:
-        lane = existing
-        created = False
-    else:
-        lane = handle.ensure_lane(name=name, created_by=user_id)
-        created = True
-        if hasattr(store, "append_batch"):
-            store.append_batch(
-                AppendBatch(
-                    run_id=run_id,
-                    user_id=user_id or "",
-                    work_session_id=lane.work_session_id,
-                    work_session=lane,
-                    records=(),
-                    events=(),
-                )
-            )
-        else:
-            store.save_run(handle)
+    lane = _find_lane(handle, name)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name!r}; create it with `arctx lane create {name}`")
 
-    result = {"lane_id": lane.work_session_id, "name": name, "created": created}
+    result = {
+        "lane_id": lane.work_session_id,
+        "name": lane.name,
+        "created": False,
+    }
     if shell:
         result["export"] = (
             f"export ARCTX_LANE_ID={lane.work_session_id}; "
@@ -145,7 +174,7 @@ def list_lanes(*, run_id: str, store_dir: str | None) -> list[dict]:
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
     sessions = sorted(
-        handle.run_graph.work_sessions.values(),
+        handle.run_graph.lanes.values(),
         key=lambda s: (s.started_at or "", s.work_session_id),
     )
     return [
@@ -160,18 +189,49 @@ def list_lanes(*, run_id: str, store_dir: str | None) -> list[dict]:
     ]
 
 
+def show_lane(*, run_id: str, store_dir: str | None, name_or_id: str) -> dict:
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id}")
+    return {"run_id": run_id, "lane": lane.to_dict()}
+
+
 def cli_lane(args) -> int:
-    """Dispatch ``lane``: --list, NAME (switch), or bare (current)."""
+    """Dispatch ``lane`` commands."""
     try:
-        if args.list_lanes:
+        argv = list(args.args)
+        command = argv[0] if argv else None
+
+        if args.list_lanes or command == "list":
             lanes = list_lanes(run_id=resolve_run_id_from_args(args),
                                store_dir=args.store_dir)
             print(json.dumps({"lanes": lanes}, ensure_ascii=False, indent=2))
             return 0
 
-        if args.name:
+        if command == "create":
+            if len(argv) != 2:
+                raise ValueError("usage: arctx lane create NAME")
+            result = run_lane_create_command(
+                name=argv[1],
+                run_id=resolve_run_id_from_args(args),
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
+            )
+            if args.as_json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(result["name"])
+            return 0
+
+        if command in ("switch", "use"):
+            if len(argv) != 2:
+                raise ValueError(f"usage: arctx lane {command} NAME_OR_ID")
             result = run_lane_switch_command(
-                name=args.name,
+                name=argv[1],
                 run_id=resolve_run_id_from_args(args),
                 user_id=resolve_user_id_from_args(args),
                 store_dir=args.store_dir,
@@ -183,6 +243,35 @@ def cli_lane(args) -> int:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             else:
                 print(result["name"])
+            return 0
+
+        if command == "show":
+            if len(argv) != 2:
+                raise ValueError("usage: arctx lane show NAME_OR_ID")
+            result = show_lane(
+                run_id=resolve_run_id_from_args(args),
+                store_dir=args.store_dir,
+                name_or_id=argv[1],
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if command is not None:
+            if len(argv) != 1:
+                raise ValueError("usage: arctx lane [NAME_OR_ID]")
+            result = run_lane_switch_command(
+                name=command,
+                run_id=resolve_run_id_from_args(args),
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
+                shell=args.shell,
+            )
+            if args.shell:
+                print(result["export"])
+            elif args.as_json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(result["name"] or result["lane_id"])
             return 0
 
         # bare `arctx lane` → show current
