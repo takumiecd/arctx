@@ -2,7 +2,13 @@
 // live mode) lets you add a step (from a node), attach a payload (to a node or
 // step), or cut the selected record.
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -13,7 +19,15 @@ import "katex/dist/katex.min.css";
 import type { RunClient } from "./api";
 import type { RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
-import { nodeLabel, payloadsForNode, payloadsForStep, stepType } from "./model";
+import {
+  laneColors,
+  laneLabel,
+  nodeLabel,
+  payloadsForNode,
+  payloadsForStep,
+  provenanceFor,
+  stepType,
+} from "./model";
 import {
   payloadDisplayFor,
   payloadElementFor,
@@ -121,6 +135,7 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
       </h2>
 
       <section className="panel-view">
+        <ProvenanceCard doc={doc} unit={unit} />
         <SelectionContext doc={doc} unit={unit} onSelect={onSelect} />
 
         {unit.stepId ? (
@@ -218,6 +233,67 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
       )}
     </aside>
   );
+}
+
+function ProvenanceCard({ doc, unit }: { doc: RunDocument; unit: DetailUnit }) {
+  const primaryId = unit.stepId ?? unit.outputNodeId;
+  const primaryKind = unit.stepId ? "step" : "node";
+  const provenance =
+    provenanceFor(doc, primaryId) ??
+    (unit.outputNodeId ? provenanceFor(doc, unit.outputNodeId) : null);
+
+  if (!provenance) {
+    return (
+      <section className="provenance-card missing">
+        <h3>provenance</h3>
+        <div className="provenance-row">
+          <span>lane</span>
+          <strong>none recorded</strong>
+        </div>
+        <p className="muted">
+          This record has no lane provenance. It may have been created before lane
+          attribution was recorded, or without a work session.
+        </p>
+      </section>
+    );
+  }
+
+  const lane = provenance.lane_name || laneLabel(doc, provenance.lane_id);
+  return (
+    <section className="provenance-card" style={laneVars(doc, provenance.lane_id)}>
+      <h3>provenance</h3>
+      <div className="provenance-row">
+        <span>lane</span>
+        <strong className="lane-pill">{lane}</strong>
+      </div>
+      <div className="provenance-row">
+        <span>record</span>
+        <code>{primaryKind}:{primaryId.slice(0, 12)}</code>
+      </div>
+      <div className="provenance-row">
+        <span>created by</span>
+        <strong>{provenance.user_id}</strong>
+      </div>
+      <div className="provenance-row">
+        <span>event</span>
+        <code>{provenance.event_type}</code>
+      </div>
+      {provenance.created_at && (
+        <div className="provenance-row">
+          <span>created at</span>
+          <time>{provenance.created_at}</time>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function laneVars(doc: RunDocument, laneId: string): CSSProperties {
+  const colors = laneColors(doc, laneId);
+  return {
+    "--lane-color": colors.laneColor,
+    "--lane-bg": colors.laneBg,
+  } as CSSProperties;
 }
 
 function parseJson(raw: string): Record<string, unknown> {

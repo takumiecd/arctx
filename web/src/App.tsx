@@ -96,6 +96,9 @@ export function App() {
             })}
           </span>
         )}
+        {lanes.length === 0 && data.counts.nodes > 1 && (
+          <span className="lane-empty">no lane metadata</span>
+        )}
         {client.writable && (
           <button className="add-node" disabled={addNode.isPending} onClick={() => addNode.mutate()}>
             + node

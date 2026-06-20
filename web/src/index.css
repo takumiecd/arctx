@@ -57,6 +57,15 @@ header .add-node:disabled {
   background: #fff;
   color: #64748b;
 }
+.lane-empty {
+  margin-left: 12px;
+  padding: 2px 8px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 999px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 20px;
+}
 main {
   flex: 1;
   display: flex;
@@ -212,6 +221,60 @@ main {
 }
 .record-context {
   margin: 8px 0 14px;
+}
+.provenance-card {
+  margin: 6px 0 14px;
+  padding: 8px;
+  border: 1px solid var(--lane-color);
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--lane-bg), #fff 72%);
+  box-shadow: inset 4px 0 0 var(--lane-color);
+}
+.provenance-card.missing {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  box-shadow: inset 4px 0 0 #94a3b8;
+}
+.provenance-card h3 {
+  margin-top: 0;
+}
+.provenance-card p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.provenance-row {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  margin: 4px 0;
+  font-size: 12px;
+}
+.provenance-row > span {
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.provenance-row strong,
+.provenance-row code,
+.provenance-row time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lane-pill {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--lane-color);
+  color: #fff;
+  line-height: 18px;
 }
 .unit-flow {
   display: grid;
