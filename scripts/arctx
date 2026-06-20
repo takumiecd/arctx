@@ -5,4 +5,7 @@
 # installed. See docs/ja/CLI.md "Claude Code 連携".
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONPATH="$REPO_ROOT/packages/arctx/src:$REPO_ROOT/packages/arctx-cli/src${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -m arctx_cli.main "$@"
+# arctx は 3.10+ 必須 (型 union 構文)。システム python3 が 3.9 だと起動失敗するため
+# 3.10+ を優先的に選ぶ。
+PYBIN="$(command -v python3.12 || command -v python3.11 || command -v python3.10 || command -v python3)"
+exec "$PYBIN" -m arctx_cli.main "$@"

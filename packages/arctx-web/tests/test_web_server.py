@@ -9,18 +9,24 @@ fallback.
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import threading
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import arctx as arctx
 import pytest
-from arctx.session import resolve_store
+from arctx.core.schema.requirements import Requirement
 from arctx.ext.enabled import EnabledExtension, save_enabled
+from arctx.ext.git.payloads import DiffSummary, GitChangePayload, RepoPayload
+from arctx.session import resolve_store
 from arctx_cli.commands.init import run_init_command
+
 from arctx_web import extensions as web_extensions
 from arctx_web.assets import find_static_dir
+from arctx_web.extensions import WebRoute
 from arctx_web.server import build_handler
 
 
@@ -42,11 +48,12 @@ def _fake_static(td: str) -> Path:
 
 
 class _Server:
-    def __init__(self, store, run_id, static_dir, extension_scripts=()):
+    def __init__(self, store, run_id, static_dir, extension_scripts=(), extension_routes=()):
         handler = build_handler(
             store, run_id, static_dir=static_dir,
             user_id="tester", work_session_id="ws_test",
             extension_scripts=extension_scripts,
+            extension_routes=extension_routes,
         )
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.port = self.httpd.server_address[1]
@@ -178,6 +185,19 @@ class TestApiDelegation:
                 assert status == 201
                 assert "node" in body
 
+    def test_web_extension_route(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            route = WebRoute(
+                method="POST",
+                path="/web/ext/demo/echo",
+                handler=lambda req: (200, {"ok": True, "body": req.body}),
+            )
+            with _Server(store, run_id, _fake_static(td), extension_routes=[route]) as s:
+                status, body = s.post("/web/ext/demo/echo", {"x": 1})
+                assert status == 200
+                assert body == {"ok": True, "body": {"x": 1}}
+
 
 class TestWebLayoutApi:
     def test_layout_roundtrip(self):
@@ -238,6 +258,88 @@ class TestWebExtensions:
         monkeypatch.setattr(web_extensions, "_get_entry_points", lambda: {"demo": _EntryPoint()})
 
         assert web_extensions.load_enabled_scripts(tmp_path) == ["window.fromWebExt = true;"]
+
+    def test_builtin_git_extension_contributes_script_and_route(self, tmp_path):
+        save_enabled(tmp_path, [EnabledExtension(name="git", version="0.1")])
+
+        scripts = web_extensions.load_enabled_scripts(tmp_path)
+        routes = web_extensions.load_enabled_routes(tmp_path)
+
+        assert any("arctx-git-diff-view" in script for script in scripts)
+        assert any(route.path == "/web/ext/git/diff" for route in routes)
+
+    def test_builtin_diagram_extension_contributes_script(self, tmp_path):
+        save_enabled(tmp_path, [EnabledExtension(name="diagram", version="0.1")])
+
+        scripts = web_extensions.load_enabled_scripts(tmp_path)
+
+        assert any("arctx-diagram-preview" in script for script in scripts)
+
+    def test_git_diff_route_returns_patch(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init")
+        _git(repo, "config", "user.email", "tester@example.com")
+        _git(repo, "config", "user.name", "Tester")
+        (repo / "hello.txt").write_text("hello\n", encoding="utf-8")
+        _git(repo, "add", "hello.txt")
+        _git(repo, "commit", "-m", "add hello")
+        head = _git(repo, "rev-parse", "HEAD")
+
+        store_dir = tmp_path / "runs"
+        store = resolve_store(str(store_dir))
+        handle = arctx.init(Requirement("req1", "task", "t"), run_id="git_diff_run")
+        handle.run_graph.attach_payload(
+            RepoPayload(
+                payload_id=handle._next_id("pl"),
+                target_id=handle.root_node_id,
+                repo_id="repo_1",
+                slug="local/repo",
+                local_path=str(repo),
+            )
+        )
+        step = handle.add_step(
+            [handle.root_node_id],
+            GitChangePayload(
+                payload_id="pending",
+                target_id="pending",
+                branch="main",
+                head_commit=head,
+                diff_summary=DiffSummary(files_changed=1, insertions=1, deletions=0),
+                repo_id="repo_1",
+            ),
+        )
+        store.save_run(handle)
+
+        route = next(
+            route
+            for route in web_extensions.load_enabled_routes(_enabled_dir(tmp_path, "git"))
+            if route.path == "/web/ext/git/diff"
+        )
+        static_dir = _fake_static(str(tmp_path))
+        with _Server(store, "git_diff_run", static_dir, extension_routes=[route]) as s:
+            status, body = s.post("/web/ext/git/diff", {"step_id": step.step_id})
+            assert status == 200
+            assert body["head_commit"] == head
+            assert "diff --git" in body["diff"]
+            assert "+hello" in body["diff"]
+
+
+def _git(cwd: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def _enabled_dir(tmp_path: Path, name: str) -> Path:
+    run_dir = tmp_path / f"enabled_{name}"
+    save_enabled(run_dir, [EnabledExtension(name=name, version="0.1")])
+    return run_dir
 
 
 if __name__ == "__main__":  # pragma: no cover

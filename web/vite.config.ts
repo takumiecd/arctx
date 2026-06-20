@@ -10,13 +10,15 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/run": apiTarget,
-      "/node": apiTarget,
-      "/step": apiTarget,
-      "/attach": apiTarget,
-      "/cut": apiTarget,
-      "/health": apiTarget,
-      "/web": apiTarget,
+      // Anchor exact API paths so the prefix "/node" does NOT swallow Vite's
+      // own "/node_modules/..." requests (which otherwise 404 via the proxy).
+      "^/run$": apiTarget,
+      "^/node$": apiTarget,
+      "^/step$": apiTarget,
+      "^/attach$": apiTarget,
+      "^/cut$": apiTarget,
+      "^/health$": apiTarget,
+      "^/web(/.*)?$": apiTarget,
     },
   },
 });
