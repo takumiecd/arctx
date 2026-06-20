@@ -137,13 +137,28 @@ function genericPayloadDisplay(payload: RunPayload): PayloadDisplay {
   const title = typeof payload.type === "string" && payload.type ? payload.type : payload.payload_type;
   const fields: PayloadField[] = [{ label: "type", value: title }];
   const sections: PayloadSection[] = [];
+  const text = stringValue(payload.content?.text);
+  const markdown = stringValue(payload.content?.markdown) || stringValue(payload.content?.md);
+  const body = markdown || text;
+  if (body) {
+    sections.push({
+      title: markdown ? "markdown" : "text",
+      kind: looksLikeMarkdown(body, payload) ? "markdown" : "text",
+      value: body,
+    });
+  }
   if (payload.content && Object.keys(payload.content).length > 0) {
-    sections.push({ title: "content", kind: "json", value: payload.content });
+    const remaining = { ...payload.content };
+    delete remaining.text;
+    delete remaining.markdown;
+    delete remaining.md;
+    if (Object.keys(remaining).length > 0) {
+      sections.push({ title: "content", kind: "json", value: remaining, collapsed: Boolean(body) });
+    }
   }
   if (payload.metadata && Object.keys(payload.metadata).length > 0) {
     sections.push({ title: "metadata", kind: "json", value: payload.metadata });
   }
-  const text = payload.content?.text;
   const label = genericContentLabel(payload);
   return {
     title,
@@ -152,6 +167,16 @@ function genericPayloadDisplay(payload: RunPayload): PayloadDisplay {
     fields,
     sections,
   };
+}
+
+function looksLikeMarkdown(text: string, payload: RunPayload): boolean {
+  const type = typeof payload.type === "string" ? payload.type.toLowerCase() : "";
+  return (
+    type.includes("markdown") ||
+    type === "md" ||
+    /(^|\n)(#{1,4}\s+|[-*]\s+|\d+\.\s+|```|\$\$)/.test(text) ||
+    /(\*\*[^*]+\*\*|`[^`]+`|\$[^$\n]+\$)/.test(text)
+  );
 }
 
 function cutDisplay(payload: RunPayload): PayloadDisplay {

@@ -29,7 +29,8 @@ export function nodeLabel(doc: RunDocument, nodeId: string): string {
     if (stepPayload) {
       return compactLabel(graphLabel(doc, stepPayload));
     }
-    return compactLabel(stepType(doc, producer.step_id));
+    const label = stepType(doc, producer.step_id);
+    return label === "step" ? "output" : compactLabel(label);
   }
 
   const nodePayload = firstMeaningfulPayload(payloadsForNode(doc, nodeId));
@@ -55,10 +56,17 @@ function stepActionPayload(payloads: RunPayload[]): RunPayload | null {
     "step_payload",
   ];
   for (const payloadType of priority) {
-    const payload = payloads.find((p) => p.payload_type === payloadType);
+    const payload = payloads.find((p) => p.payload_type === payloadType && isInformativeStepPayload(p));
     if (payload) return payload;
   }
-  return firstMeaningfulPayload(payloads);
+  return payloads.find((p) => p.payload_type !== "cut" && isInformativeStepPayload(p)) ?? null;
+}
+
+function isInformativeStepPayload(payload: RunPayload): boolean {
+  if (payload.payload_type !== "step_payload") return true;
+  const type = typeof payload.type === "string" ? payload.type : "";
+  const content = payload.content ?? {};
+  return type !== "step" || Object.keys(content).length > 0;
 }
 
 function graphLabel(doc: RunDocument, payload: RunPayload): string {

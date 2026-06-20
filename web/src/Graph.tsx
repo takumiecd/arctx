@@ -92,27 +92,17 @@ function edgeSides(source: Pos | undefined, target: Pos | undefined): [Side, Sid
   if (!source || !target) return ["right", "left"];
 
   const dx = target.x - source.x;
-  const dy = target.y - source.y;
 
-  // Forward edges should usually leave toward the reading direction, but the
-  // receiving side should be whichever side makes the route shortest. A child
-  // that is down-and-right from its parent reads better as right -> top than as
-  // right -> left with an unnecessary wrap around the node.
-  if (Math.abs(dx) > 40) {
-    const sourceSide = dx > 0 ? "right" : "left";
-    if (Math.abs(dy) > 50) {
-      return [sourceSide, dy > 0 ? "top" : "bottom"];
-    }
-    return [sourceSide, dx > 0 ? "left" : "right"];
-  }
-
-  return dy >= 0 ? ["bottom", "top"] : ["top", "bottom"];
+  // Keep graph edges in the reading direction. Vertical top/bottom edges make
+  // sibling branches look like a serial chain when the layout stacks them.
+  return dx >= 0 ? ["right", "left"] : ["left", "right"];
 }
 
 function buildEdges(doc: RunDocument, positions: Record<string, Pos>): Edge[] {
   const out: Edge[] = [];
   for (const s of doc.steps) {
     const edgeColor = s.inactive ? "#94a3b8" : "#475569";
+    const label = stepType(doc, s.step_id);
     for (const input of s.input_node_ids) {
       const [sourceHandle, targetHandle] = edgeSides(positions[input], positions[s.output_node_id]);
       out.push({
@@ -122,7 +112,7 @@ function buildEdges(doc: RunDocument, positions: Record<string, Pos>): Edge[] {
         sourceHandle,
         targetHandle,
         type: "smoothstep",
-        label: stepType(doc, s.step_id),
+        label: label === "step" ? undefined : label,
         data: { stepId: s.step_id },
         labelStyle: { fontSize: 11 },
         labelBgPadding: [6, 3],
