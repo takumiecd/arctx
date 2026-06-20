@@ -35,6 +35,32 @@ When served by `arctx-web`, manual node positions are persisted in
 `<run_dir>/web_layouts.json` through `/web/layout`. Plain `arctx serve` does not
 provide that endpoint, so the frontend simply uses automatic layout there.
 
+The detail panel on the right can be resized by dragging its left edge. The
+chosen width is saved in the browser for the next visit.
+
+## Markdown notes
+
+Generic node/step payloads render `content.markdown`, `content.md`, or
+Markdown-looking `content.text` as Markdown. This is useful for notes, math
+discussion, and LLM-authored explanations:
+
+```sh
+arctx attach <NODE_OR_STEP_ID> --type note --field 'markdown=# Derivation
+
+We want to compare $f(x)$ and $g(x)$.
+
+$$
+f(x) = x^2 + 1
+$$
+
+- record the assumption
+- keep the failed branch visible'
+```
+
+Markdown is rendered with GitHub-flavored Markdown support, including tables,
+task lists, fenced code blocks, and `$...$` / `$$...$$` math rendered through
+KaTeX. Raw HTML in Markdown is not enabled.
+
 ## Static / share mode
 
 Build the app, then drop a run document into the page as

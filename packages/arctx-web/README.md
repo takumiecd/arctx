@@ -49,6 +49,28 @@ If that endpoint is unavailable, such as when developing against plain
 `arctx serve`, the frontend falls back to automatic layout and skips
 persistence.
 
+The right-hand detail panel is also resizable: drag its left edge to make
+payload text wider or narrower. The browser stores the chosen width locally.
+
+## Markdown payload text
+
+The frontend renders generic payload text as Markdown when the payload contains
+`content.markdown`, `content.md`, or Markdown-looking `content.text`.
+
+```sh
+arctx attach <NODE_OR_STEP_ID> --type note --field 'markdown=# Derivation
+
+We want to compare $f(x)$ and $g(x)$.
+
+$$
+f(x) = x^2 + 1
+$$'
+```
+
+Markdown is rendered with GitHub-flavored Markdown support, including tables,
+task lists, fenced code blocks, and `$...$` / `$$...$$` math rendered through
+KaTeX. Raw HTML in Markdown is not enabled.
+
 ## Web extensions
 
 `arctx-web` owns browser-side extension behavior. The core run JSON still
