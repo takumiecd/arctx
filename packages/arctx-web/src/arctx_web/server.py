@@ -11,11 +11,14 @@ import json
 import mimetypes
 import posixpath
 import urllib.parse
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 from arctx_cli.serve.api import dispatch
+
+from arctx_web.extensions import WebRequest, WebRoute
 from arctx_web.layouts import get_layout, save_layout
 
 # Paths handled by the JSON API; everything else is a static asset request.
@@ -32,9 +35,14 @@ def build_handler(
     user_id: str,
     work_session_id: str,
     extension_scripts: list[str] | tuple[str, ...] = (),
+    extension_routes: list[WebRoute] | tuple[WebRoute, ...] = (),
     cors_origin: str = "*",
-):
+) -> type[BaseHTTPRequestHandler]:
     """Build a request handler class bound to one run and a static dir."""
+    route_map = {
+        (route.method.upper(), route.path.rstrip("/") or "/"): route.handler
+        for route in extension_routes
+    }
 
     class _Handler(BaseHTTPRequestHandler):
         def log_message(self, *_: Any) -> None:
@@ -72,7 +80,8 @@ def build_handler(
             return self._path() in API_PATHS
 
         def _is_web_api(self) -> bool:
-            return self._path() in WEB_API_PATHS
+            path = self._path()
+            return path in WEB_API_PATHS or (self.command.upper(), path) in route_map
 
         def _is_artifact(self) -> bool:
             return self._path().startswith(ARTIFACT_PREFIX)
@@ -102,6 +111,24 @@ def build_handler(
             self._send_json(status, payload)
 
         def _web_api(self, method: str) -> None:
+            route = (method.upper(), self._path())
+            handler = route_map.get(route)
+            if handler is not None:
+                try:
+                    status, payload = handler(
+                        WebRequest(
+                            store=store,
+                            run_id=run_id,
+                            run_dir=store.run_path(run_id),
+                            body=self._read_body() or {},
+                            user_id=user_id,
+                            work_session_id=work_session_id,
+                        )
+                    )
+                    self._send_json(status, payload)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._send_json(400, {"error": str(exc)})
+                return
             if self._path() != "/web/layout":
                 self._send_json(404, {"error": "not found"})
                 return
@@ -169,6 +196,8 @@ def build_handler(
         def do_POST(self) -> None:  # noqa: N802
             if self._is_api():
                 self._api("POST")
+            elif self._is_web_api():
+                self._web_api("POST")
             else:
                 self._send_json(404, {"error": "not found"})
 
@@ -191,8 +220,9 @@ def serve_gui(
     user_id: str = "user",
     work_session_id: str = "default",
     extension_scripts: list[str] | tuple[str, ...] = (),
+    extension_routes: list[WebRoute] | tuple[WebRoute, ...] = (),
     cors_origin: str = "*",
-    on_ready=None,
+    on_ready: Callable[[str], None] | None = None,
 ) -> None:
     """Run a blocking server that serves the GUI and the run API.
 
@@ -203,6 +233,7 @@ def serve_gui(
         store, run_id, static_dir=static_dir,
         user_id=user_id, work_session_id=work_session_id, cors_origin=cors_origin,
         extension_scripts=extension_scripts,
+        extension_routes=extension_routes,
     )
     httpd = ThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}/"

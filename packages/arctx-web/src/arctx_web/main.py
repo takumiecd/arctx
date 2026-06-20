@@ -18,7 +18,7 @@ from arctx_cli.context import (
 )
 
 from arctx_web.assets import find_static_dir
-from arctx_web.extensions import load_enabled_scripts
+from arctx_web.extensions import load_enabled_routes, load_enabled_scripts
 from arctx_web.server import serve_gui
 
 
@@ -41,6 +41,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Serve the browser GUI for one ARCTX run."""
     args = _build_parser().parse_args(argv)
 
     static_dir = find_static_dir()
@@ -60,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"arctx-web: unknown run_id: {run_id}", file=sys.stderr)
         return 1
     extension_scripts = load_enabled_scripts(store.run_path(run_id))
+    extension_routes = load_enabled_routes(store.run_path(run_id))
 
     def _open(url: str) -> None:
         if not args.no_browser:
@@ -74,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
         user_id=resolve_user_id_from_args(args),
         work_session_id=resolve_work_session_id_from_args(args),
         extension_scripts=extension_scripts,
+        extension_routes=extension_routes,
         cors_origin=args.cors_origin,
         on_ready=_open,
     )
