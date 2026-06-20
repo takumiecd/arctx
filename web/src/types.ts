@@ -86,6 +86,14 @@ export interface RunGroup {
   color_key?: string;
 }
 
+export interface LaneBoundary {
+  from_lane_id: string;
+  to_lane_id: string;
+  step_id: string;
+  input_node_id: string;
+  output_node_id: string;
+}
+
 export interface RunDocument {
   arctx_export_version: number;
   run_id: string;
@@ -95,10 +103,12 @@ export interface RunDocument {
   steps: RunStep[];
   payloads: RunPayload[];
   repos: RunRepo[];
+  lanes?: RunWorkSession[];
   work_sessions?: RunWorkSession[];
   work_events?: RunWorkEvent[];
   record_provenance?: Record<string, RecordProvenance>;
   groups?: RunGroup[];
+  lane_boundaries?: LaneBoundary[];
 }
 
 export interface WebLayout {

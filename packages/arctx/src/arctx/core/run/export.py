@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from arctx.core.cuts import inactive_node_ids, inactive_step_ids
+from arctx.core.lanes import lane_export_view
 from arctx.core.run.handle import RunHandle
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
@@ -130,88 +131,6 @@ def _repo_entries(graph: RunGraph) -> list[dict]:
     ]
     entries.sort(key=lambda e: str(e.get("slug") or e.get("repo_id") or ""))
     return entries
-
-
-def _lane_label(session) -> str:
-    return str(session.name or session.work_session_id)
-
-
-def _provenance_and_groups(
-    graph: RunGraph,
-    *,
-    node_ids: set[str],
-    step_ids: set[str],
-    payload_ids: set[str],
-) -> tuple[dict[str, dict], list[dict], dict[str, list[dict]]]:
-    """Derive lane membership and record provenance from WorkEvents.
-
-    Graph records stay pure. Lanes are a view over append-only work history:
-    the event that creates a node/step determines its lane membership, while
-    later payload attachments are exposed as provenance without moving the
-    target record between lanes.
-    """
-    included_ids = set(node_ids) | set(step_ids) | set(payload_ids)
-    provenance: dict[str, dict] = {}
-    lane_nodes: dict[str, set[str]] = {}
-    lane_steps: dict[str, set[str]] = {}
-    lane_events: set[str] = set()
-
-    for event in graph.work_events:
-        created_in_export = [
-            record_id for record_id in event.created_records if record_id in included_ids
-        ]
-        if not created_in_export:
-            continue
-        lane_events.add(event.event_id)
-        session = graph.work_sessions.get(event.work_session_id)
-        lane_name = session.name if session is not None else None
-        for record_id in created_in_export:
-            provenance.setdefault(
-                record_id,
-                {
-                    "record_id": record_id,
-                    "lane_id": event.work_session_id,
-                    "lane_name": lane_name,
-                    "user_id": event.user_id,
-                    "event_id": event.event_id,
-                    "event_type": event.event_type,
-                    "created_at": event.created_at,
-                },
-            )
-            if record_id in node_ids:
-                lane_nodes.setdefault(event.work_session_id, set()).add(record_id)
-            elif record_id in step_ids:
-                lane_steps.setdefault(event.work_session_id, set()).add(record_id)
-
-    groups: list[dict] = []
-    for lane_id in sorted(set(lane_nodes) | set(lane_steps)):
-        session = graph.work_sessions.get(lane_id)
-        label = _lane_label(session) if session is not None else lane_id
-        groups.append(
-            {
-                "group_id": f"lane:{lane_id}",
-                "kind": "lane",
-                "lane_id": lane_id,
-                "label": label,
-                "node_ids": sorted(lane_nodes.get(lane_id, set())),
-                "step_ids": sorted(lane_steps.get(lane_id, set())),
-                "color_key": lane_id,
-            }
-        )
-
-    sessions = [
-        session.to_dict()
-        for session in sorted(
-            graph.work_sessions.values(),
-            key=lambda s: (s.started_at or "", s.work_session_id),
-        )
-    ]
-    events = [
-        event.to_dict()
-        for event in graph.work_events
-        if event.event_id in lane_events
-    ]
-    return provenance, groups, {"work_sessions": sessions, "work_events": events}
 
 
 # ---------------------------------------------------------------------------
@@ -505,7 +424,7 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
             e = {k: v for k, v in e.items() if k != "local_path"}
         repos_out.append(e)
 
-    provenance, groups, work_history = _provenance_and_groups(
+    lanes = lane_export_view(
         graph,
         node_ids=node_ids,
         step_ids=step_ids,
@@ -525,10 +444,12 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
         "steps": steps_out,
         "payloads": payloads_out,
         "repos": repos_out,
-        "work_sessions": work_history["work_sessions"],
-        "work_events": work_history["work_events"],
-        "record_provenance": provenance,
-        "groups": groups,
+        "lanes": lanes["lanes"],
+        "work_sessions": lanes["work_sessions"],
+        "work_events": lanes["work_events"],
+        "record_provenance": lanes["record_provenance"],
+        "groups": lanes["groups"],
+        "lane_boundaries": lanes["lane_boundaries"],
     }
 
 

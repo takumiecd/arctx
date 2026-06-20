@@ -126,7 +126,7 @@ class TestJsonExport:
         assert doc["root_node_id"] == h.root_node_id
         for key in ("nodes", "steps", "payloads", "repos"):
             assert isinstance(doc[key], list)
-        for key in ("work_sessions", "work_events", "groups"):
+        for key in ("lanes", "work_sessions", "work_events", "groups", "lane_boundaries"):
             assert isinstance(doc[key], list)
         assert isinstance(doc["record_provenance"], dict)
         assert doc["counts"]["nodes"] == len(doc["nodes"])
