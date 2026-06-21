@@ -149,6 +149,8 @@ def lane_root_candidates(
     membership = membership or lane_membership(graph)
     session = graph.work_sessions.get(lane_id)
     explicit = lane_root_node_id(session) if session is not None else None
+    if explicit == _run_root_node_id(graph):
+        return ()
     if explicit is not None:
         return (explicit,)
 
@@ -192,6 +194,9 @@ def lane_membership(
     node_ids = set(graph.nodes) if node_ids is None else set(node_ids)
     step_ids = set(graph.steps) if step_ids is None else set(step_ids)
     payload_ids = set(graph.payloads) if payload_ids is None else set(payload_ids)
+    run_root = _run_root_node_id(graph)
+    if run_root is not None:
+        node_ids.discard(run_root)
     included_ids = node_ids | step_ids | payload_ids
 
     provenance: dict[str, LaneRecordProvenance] = {}
@@ -265,6 +270,13 @@ def lane_membership(
             prov = provenance_for(event, record_id, "adopted")
             assign_membership(record_id, prov, override=True)
 
+    group_lane_ids = tuple(
+        sorted(
+            lane_id
+            for lane_id in set(lane_nodes) | set(lane_steps)
+            if lane_nodes.get(lane_id) or lane_steps.get(lane_id)
+        )
+    )
     groups = tuple(
         LaneGroup(
             lane_id=lane_id,
@@ -272,7 +284,7 @@ def lane_membership(
             node_ids=tuple(sorted(lane_nodes.get(lane_id, set()))),
             step_ids=tuple(sorted(lane_steps.get(lane_id, set()))),
         )
-        for lane_id in sorted(set(lane_nodes) | set(lane_steps))
+        for lane_id in group_lane_ids
     )
 
     return LaneMembership(
@@ -357,6 +369,17 @@ def validate_lanes(
 
     for lane_id, session in graph.work_sessions.items():
         lane_root = lane_root_node_id(session)
+        if lane_root == root_node_id or lane_root == _run_root_node_id(graph):
+            issues.append(
+                LaneValidationIssue(
+                    code="run_root_as_lane_root",
+                    severity="error",
+                    message=f"run root cannot be a lane root: {lane_root}",
+                    record_id=lane_root,
+                    lane_id=lane_id,
+                )
+            )
+            continue
         if lane_root is not None and lane_root not in graph.nodes:
             issues.append(
                 LaneValidationIssue(
@@ -485,7 +508,7 @@ def validate_lanes(
         for lane_id in graph.work_sessions
         for root in lane_root_candidates(graph, lane_id, membership)
     }
-    run_root = root_node_id or graph.metadata.get("root_node_id")
+    run_root = root_node_id or _run_root_node_id(graph)
     for node_id in graph.roots():
         if node_id == run_root or node_id in lane_roots:
             continue
@@ -541,6 +564,11 @@ def _reachable_lane_records(
                 queue.append(output_id)
 
     return reachable_nodes, reachable_steps
+
+
+def _run_root_node_id(graph: RunGraph) -> str | None:
+    root = graph.metadata.get("root_node_id")
+    return str(root) if root is not None else None
 
 
 def lane_export_view(

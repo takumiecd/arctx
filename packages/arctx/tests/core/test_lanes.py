@@ -160,13 +160,21 @@ def test_validate_lanes_reports_multiple_lane_roots():
 
 def test_validate_lanes_reports_records_unreachable_from_explicit_root():
     h = _handle()
+    root = h.add_node()
+    stray = h.add_node()
     h.ensure_lane(
         name="math",
         lane_id="lane_math",
         created_by="alice",
-        metadata={"root_node_id": h.root_node_id},
+        metadata={"root_node_id": root.node_id},
     )
-    stray = h.add_node(user_id="alice", work_session_id="lane_math")
+    h.adopt_lane_records(
+        "lane_math",
+        [root.node_id, stray.node_id],
+        user_id="alice",
+        mode="explicit",
+        target_id=root.node_id,
+    )
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
@@ -210,6 +218,46 @@ def test_validate_lanes_warns_about_default_lane_membership():
 
     assert any(
         issue.code == "default_lane_membership" and issue.lane_id == "default"
+        for issue in issues
+    )
+
+
+def test_run_root_is_not_a_lane_member_even_if_adopted():
+    h = _handle()
+    h.ensure_lane(name="default", lane_id="default", created_by="alice")
+    h.adopt_lane_records(
+        "default",
+        [h.root_node_id],
+        user_id="alice",
+        mode="explicit",
+        target_id=h.root_node_id,
+    )
+
+    membership = lane_membership(h.run_graph)
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert h.root_node_id not in membership.node_to_lane
+    assert h.root_node_id not in membership.provenance
+    assert not any(group.lane_id == "default" for group in membership.groups)
+    assert not any(issue.code == "default_lane_membership" for issue in issues)
+
+
+def test_validate_lanes_errors_when_lane_root_is_run_root():
+    h = _handle()
+    h.ensure_lane(
+        name="math",
+        lane_id="lane_math",
+        created_by="alice",
+        metadata={"root_node_id": h.root_node_id},
+    )
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert lane_root_candidates(h.run_graph, "lane_math") == ()
+    assert any(
+        issue.code == "run_root_as_lane_root"
+        and issue.record_id == h.root_node_id
+        and issue.severity == "error"
         for issue in issues
     )
 
