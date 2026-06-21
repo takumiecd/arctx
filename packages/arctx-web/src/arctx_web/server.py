@@ -22,8 +22,12 @@ from arctx_web.extensions import WebRequest, WebRoute
 from arctx_web.layouts import get_layout, save_layout
 
 # Paths handled by the JSON API; everything else is a static asset request.
-API_PATHS = frozenset({"/run", "/node", "/step", "/attach", "/cut", "/health", "/artifacts/upload"})
+API_PATHS = frozenset({
+    "/run", "/node", "/step", "/attach", "/cut", "/health", "/artifacts/upload",
+    "/ext", "/ext/enable", "/ext/disable",
+})
 WEB_API_PATHS = frozenset({"/web/layout"})
+
 
 ARTIFACT_PREFIX = "/artifacts/"
 
