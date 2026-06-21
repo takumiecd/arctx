@@ -242,7 +242,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
                   value={adoptMode}
                   onChange={(e) => setAdoptMode(e.target.value as AdoptMode)}
                 >
-                  <option value="explicit">selected record only</option>
+                  <option value="explicit">{explicitAdoptLabel(unit)}</option>
                   <option value="history" disabled={!unit.outputNodeId}>
                     history ending at output node
                   </option>
@@ -399,7 +399,18 @@ function adoptLaneRequest(unit: DetailUnit, laneId: string, mode: AdoptMode) {
   if (mode === "reachable") {
     return { ...base, reachable_node_id: unit.outputNodeId };
   }
-  return { ...base, record_ids: [unit.selected.id] };
+  return { ...base, record_ids: explicitAdoptRecordIds(unit) };
+}
+
+function explicitAdoptRecordIds(unit: DetailUnit): string[] {
+  if (unit.stepId) {
+    return [unit.stepId, unit.outputNodeId].filter(Boolean);
+  }
+  return [unit.outputNodeId];
+}
+
+function explicitAdoptLabel(unit: DetailUnit): string {
+  return unit.stepId ? "selected unit (step + output)" : "selected node only";
 }
 
 function useResizablePanelWidth(): [
