@@ -111,6 +111,8 @@ export interface RunDocument {
   created_provenance?: Record<string, RecordProvenance>;
   groups?: RunGroup[];
   lane_boundaries?: LaneBoundary[];
+  current_lane_id?: string;
+  current_lane_name?: string | null;
 }
 
 export interface WebLayout {

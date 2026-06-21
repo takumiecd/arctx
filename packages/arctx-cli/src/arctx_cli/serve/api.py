@@ -63,7 +63,7 @@ def dispatch(
         if route == ("GET", "/health"):
             return 200, {"status": "ok", "run_id": run_id}
         if route == ("GET", "/run"):
-            return 200, _get_run(store, run_id)
+            return 200, _get_run(store, run_id, work_session_id)
         if route == ("POST", "/node"):
             return 201, _post_node(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/step"):
@@ -94,9 +94,13 @@ def _load(store: Any, run_id: str):
     return store.load_run(run_id)
 
 
-def _get_run(store: Any, run_id: str) -> dict:
+def _get_run(store: Any, run_id: str, work_session_id: str) -> dict:
     handle = _load(store, run_id)
-    return json_document(handle, ExportOptions())
+    doc = json_document(handle, ExportOptions())
+    lane = handle.run_graph.work_sessions.get(work_session_id)
+    doc["current_lane_id"] = work_session_id
+    doc["current_lane_name"] = lane.name if lane is not None else work_session_id
+    return doc
 
 
 def _payload_fields(body: dict) -> dict:

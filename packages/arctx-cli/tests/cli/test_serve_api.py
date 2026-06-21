@@ -53,6 +53,8 @@ class TestReadRoutes:
             assert status == 200
             assert body["arctx_export_version"] == 1
             assert body["root_node_id"] == root
+            assert body["current_lane_id"] == "ws_test"
+            assert body["current_lane_name"] == "ws_test"
             assert any(n["node_id"] == root for n in body["nodes"])
 
     def test_unknown_route(self):

@@ -136,9 +136,10 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
       return;
     }
     if (!lanes.some((lane) => lane.lane_id === adoptLaneId)) {
-      setAdoptLaneId(lanes[0].lane_id ?? "");
+      const currentLane = lanes.find((lane) => lane.lane_id === doc.current_lane_id);
+      setAdoptLaneId(currentLane?.lane_id ?? lanes[0].lane_id ?? "");
     }
-  }, [adoptLaneId, lanes]);
+  }, [adoptLaneId, doc.current_lane_id, lanes]);
 
   if (!selection) {
     return (

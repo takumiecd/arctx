@@ -32,6 +32,23 @@ header .add-node:disabled {
   opacity: 0.5;
   cursor: default;
 }
+.current-lane {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 2px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  line-height: 20px;
+  vertical-align: middle;
+}
+.current-lane strong {
+  color: #0f172a;
+}
 .lane-create {
   display: inline-flex;
   align-items: center;
@@ -71,6 +88,13 @@ header .add-node:disabled {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.lane-control.current .lane-chip {
+  border-width: 2px;
+  font-weight: 700;
+  box-shadow:
+    inset 4px 0 0 var(--lane-color),
+    0 0 0 2px rgb(15 23 42 / 0.08);
 }
 .lane-chip {
   padding: 2px 9px 2px 7px;

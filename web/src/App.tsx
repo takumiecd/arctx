@@ -74,6 +74,8 @@ export function App() {
 
   const actionError = (addNode.error ?? createLane.error ?? createStep.error) as Error | null;
   const lanes = laneOptions(data);
+  const currentLaneId = data.current_lane_id;
+  const currentLaneName = data.current_lane_name || currentLaneId || "none";
   const knownLaneIds = new Set(lanes.map((lane) => lane.lane_id).filter(Boolean) as string[]);
   const visibleCollapsedLaneIds = new Set(
     [...collapsedLaneIds].filter((laneId) => knownLaneIds.has(laneId)),
@@ -103,16 +105,22 @@ export function App() {
           · {data.counts.nodes} nodes · {data.counts.steps} steps
           {!client.writable && " · read-only"}
         </span>
+        {client.writable && (
+          <span className="current-lane">
+            current lane: <strong>{currentLaneName}</strong>
+          </span>
+        )}
         {lanes.length > 0 && (
           <span className="lane-toolbar" aria-label="lanes">
             {lanes.map((lane) => {
               const laneId = lane.lane_id;
               if (!laneId) return null;
               const collapsed = visibleCollapsedLaneIds.has(laneId);
+              const current = laneId === currentLaneId;
               return (
                 <span
                   key={lane.group_id}
-                  className="lane-control"
+                  className={`lane-control${current ? " current" : ""}`}
                   style={laneChipStyle(data, laneId, laneColorOverrides)}
                 >
                   <button

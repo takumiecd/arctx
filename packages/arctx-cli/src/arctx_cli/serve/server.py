@@ -91,7 +91,8 @@ def serve(
     )
     httpd = ThreadingHTTPServer((host, port), handler)
     print(f"arctx serve: http://{host}:{port}  (run {run_id})")
-    print("  GET /run · POST /step · POST /attach · POST /cut · GET /health")
+    print("  GET /run · POST /step · POST /attach · POST /cut")
+    print("  POST /lane · POST /lane/adopt · GET /health")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

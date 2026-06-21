@@ -38,6 +38,8 @@ provide that endpoint, so the frontend simply uses automatic layout there.
 
 The detail panel on the right can be resized by dragging its left edge. The
 chosen width is saved in the browser for the next visit.
+Live mode also shows the current lane from `arctx serve` in the header and uses
+it as the default adoption target when possible.
 
 ## Markdown notes
 

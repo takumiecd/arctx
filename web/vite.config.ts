@@ -17,6 +17,8 @@ export default defineConfig({
       "^/step$": apiTarget,
       "^/attach$": apiTarget,
       "^/cut$": apiTarget,
+      "^/lane$": apiTarget,
+      "^/lane/adopt$": apiTarget,
       "^/health$": apiTarget,
       "^/web(/.*)?$": apiTarget,
     },
