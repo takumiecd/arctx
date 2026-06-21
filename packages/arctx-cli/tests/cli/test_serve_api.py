@@ -392,5 +392,60 @@ class TestExtensionRoutes:
             assert git_ext["enabled"] is False
 
 
+class TestArtifactUpload:
+    @staticmethod
+    def _b64(data: bytes = b"hello") -> str:
+        import base64
+
+        return base64.b64encode(data).decode()
+
+    def test_upload_writes_flat_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(
+                store, run_id, "POST", "/artifacts/upload",
+                {"filename": "chart.png", "file_data": self._b64()},
+            )
+            assert status == 201
+            assert body["filename"] == "chart.png"
+            assert body["path"].startswith("artifacts/art_")
+            written = store.run_path(run_id) / body["path"]
+            assert written.is_file()
+
+    def test_upload_strips_path_components(self):
+        # A filename with separators / .. must never escape artifacts/.
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            artifacts = (store.run_path(run_id) / "artifacts").resolve()
+            for hostile in ("../../../etc/passwd", "a/b.txt", "/abs/evil"):
+                status, body = _call(
+                    store, run_id, "POST", "/artifacts/upload",
+                    {"filename": hostile, "file_data": self._b64()},
+                )
+                assert status == 201
+                assert "/" not in body["filename"]
+                written = (store.run_path(run_id) / body["path"]).resolve()
+                assert artifacts in written.parents
+
+    def test_upload_rejects_bare_dotdot_filename(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, _ = _call(
+                store, run_id, "POST", "/artifacts/upload",
+                {"filename": "..", "file_data": self._b64()},
+            )
+            assert status == 400
+
+    def test_upload_unknown_run_is_404(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, _, _ = _setup(td)
+            status, _ = _call(
+                store, "run_missing", "POST", "/artifacts/upload",
+                {"filename": "x.txt", "file_data": self._b64()},
+            )
+            assert status == 404
+            assert not store.run_path("run_missing").exists()
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-q"])

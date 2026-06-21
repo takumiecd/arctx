@@ -407,12 +407,22 @@ def _post_ext_disable(store, run_id, body) -> dict:
 def _post_artifacts_upload(store, run_id, body) -> dict:
     import base64
     import mimetypes
+    import os
     from arctx.core.ids import opaque_id
+
+    if not store.run_path(run_id).exists():
+        raise ApiError(404, f"unknown run_id: {run_id}")
 
     filename = body.get("filename")
     file_data_b64 = body.get("file_data")
     if not filename or not file_data_b64:
         raise ApiError(400, "filename and file_data are required")
+
+    # Only keep the basename: prevents path traversal and nested writes
+    # (the destination is always a flat file directly under artifacts/).
+    safe_name = os.path.basename(str(filename))
+    if safe_name in ("", ".", ".."):
+        raise ApiError(400, "invalid filename")
 
     try:
         file_content = base64.b64decode(file_data_b64)
@@ -424,17 +434,17 @@ def _post_artifacts_upload(store, run_id, body) -> dict:
     artifacts_dir = run_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    dest_filename = f"{art_id}_{filename}"
+    dest_filename = f"{art_id}_{safe_name}"
     dest_path = artifacts_dir / dest_filename
     dest_path.write_bytes(file_content)
 
-    mime_type, _ = mimetypes.guess_type(filename)
+    mime_type, _ = mimetypes.guess_type(safe_name)
     if not mime_type:
         mime_type = "application/octet-stream"
 
     return {
         "artifact_id": art_id,
-        "filename": filename,
+        "filename": safe_name,
         "mime_type": mime_type,
         "size_bytes": len(file_content),
         "path": f"artifacts/{dest_filename}",
