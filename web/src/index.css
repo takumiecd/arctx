@@ -455,6 +455,15 @@ main {
   background: linear-gradient(90deg, var(--lane-bg), #fff 72%);
   box-shadow: inset 4px 0 0 var(--lane-color);
 }
+.provenance-card code {
+  background: rgba(255, 255, 255, 0.85);
+  color: #334155;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 3px solid var(--lane-color);
+  padding: 1px 6px;
+  border-radius: 3px;
+  justify-self: start;
+}
 .provenance-card.missing {
   border-color: #cbd5e1;
   background: #f8fafc;
