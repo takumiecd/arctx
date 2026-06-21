@@ -30,6 +30,7 @@ import {
   type Node,
   type NodeProps,
   type OnSelectionChangeParams,
+  SelectionMode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -493,6 +494,7 @@ function GraphCanvas({
       panOnDrag={true}
       selectionOnDrag={false}
       multiSelectionKeyCode="Shift"
+      selectionMode={SelectionMode.Partial}
       fitView
       proOptions={{ hideAttribution: true }}
     >
