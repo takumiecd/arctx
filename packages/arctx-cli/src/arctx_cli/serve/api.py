@@ -77,6 +77,12 @@ def dispatch(
             return 201, _post_lane(store, run_id, body or {}, user_id)
         if route == ("POST", "/lane/adopt"):
             return 201, _post_lane_adopt(store, run_id, body or {}, user_id)
+        if route == ("GET", "/ext"):
+            return 200, _get_ext(store, run_id)
+        if route == ("POST", "/ext/enable"):
+            return 200, _post_ext_enable(store, run_id, body or {})
+        if route == ("POST", "/ext/disable"):
+            return 200, _post_ext_disable(store, run_id, body or {})
         return 404, {"error": f"no route for {method} {path}"}
     except ApiError as exc:
         return exc.status, {"error": exc.message}
@@ -376,3 +382,27 @@ def _without_run_root(handle, ids) -> tuple[str, ...]:
 
 def _ensure_lane_integrity(handle) -> None:
     ensure_valid_lanes(handle.run_graph, root_node_id=handle.root_node_id)
+
+
+def _get_ext(store, run_id) -> dict:
+    from arctx_cli.commands.ext import run_ext_list_command
+    run_dir = str(store.run_path(run_id))
+    return run_ext_list_command(run_dir=run_dir)
+
+
+def _post_ext_enable(store, run_id, body) -> dict:
+    name = body.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ApiError(400, "name is required")
+    from arctx_cli.commands.ext import run_ext_enable_command
+    run_dir = str(store.run_path(run_id))
+    return run_ext_enable_command(name=name.strip(), run_dir=run_dir)
+
+
+def _post_ext_disable(store, run_id, body) -> dict:
+    name = body.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ApiError(400, "name is required")
+    from arctx_cli.commands.ext import run_ext_disable_command
+    run_dir = str(store.run_path(run_id))
+    return run_ext_disable_command(name=name.strip(), run_dir=run_dir)

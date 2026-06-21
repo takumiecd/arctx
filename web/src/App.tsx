@@ -18,18 +18,38 @@ export function App() {
   const [showCuts, setShowCuts] = useState<boolean>(false);
   const [activeLaneId, setActiveLaneId] = useState<string | null>(null);
   const [showLanesMenu, setShowLanesMenu] = useState<boolean>(false);
+  const [showExtsMenu, setShowExtsMenu] = useState<boolean>(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const extPopoverRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["run"],
     queryFn: () => client.getRun(),
     refetchInterval: client.writable ? 5000 : false,
   });
+
   const { data: savedLayout } = useQuery({
     queryKey: ["web-layout"],
     queryFn: () => client.getLayout(),
     enabled: Boolean(data),
+  });
+
+  const { data: extensionsData } = useQuery({
+    queryKey: ["extensions"],
+    queryFn: () => client.getExtensions(),
+    enabled: client.writable && Boolean(data),
+  });
+
+  const toggleExtension = useMutation({
+    mutationFn: ({ name, enabled }: { name: string; enabled: boolean }) =>
+      enabled ? client.disableExtension(name) : client.enableExtension(name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["extensions"] });
+      invalidate();
+    },
   });
 
   // Standalone node creation isn't tied to a selection, so it lives in the
@@ -75,8 +95,12 @@ export function App() {
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (popoverRef.current && !popoverRef.current.contains(target)) {
         setShowLanesMenu(false);
+      }
+      if (extPopoverRef.current && !extPopoverRef.current.contains(target)) {
+        setShowExtsMenu(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside, { capture: true });
@@ -98,7 +122,7 @@ export function App() {
   if (error) return <div className="center error">{(error as Error).message}</div>;
   if (!data) return <div className="center">no run</div>;
 
-  const actionError = (addNode.error ?? createLane.error ?? createStep.error) as Error | null;
+  const actionError = (addNode.error ?? createLane.error ?? createStep.error ?? toggleExtension.error) as Error | null;
   const lanes = laneOptions(data);
   const currentLaneId = activeLaneId || data.current_lane_id;
   const currentLaneName =
@@ -231,6 +255,48 @@ export function App() {
                       </button>
                     </form>
                   </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {client.writable && (
+          <div className="lane-selector-popover" ref={extPopoverRef}>
+            <button
+              type="button"
+              className="lane-trigger-button"
+              onClick={() => setShowExtsMenu(!showExtsMenu)}
+            >
+              extensions ▾
+            </button>
+            {showExtsMenu && (
+              <div className="lane-dropdown-menu" style={{ minWidth: "220px" }}>
+                <div style={{ padding: "8px 12px", fontWeight: "600", fontSize: "12px", color: "#475569", borderBottom: "1px solid #e2e8f0" }}>
+                  enable/disable extensions
+                </div>
+                {(!extensionsData || !Array.isArray(extensionsData.extensions) || extensionsData.extensions.length === 0) ? (
+                  <div className="lane-dropdown-empty">no extensions found</div>
+                ) : (
+                  <div className="lane-list" style={{ marginTop: "4px" }}>
+                    {extensionsData.extensions.map((ext) => (
+                      <div
+                        key={ext.name}
+                        className="lane-menu-item"
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px" }}
+                      >
+                        <span style={{ fontSize: "13px", fontWeight: "500", color: "#334155" }}>{ext.name}</span>
+                        <label style={{ display: "inline-flex", alignItems: "center", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={ext.enabled}
+                            disabled={toggleExtension.isPending}
+                            onChange={() => toggleExtension.mutate({ name: ext.name, enabled: ext.enabled })}
+                            style={{ width: "auto", margin: 0 }}
+                          />
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

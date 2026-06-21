@@ -19,6 +19,7 @@ export default defineConfig({
       "^/cut$": apiTarget,
       "^/lane$": apiTarget,
       "^/lane/adopt$": apiTarget,
+      "^/ext(/.*)?$": apiTarget,
       "^/health$": apiTarget,
       "^/web(/.*)?$": apiTarget,
     },

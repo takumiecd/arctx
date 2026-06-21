@@ -189,3 +189,12 @@ export interface AdoptLaneResponse {
   mode: "explicit" | "history" | "reachable" | string;
   event_id: string;
 }
+
+export interface ExtensionItem {
+  name: string;
+  enabled: boolean;
+}
+
+export interface ExtensionsResponse {
+  extensions: ExtensionItem[];
+}

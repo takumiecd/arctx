@@ -18,6 +18,7 @@ import type {
   CutRequest,
   RunDocument,
   WebLayout,
+  ExtensionsResponse,
 } from "./types";
 
 export interface RunClient {
@@ -32,6 +33,9 @@ export interface RunClient {
   cut(req: CutRequest): Promise<void>;
   createLane(req: CreateLaneRequest): Promise<CreateLaneResponse>;
   adoptLane(req: AdoptLaneRequest): Promise<AdoptLaneResponse>;
+  getExtensions(): Promise<ExtensionsResponse>;
+  enableExtension(name: string): Promise<void>;
+  disableExtension(name: string): Promise<void>;
 }
 
 class ReadOnlyError extends Error {
@@ -94,6 +98,15 @@ export class LiveClient implements RunClient {
       body: JSON.stringify(req),
     });
   }
+  getExtensions() {
+    return this.req<ExtensionsResponse>("/ext");
+  }
+  async enableExtension(name: string) {
+    await this.req("/ext/enable", { method: "POST", body: JSON.stringify({ name }) });
+  }
+  async disableExtension(name: string) {
+    await this.req("/ext/disable", { method: "POST", body: JSON.stringify({ name }) });
+  }
 }
 
 export class StaticClient implements RunClient {
@@ -125,6 +138,15 @@ export class StaticClient implements RunClient {
     throw new ReadOnlyError();
   }
   async adoptLane(): Promise<AdoptLaneResponse> {
+    throw new ReadOnlyError();
+  }
+  async getExtensions() {
+    return { extensions: [] };
+  }
+  async enableExtension(): Promise<void> {
+    throw new ReadOnlyError();
+  }
+  async disableExtension(): Promise<void> {
     throw new ReadOnlyError();
   }
 }

@@ -363,5 +363,34 @@ class TestWriteRoutes:
             )
 
 
+class TestExtensionRoutes:
+    def test_get_ext(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "GET", "/ext")
+            assert status == 200
+            assert "extensions" in body
+            assert any(ext["name"] == "git" for ext in body["extensions"])
+
+    def test_post_ext_enable_disable(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/ext/enable", {"name": "git"})
+            assert status == 200
+            assert body["status"] in ("enabled", "already_enabled")
+
+            status, body = _call(store, run_id, "GET", "/ext")
+            git_ext = next(ext for ext in body["extensions"] if ext["name"] == "git")
+            assert git_ext["enabled"] is True
+
+            status, body = _call(store, run_id, "POST", "/ext/disable", {"name": "git"})
+            assert status == 200
+            assert body["status"] == "disabled"
+
+            status, body = _call(store, run_id, "GET", "/ext")
+            git_ext = next(ext for ext in body["extensions"] if ext["name"] == "git")
+            assert git_ext["enabled"] is False
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-q"])
