@@ -37,14 +37,16 @@ The `diagram` extension allows you to define and render Mermaid or Graphviz grap
 
 ## CLI Usage
 
-You can attach diagrams using JSON payloads directly via `arctx attach`:
+You can attach diagrams via `arctx attach` using `--payload-type diagram` and passing fields with `--json`:
 
 ```bash
 arctx attach n_abc123 \
-  --type diagram \
-  --content '{
+  --payload-type diagram \
+  --json '{
     "title": "Simple Pipeline",
     "format": "mermaid",
     "source": "graph LR; A-->B; B-->C;"
   }'
 ```
+
+> Note: `--payload-type diagram` produces a proper `DiagramPayload` (the GUI renderer keys on this type). `--type` only sets the generic payload's `type` field, so use `--payload-type` for diagrams.

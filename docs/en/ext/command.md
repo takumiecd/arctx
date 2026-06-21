@@ -29,31 +29,25 @@ The `command` extension captures execution metadata and output logs (exit codes,
 
 ## Python API
 
-Automate execution logging using Python scripting:
+Automate execution logging using Python scripting. `handle.command.run(...)` **executes the command itself (via `subprocess`)** and automatically captures the exit code, stdout, stderr, and duration, recording them as a new Step. You do not pass stdout/stderr/exit_code yourself.
 
 ```python
-import subprocess
-import time
 from arctx import init
 from arctx.core.schema.requirements import Requirement
 
 handle = init(Requirement("req1", "task", "t"))
 
-# The command to run
-cmd = ["pytest", "packages/arctx/tests/core/test_run_api.py", "-q"]
-
-start_time = time.time()
-res = subprocess.run(cmd, capture_output=True, text=True)
-duration_ms = int((time.time() - start_time) * 1000)
-
-# Record command log to node n_abc123
-handle.command.run(
-    command=cmd,
-    exit_code=res.returncode,
+# Runs the command and records its result (exit code / stdout / stderr /
+# duration) as a new Step automatically.
+result = handle.command.run(
+    command=["pytest", "packages/arctx/tests/core/test_run_api.py", "-q"],
     cwd=".",
-    stdout=res.stdout,
-    stderr=res.stderr,
-    duration_ms=duration_ms,
-    target_id="n_abc123"
+    # Optional: cap long output (default 20000 chars)
+    max_output_chars=20000,
 )
+
+print(result)  # dict including exit code and the recorded step_id
 ```
+
+> Key arguments: `command` (required list), `cwd`, `user_id`, `work_session_id`, `max_output_chars`.
+> The new Step is appended at the work-session tip (it is not attached to an arbitrary node after the fact).

@@ -31,31 +31,25 @@
 
 ## Python API
 
-外部プログラムの実行ラッパーなどから自動的に記録する場合、Python API を使用するのが最も効果的です。
+外部プログラムの実行ラッパーなどから自動的に記録する場合、Python API を使用するのが最も効果的です。`handle.command.run(...)` は **コマンドを内部で実行（`subprocess`）し、終了コード・標準出力・標準エラー・実行時間を自動的に取得** して新しい Step として記録します。stdout/stderr などを呼び出し側で用意して渡す必要はありません。
 
 ```python
-import subprocess
-import time
 from arctx import init
 from arctx.core.schema.requirements import Requirement
 
 handle = init(Requirement("req1", "task", "t"))
 
-# 実行するコマンド
-cmd = ["pytest", "packages/arctx/tests/core/test_run_api.py", "-q"]
-
-start_time = time.time()
-res = subprocess.run(cmd, capture_output=True, text=True)
-duration_ms = int((time.time() - start_time) * 1000)
-
-# コマンドの実行ログをノード (n_abc123) に記録する
-handle.command.run(
-    command=cmd,
-    exit_code=res.returncode,
+# コマンドを実行し、その結果（exit code / stdout / stderr / duration）を
+# 新しい Step として自動記録する。
+result = handle.command.run(
+    command=["pytest", "packages/arctx/tests/core/test_run_api.py", "-q"],
     cwd=".",
-    stdout=res.stdout,
-    stderr=res.stderr,
-    duration_ms=duration_ms,
-    target_id="n_abc123"
+    # 任意: 長い出力を切り詰める上限（デフォルト 20000 文字）
+    max_output_chars=20000,
 )
+
+print(result)  # exit code・記録した step_id などを含む dict
 ```
+
+> 主な引数: `command`（必須・リスト）、`cwd`、`user_id`、`work_session_id`、`max_output_chars`。
+> 新しい Step はワークセッションの tip に追加されます（任意のノードへ後付けで attach するのではありません）。

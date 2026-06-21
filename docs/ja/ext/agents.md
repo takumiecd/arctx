@@ -1,6 +1,6 @@
 # エージェント連携拡張機能 (`agents` / `codex`)
 
-`agents` 拡張機能（およびそのアダプターである `codex`）は、AI コーディングエージェント（例: Google DeepMind の Codex）の自律的な思考プロセス、ツールの呼び出し履歴、プロンプト、セッションの開始・終了イベントを自動的かつリアルタイムに ARCTX の RunGraph に記録（録画）するための拡張機能です。
+`agents` 拡張機能（およびそのアダプターである `codex`）は、AI コーディングエージェント（例: OpenAI の Codex）の自律的な思考プロセス、ツールの呼び出し履歴、プロンプト、セッションの開始・終了イベントを自動的かつリアルタイムに ARCTX の RunGraph に記録（録画）するための拡張機能です。
 
 ---
 
@@ -22,7 +22,7 @@
 記録処理は、以下の2つのモジュールに分離されたレイヤー構造で動作しています。
 
 1. **セッションレコーダー (`SessionRecorder`)**:
-   プラットフォーム中立な記録ロジックを持つコア機能（`arctx/ext/agents/__init__.py`）。汎用的な `agent.*` ペイロードタイプや、ツールの呼び出し履歴などをグラフに書き込みます。
+   プラットフォーム中立な記録ロジックを持つコア機能（`arctx/ext/agents/recorder.py`、`arctx.ext.agents` から再エクスポート）。汎用的な `agent.*` ペイロードタイプや、ツールの呼び出し履歴などをグラフに書き込みます。
 2. **Codex アダプター (`arctx/ext/codex/adapter.py`)**:
    特定の AI エージェント（Codexなど）のフックイベント JSON をパースし、上記の `SessionRecorder` の呼び出しに変換する変換アダプター。
 
@@ -36,8 +36,11 @@
 エージェント（Codexなど）の環境設定に ARCTX のフックプログラムを登録します。
 
 ```bash
-# Codex の設定ファイル (.codex/settings.json) にフックコマンドをマージして登録する
+# Codex のフック設定ファイル (.codex/hooks.json) にフックコマンドをマージして登録する
 arctx codex install
+
+# $CODEX_HOME/hooks.json（または ~/.codex/hooks.json）を対象にグローバル登録する
+arctx codex install --global
 
 # 特殊なPATHにある場合、コマンドパスを明示的に指定してインストールする
 arctx codex install --command "/usr/local/bin/arctx"

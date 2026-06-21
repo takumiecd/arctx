@@ -38,28 +38,31 @@ arctx commit -m "修正内容のサマリー"
 連携している Git リポジトリを管理します。
 
 ```bash
-# 既存のリポジトリをこの run に登録する
-arctx git repo add <slug> <local_path>
+# 既存のリポジトリをこの run に登録する（デフォルトは cwd。--repo-path で明示指定）
+arctx git repo add --repo-path <local_path> --slug <USER/REPO>
 
 # 登録されているリポジトリの一覧を表示
 arctx git repo list
 
-# 特定のリポジトリの情報を表示
-arctx git repo show <repo_id>
+# 特定のリポジトリの情報を表示（デフォルトは cwd を解決。--repo-id で明示指定）
+arctx git repo show --repo-id <repo_id>
 ```
 
 ### 4. ブランチ操作の記録
-ブランチの作成やマージ、リバート、チェリーピックなどの履歴を記録・追跡します。
+マージ・リバート・チェリーピックなどの履歴を記録・追跡します。また、記録済みのブランチ情報は `branch list` / `branch show` で参照できます。
 
 ```bash
-# ブランチ情報を記録
-arctx git branch <branch_name>
+# 記録済みブランチの一覧を表示
+arctx git branch list
 
-# 2つのブランチ履歴の合流 (マージ) を記録
-arctx git merge --from <from_branch> --into <into_branch>
+# 特定ブランチの tip とメンバーを表示
+arctx git branch show <branch_name>
 
-# リバートの記録
-arctx git revert <commit_sha>
+# 別のブランチ（またはノード）を現在のブランチに合流 (マージ) して記録
+arctx git merge --other <branch_or_ref>
+
+# リバートの記録（--sha でコミットを指定、または --step で Step から解決）
+arctx git revert --sha <commit_sha>
 ```
 
 ---
@@ -74,10 +77,11 @@ from arctx.core.schema.requirements import Requirement
 
 handle = init(Requirement("req1", "task", "t"))
 
-# Git コミットをアタッチする
+# 現在の作業ツリーの変更を git にコミットし、対応する Step を記録する。
+# repo は repo_path（デフォルト: cwd の worktree）から解決される。
 handle.git.commit(
     message="Implement new feature",
-    repo_id="repo_1",
-    branch="main",
+    branch="main",          # 任意（省略時は git から推定）
+    # repo_path=Path("/path/to/repo"),  # 任意（デフォルトは cwd）
 )
 ```

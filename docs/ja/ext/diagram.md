@@ -39,15 +39,17 @@
 
 ## 使い方 (CLI)
 
-CLI コマンド `arctx attach` などから直接 `diagram` タイプを指定して JSON データとしてアタッチすることも可能です。
+CLI コマンド `arctx attach` から `--payload-type diagram` を指定し、`--json` でフィールドを渡してアタッチすることも可能です。
 
 ```bash
-# JSONファイル（diagram_spec.json）からダイアグラムをアタッチする例
+# DiagramPayload をノードにアタッチする例
 arctx attach n_abc123 \
-  --type diagram \
-  --content '{
+  --payload-type diagram \
+  --json '{
     "title": "Simple Pipeline",
     "format": "mermaid",
     "source": "graph LR; A-->B; B-->C;"
   }'
 ```
+
+> 注: `--payload-type diagram` を指定すると正式な `DiagramPayload` が生成されます（GUI のレンダラはこの型を認識します）。`--type` は汎用ペイロードの `type` フィールドを設定するだけなので、ダイアグラムには `--payload-type` を使ってください。

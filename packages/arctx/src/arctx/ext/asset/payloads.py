@@ -21,7 +21,7 @@ class AssetPayload(PayloadBase):
     filename: str          # Original filename
     mime_type: str         # MIME type (e.g., image/png)
     size_bytes: int        # File size in bytes
-    path: str              # Relative path inside run dir (e.g. assets/<asset_id>_filename)
+    path: str              # Relative path inside run dir (e.g. artifacts/<asset_id>_filename)
 
     metadata: dict[str, JSONValue] = field(default_factory=dict)
     payload_type: str = field(default="asset", init=False)

@@ -1,6 +1,6 @@
 # Agent Integration Extension (`agents` / `codex`)
 
-The `agents` extension (and its associated adapter `codex`) automatically records activities from AI coding agents (such as Google DeepMind's Codex) into the ARCTX RunGraph, tracking tool calls, prompts, and session lifecycles.
+The `agents` extension (and its associated adapter `codex`) automatically records activities from AI coding agents (such as OpenAI's Codex) into the ARCTX RunGraph, tracking tool calls, prompts, and session lifecycles.
 
 ---
 
@@ -22,7 +22,7 @@ The `agents` extension (and its associated adapter `codex`) automatically record
 The recording pipeline uses a two-tier decoupled design:
 
 1. **Session Recorder (`SessionRecorder`)**:
-   An agent-neutral API (`arctx/ext/agents/__init__.py`) that records generic `agent.*` payload types onto the graph.
+   An agent-neutral API (`arctx/ext/agents/recorder.py`, re-exported from `arctx.ext.agents`) that records generic `agent.*` payload types onto the graph.
 2. **Codex Adapter (`arctx/ext/codex/adapter.py`)**:
    Parses Codex's hook events JSON format from stdin and dispatches calls to the `SessionRecorder`.
 
@@ -33,11 +33,14 @@ The recording pipeline uses a two-tier decoupled design:
 Hook integrations run automatically in the background.
 
 ### 1. Install Hook Scripts
-Merges hook commands into your agent settings (e.g. Codex settings JSON):
+Merges hook commands into the Codex hooks file (`.codex/hooks.json`):
 
 ```bash
-# Register hooks in .codex/settings.json
+# Register hooks in .codex/hooks.json
 arctx codex install
+
+# Target $CODEX_HOME/hooks.json (or ~/.codex/hooks.json) globally
+arctx codex install --global
 
 # Override command executable path
 arctx codex install --command "/usr/local/bin/arctx"

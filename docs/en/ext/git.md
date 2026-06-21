@@ -38,28 +38,31 @@ arctx commit -m "Summary of changes"
 Manages the list of repositories registered to this run:
 
 ```bash
-# Add a repository path to this run
-arctx git repo add <slug> <local_path>
+# Add a repository to this run (defaults to cwd; use --repo-path to specify)
+arctx git repo add --repo-path <local_path> --slug <USER/REPO>
 
 # List all registered repositories
 arctx git repo list
 
-# Show details of a repository
-arctx git repo show <repo_id>
+# Show details of a repository (defaults to resolving cwd; use --repo-id)
+arctx git repo show --repo-id <repo_id>
 ```
 
-### 4. Record Branching and Merging
-Records branch creations, merges, reverts, and cherry-picks:
+### 4. Record Merging and Reverting
+Records merges, reverts, and cherry-picks. Recorded branch tips can be inspected with `branch list` / `branch show`:
 
 ```bash
-# Record a branch tip
-arctx git branch <branch_name>
+# List recorded branches
+arctx git branch list
 
-# Record a merge merge between branches
-arctx git merge --from <from_branch> --into <into_branch>
+# Show a branch's tip and members
+arctx git branch show <branch_name>
 
-# Record a revert commit
-arctx git revert <commit_sha>
+# Merge another branch (or node) into the current branch and record it
+arctx git merge --other <branch_or_ref>
+
+# Record a revert (--sha to name the commit, or --step to resolve from a Step)
+arctx git revert --sha <commit_sha>
 ```
 
 ---
@@ -74,10 +77,11 @@ from arctx.core.schema.requirements import Requirement
 
 handle = init(Requirement("req1", "task", "t"))
 
-# Attach a git commit to the graph
+# Commit the current working tree via git and record the matching Step.
+# The repo is resolved from repo_path (defaults to the cwd worktree).
 handle.git.commit(
     message="Implement new feature",
-    repo_id="repo_1",
-    branch="main",
+    branch="main",          # optional (inferred from git if omitted)
+    # repo_path=Path("/path/to/repo"),  # optional (defaults to cwd)
 )
 ```
