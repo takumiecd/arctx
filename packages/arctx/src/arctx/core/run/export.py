@@ -429,6 +429,7 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
         node_ids=node_ids,
         step_ids=step_ids,
         payload_ids=payload_ids,
+        root_node_id=handle.root_node_id,
     )
 
     return {

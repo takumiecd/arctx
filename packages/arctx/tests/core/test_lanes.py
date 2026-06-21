@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 import arctx
 from arctx.core.lanes import (
     lane_boundaries,
@@ -225,21 +227,70 @@ def test_validate_lanes_warns_about_default_lane_membership():
 def test_run_root_is_not_a_lane_member_even_if_adopted():
     h = _handle()
     h.ensure_lane(name="default", lane_id="default", created_by="alice")
-    h.adopt_lane_records(
-        "default",
-        [h.root_node_id],
+    h.record_work_event(
         user_id="alice",
-        mode="explicit",
+        work_session_id="default",
+        event_type="lane_adopted",
+        target_kind="subgraph",
         target_id=h.root_node_id,
+        created_records=(),
+        data={"record_ids": [h.root_node_id], "mode": "legacy"},
     )
 
-    membership = lane_membership(h.run_graph)
+    membership = lane_membership(h.run_graph, root_node_id=h.root_node_id)
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
     assert h.root_node_id not in membership.node_to_lane
     assert h.root_node_id not in membership.provenance
     assert not any(group.lane_id == "default" for group in membership.groups)
     assert not any(issue.code == "default_lane_membership" for issue in issues)
+
+
+def test_adopt_lane_records_rejects_run_root():
+    h = _handle()
+    h.ensure_lane(name="default", lane_id="default", created_by="alice")
+
+    with pytest.raises(ValueError, match="run root"):
+        h.adopt_lane_records(
+            "default",
+            [h.root_node_id],
+            user_id="alice",
+            mode="explicit",
+            target_id=h.root_node_id,
+        )
+
+
+def test_validate_lanes_errors_when_non_root_node_has_no_lane():
+    h = _handle()
+    node = h.add_node()
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert any(
+        issue.code == "node_without_lane"
+        and issue.record_id == node.node_id
+        and issue.severity == "error"
+        for issue in issues
+    )
+
+
+def test_validate_lanes_errors_when_step_has_no_lane():
+    h = _handle()
+    step = h.add_step(
+        [h.root_node_id],
+        _payload(h, "unowned"),
+        user_id="alice",
+        work_session_id=None,
+    )
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert any(
+        issue.code == "step_without_lane"
+        and issue.record_id == step.step_id
+        and issue.severity == "error"
+        for issue in issues
+    )
 
 
 def test_validate_lanes_errors_when_lane_root_is_run_root():
@@ -292,6 +343,7 @@ def test_lane_export_view_is_json_ready():
         node_ids=set(h.run_graph.nodes),
         step_ids=set(h.run_graph.steps),
         payload_ids=payload_ids,
+        root_node_id=h.root_node_id,
     )
 
     assert view["groups"][0]["lane_id"] == "lane_math"

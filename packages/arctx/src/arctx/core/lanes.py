@@ -131,6 +131,8 @@ def lane_root_candidates(
     graph: RunGraph,
     lane_id: str,
     membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
 ) -> tuple[str, ...]:
     """Return explicit or inferred root/anchor nodes for one lane.
 
@@ -146,10 +148,11 @@ def lane_root_candidates(
     start by deriving a new lane-root node from an external node without making
     that external input part of the lane.
     """
-    membership = membership or lane_membership(graph)
+    run_root = _membership_root_node_id(graph, root_node_id)
+    membership = membership or lane_membership(graph, root_node_id=run_root)
     session = graph.work_sessions.get(lane_id)
     explicit = lane_root_node_id(session) if session is not None else None
-    if explicit == _run_root_node_id(graph):
+    if explicit == run_root:
         return ()
     if explicit is not None:
         return (explicit,)
@@ -184,17 +187,22 @@ def lane_membership(
     node_ids: set[str] | None = None,
     step_ids: set[str] | None = None,
     payload_ids: set[str] | None = None,
+    root_node_id: str | None = None,
 ) -> LaneMembership:
     """Derive lane membership for graph records.
 
     The first WorkEvent that creates a record determines that record's lane.
     Later payload attachments remain their own provenance; they do not move the
     target node or step between lanes.
+
+    ``root_node_id`` makes the membership domain explicit: the run root is
+    metadata for the whole run, not a lane-owned work record. Every other node
+    and every step may be validated as lane-owned.
     """
     node_ids = set(graph.nodes) if node_ids is None else set(node_ids)
     step_ids = set(graph.steps) if step_ids is None else set(step_ids)
     payload_ids = set(graph.payloads) if payload_ids is None else set(payload_ids)
-    run_root = _run_root_node_id(graph)
+    run_root = _membership_root_node_id(graph, root_node_id)
     if run_root is not None:
         node_ids.discard(run_root)
     included_ids = node_ids | step_ids | payload_ids
@@ -301,9 +309,11 @@ def lane_membership(
 def lane_boundaries(
     graph: RunGraph,
     membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
 ) -> tuple[LaneBoundary, ...]:
     """Return cross-lane step inputs as derived lane boundaries."""
-    membership = membership or lane_membership(graph)
+    membership = membership or lane_membership(graph, root_node_id=root_node_id)
     out: list[LaneBoundary] = []
     for step_id, step in graph.steps.items():
         to_lane = membership.step_to_lane.get(step_id)
@@ -357,7 +367,8 @@ def validate_lanes(
     lane provenance, and GUI/CLI surfaces can decide whether a warning should
     block a workflow.
     """
-    membership = lane_membership(graph)
+    run_root = _membership_root_node_id(graph, root_node_id)
+    membership = lane_membership(graph, root_node_id=run_root)
     issues: list[LaneValidationIssue] = []
 
     lane_node_ids: dict[str, set[str]] = {}
@@ -369,7 +380,7 @@ def validate_lanes(
 
     for lane_id, session in graph.work_sessions.items():
         lane_root = lane_root_node_id(session)
-        if lane_root == root_node_id or lane_root == _run_root_node_id(graph):
+        if lane_root == run_root:
             issues.append(
                 LaneValidationIssue(
                     code="run_root_as_lane_root",
@@ -394,7 +405,12 @@ def validate_lanes(
     for lane_id in sorted(set(lane_node_ids) | set(lane_step_ids)):
         nodes = lane_node_ids.get(lane_id, set())
         steps = lane_step_ids.get(lane_id, set())
-        roots = lane_root_candidates(graph, lane_id, membership)
+        roots = lane_root_candidates(
+            graph,
+            lane_id,
+            membership,
+            root_node_id=run_root,
+        )
 
         if lane_id == "default" and (nodes or steps):
             issues.append(
@@ -473,7 +489,7 @@ def validate_lanes(
             issues.append(
                 LaneValidationIssue(
                     code="step_without_lane",
-                    severity="warning",
+                    severity="error",
                     message=f"step has no lane provenance: {step_id}",
                     record_id=step_id,
                 )
@@ -483,7 +499,7 @@ def validate_lanes(
             issues.append(
                 LaneValidationIssue(
                     code="output_node_without_lane",
-                    severity="warning",
+                    severity="error",
                     message=f"step output has no lane provenance: {step.output_node_id}",
                     record_id=step.output_node_id,
                     lane_id=step_lane,
@@ -506,9 +522,23 @@ def validate_lanes(
     lane_roots = {
         root
         for lane_id in graph.work_sessions
-        for root in lane_root_candidates(graph, lane_id, membership)
+        for root in lane_root_candidates(
+            graph,
+            lane_id,
+            membership,
+            root_node_id=run_root,
+        )
     }
-    run_root = root_node_id or _run_root_node_id(graph)
+    for node_id in sorted(set(graph.nodes) - {run_root} - set(membership.node_to_lane)):
+        issues.append(
+            LaneValidationIssue(
+                code="node_without_lane",
+                severity="error",
+                message=f"node has no lane provenance: {node_id}",
+                record_id=node_id,
+            )
+        )
+
     for node_id in graph.roots():
         if node_id == run_root or node_id in lane_roots:
             continue
@@ -571,12 +601,17 @@ def _run_root_node_id(graph: RunGraph) -> str | None:
     return str(root) if root is not None else None
 
 
+def _membership_root_node_id(graph: RunGraph, root_node_id: str | None) -> str | None:
+    return str(root_node_id) if root_node_id is not None else _run_root_node_id(graph)
+
+
 def lane_export_view(
     graph: RunGraph,
     *,
     node_ids: set[str],
     step_ids: set[str],
     payload_ids: set[str],
+    root_node_id: str | None = None,
 ) -> dict:
     """Return JSON-ready lane data for export/API surfaces."""
     membership = lane_membership(
@@ -584,6 +619,7 @@ def lane_export_view(
         node_ids=node_ids,
         step_ids=step_ids,
         payload_ids=payload_ids,
+        root_node_id=root_node_id,
     )
     event_ids = set(membership.event_ids)
     sessions = [

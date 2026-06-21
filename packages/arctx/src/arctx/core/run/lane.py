@@ -25,6 +25,8 @@ def adopt_lane_records_impl(
     ids = tuple(dict.fromkeys(str(record_id) for record_id in record_ids))
     if not ids:
         raise ValueError("at least one record id is required")
+    if self.root_node_id in ids:
+        raise ValueError("run root cannot be adopted into a lane")
 
     known = set(self.run_graph.nodes) | set(self.run_graph.steps) | set(self.run_graph.payloads)
     unknown = [record_id for record_id in ids if record_id not in known]
