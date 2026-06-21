@@ -487,8 +487,11 @@ function GraphCanvas({
       nodesConnectable={writable}
       connectionMode={ConnectionMode.Loose}
       panOnScroll={true}
+      panOnScrollSpeed={1.2}
       zoomOnScroll={false}
       zoomActivationKeyCode="Control"
+      panOnDrag={false}
+      selectionOnDrag={true}
       fitView
       proOptions={{ hideAttribution: true }}
     >
