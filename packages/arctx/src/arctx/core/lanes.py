@@ -135,8 +135,16 @@ def lane_root_candidates(
     """Return explicit or inferred root/anchor nodes for one lane.
 
     If the lane metadata names ``root_node_id`` / ``anchor_node_id``, that node
-    is the lane root. Otherwise roots are inferred from the lane-local topology:
-    lane-owned nodes without a producing step in the same lane.
+    is the lane root. Otherwise roots are inferred from the lane-local topology
+    at the unit level. A lane root may be either:
+
+    - a lane-owned node with no producing step in the same lane, or
+    - the output node of a lane-owned entry step whose input comes from another
+      lane.
+
+    The second form matches the UI's "step + output node" unit: a lane can
+    start by deriving a new lane-root node from an external node without making
+    that external input part of the lane.
     """
     membership = membership or lane_membership(graph)
     session = graph.work_sessions.get(lane_id)
@@ -152,7 +160,17 @@ def lane_root_candidates(
     }
     for node_id in lane_nodes:
         incoming_step = graph.step_to_node(node_id)
-        if incoming_step is None or membership.step_to_lane.get(incoming_step) != lane_id:
+        if incoming_step is None:
+            roots.add(node_id)
+            continue
+        if membership.step_to_lane.get(incoming_step) != lane_id:
+            roots.add(node_id)
+            continue
+        step = graph.steps[incoming_step]
+        if any(
+            membership.node_to_lane.get(input_node_id) != lane_id
+            for input_node_id in step.input_node_ids
+        ):
             roots.add(node_id)
 
     return tuple(sorted(roots))
@@ -383,7 +401,7 @@ def validate_lanes(
             issues.append(
                 LaneValidationIssue(
                     code="multiple_lane_roots",
-                    severity="warning",
+                    severity="error",
                     message=(
                         f"lane {lane_id!r} has {len(roots)} root candidates: "
                         + ", ".join(roots)
@@ -471,15 +489,17 @@ def validate_lanes(
     for node_id in graph.roots():
         if node_id == run_root or node_id in lane_roots:
             continue
-        if node_id not in membership.node_to_lane:
-            issues.append(
-                LaneValidationIssue(
-                    code="orphan_root_node",
-                    severity="warning",
-                    message=f"producer-less node is not a run root or lane root: {node_id}",
-                    record_id=node_id,
-                )
+        issues.append(
+            LaneValidationIssue(
+                code="producerless_node_without_root_role",
+                severity="error",
+                message=(
+                    "producer-less node is not the run root or a lane root: "
+                    f"{node_id}"
+                ),
+                record_id=node_id,
             )
+        )
 
     return tuple(issues)
 
@@ -502,6 +522,13 @@ def _reachable_lane_records(
         seen_nodes.add(node_id)
         if membership.node_to_lane.get(node_id) == lane_id:
             reachable_nodes.add(node_id)
+
+        incoming_step = graph.step_to_node(node_id)
+        if (
+            incoming_step is not None
+            and membership.step_to_lane.get(incoming_step) == lane_id
+        ):
+            reachable_steps.add(incoming_step)
 
         for step_id in graph.steps_from_node(node_id):
             if membership.step_to_lane.get(step_id) != lane_id:

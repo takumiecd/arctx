@@ -151,7 +151,9 @@ def test_validate_lanes_reports_multiple_lane_roots():
         second.node_id,
     }
     assert any(
-        issue.code == "multiple_lane_roots" and issue.lane_id == "lane_math"
+        issue.code == "multiple_lane_roots"
+        and issue.lane_id == "lane_math"
+        and issue.severity == "error"
         for issue in issues
     )
 
@@ -176,7 +178,7 @@ def test_validate_lanes_reports_records_unreachable_from_explicit_root():
     )
 
 
-def test_lane_root_candidates_do_not_treat_external_inputs_as_roots():
+def test_lane_root_candidates_treat_entry_step_output_as_root():
     h = _handle()
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
     h.ensure_lane(name="experiment", lane_id="lane_exp", created_by="alice")
@@ -186,7 +188,6 @@ def test_lane_root_candidates_do_not_treat_external_inputs_as_roots():
         user_id="alice",
         work_session_id="lane_math",
     )
-    exp_root = h.add_node(user_id="alice", work_session_id="lane_exp")
     exp = h.add_step(
         [math.output_node_id],
         _payload(h, "experiment"),
@@ -196,13 +197,9 @@ def test_lane_root_candidates_do_not_treat_external_inputs_as_roots():
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
-    assert lane_root_candidates(h.run_graph, "lane_exp") == (exp_root.node_id,)
+    assert lane_root_candidates(h.run_graph, "lane_exp") == (exp.output_node_id,)
     assert math.output_node_id not in lane_root_candidates(h.run_graph, "lane_exp")
-    assert any(
-        issue.code == "lane_step_unreachable_from_root"
-        and issue.record_id == exp.step_id
-        for issue in issues
-    )
+    assert not any(issue.severity == "error" for issue in issues)
 
 
 def test_validate_lanes_warns_about_default_lane_membership():
@@ -213,6 +210,20 @@ def test_validate_lanes_warns_about_default_lane_membership():
 
     assert any(
         issue.code == "default_lane_membership" and issue.lane_id == "default"
+        for issue in issues
+    )
+
+
+def test_validate_lanes_errors_when_producerless_node_is_not_run_or_lane_root():
+    h = _handle()
+    stray = h.add_node()
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert any(
+        issue.code == "producerless_node_without_root_role"
+        and issue.record_id == stray.node_id
+        and issue.severity == "error"
         for issue in issues
     )
 
