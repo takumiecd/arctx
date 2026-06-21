@@ -267,7 +267,11 @@ export function App() {
               className="lane-trigger-button"
               onClick={() => setShowExtsMenu(!showExtsMenu)}
             >
-              extensions ▾
+              {(() => {
+                const total = extensionsData?.extensions?.length ?? 0;
+                const enabled = extensionsData?.extensions?.filter((ext) => ext.enabled).length ?? 0;
+                return total > 0 ? `extensions (${enabled}) ▾` : "extensions ▾";
+              })()}
             </button>
             {showExtsMenu && (
               <div className="lane-dropdown-menu" style={{ minWidth: "220px" }}>
