@@ -3,13 +3,17 @@
 // step), or cut the selected record.
 
 import {
+  createContext,
+  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -145,9 +149,8 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
   const [customType, setCustomType] = useState("custom_data");
   const [customContent, setCustomContent] = useState("{}");
 
-  // Asset preset / note picker states
+  // Asset preset state (upload a file as an AssetPayload)
   const [assetFile, setAssetFile] = useState<File | null>(null);
-  const [pickerAssets, setPickerAssets] = useState<RunPayload[]>([]);
 
   const [adoptLaneId, setAdoptLaneId] = useState("");
   const [adoptMode, setAdoptMode] = useState<AdoptMode>("explicit");
@@ -422,41 +425,47 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
             <>
               <h3>step payloads ({stepPayloads.length})</h3>
               {stepPayloads.length === 0 && <p className="muted">none</p>}
-              {stepPayloads.map((p) => (
-                <PayloadCard
-                  key={p.payload_id}
-                  doc={doc}
-                  payload={p}
-                  display={payloadDisplayFor(p, doc)}
-                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                />
-              ))}
+              <ScopedPayloads client={client} recordId={unit.stepId}>
+                {stepPayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
+              </ScopedPayloads>
 
               <h3>output node notes ({nodePayloads.length})</h3>
               {nodePayloads.length === 0 && <p className="muted">none</p>}
-              {nodePayloads.map((p) => (
-                <PayloadCard
-                  key={p.payload_id}
-                  doc={doc}
-                  payload={p}
-                  display={payloadDisplayFor(p, doc)}
-                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                />
-              ))}
+              <ScopedPayloads client={client} recordId={unit.outputNodeId}>
+                {nodePayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
+              </ScopedPayloads>
             </>
           ) : (
             <>
               <h3>node payloads ({nodePayloads.length})</h3>
               {nodePayloads.length === 0 && <p className="muted">none</p>}
-              {nodePayloads.map((p) => (
-                <PayloadCard
-                  key={p.payload_id}
-                  doc={doc}
-                  payload={p}
-                  display={payloadDisplayFor(p, doc)}
-                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                />
-              ))}
+              <ScopedPayloads client={client} recordId={unit.outputNodeId}>
+                {nodePayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
+              </ScopedPayloads>
             </>
           )}
         </section>
@@ -603,91 +612,12 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
                     <label key={field.key}>
                       {field.label}
                       {field.type === "textarea" ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          <textarea
-                            rows={field.key === "source" ? 6 : 3}
-                            placeholder={field.placeholder}
-                            value={val}
-                            onChange={(e) => onChange(e.target.value)}
-                          />
-                          <div>
-                            <input
-                              type="file"
-                              id={`file-upload-${field.key}`}
-                              style={{ display: "none" }}
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                try {
-                                  const info = await client.uploadArtifact(file);
-                                  // In a note, also record the upload as a core
-                                  // asset payload on the target so the file is a
-                                  // first-class, referenceable record (not just a
-                                  // floating artifact).
-                                  if (attachPreset === "note") {
-                                    await client.attachAsset({
-                                      target_id: attachTarget.selection.id,
-                                      target_kind: attachTarget.selection.kind,
-                                      asset_id: info.artifact_id,
-                                      filename: info.filename,
-                                      mime_type: info.mime_type,
-                                      size_bytes: info.size_bytes,
-                                      path: info.path,
-                                    });
-                                    invalidate();
-                                  }
-                                  const isImage = file.type.startsWith("image/");
-                                  const markdown = isImage
-                                    ? `\n![${file.name}](/${info.path})\n`
-                                    : `\n[${file.name}](/${info.path})\n`;
-                                  onChange(val + markdown);
-                                } catch (err: any) {
-                                  setError(err.message);
-                                }
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className="secondary"
-                              onClick={() => document.getElementById(`file-upload-${field.key}`)?.click()}
-                              style={{ padding: "4px 8px", fontSize: "11px", cursor: "pointer" }}
-                            >
-                              📎 Attach File
-                            </button>
-                            {attachPreset === "note" && (
-                              <select
-                                value=""
-                                style={{ marginLeft: "6px", fontSize: "11px" }}
-                                onFocus={async () => {
-                                  try {
-                                    setPickerAssets(
-                                      await client.visibleAssets(attachTarget.selection.id),
-                                    );
-                                  } catch (err: any) {
-                                    setError(err.message);
-                                  }
-                                }}
-                                onChange={(e) => {
-                                  const a = pickerAssets.find((x) => x.payload_id === e.target.value);
-                                  if (!a) return;
-                                  const url = `/${String(a.path).replace(/^\/+/, "")}`;
-                                  const name = String(a.filename);
-                                  const md = String(a.mime_type).startsWith("image/")
-                                    ? `\n![${name}](${url})\n`
-                                    : `\n[${name}](${url})\n`;
-                                  onChange(val + md);
-                                }}
-                              >
-                                <option value="">📁 Insert asset…</option>
-                                {pickerAssets.map((a) => (
-                                  <option key={a.payload_id} value={a.payload_id}>
-                                    {String(a.filename)}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        </div>
+                        <textarea
+                          rows={field.key === "source" ? 6 : 3}
+                          placeholder={field.placeholder}
+                          value={val}
+                          onChange={(e) => onChange(e.target.value)}
+                        />
                       ) : field.type === "select" ? (
                         <select value={val} onChange={(e) => onChange(e.target.value)}>
                           {field.options && field.options(doc).map((opt) => (
@@ -1158,6 +1088,23 @@ function PayloadCard({
       <div className="payload-card-head">
         <strong>{display.title}</strong>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {payload.payload_type === "asset" && (
+            <button
+              type="button"
+              className="payload-copy-btn"
+              title="copy a markdown reference (paste into a note on this record or a descendant)"
+              onClick={() => {
+                const url = `/${String(payload.path ?? "").replace(/^\/+/, "")}`;
+                const name = String(payload.filename ?? "asset");
+                const md = String(payload.mime_type ?? "").startsWith("image/")
+                  ? `![${name}](${url})`
+                  : `[${name}](${url})`;
+                void navigator.clipboard?.writeText(md);
+              }}
+            >
+              copy md
+            </button>
+          )}
           {onCopyToEdit && (
             <button
               type="button"
@@ -1244,14 +1191,79 @@ function PayloadSectionBody({ section }: { section: PayloadSection }) {
   return <pre className="payload">{JSON.stringify(section.value, null, 2)}</pre>;
 }
 
+// Set of artifact URLs (e.g. "/artifacts/ast_xxx_file.png") that may be
+// referenced from the record currently being rendered. `null` means no
+// scoping (static/share mode, or still loading) — render everything.
+const ArtifactScopeContext = createContext<Set<string> | null>(null);
+
+function artifactKey(src: string): string {
+  let s = src;
+  if (s.startsWith("artifact://")) s = `/artifacts/${s.slice("artifact://".length).replace(/^\/+/, "")}`;
+  try {
+    return decodeURI(s);
+  } catch {
+    return s;
+  }
+}
+
+function isArtifactUrl(src: string): boolean {
+  return src.startsWith("/artifacts/") || src.startsWith("artifact://");
+}
+
+// Wraps a record's payload cards, providing the set of assets visible from
+// that record so embedded artifact URLs out of scope (descendants/unrelated)
+// are not rendered. Live mode only; static shares render everything.
+function ScopedPayloads({
+  client,
+  recordId,
+  children,
+}: {
+  client: RunClient;
+  recordId: string;
+  children: ReactNode;
+}) {
+  const { data } = useQuery({
+    queryKey: ["visibleAssets", recordId],
+    queryFn: () => client.visibleAssets(recordId),
+    enabled: client.writable && !!recordId,
+  });
+  const scope = useMemo(() => {
+    if (!client.writable || !data) return null;
+    const set = new Set<string>();
+    for (const a of data) {
+      const path = String((a as { path?: unknown }).path ?? "").replace(/^\/+/, "");
+      if (path) set.add(artifactKey(`/${path}`));
+    }
+    return set;
+  }, [client.writable, data]);
+  return <ArtifactScopeContext.Provider value={scope}>{children}</ArtifactScopeContext.Provider>;
+}
+
 function MarkdownView({ value }: { value: unknown }) {
   return (
     <div className="payload-markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{ img: ScopedMarkdownImg }}
+      >
         {formatValue(value)}
       </ReactMarkdown>
     </div>
   );
+}
+
+function ScopedMarkdownImg({ src, alt }: { src?: string; alt?: string }) {
+  const scope = useContext(ArtifactScopeContext);
+  const raw = typeof src === "string" ? src : "";
+  if (isArtifactUrl(raw) && scope && !scope.has(artifactKey(raw))) {
+    return <span className="muted payload-media-blocked">⚠ asset not in scope</span>;
+  }
+  const safe = isArtifactUrl(raw) ? safeImageSrc(raw) : raw;
+  if (!safe) {
+    return <span className="muted payload-media-blocked">blocked image source</span>;
+  }
+  return <img src={safe} alt={alt ?? ""} loading="lazy" />;
 }
 
 function PayloadMediaView({ media }: { media: PayloadMedia }) {
