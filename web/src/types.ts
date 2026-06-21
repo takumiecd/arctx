@@ -74,6 +74,7 @@ export interface RecordProvenance {
   event_id: string;
   event_type: string;
   created_at?: string | null;
+  membership_kind?: "created" | "adopted" | string;
 }
 
 export interface RunGroup {
@@ -107,6 +108,7 @@ export interface RunDocument {
   work_sessions?: RunWorkSession[];
   work_events?: RunWorkEvent[];
   record_provenance?: Record<string, RecordProvenance>;
+  created_provenance?: Record<string, RecordProvenance>;
   groups?: RunGroup[];
   lane_boundaries?: LaneBoundary[];
 }

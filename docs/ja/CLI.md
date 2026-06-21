@@ -77,6 +77,9 @@ arctx log --run demo
 - `arctx lane switch <name-or-id>`: 既存 lane に切り替え、repo スコープの
   current lane pointer を書き込む。存在しない名前はエラー。
 - `arctx lane <name-or-id>`: `switch` の省略形。typo 防止のため自動作成しない。
+- `arctx lane adopt <name-or-id> --record ID`: 既存 record を lane の現在所属として
+  登録する。作成 provenance は書き換えず、append-only な adoption event を残す。
+  `--history NODE` / `--reachable NODE` も使える。
 - `arctx lane list` / `arctx lane show <name-or-id>`: lane を検査する。
 - `arctx export [--format md|tex|html]`: run を共有可能なドキュメントとして描画する。
 

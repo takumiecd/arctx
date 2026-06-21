@@ -6,13 +6,16 @@ import tempfile
 from argparse import Namespace
 from pathlib import Path
 
-from arctx_cli.context import resolve_work_session_id_from_args
+from arctx_cli.commands.add import run_add_node_command, run_add_step_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.lane import (
     list_lanes,
+    run_lane_adopt_command,
     run_lane_create_command,
     run_lane_switch_command,
+    validate_lane_run,
 )
+from arctx_cli.context import resolve_store, resolve_work_session_id_from_args
 
 
 def _store_dir(td: str) -> str:
@@ -69,6 +72,72 @@ def test_switch_unknown_lane_errors():
             assert "unknown lane" in str(exc)
         else:  # pragma: no cover
             raise AssertionError("expected KeyError")
+
+
+def test_adopt_existing_record_into_lane():
+    with tempfile.TemporaryDirectory() as td:
+        init = _init(td)
+        sd = _store_dir(td)
+        lane = run_lane_create_command(
+            name="geometry",
+            run_id="run_lane",
+            user_id="alice",
+            store_dir=sd,
+        )
+        made = run_add_step_command(
+            run_id="run_lane",
+            input_node_ids=[init["root_node_id"]],
+            title="old work",
+            payload_kind=None,
+            payload_type="step_payload",
+            field_data={},
+            json_data={},
+            store_dir=sd,
+            user_id=None,
+            work_session_id=None,
+        )
+        step_id = made["step"]["step_id"]
+        output_id = made["step"]["output_node_id"]
+
+        adopted = run_lane_adopt_command(
+            name="geometry",
+            run_id="run_lane",
+            user_id="bob",
+            store_dir=sd,
+            record_ids=[step_id, output_id],
+        )
+
+        assert adopted["lane_id"] == lane["lane_id"]
+        assert adopted["count"] == 2
+        handle = resolve_store(sd).load_run("run_lane")
+        event = handle.run_graph.work_events[-1]
+        assert event.event_type == "lane_adopted"
+        assert event.data["record_ids"] == [step_id, output_id]
+
+
+def test_validate_lane_run_reports_issues():
+    with tempfile.TemporaryDirectory() as td:
+        _init(td)
+        sd = _store_dir(td)
+        run_add_node_command(
+            run_id="run_lane",
+            title=None,
+            payload_kind=None,
+            payload_type="node_payload",
+            field_data={},
+            json_data={},
+            store_dir=sd,
+            user_id="alice",
+            work_session_id="default",
+        )
+
+        result = validate_lane_run(run_id="run_lane", store_dir=sd)
+
+        assert result["ok"] is True
+        assert any(
+            issue["code"] == "default_lane_membership"
+            for issue in result["issues"]
+        )
 
 
 def test_persistent_lane_pointer_is_scoped_by_run(monkeypatch):

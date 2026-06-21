@@ -154,6 +154,7 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 # Bind verb implementations.
 from arctx.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from arctx.core.run.cut import cut_impl as _cut_impl  # noqa: E402
+from arctx.core.run.lane import adopt_lane_records_impl as _adopt_lane_records_impl  # noqa: E402
 from arctx.core.run.node import add_node_impl as _add_node_impl  # noqa: E402
 from arctx.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from arctx.core.run.trace import trace_impl as _trace_impl  # noqa: E402
@@ -163,6 +164,7 @@ RunHandle.add_step = _add_step_impl
 RunHandle.add_node = _add_node_impl
 RunHandle.attach = _attach_impl
 RunHandle.cut = _cut_impl
+RunHandle.adopt_lane_records = _adopt_lane_records_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl
 RunHandle.outcomes = _outcomes_impl

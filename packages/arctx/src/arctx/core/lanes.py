@@ -22,6 +22,7 @@ class LaneRecordProvenance:
     event_id: str
     event_type: str
     created_at: str | None
+    membership_kind: str = "created"
 
     def to_dict(self) -> dict:
         return {
@@ -32,6 +33,7 @@ class LaneRecordProvenance:
             "event_id": self.event_id,
             "event_type": self.event_type,
             "created_at": self.created_at,
+            "membership_kind": self.membership_kind,
         }
 
 
@@ -60,7 +62,11 @@ class LaneGroup:
 
 @dataclass(frozen=True)
 class LaneMembership:
+    # Current lane membership. Creation events set the initial membership;
+    # later lane_adopted events may move membership without rewriting creation
+    # provenance.
     provenance: dict[str, LaneRecordProvenance] = field(default_factory=dict)
+    created_provenance: dict[str, LaneRecordProvenance] = field(default_factory=dict)
     node_to_lane: dict[str, str] = field(default_factory=dict)
     step_to_lane: dict[str, str] = field(default_factory=dict)
     payload_to_lane: dict[str, str] = field(default_factory=dict)
@@ -121,6 +127,37 @@ def lane_root_node_id(session: WorkSession) -> str | None:
     return str(root) if root else None
 
 
+def lane_root_candidates(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+) -> tuple[str, ...]:
+    """Return explicit or inferred root/anchor nodes for one lane.
+
+    If the lane metadata names ``root_node_id`` / ``anchor_node_id``, that node
+    is the lane root. Otherwise roots are inferred from the lane-local topology:
+    lane-owned nodes without a producing step in the same lane.
+    """
+    membership = membership or lane_membership(graph)
+    session = graph.work_sessions.get(lane_id)
+    explicit = lane_root_node_id(session) if session is not None else None
+    if explicit is not None:
+        return (explicit,)
+
+    roots: set[str] = set()
+    lane_nodes = {
+        node_id
+        for node_id, owner in membership.node_to_lane.items()
+        if owner == lane_id
+    }
+    for node_id in lane_nodes:
+        incoming_step = graph.step_to_node(node_id)
+        if incoming_step is None or membership.step_to_lane.get(incoming_step) != lane_id:
+            roots.add(node_id)
+
+    return tuple(sorted(roots))
+
+
 def lane_membership(
     graph: RunGraph,
     *,
@@ -140,6 +177,7 @@ def lane_membership(
     included_ids = node_ids | step_ids | payload_ids
 
     provenance: dict[str, LaneRecordProvenance] = {}
+    created_provenance: dict[str, LaneRecordProvenance] = {}
     node_to_lane: dict[str, str] = {}
     step_to_lane: dict[str, str] = {}
     payload_to_lane: dict[str, str] = {}
@@ -147,34 +185,67 @@ def lane_membership(
     lane_steps: dict[str, set[str]] = {}
     event_ids: list[str] = []
 
-    for event in graph.work_events:
-        created = [record_id for record_id in event.created_records if record_id in included_ids]
-        if not created:
-            continue
-        event_ids.append(event.event_id)
+    def provenance_for(
+        event: WorkEvent,
+        record_id: str,
+        membership_kind: str,
+    ) -> LaneRecordProvenance:
         session = graph.work_sessions.get(event.work_session_id)
         lane_name = session.name if session is not None else None
+        return LaneRecordProvenance(
+            record_id=record_id,
+            lane_id=event.work_session_id,
+            lane_name=lane_name,
+            user_id=event.user_id,
+            event_id=event.event_id,
+            event_type=event.event_type,
+            created_at=event.created_at,
+            membership_kind=membership_kind,
+        )
+
+    def assign_membership(record_id: str, prov: LaneRecordProvenance, *, override: bool) -> None:
+        if record_id in node_ids:
+            old_lane = node_to_lane.get(record_id)
+            if old_lane == prov.lane_id and record_id in provenance:
+                if override:
+                    provenance[record_id] = prov
+                return
+            if old_lane is not None:
+                lane_nodes.get(old_lane, set()).discard(record_id)
+            if override or record_id not in node_to_lane:
+                node_to_lane[record_id] = prov.lane_id
+                lane_nodes.setdefault(prov.lane_id, set()).add(record_id)
+                provenance[record_id] = prov
+        elif record_id in step_ids:
+            old_lane = step_to_lane.get(record_id)
+            if old_lane == prov.lane_id and record_id in provenance:
+                if override:
+                    provenance[record_id] = prov
+                return
+            if old_lane is not None:
+                lane_steps.get(old_lane, set()).discard(record_id)
+            if override or record_id not in step_to_lane:
+                step_to_lane[record_id] = prov.lane_id
+                lane_steps.setdefault(prov.lane_id, set()).add(record_id)
+                provenance[record_id] = prov
+        elif record_id in payload_ids:
+            if override or record_id not in payload_to_lane:
+                payload_to_lane[record_id] = prov.lane_id
+                provenance[record_id] = prov
+
+    for event in graph.work_events:
+        created = [record_id for record_id in event.created_records if record_id in included_ids]
+        adopted = _adopted_record_ids(event, included_ids)
+        if not created and not adopted:
+            continue
+        event_ids.append(event.event_id)
         for record_id in created:
-            provenance.setdefault(
-                record_id,
-                LaneRecordProvenance(
-                    record_id=record_id,
-                    lane_id=event.work_session_id,
-                    lane_name=lane_name,
-                    user_id=event.user_id,
-                    event_id=event.event_id,
-                    event_type=event.event_type,
-                    created_at=event.created_at,
-                ),
-            )
-            if record_id in node_ids:
-                node_to_lane.setdefault(record_id, event.work_session_id)
-                lane_nodes.setdefault(event.work_session_id, set()).add(record_id)
-            elif record_id in step_ids:
-                step_to_lane.setdefault(record_id, event.work_session_id)
-                lane_steps.setdefault(event.work_session_id, set()).add(record_id)
-            elif record_id in payload_ids:
-                payload_to_lane.setdefault(record_id, event.work_session_id)
+            prov = provenance_for(event, record_id, "created")
+            created_provenance.setdefault(record_id, prov)
+            assign_membership(record_id, prov, override=False)
+        for record_id in adopted:
+            prov = provenance_for(event, record_id, "adopted")
+            assign_membership(record_id, prov, override=True)
 
     groups = tuple(
         LaneGroup(
@@ -188,6 +259,7 @@ def lane_membership(
 
     return LaneMembership(
         provenance=provenance,
+        created_provenance=created_provenance,
         node_to_lane=node_to_lane,
         step_to_lane=step_to_lane,
         payload_to_lane=payload_to_lane,
@@ -228,10 +300,18 @@ def lane_subgraph(graph: RunGraph, lane_id: str) -> dict[str, tuple[str, ...]]:
     membership = lane_membership(graph)
     return {
         "node_ids": tuple(
-            sorted(node_id for node_id, owner in membership.node_to_lane.items() if owner == lane_id)
+            sorted(
+                node_id
+                for node_id, owner in membership.node_to_lane.items()
+                if owner == lane_id
+            )
         ),
         "step_ids": tuple(
-            sorted(step_id for step_id, owner in membership.step_to_lane.items() if owner == lane_id)
+            sorted(
+                step_id
+                for step_id, owner in membership.step_to_lane.items()
+                if owner == lane_id
+            )
         ),
     }
 
@@ -250,6 +330,13 @@ def validate_lanes(
     membership = lane_membership(graph)
     issues: list[LaneValidationIssue] = []
 
+    lane_node_ids: dict[str, set[str]] = {}
+    lane_step_ids: dict[str, set[str]] = {}
+    for node_id, lane_id in membership.node_to_lane.items():
+        lane_node_ids.setdefault(lane_id, set()).add(node_id)
+    for step_id, lane_id in membership.step_to_lane.items():
+        lane_step_ids.setdefault(lane_id, set()).add(step_id)
+
     for lane_id, session in graph.work_sessions.items():
         lane_root = lane_root_node_id(session)
         if lane_root is not None and lane_root not in graph.nodes:
@@ -259,6 +346,81 @@ def validate_lanes(
                     severity="error",
                     message=f"lane {lane_id!r} root node does not exist: {lane_root}",
                     record_id=lane_root,
+                    lane_id=lane_id,
+                )
+            )
+
+    for lane_id in sorted(set(lane_node_ids) | set(lane_step_ids)):
+        nodes = lane_node_ids.get(lane_id, set())
+        steps = lane_step_ids.get(lane_id, set())
+        roots = lane_root_candidates(graph, lane_id, membership)
+
+        if lane_id == "default" and (nodes or steps):
+            issues.append(
+                LaneValidationIssue(
+                    code="default_lane_membership",
+                    severity="warning",
+                    message=(
+                        f"default lane still owns {len(nodes)} nodes and "
+                        f"{len(steps)} steps"
+                    ),
+                    lane_id=lane_id,
+                )
+            )
+
+        if not roots and (nodes or steps):
+            issues.append(
+                LaneValidationIssue(
+                    code="lane_without_root",
+                    severity="error",
+                    message=f"lane {lane_id!r} has records but no root candidate",
+                    lane_id=lane_id,
+                )
+            )
+            continue
+
+        if len(roots) > 1:
+            issues.append(
+                LaneValidationIssue(
+                    code="multiple_lane_roots",
+                    severity="warning",
+                    message=(
+                        f"lane {lane_id!r} has {len(roots)} root candidates: "
+                        + ", ".join(roots)
+                    ),
+                    lane_id=lane_id,
+                )
+            )
+
+        reachable_nodes, reachable_steps = _reachable_lane_records(
+            graph,
+            lane_id,
+            roots,
+            membership,
+        )
+        for node_id in sorted(nodes - reachable_nodes):
+            issues.append(
+                LaneValidationIssue(
+                    code="lane_node_unreachable_from_root",
+                    severity="error",
+                    message=(
+                        f"node {node_id} is in lane {lane_id!r} but is not "
+                        "reachable from the lane root"
+                    ),
+                    record_id=node_id,
+                    lane_id=lane_id,
+                )
+            )
+        for step_id in sorted(steps - reachable_steps):
+            issues.append(
+                LaneValidationIssue(
+                    code="lane_step_unreachable_from_root",
+                    severity="error",
+                    message=(
+                        f"step {step_id} is in lane {lane_id!r} but is not "
+                        "reachable from the lane root"
+                    ),
+                    record_id=step_id,
                     lane_id=lane_id,
                 )
             )
@@ -302,8 +464,8 @@ def validate_lanes(
 
     lane_roots = {
         root
-        for session in graph.work_sessions.values()
-        if (root := lane_root_node_id(session)) is not None
+        for lane_id in graph.work_sessions
+        for root in lane_root_candidates(graph, lane_id, membership)
     }
     run_root = root_node_id or graph.metadata.get("root_node_id")
     for node_id in graph.roots():
@@ -320,6 +482,38 @@ def validate_lanes(
             )
 
     return tuple(issues)
+
+
+def _reachable_lane_records(
+    graph: RunGraph,
+    lane_id: str,
+    root_node_ids: tuple[str, ...],
+    membership: LaneMembership,
+) -> tuple[set[str], set[str]]:
+    reachable_nodes: set[str] = set()
+    reachable_steps: set[str] = set()
+    queue = list(root_node_ids)
+    seen_nodes: set[str] = set()
+
+    while queue:
+        node_id = queue.pop(0)
+        if node_id in seen_nodes:
+            continue
+        seen_nodes.add(node_id)
+        if membership.node_to_lane.get(node_id) == lane_id:
+            reachable_nodes.add(node_id)
+
+        for step_id in graph.steps_from_node(node_id):
+            if membership.step_to_lane.get(step_id) != lane_id:
+                continue
+            if step_id in reachable_steps:
+                continue
+            reachable_steps.add(step_id)
+            output_id = graph.step_output(step_id)
+            if output_id and output_id not in seen_nodes:
+                queue.append(output_id)
+
+    return reachable_nodes, reachable_steps
 
 
 def lane_export_view(
@@ -357,6 +551,10 @@ def lane_export_view(
             record_id: provenance.to_dict()
             for record_id, provenance in sorted(membership.provenance.items())
         },
+        "created_provenance": {
+            record_id: provenance.to_dict()
+            for record_id, provenance in sorted(membership.created_provenance.items())
+        },
         "groups": [group.to_dict() for group in membership.groups],
         "lane_boundaries": [
             boundary.to_dict()
@@ -364,3 +562,19 @@ def lane_export_view(
             if boundary.step_id in step_ids
         ],
     }
+
+
+def _adopted_record_ids(event: WorkEvent, included_ids: set[str]) -> list[str]:
+    if event.event_type != "lane_adopted":
+        return []
+    raw = event.data.get("record_ids")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in raw:
+        record_id = str(value)
+        if record_id in included_ids and record_id not in seen:
+            seen.add(record_id)
+            out.append(record_id)
+    return out

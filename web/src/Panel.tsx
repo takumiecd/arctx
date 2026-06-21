@@ -269,6 +269,7 @@ function ProvenanceCard({
   }
 
   const lane = provenance.lane_name || laneLabel(doc, provenance.lane_id);
+  const actorLabel = provenance.membership_kind === "adopted" ? "adopted by" : "created by";
   return (
     <section className="provenance-card" style={laneVars(doc, provenance.lane_id, laneColorOverrides)}>
       <h3>provenance</h3>
@@ -281,7 +282,7 @@ function ProvenanceCard({
         <code>{primaryKind}:{primaryId.slice(0, 12)}</code>
       </div>
       <div className="provenance-row">
-        <span>created by</span>
+        <span>{actorLabel}</span>
         <strong>{provenance.user_id}</strong>
       </div>
       <div className="provenance-row">

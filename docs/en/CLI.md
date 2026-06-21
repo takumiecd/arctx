@@ -74,6 +74,11 @@ Core commands:
 - `arctx use <run_id>`: write the repo-scoped current run pointer.
 - `arctx use <run_id> --shell`: print an `ARCTX_RUN_ID` export for shell-local
   pinning.
+- `arctx lane create <name>`: create a lane without switching to it.
+- `arctx lane switch <name-or-id>`: switch to an existing lane.
+- `arctx lane adopt <name-or-id> --record ID`: register existing records as
+  current members of a lane without rewriting creation provenance. Use
+  `--history NODE` or `--reachable NODE` for subgraph adoption.
 - `arctx export [--format md|tex|html]`: render a run as a shareable document.
 
 ## DAG Records
