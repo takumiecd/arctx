@@ -404,8 +404,17 @@ main {
   max-width: min(900px, calc(100vw - 280px));
   position: relative;
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-left: 1px solid #e2e8f0;
+  overflow: visible;
+}
+.panel-content {
+  flex: 1;
+  min-height: 0;
   padding: 12px 14px;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 .panel-resize-handle {
@@ -414,6 +423,7 @@ main {
   width: 10px;
   cursor: col-resize;
   touch-action: none;
+  z-index: 20;
 }
 .panel-resize-handle::after {
   content: "";
@@ -809,6 +819,18 @@ code {
 .payload-markdown .katex {
   font-size: 1.04em;
 }
+.payload-markdown img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(420px, 60vh);
+  margin: 8px auto;
+  object-fit: contain;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
 .payload-diff {
   background: #0f172a;
   border-color: #334155;
@@ -1025,4 +1047,3 @@ code {
   margin-top: 4px;
   margin-bottom: 8px;
 }
-
