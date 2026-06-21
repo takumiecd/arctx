@@ -112,14 +112,8 @@ def _get_run(store: Any, run_id: str, work_session_id: str) -> dict:
 
 def _payload_fields(body: dict) -> dict:
     """Pull the payload-shaping fields out of a request body."""
-    data: dict = {}
-    if body.get("type") is not None:
-        data["type"] = body["type"]
-    if body.get("content") is not None:
-        data["content"] = body["content"]
-    if body.get("metadata") is not None:
-        data["metadata"] = body["metadata"]
-    return data
+    exclude = {"payload_type", "target_id", "target_kind", "node_id", "input_node_ids", "output_node_id"}
+    return {k: v for k, v in body.items() if k not in exclude}
 
 
 def _has_payload_fields(body: dict) -> bool:

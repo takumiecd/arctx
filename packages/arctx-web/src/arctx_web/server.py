@@ -25,6 +25,20 @@ from arctx_web.layouts import get_layout, save_layout
 API_PATHS = frozenset({"/run", "/node", "/step", "/attach", "/cut", "/health"})
 WEB_API_PATHS = frozenset({"/web/layout"})
 ARTIFACT_PREFIX = "/artifacts/"
+ASSET_PREFIX = "/assets/"
+
+
+def _resolve_asset(run_dir: Path, url_path: str) -> Path | None:
+    raw = urllib.parse.unquote(url_path[len(ASSET_PREFIX):])
+    rel = posixpath.normpath(raw).lstrip("/")
+    if rel in ("", ".") or rel.startswith("../"):
+        return None
+    root = (run_dir / "assets").resolve()
+    target = (root / rel).resolve()
+    if target == root or root not in target.parents:
+        return None
+    return target
+
 
 
 def build_handler(
@@ -85,6 +99,9 @@ def build_handler(
 
         def _is_artifact(self) -> bool:
             return self._path().startswith(ARTIFACT_PREFIX)
+
+        def _is_asset(self) -> bool:
+            return self._path().startswith(ASSET_PREFIX)
 
         def _read_body(self) -> dict | None:
             length = int(self.headers.get("Content-Length") or 0)
@@ -176,6 +193,74 @@ def build_handler(
             ctype, _ = mimetypes.guess_type(str(target))
             self._send_bytes(200, target.read_bytes(), ctype or "application/octet-stream")
 
+        def _serve_asset(self) -> None:
+            target = _resolve_asset(store.run_path(run_id), self._path())
+            if target is None or not target.is_file():
+                self._send_bytes(404, b"not found", "text/plain")
+                return
+            ctype, _ = mimetypes.guess_type(str(target))
+            self._send_bytes(200, target.read_bytes(), ctype or "application/octet-stream")
+
+        def _handle_upload(self) -> None:
+            import email
+            content_type = self.headers.get("Content-Type", "")
+            if not content_type.startswith("multipart/form-data"):
+                self._send_json(400, {"error": "Content-Type must be multipart/form-data"})
+                return
+
+            length = int(self.headers.get("Content-Length", 0))
+            if length == 0:
+                self._send_json(400, {"error": "Content-Length is 0"})
+                return
+
+            raw_data = self.rfile.read(length)
+            msg_bytes = b"Content-Type: " + content_type.encode("utf-8") + b"\r\n\r\n" + raw_data
+            msg = email.message_from_bytes(msg_bytes)
+
+            if not msg.is_multipart():
+                self._send_json(400, {"error": "Not a multipart request"})
+                return
+
+            file_part = None
+            for part in msg.walk():
+                if part.get_filename():
+                    file_part = part
+                    break
+
+            if file_part is None:
+                self._send_json(400, {"error": "No file found in request"})
+                return
+
+            filename = file_part.get_filename()
+            file_content = file_part.get_payload(decode=True)
+            if not file_content:
+                self._send_json(400, {"error": "Empty file content"})
+                return
+
+            from arctx.core.ids import opaque_id
+
+            asset_id = opaque_id("ast")
+            mime_type, _ = mimetypes.guess_type(filename)
+            if not mime_type:
+                mime_type = "application/octet-stream"
+            size_bytes = len(file_content)
+
+            run_path = store.run_path(run_id)
+            assets_dir = run_path / "assets"
+            assets_dir.mkdir(parents=True, exist_ok=True)
+
+            dest_filename = f"{asset_id}_{filename}"
+            dest_path = assets_dir / dest_filename
+            dest_path.write_bytes(file_content)
+
+            self._send_json(201, {
+                "asset_id": asset_id,
+                "filename": filename,
+                "mime_type": mime_type,
+                "size_bytes": size_bytes,
+                "path": f"assets/{dest_filename}"
+            })
+
         # ----- verbs -----
 
         def do_OPTIONS(self) -> None:  # noqa: N802
@@ -190,6 +275,8 @@ def build_handler(
                 self._web_api("GET")
             elif self._is_artifact():
                 self._serve_artifact()
+            elif self._is_asset():
+                self._serve_asset()
             else:
                 self._serve_static()
 
@@ -198,6 +285,8 @@ def build_handler(
                 self._api("POST")
             elif self._is_web_api():
                 self._web_api("POST")
+            elif self._path() == "/assets/upload":
+                self._handle_upload()
             else:
                 self._send_json(404, {"error": "not found"})
 

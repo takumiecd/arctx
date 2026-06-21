@@ -36,6 +36,13 @@ export interface RunClient {
   getExtensions(): Promise<ExtensionsResponse>;
   enableExtension(name: string): Promise<void>;
   disableExtension(name: string): Promise<void>;
+  uploadAsset(file: File): Promise<{
+    asset_id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    path: string;
+  }>;
 }
 
 class ReadOnlyError extends Error {
@@ -107,6 +114,30 @@ export class LiveClient implements RunClient {
   async disableExtension(name: string) {
     await this.req("/ext/disable", { method: "POST", body: JSON.stringify({ name }) });
   }
+  async uploadAsset(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const headers: Record<string, string> = {};
+    if (this.activeLaneId) {
+      headers["X-Arctx-Work-Session-Id"] = this.activeLaneId;
+    }
+    const res = await fetch(this.base + "/assets/upload", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
+    }
+    return data as {
+      asset_id: string;
+      filename: string;
+      mime_type: string;
+      size_bytes: number;
+      path: string;
+    };
+  }
 }
 
 export class StaticClient implements RunClient {
@@ -147,6 +178,9 @@ export class StaticClient implements RunClient {
     throw new ReadOnlyError();
   }
   async disableExtension(): Promise<void> {
+    throw new ReadOnlyError();
+  }
+  async uploadAsset(): Promise<any> {
     throw new ReadOnlyError();
   }
 }

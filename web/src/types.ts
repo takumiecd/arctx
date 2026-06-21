@@ -27,6 +27,11 @@ export interface RunPayload {
   content?: Record<string, unknown>;
   reason?: string | null;
   metadata?: Record<string, unknown>;
+  asset_id?: string;
+  filename?: string;
+  mime_type?: string;
+  size_bytes?: number;
+  path?: string;
   [key: string]: unknown;
 }
 

@@ -61,7 +61,7 @@ interface DetailUnit {
 type AdoptMode = "explicit" | "history" | "reachable";
 
 type Tab = "content" | "flow" | "edit";
-type AttachPreset = "note" | "git_change" | "diagram" | "command_run" | "custom";
+type AttachPreset = "note" | "git_change" | "diagram" | "command_run" | "asset" | "custom";
 
 interface FieldDef {
   key: string;
@@ -137,6 +137,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
   // Attach state
   const [attachPreset, setAttachPreset] = useState<AttachPreset>("note");
   const [attachTargetKey, setAttachTargetKey] = useState("step");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   // Form values state for schema-driven dynamic fields
   const [formValues, setFormValues] = useState<Record<string, any>>({});
@@ -194,7 +195,20 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
   });
 
   const attach = useMutation({
-    mutationFn: (target: AttachTarget) => {
+    mutationFn: async (target: AttachTarget) => {
+      if (attachPreset === "asset") {
+        if (!uploadFile) {
+          throw new Error("No file selected for upload.");
+        }
+        const assetInfo = await client.uploadAsset(uploadFile);
+        return client.attach({
+          target_id: target.selection.id,
+          target_kind: target.selection.kind,
+          payload_type: "asset",
+          ...assetInfo,
+        } as any);
+      }
+
       let typeVal = "";
       let contentObj: Record<string, unknown> = {};
 
@@ -224,6 +238,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
       // Reset preset fields
       setFormValues({});
       setCustomContent("{}");
+      setUploadFile(null);
       invalidate();
     },
     onError: fail,
@@ -555,7 +570,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
               </select>
             </label>
 
-            <label>
+             <label>
               Preset Type
               <select
                 value={attachPreset}
@@ -565,12 +580,13 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
                 <option value="git_change">Git Change (Git Integration)</option>
                 <option value="diagram">Diagram (Mermaid / Graphviz)</option>
                 <option value="command_run">Command Run (Execution Log)</option>
+                <option value="asset">Asset (File Attachment)</option>
                 <option value="custom">Custom JSON</option>
               </select>
             </label>
 
             {/* Dynamic Preset fields */}
-            {attachPreset !== "custom" && PAYLOAD_SCHEMAS[attachPreset] && (
+            {attachPreset !== "custom" && attachPreset !== "asset" && PAYLOAD_SCHEMAS[attachPreset] && (
               <div className="dynamic-fields">
                 {PAYLOAD_SCHEMAS[attachPreset].fields.map((field) => {
                   const val = formValues[field.key] ?? "";
@@ -608,6 +624,21 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
               </div>
             )}
 
+            {/* Asset Preset (File Upload Mode) */}
+            {attachPreset === "asset" && (
+              <label>
+                select file
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setUploadFile(file);
+                  }}
+                  style={{ width: "100%", padding: "4px" }}
+                />
+              </label>
+            )}
+
             {/* Custom Preset (Raw JSON Mode) */}
             {attachPreset === "custom" && (
               <>
@@ -631,7 +662,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
             )}
 
             <button
-              disabled={attach.isPending || (attachPreset === "custom" && !!jsonError)}
+              disabled={attach.isPending || (attachPreset === "custom" && !!jsonError) || (attachPreset === "asset" && !uploadFile)}
               onClick={() => attach.mutate(attachTarget)}
             >
               attach payload
@@ -1230,6 +1261,12 @@ function safeImageSrc(src: string): string | null {
   if (src.startsWith("/artifacts/")) {
     return artifactPath(src.slice("/artifacts/".length));
   }
+  if (src.startsWith("/assets/")) {
+    return assetPath(src.slice("/assets/".length));
+  }
+  if (src.startsWith("assets/")) {
+    return assetPath(src.slice("assets/".length));
+  }
   return null;
 }
 
@@ -1237,6 +1274,12 @@ function artifactPath(path: string): string | null {
   const parts = path.split("/").filter(Boolean);
   if (!parts.length || parts.some((part) => part === "." || part === "..")) return null;
   return `/artifacts/${parts.map(encodeURIComponent).join("/")}`;
+}
+
+function assetPath(path: string): string | null {
+  const parts = path.split("/").filter(Boolean);
+  if (!parts.length || parts.some((part) => part === "." || part === "..")) return null;
+  return `/assets/${parts.map(encodeURIComponent).join("/")}`;
 }
 
 function tableData(value: unknown): { columns: string[]; rows: Record<string, unknown>[] } | null {

@@ -343,6 +343,49 @@ function commitSubject(commits: unknown[]): string | null {
   return typeof subject === "string" && subject ? subject : null;
 }
 
+function assetDisplay(payload: RunPayload): PayloadDisplay {
+  const assetId = stringValue(payload.asset_id);
+  const filename = stringValue(payload.filename);
+  const mimeType = stringValue(payload.mime_type);
+  const sizeBytes = typeof payload.size_bytes === "number" ? payload.size_bytes : 0;
+  const relPath = stringValue(payload.path) || `assets/${assetId}_${filename}`;
+  const src = relPath.startsWith("/") ? relPath : `/${relPath}`;
+
+  const media: PayloadMedia[] = [];
+  const sections: PayloadSection[] = [];
+
+  if (mimeType.startsWith("image/")) {
+    media.push({
+      kind: "image",
+      src: src,
+      alt: filename,
+      caption: `${filename} (${(sizeBytes / 1024).toFixed(1)} KB)`,
+    });
+  } else if (mimeType.startsWith("video/")) {
+    // We can put it under sections for custom video play layout or similar
+    sections.push({
+      title: "video file",
+      kind: "json", // Fallback info
+      value: { src, mime_type: mimeType, filename, size_bytes: sizeBytes },
+    });
+  }
+
+  const fields: PayloadField[] = [
+    { label: "filename", value: filename },
+    { label: "mime", value: mimeType },
+    { label: "size", value: `${(sizeBytes / 1024).toFixed(1)} KB` },
+  ];
+
+  return {
+    title: "attached asset",
+    summary: filename,
+    graphLabel: filename,
+    media: media.length > 0 ? media : undefined,
+    fields,
+    sections: sections.length > 0 ? sections : undefined,
+  };
+}
+
 registerPayloadRenderer("node_payload", genericPayloadDisplay);
 registerPayloadRenderer("step_payload", genericPayloadDisplay);
 registerPayloadRenderer("cut", cutDisplay);
@@ -353,3 +396,4 @@ registerPayloadRenderer("revert", revertDisplay);
 registerPayloadRenderer("cherry_pick", cherryPickDisplay);
 registerPayloadRenderer("merge", mergeDisplay);
 registerPayloadRenderer("command_run", commandRunDisplay);
+registerPayloadRenderer("asset", assetDisplay);

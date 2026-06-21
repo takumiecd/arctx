@@ -8,6 +8,7 @@ from arctx.ext.base import CliCommand, Extension, ExtensionBase, InitContext, Vi
 
 # Built-in extensions. (name -> "module:Class")
 _BUILTIN: dict[str, str] = {
+    "asset": "arctx.ext.asset:AssetExtension",
     "claude-code": "arctx.ext.claude_code:ClaudeCodeExtension",
     "codex": "arctx.ext.codex:CodexExtension",
     "command": "arctx.ext.command:CommandExtension",
