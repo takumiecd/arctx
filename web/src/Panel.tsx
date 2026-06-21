@@ -27,6 +27,7 @@ import {
   payloadsForStep,
   provenanceFor,
   stepType,
+  type LaneColorOverrides,
 } from "./model";
 import {
   payloadDisplayFor,
@@ -41,6 +42,7 @@ interface Props {
   selection: Selection;
   client: RunClient;
   onSelect: (sel: Selection) => void;
+  laneColorOverrides: LaneColorOverrides;
 }
 
 interface AttachTarget {
@@ -55,7 +57,7 @@ interface DetailUnit {
   selected: Exclude<Selection, null>;
 }
 
-export function Panel({ doc, selection, client, onSelect }: Props) {
+export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: Props) {
   const qc = useQueryClient();
   const [panelWidth, startPanelResize] = useResizablePanelWidth();
   const [stepType, setStepType] = useState("experiment");
@@ -135,7 +137,7 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
       </h2>
 
       <section className="panel-view">
-        <ProvenanceCard doc={doc} unit={unit} />
+        <ProvenanceCard doc={doc} unit={unit} laneColorOverrides={laneColorOverrides} />
         <SelectionContext doc={doc} unit={unit} onSelect={onSelect} />
 
         {unit.stepId ? (
@@ -235,7 +237,15 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
   );
 }
 
-function ProvenanceCard({ doc, unit }: { doc: RunDocument; unit: DetailUnit }) {
+function ProvenanceCard({
+  doc,
+  unit,
+  laneColorOverrides,
+}: {
+  doc: RunDocument;
+  unit: DetailUnit;
+  laneColorOverrides: LaneColorOverrides;
+}) {
   const primaryId = unit.stepId ?? unit.outputNodeId;
   const primaryKind = unit.stepId ? "step" : "node";
   const provenance =
@@ -260,7 +270,7 @@ function ProvenanceCard({ doc, unit }: { doc: RunDocument; unit: DetailUnit }) {
 
   const lane = provenance.lane_name || laneLabel(doc, provenance.lane_id);
   return (
-    <section className="provenance-card" style={laneVars(doc, provenance.lane_id)}>
+    <section className="provenance-card" style={laneVars(doc, provenance.lane_id, laneColorOverrides)}>
       <h3>provenance</h3>
       <div className="provenance-row">
         <span>lane</span>
@@ -288,8 +298,12 @@ function ProvenanceCard({ doc, unit }: { doc: RunDocument; unit: DetailUnit }) {
   );
 }
 
-function laneVars(doc: RunDocument, laneId: string): CSSProperties {
-  const colors = laneColors(doc, laneId);
+function laneVars(
+  doc: RunDocument,
+  laneId: string,
+  laneColorOverrides: LaneColorOverrides,
+): CSSProperties {
+  const colors = laneColors(doc, laneId, laneColorOverrides);
   return {
     "--lane-color": colors.laneColor,
     "--lane-bg": colors.laneBg,

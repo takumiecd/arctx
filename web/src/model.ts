@@ -3,6 +3,13 @@
 import type { RecordProvenance, RunDocument, RunGroup, RunPayload } from "./types";
 import { payloadDisplayFor } from "./payloadExtensions";
 
+export type LaneColorOverrides = Record<string, string>;
+
+export interface LaneColors {
+  laneColor: string;
+  laneBg: string;
+}
+
 export function payloadsForNode(doc: RunDocument, nodeId: string): RunPayload[] {
   return doc.payloads.filter((p) => p.target_kind === "node" && p.target_id === nodeId);
 }
@@ -66,7 +73,15 @@ export function laneColorIndex(doc: RunDocument, laneId: string): number {
   return index >= 0 ? index % 8 : 0;
 }
 
-export function laneColors(doc: RunDocument, laneId: string): { laneColor: string; laneBg: string } {
+export function laneColors(
+  doc: RunDocument,
+  laneId: string,
+  overrides: LaneColorOverrides = {},
+): LaneColors {
+  const override = normalizeHexColor(overrides[laneId]);
+  if (override) {
+    return { laneColor: override, laneBg: tintHexColor(override) };
+  }
   const [laneColor, laneBg] = LANE_COLORS[laneColorIndex(doc, laneId)];
   return { laneColor, laneBg };
 }
@@ -81,6 +96,17 @@ const LANE_COLORS = [
   ["#db2777", "#fce7f3"],
   ["#4f46e5", "#e0e7ff"],
 ] as const;
+
+function normalizeHexColor(color: string | undefined): string | null {
+  if (!color || !/^#[0-9a-fA-F]{6}$/.test(color)) return null;
+  return color.toLowerCase();
+}
+
+function tintHexColor(color: string): string {
+  const channels = [1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16));
+  const tinted = channels.map((channel) => Math.round(channel + (255 - channel) * 0.86));
+  return `#${tinted.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
 
 function firstMeaningfulPayload(payloads: RunPayload[]): RunPayload | null {
   return payloads.find((p) => p.payload_type !== "cut") ?? null;

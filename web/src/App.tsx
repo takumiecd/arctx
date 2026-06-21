@@ -1,10 +1,10 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { pickClient } from "./api";
 import { Graph, type Selection } from "./Graph";
 import { Panel } from "./Panel";
-import { laneColors, laneGroups } from "./model";
+import { laneColors, laneGroups, type LaneColorOverrides } from "./model";
 import type { RunDocument } from "./types";
 
 const client = pickClient();
@@ -12,6 +12,8 @@ const client = pickClient();
 export function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [collapsedLaneIds, setCollapsedLaneIds] = useState<Set<string>>(() => new Set());
+  const [laneColorOverrides, setLaneColorOverrides] = useState<LaneColorOverrides>({});
+  const [laneColorRunId, setLaneColorRunId] = useState<string | null>(null);
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
   const { data, isLoading, error } = useQuery({
@@ -43,6 +45,21 @@ export function App() {
       client.saveLayout({ view: "default", nodes }),
   });
 
+  useEffect(() => {
+    if (!data) return;
+    setLaneColorOverrides(readLaneColorOverrides(data.run_id));
+    setLaneColorRunId(data.run_id);
+  }, [data?.run_id]);
+
+  useEffect(() => {
+    const runId = data?.run_id;
+    if (!runId || laneColorRunId !== runId) return;
+    window.localStorage.setItem(
+      laneColorStorageKey(runId),
+      JSON.stringify(laneColorOverrides),
+    );
+  }, [data?.run_id, laneColorOverrides, laneColorRunId]);
+
   if (isLoading) return <div className="center">loading run…</div>;
   if (error) return <div className="center error">{(error as Error).message}</div>;
   if (!data) return <div className="center">no run</div>;
@@ -65,6 +82,9 @@ export function App() {
       return next;
     });
   };
+  const setLaneColor = (laneId: string, color: string) => {
+    setLaneColorOverrides((prev) => ({ ...prev, [laneId]: color }));
+  };
 
   return (
     <div className="layout">
@@ -82,16 +102,28 @@ export function App() {
               if (!laneId) return null;
               const collapsed = visibleCollapsedLaneIds.has(laneId);
               return (
-                <button
+                <span
                   key={lane.group_id}
-                  className={`lane-chip${collapsed ? " collapsed" : ""}`}
-                  type="button"
-                  title={collapsed ? "expand lane" : "collapse lane"}
-                  style={laneChipStyle(data, laneId)}
-                  onClick={() => toggleLane(laneId)}
+                  className="lane-control"
+                  style={laneChipStyle(data, laneId, laneColorOverrides)}
                 >
-                  {collapsed ? "▸" : "▾"} {lane.label}
-                </button>
+                  <button
+                    className={`lane-chip${collapsed ? " collapsed" : ""}`}
+                    type="button"
+                    title={collapsed ? "expand lane" : "collapse lane"}
+                    onClick={() => toggleLane(laneId)}
+                  >
+                    {collapsed ? "▸" : "▾"} {lane.label}
+                  </button>
+                  <label className="lane-color-picker" title={`change ${lane.label} color`}>
+                    <span className="sr-only">change {lane.label} color</span>
+                    <input
+                      type="color"
+                      value={laneColors(data, laneId, laneColorOverrides).laneColor}
+                      onChange={(event) => setLaneColor(laneId, event.currentTarget.value)}
+                    />
+                  </label>
+                </span>
               );
             })}
           </span>
@@ -125,19 +157,51 @@ export function App() {
             onRunChanged={invalidate}
             collapsedLaneIds={visibleCollapsedLaneIds}
             onToggleLane={toggleLane}
+            laneColorOverrides={laneColorOverrides}
             writable={client.writable}
           />
         </div>
-        <Panel doc={data} selection={selection} client={client} onSelect={setSelection} />
+        <Panel
+          doc={data}
+          selection={selection}
+          client={client}
+          onSelect={setSelection}
+          laneColorOverrides={laneColorOverrides}
+        />
       </main>
     </div>
   );
 }
 
-function laneChipStyle(doc: RunDocument, laneId: string): CSSProperties {
-  const colors = laneColors(doc, laneId);
+function laneChipStyle(
+  doc: RunDocument,
+  laneId: string,
+  laneColorOverrides: LaneColorOverrides,
+): CSSProperties {
+  const colors = laneColors(doc, laneId, laneColorOverrides);
   return {
     "--lane-color": colors.laneColor,
     "--lane-bg": colors.laneBg,
   } as CSSProperties;
+}
+
+function laneColorStorageKey(runId: string): string {
+  return `arctx.laneColors.${runId}`;
+}
+
+function readLaneColorOverrides(runId: string): LaneColorOverrides {
+  const raw = window.localStorage.getItem(laneColorStorageKey(runId));
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] =>
+          typeof entry[1] === "string" && /^#[0-9a-fA-F]{6}$/.test(entry[1]),
+      ),
+    );
+  } catch {
+    return {};
+  }
 }
