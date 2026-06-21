@@ -1,6 +1,6 @@
-# Attachments / Media Extension (`asset`)
+# Attachments / Media (`asset`) — core payload
 
-The `asset` extension allows you to manage and attach external files—such as images, videos, PDFs, and text documents—to Nodes and Steps in the ARCTX graph.
+`asset` lets you manage and attach external files—images, videos, PDFs, text documents—to Nodes and Steps in the ARCTX graph. It is a **core standard payload** (`AssetPayload`), not an extension: it is always available (no `--extension` needed) and lives in core because its visibility rules (which records may reference an asset by URL) depend on core lineage.
 
 ---
 
@@ -33,15 +33,15 @@ The easiest way to attach files is directly from input forms (such as **Note (Ma
 
 Use `arctx asset` to copy and attach files to Nodes/Steps via CLI.
 
-### 1. Attach a File (`arctx asset attach` / `arctx attach-file`)
+### 1. Attach a File (`arctx asset attach`)
 Copies the specified file to the run's `artifacts/` folder and creates an `AssetPayload`:
 
 ```bash
 # Attach an image to a node
 arctx asset attach path/to/chart.png --target n_abc123
 
-# Using the short alias command
-arctx attach-file path/to/report.pdf --target t_xyz789
+# Steps work too
+arctx asset attach path/to/report.pdf --target t_xyz789
 ```
 
 ### 2. List Attached Assets
@@ -62,7 +62,7 @@ arctx asset show pl_xyz456
 
 ## Python API
 
-Programmatically attach files using the `handle.asset` namespace:
+Programmatically attach files using the core verb `handle.attach_asset(...)`:
 
 ```python
 from arctx import init
@@ -71,11 +71,15 @@ from arctx.core.schema.requirements import Requirement
 handle = init(Requirement("req1", "task", "t"))
 
 # Attach a chart to a node
-payload = handle.asset.attach(
-    target_id="n_abc123",
-    file_path="path/to/chart.png",
+payload = handle.attach_asset(
+    "n_abc123",
+    "path/to/chart.png",
 )
 
 # Retrieve the relative path
-print(payload.path) # e.g. artifacts/art_xxx_chart.png
+print(payload.path) # e.g. artifacts/ast_xxx_chart.png
 ```
+
+### Visibility (where an asset can be referenced)
+
+An asset is referenceable from the node/step it is attached to **and that record's descendants** (records reachable forward). Equivalently, a record may reference only assets attached to **itself or its ancestors** — never a sibling's or descendant's assets. The set visible from a record is served by `GET /assets/visible?from=<id>`, with the rule computed in `arctx.core.lineage`.

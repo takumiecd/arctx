@@ -8,7 +8,6 @@ from arctx.ext.base import CliCommand, Extension, ExtensionBase, InitContext, Vi
 
 # Built-in extensions. (name -> "module:Class")
 _BUILTIN: dict[str, str] = {
-    "asset": "arctx.ext.asset:AssetExtension",
     "claude-code": "arctx.ext.claude_code:ClaudeCodeExtension",
     "codex": "arctx.ext.codex:CodexExtension",
     "command": "arctx.ext.command:CommandExtension",
@@ -60,7 +59,14 @@ def attach_extensions(handle, names: Iterable[str]):
     for name in names:
         if name in seen:
             continue
-        ext = load_extension(name)
+        try:
+            ext = load_extension(name)
+        except KeyError:
+            # Unknown extension name (e.g. a once-extension now folded into
+            # core, or a third-party ext not installed). Skip rather than
+            # crash when loading a run whose enabled list is stale.
+            seen.add(name)
+            continue
         ext.register_schema()
         ext.register_verbs(handle)
         seen.add(ext.name)

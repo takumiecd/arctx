@@ -1,17 +1,17 @@
-"""CLI integration tests for the asset extension."""
+"""CLI integration tests for assets (now a core payload, always available)."""
 
 from __future__ import annotations
 
 import json
-import pytest
 
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.context import resolve_store
 from arctx_cli.main import main
-from arctx.ext.asset.payloads import AssetPayload
 
 
-def test_asset_cli_is_only_registered_for_enabled_run(tmp_path, capsys):
+def test_asset_cli_available_without_enabling(tmp_path, capsys):
+    # asset is a core command now; it is registered for every run and fails
+    # gracefully (exit 1) on an unknown target rather than being absent.
     store_dir = str(tmp_path / "runs")
     run_init_command(
         requirement_id="req",
@@ -24,23 +24,16 @@ def test_asset_cli_is_only_registered_for_enabled_run(tmp_path, capsys):
     dummy_file = tmp_path / "dummy.txt"
     dummy_file.write_text("hello")
 
-    with pytest.raises(SystemExit) as exc:
-        main(
-            [
-                "asset",
-                "attach",
-                str(dummy_file),
-                "--target",
-                "n_0000",
-                "--run",
-                "run_plain",
-                "--store-dir",
-                store_dir,
-            ]
-        )
-
-    assert exc.value.code == 2
-    assert "invalid choice" in capsys.readouterr().err
+    rc = main(
+        [
+            "asset", "attach", str(dummy_file),
+            "--target", "n_0000",
+            "--run", "run_plain",
+            "--store-dir", store_dir,
+        ]
+    )
+    assert rc == 1
+    assert "target_id not found" in capsys.readouterr().err
 
 
 def test_asset_cli_attach_and_list(tmp_path, capsys):
@@ -51,8 +44,6 @@ def test_asset_cli_attach_and_list(tmp_path, capsys):
         target_id="target",
         run_id="run_asset_cli",
         store_dir=store_dir,
-        extensions=["asset"],
-        extension_options={},
     )
 
     store = resolve_store(store_dir)
@@ -65,15 +56,10 @@ def test_asset_cli_attach_and_list(tmp_path, capsys):
     # 1. Attach via CLI
     rc = main(
         [
-            "asset",
-            "attach",
-            str(dummy_file),
-            "--target",
-            root_node_id,
-            "--run",
-            "run_asset_cli",
-            "--store-dir",
-            store_dir,
+            "asset", "attach", str(dummy_file),
+            "--target", root_node_id,
+            "--run", "run_asset_cli",
+            "--store-dir", store_dir,
         ]
     )
 
@@ -87,14 +73,10 @@ def test_asset_cli_attach_and_list(tmp_path, capsys):
     # 2. List via CLI
     rc = main(
         [
-            "asset",
-            "list",
-            "--target",
-            root_node_id,
-            "--run",
-            "run_asset_cli",
-            "--store-dir",
-            store_dir,
+            "asset", "list",
+            "--target", root_node_id,
+            "--run", "run_asset_cli",
+            "--store-dir", store_dir,
         ]
     )
     assert rc == 0
@@ -105,13 +87,9 @@ def test_asset_cli_attach_and_list(tmp_path, capsys):
     # 3. Show details via CLI
     rc = main(
         [
-            "asset",
-            "show",
-            data["payload_id"],
-            "--run",
-            "run_asset_cli",
-            "--store-dir",
-            store_dir,
+            "asset", "show", data["payload_id"],
+            "--run", "run_asset_cli",
+            "--store-dir", store_dir,
         ]
     )
     assert rc == 0

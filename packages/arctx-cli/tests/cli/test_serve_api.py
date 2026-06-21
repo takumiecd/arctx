@@ -450,7 +450,7 @@ class TestArtifactUpload:
 class TestVisibleAssets:
     @staticmethod
     def _attach_asset(handle, target_kind, target_id, name):
-        from arctx.ext.asset.payloads import AssetPayload
+        from arctx.core.schema.payloads import AssetPayload
 
         payload = AssetPayload(
             payload_id=handle._next_id("pl"),

@@ -63,6 +63,7 @@ Two-tier design. Core payloads live under `packages/arctx/src/arctx/core/schema/
 **Core typed payloads**:
 - `CutPayload(payload_id, target_id, target_kind, reason=None)` — append-only cut marker
 - `JoinPayload(payload_id, target_id, joined_views)` — step-targeting marker for a multi-input step that joins independent histories with no common ancestor (extension-agnostic; `target_kind="step"`)
+- `AssetPayload(payload_id, target_id, target_kind, asset_id, filename, mime_type, size_bytes, path)` — a file asset (image/video/document) attached to a Node or Step. The file lives under `<run_dir>/artifacts/`; `path` is run-relative. Asset is a **core payload, not an extension** (it depends on core lineage). Visibility — which records may reference an asset by URL — is computed at read time in `packages/arctx/src/arctx/core/lineage.py`: an asset is reachable from the record it is attached to and that record's descendants. Attach via `handle.attach_asset(...)` or `arctx asset attach`; files are uploaded through the generic `POST /artifacts/upload`. The visible set is served by `GET /assets/visible?from=<id>`.
 
 **Git extension payloads** (`packages/arctx/src/arctx/ext/git/payloads.py`):
 - `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=(), repo_id="")` — git record on a Step
@@ -83,6 +84,7 @@ Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`)
 
 - `add_step(input_node_ids, payload, *, user_id=None, work_session_id=None) -> Step` — create one Step and one output Node from input nodes; `payload` must be step-targeting
 - `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
+- `attach_asset(target_id, file_path, *, user_id=None, work_session_id=None) -> AssetPayload` — copy a file into `<run_dir>/artifacts/` and attach an `AssetPayload` to a Node or Step
 - `cut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> CutPayload` — mark a Node or Step inactive
 - `trace(node_id, ...)` (alias: `history`) — walk history backwards
 - `outcomes(step_id)` — return output node info for a step

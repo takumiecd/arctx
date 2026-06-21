@@ -11,10 +11,11 @@ This directory contains the documentation and usage guides for each standard ext
 | Extension | Document | Role |
 | :--- | :--- | :--- |
 | **Git Integration (`git`)** | [Git Integration Guide](git.md) | Links Git repositories, branches, commit logs, and diff summaries to Steps / Nodes. |
-| **Attachments / Media (`asset`)** | [Attachments Guide](asset.md) | Saves external assets (images, videos, PDFs) inside the run's `artifacts/` folder and links them to Nodes / Steps. |
 | **Diagrams (`diagram`)** | [Diagrams Guide](diagram.md) | Defines and renders Mermaid or Graphviz diagrams as vector graphs on Nodes / Steps. |
 | **Command Execution Logs (`command`)** | [Command Logs Guide](command.md) | Records command lines, exit codes, stdout, stderr, and run durations for external tool executions. |
 | **Agent Integration (`agents` / `codex`)** | [Agent Recorder Guide](agents.md) | Records AI agent sessions, including tool calls, prompts, and session events into WorkSessions. |
+
+> Note: **Attachments / Media (`asset`)** used to be an extension; it is now a core standard payload (always available, no enabling needed). → [Attachments Guide](asset.md)
 
 ---
 
@@ -40,5 +41,5 @@ arctx ext disable git
 You can enable one or more extensions when initializing a new run:
 
 ```bash
-arctx init req_demo --extension git --extension asset
+arctx init req_demo --extension git --extension diagram
 ```

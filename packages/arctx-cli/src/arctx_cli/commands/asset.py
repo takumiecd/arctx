@@ -1,4 +1,4 @@
-"""arctx asset subcommand — attach and manage file assets."""
+"""arctx asset command — attach and manage file assets (core payload)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     asset_parser = subparsers.add_parser("asset", help="Asset management commands")
     asset_sub = asset_parser.add_subparsers(dest="asset_command", required=True)
 
-    # attach
     sp_attach = asset_sub.add_parser("attach", help="Attach a file to a Node or Step")
     sp_attach.add_argument("file_path", help="Path to the file to attach")
     sp_attach.add_argument("--target", required=True, dest="target_id", help="Node or Step ID")
@@ -29,13 +28,11 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_attach.add_argument("--user", default=None)
     sp_attach.add_argument("--work-session", default=None)
 
-    # list
     sp_list = asset_sub.add_parser("list", help="List assets for a Node or Step")
     sp_list.add_argument("--target", required=True, dest="target_id", help="Node or Step ID")
     sp_list.add_argument("--run", default=None)
     sp_list.add_argument("--store-dir", default=None)
 
-    # show
     sp_show = asset_sub.add_parser("show", help="Show details of a specific asset payload")
     sp_show.add_argument("payload_id", help="Payload ID of the asset")
     sp_show.add_argument("--run", default=None)
@@ -45,7 +42,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 
 
 def cli_asset(args) -> int:
-    """Dispatch canonical ``arctx asset`` subcommands."""
+    """Dispatch ``arctx asset`` subcommands."""
     if args.asset_command == "attach":
         return _cli_asset_attach(args)
     if args.asset_command == "list":
@@ -67,8 +64,6 @@ def _cli_asset_attach(args) -> int:
         return 1
 
     handle = store.load_run(run_id)
-
-    # Make sure target exists
     if (
         args.target_id not in handle.run_graph.nodes
         and args.target_id not in handle.run_graph.steps
@@ -78,8 +73,7 @@ def _cli_asset_attach(args) -> int:
 
     try:
         before = graph_counts(handle)
-        # Call the extension verb
-        payload = handle.asset.attach(
+        payload = handle.attach_asset(
             args.target_id,
             args.file_path,
             user_id=user_id,
@@ -109,10 +103,6 @@ def _cli_asset_list(args) -> int:
         return 1
 
     handle = store.load_run(run_id)
-
-    # Filter payloads by type 'asset' and target_id
-    payloads = []
-    # Both Node and Step can have payloads
     if args.target_id in handle.run_graph.nodes:
         raw_payloads = handle.run_graph.payloads_for_node(args.target_id)
     elif args.target_id in handle.run_graph.steps:
@@ -121,10 +111,11 @@ def _cli_asset_list(args) -> int:
         print(f"error: target_id not found: {args.target_id}", file=sys.stderr)
         return 1
 
-    for p in raw_payloads:
-        if getattr(p, "payload_type", None) == "asset":
-            payloads.append(p.to_dict())
-
+    payloads = [
+        p.to_dict()
+        for p in raw_payloads
+        if getattr(p, "payload_type", None) == "asset"
+    ]
     print(json.dumps(payloads, ensure_ascii=False, indent=2))
     return 0
 
