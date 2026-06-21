@@ -52,12 +52,16 @@ def dispatch(
     *,
     user_id: str,
     work_session_id: str,
+    query: dict | None = None,
 ) -> tuple[int, dict]:
     """Route one request to a handler and return ``(status, body_dict)``.
 
     Never raises for client-facing errors: :class:`ApiError`, missing runs,
     and bad input all become a ``{"error": ...}`` body with an appropriate
     status code.
+
+    ``query`` carries parsed URL query parameters (values flattened to the
+    first occurrence); read routes that need them pull from it.
     """
     route = (method.upper(), path.rstrip("/") or "/")
     try:
@@ -65,6 +69,8 @@ def dispatch(
             return 200, {"status": "ok", "run_id": run_id}
         if route == ("GET", "/run"):
             return 200, _get_run(store, run_id, work_session_id)
+        if route == ("GET", "/assets/visible"):
+            return 200, _get_visible_assets(store, run_id, query or {})
         if route == ("POST", "/node"):
             return 201, _post_node(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/step"):
@@ -110,6 +116,46 @@ def _get_run(store: Any, run_id: str, work_session_id: str) -> dict:
     doc["current_lane_id"] = work_session_id
     doc["current_lane_name"] = lane.name if lane is not None else work_session_id
     return doc
+
+
+def _get_visible_assets(store: Any, run_id: str, query: dict) -> dict:
+    """List asset payloads referenceable from a given record.
+
+    ``from`` (a node or step id) is the viewer; an asset is returned when its
+    target is an ancestor of the viewer or the viewer itself (parents OK,
+    children excluded). Lineage is computed in :mod:`arctx.core.lineage`.
+    """
+    from arctx.core.lineage import is_visible_from
+
+    from_id = query.get("from")
+    if not from_id:
+        raise ApiError(400, "query parameter 'from' is required")
+    from_id = str(from_id)
+
+    handle = _load(store, run_id)
+    graph = handle.run_graph
+    if from_id in graph.nodes:
+        viewer = ("node", from_id)
+    elif from_id in graph.steps:
+        viewer = ("step", from_id)
+    else:
+        raise ApiError(404, f"unknown record: {from_id}")
+
+    assets: list[dict] = []
+    for payload in graph.payloads.values():
+        if getattr(payload, "payload_type", None) != "asset":
+            continue
+        target_kind = getattr(payload, "target_kind", None)
+        target_id = getattr(payload, "target_id", None)
+        if target_kind not in ("node", "step") or not target_id:
+            continue
+        try:
+            if is_visible_from(graph, (target_kind, target_id), viewer):
+                assets.append(payload.to_dict())
+        except KeyError:
+            # Asset attached to a record no longer in the graph; skip.
+            continue
+    return {"from": from_id, "assets": assets}
 
 
 def _payload_fields(body: dict) -> dict:

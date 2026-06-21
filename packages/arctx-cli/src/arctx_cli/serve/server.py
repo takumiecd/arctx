@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from arctx_cli.serve.api import dispatch
 
@@ -49,7 +50,9 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
             return parsed
 
         def _handle(self, method: str) -> None:
-            path = self.path.split("?", 1)[0]
+            parsed = urlparse(self.path)
+            path = parsed.path
+            query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
             try:
                 body = self._read_body()
             except (ValueError, json.JSONDecodeError) as exc:
@@ -62,7 +65,7 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
             )
             status, payload = dispatch(
                 store, run_id, method, path, body,
-                user_id=user_id, work_session_id=ws_id,
+                user_id=user_id, work_session_id=ws_id, query=query,
             )
             self._send(status, payload)
 

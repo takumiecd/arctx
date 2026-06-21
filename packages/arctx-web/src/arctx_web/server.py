@@ -24,7 +24,7 @@ from arctx_web.layouts import get_layout, save_layout
 # Paths handled by the JSON API; everything else is a static asset request.
 API_PATHS = frozenset({
     "/run", "/node", "/step", "/attach", "/cut", "/health", "/artifacts/upload",
-    "/ext", "/ext/enable", "/ext/disable",
+    "/ext", "/ext/enable", "/ext/disable", "/assets/visible",
 })
 WEB_API_PATHS = frozenset({"/web/layout"})
 
@@ -110,9 +110,15 @@ def build_handler(
             except (ValueError, json.JSONDecodeError) as exc:
                 self._send_json(400, {"error": f"invalid JSON body: {exc}"})
                 return
+            query = {
+                k: v[0]
+                for k, v in urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query
+                ).items()
+            }
             status, payload = dispatch(
                 store, run_id, method, self._path(), body,
-                user_id=user_id, work_session_id=work_session_id,
+                user_id=user_id, work_session_id=work_session_id, query=query,
             )
             self._send_json(status, payload)
 
