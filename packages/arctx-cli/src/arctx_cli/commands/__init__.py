@@ -11,6 +11,8 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.add import cli_add
     from arctx_cli.commands.alias_cmd import add_parser as add_alias_parser
     from arctx_cli.commands.alias_cmd import cli_alias
+    from arctx_cli.commands.asset import add_parser as add_asset_parser
+    from arctx_cli.commands.asset import cli_asset
     from arctx_cli.commands.attach import add_parser as add_attach_parser
     from arctx_cli.commands.attach import cli_attach
     from arctx_cli.commands.current import add_parser as add_current_parser
@@ -63,6 +65,7 @@ def core_cli_commands() -> list[CliCommand]:
     return [
         CliCommand("add", add_add_parser, cli_add),
         CliCommand("alias", add_alias_parser, cli_alias),
+        CliCommand("asset", add_asset_parser, cli_asset),
         CliCommand("attach", add_attach_parser, cli_attach),
         CliCommand("current", add_current_parser, cli_current),
         CliCommand("ext", add_ext_parser, cli_ext),

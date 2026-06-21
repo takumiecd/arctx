@@ -152,6 +152,7 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 
 
 # Bind verb implementations.
+from arctx.core.run.asset import attach_asset_impl as _attach_asset_impl  # noqa: E402
 from arctx.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from arctx.core.run.cut import cut_impl as _cut_impl  # noqa: E402
 from arctx.core.run.lane import adopt_lane_records_impl as _adopt_lane_records_impl  # noqa: E402
@@ -163,6 +164,7 @@ from arctx.core.run.step import add_step_impl as _add_step_impl  # noqa: E402
 RunHandle.add_step = _add_step_impl
 RunHandle.add_node = _add_node_impl
 RunHandle.attach = _attach_impl
+RunHandle.attach_asset = _attach_asset_impl
 RunHandle.cut = _cut_impl
 RunHandle.adopt_lane_records = _adopt_lane_records_impl
 RunHandle.trace = _trace_impl

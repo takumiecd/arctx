@@ -160,6 +160,26 @@ def run_work_session_start_command(
     return result
 
 
+def _git_stdout(args: list[str], cwd) -> str | None:
+    """Run ``git *args`` in *cwd*, returning stripped stdout or None on failure.
+
+    Self-contained so this generic CLI command does not depend on the git
+    extension; git lookups here are best-effort enrichment only.
+    """
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, ValueError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
 def _build_worktree_metadata(worktree: str | None) -> dict:
     """Resolve worktree path to absolute path and capture branch / repo info.
 
@@ -175,16 +195,21 @@ def _build_worktree_metadata(worktree: str | None) -> dict:
 
     path = Path(worktree).expanduser().resolve()
     info: dict = {"path": str(path)}
-    try:
-        from arctx.ext.git.helpers import repo as git_repo  # noqa: PLC0415
 
-        branch = git_repo.current_branch(path)
-        if branch is not None:
-            info["branch"] = branch
-        info["repo_common_dir"] = str(git_repo.common_dir(path))
-    except Exception:  # noqa: BLE001
-        # Recording the path is still useful; git lookups are best-effort.
-        pass
+    # Current branch (None when HEAD is detached or not a repo).
+    branch = _git_stdout(["symbolic-ref", "--short", "HEAD"], path)
+    if branch is not None:
+        info["branch"] = branch
+
+    # Shared .git dir: inside a worktree this resolves to the primary
+    # checkout's .git, so sibling worktrees report the same path.
+    raw_common = _git_stdout(["rev-parse", "--git-common-dir"], path)
+    if raw_common is not None:
+        common = Path(raw_common)
+        if not common.is_absolute():
+            common = (path / common).resolve()
+        info["repo_common_dir"] = str(common)
+
     return {"worktree": info}
 
 

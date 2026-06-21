@@ -198,6 +198,28 @@ class TestApiDelegation:
                 assert status == 200
                 assert body == {"ok": True, "body": {"x": 1}}
 
+    def test_post_artifacts_upload(self):
+        import base64
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            with _Server(store, run_id, _fake_static(td)) as s:
+                content = b"my uploaded file contents"
+                b64_content = base64.b64encode(content).decode()
+                status, body = s.post("/artifacts/upload", {
+                    "filename": "hello.txt",
+                    "file_data": b64_content
+                })
+                assert status == 201
+                assert body["filename"] == "hello.txt"
+                assert body["size_bytes"] == len(content)
+                assert body["path"].startswith("artifacts/")
+
+                # Verify it can be downloaded
+                status_get, body_get, ctype_get = s.get("/" + body["path"])
+                assert status_get == 200
+                assert body_get == content
+                assert "text/plain" in ctype_get
+
 
 class TestWebLayoutApi:
     def test_layout_roundtrip(self):

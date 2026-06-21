@@ -307,6 +307,35 @@ function commandRunDisplay(payload: RunPayload): PayloadDisplay {
   };
 }
 
+function assetDisplay(payload: RunPayload): PayloadDisplay {
+  const filename = stringValue(payload.filename) || "asset";
+  const mime = stringValue(payload.mime_type);
+  const path = stringValue(payload.path);
+  const src = path ? `/${path.replace(/^\/+/, "")}` : "";
+  const media: PayloadMedia[] = [];
+  const sections: PayloadSection[] = [];
+  if (src && mime.startsWith("image/")) {
+    media.push({ kind: "image", src, alt: filename, caption: filename });
+  } else if (src) {
+    // Non-image asset: render a markdown link (becomes a clickable anchor).
+    sections.push({ title: "file", kind: "markdown", value: `[${filename}](${src})` });
+  }
+  const fields: PayloadField[] = [
+    { label: "file", value: filename },
+    { label: "type", value: mime || "unknown" },
+  ];
+  if (typeof payload.size_bytes === "number") {
+    fields.push({ label: "size", value: formatBytes(payload.size_bytes) });
+  }
+  return { title: "asset", summary: filename, graphLabel: filename, media, fields, sections };
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function objectValue(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
@@ -343,9 +372,12 @@ function commitSubject(commits: unknown[]): string | null {
   return typeof subject === "string" && subject ? subject : null;
 }
 
+
+
 registerPayloadRenderer("node_payload", genericPayloadDisplay);
 registerPayloadRenderer("step_payload", genericPayloadDisplay);
 registerPayloadRenderer("cut", cutDisplay);
+registerPayloadRenderer("asset", assetDisplay);
 registerPayloadRenderer("diagram", diagramDisplay);
 registerPayloadRenderer("git_change", gitChangeDisplay);
 registerPayloadRenderer("branch", branchDisplay);

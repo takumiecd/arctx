@@ -13,10 +13,14 @@ import type {
   AddStepRequest,
   AddStepResponse,
   AttachRequest,
+  AttachAssetRequest,
   CreateLaneRequest,
   CreateLaneResponse,
   CutRequest,
   RunDocument,
+  RunPayload,
+  UploadedArtifact,
+  VisibleAssetsResponse,
   WebLayout,
   ExtensionsResponse,
 } from "./types";
@@ -30,12 +34,15 @@ export interface RunClient {
   addNode(req: AddNodeRequest): Promise<void>;
   addStep(req: AddStepRequest): Promise<AddStepResponse>;
   attach(req: AttachRequest): Promise<void>;
+  attachAsset(req: AttachAssetRequest): Promise<void>;
+  visibleAssets(fromId: string): Promise<RunPayload[]>;
   cut(req: CutRequest): Promise<void>;
   createLane(req: CreateLaneRequest): Promise<CreateLaneResponse>;
   adoptLane(req: AdoptLaneRequest): Promise<AdoptLaneResponse>;
   getExtensions(): Promise<ExtensionsResponse>;
   enableExtension(name: string): Promise<void>;
   disableExtension(name: string): Promise<void>;
+  uploadArtifact(file: File): Promise<UploadedArtifact>;
 }
 
 class ReadOnlyError extends Error {
@@ -86,6 +93,18 @@ export class LiveClient implements RunClient {
   async attach(req: AttachRequest) {
     await this.req("/attach", { method: "POST", body: JSON.stringify(req) });
   }
+  async attachAsset(req: AttachAssetRequest) {
+    await this.req("/attach", {
+      method: "POST",
+      body: JSON.stringify({ ...req, payload_type: "asset" }),
+    });
+  }
+  async visibleAssets(fromId: string) {
+    const res = await this.req<VisibleAssetsResponse>(
+      `/assets/visible?from=${encodeURIComponent(fromId)}`,
+    );
+    return res.assets;
+  }
   async cut(req: CutRequest) {
     await this.req("/cut", { method: "POST", body: JSON.stringify(req) });
   }
@@ -106,6 +125,27 @@ export class LiveClient implements RunClient {
   }
   async disableExtension(name: string) {
     await this.req("/ext/disable", { method: "POST", body: JSON.stringify({ name }) });
+  }
+  async uploadArtifact(file: File) {
+    const fileLoaded = new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64Data = result.split(",")[1] || result;
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const base64Data = await fileLoaded;
+
+    return this.req<UploadedArtifact>("/artifacts/upload", {
+      method: "POST",
+      body: JSON.stringify({
+        filename: file.name,
+        file_data: base64Data,
+      }),
+    });
   }
 }
 
@@ -131,6 +171,12 @@ export class StaticClient implements RunClient {
   async attach(): Promise<void> {
     throw new ReadOnlyError();
   }
+  async attachAsset(): Promise<void> {
+    throw new ReadOnlyError();
+  }
+  async visibleAssets(): Promise<RunPayload[]> {
+    return [];
+  }
   async cut(): Promise<void> {
     throw new ReadOnlyError();
   }
@@ -147,6 +193,9 @@ export class StaticClient implements RunClient {
     throw new ReadOnlyError();
   }
   async disableExtension(): Promise<void> {
+    throw new ReadOnlyError();
+  }
+  async uploadArtifact(): Promise<any> {
     throw new ReadOnlyError();
   }
 }

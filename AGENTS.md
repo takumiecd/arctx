@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code when working in this repository.
+This file provides guidance to Codex when working in this repository.
 
 ## Commands
 
@@ -63,7 +63,6 @@ Two-tier design. Core payloads live under `packages/arctx/src/arctx/core/schema/
 **Core typed payloads**:
 - `CutPayload(payload_id, target_id, target_kind, reason=None)` — append-only cut marker
 - `JoinPayload(payload_id, target_id, joined_views)` — step-targeting marker for a multi-input step that joins independent histories with no common ancestor (extension-agnostic; `target_kind="step"`)
-- `AssetPayload(payload_id, target_id, target_kind, asset_id, filename, mime_type, size_bytes, path)` — a file asset (image/video/document) attached to a Node or Step. The file lives under `<run_dir>/artifacts/`; `path` is run-relative. Asset is a **core payload, not an extension** (it depends on core lineage). Visibility — which records may reference an asset by URL — is computed at read time in `packages/arctx/src/arctx/core/lineage.py`: an asset is reachable from the record it is attached to and that record's descendants. Attach via `handle.attach_asset(...)` or `arctx asset attach`; files are uploaded through the generic `POST /artifacts/upload`. The visible set is served by `GET /assets/visible?from=<id>`.
 
 **Git extension payloads** (`packages/arctx/src/arctx/ext/git/payloads.py`):
 - `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=(), repo_id="")` — git record on a Step
@@ -84,7 +83,6 @@ Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`)
 
 - `add_step(input_node_ids, payload, *, user_id=None, work_session_id=None) -> Step` — create one Step and one output Node from input nodes; `payload` must be step-targeting
 - `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
-- `attach_asset(target_id, file_path, *, user_id=None, work_session_id=None) -> AssetPayload` — copy a file into `<run_dir>/artifacts/` and attach an `AssetPayload` to a Node or Step
 - `cut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> CutPayload` — mark a Node or Step inactive
 - `trace(node_id, ...)` (alias: `history`) — walk history backwards
 - `outcomes(step_id)` — return output node info for a step
@@ -113,7 +111,7 @@ Current commands:
 - `log` — user-facing DAG history command; wraps outline dump / trace behavior
 - Internal compatibility helpers remain in `commands.step`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add step`, `show`, and `attach`.
 - `cut` — cut a Node or Step (`cut node NODE_ID` or `cut step T_ID`)
-- `claude-code` — Claude Code hooks adapter. `claude-code install` merges hook entries into `.claude/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `claude-code hook` consumes one hook event JSON from stdin and records it (session → WorkSession `ws_cc_<session_id>`, prompt/tool use → Step, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/claude_code/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
+- `Codex` — Codex hooks adapter. `Codex install` merges hook entries into `.Codex/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `Codex hook` consumes one hook event JSON from stdin and records it (session → WorkSession `ws_cc_<session_id>`, prompt/tool use → Step, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/Codex/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
 - `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Step.
 - `show` — inspect a node / step / payload as JSON
 - `graph` — dump / trace / reachable graph queries

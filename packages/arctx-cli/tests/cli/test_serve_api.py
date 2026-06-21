@@ -392,5 +392,136 @@ class TestExtensionRoutes:
             assert git_ext["enabled"] is False
 
 
+class TestArtifactUpload:
+    @staticmethod
+    def _b64(data: bytes = b"hello") -> str:
+        import base64
+
+        return base64.b64encode(data).decode()
+
+    def test_upload_writes_flat_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(
+                store, run_id, "POST", "/artifacts/upload",
+                {"filename": "chart.png", "file_data": self._b64()},
+            )
+            assert status == 201
+            assert body["filename"] == "chart.png"
+            assert body["path"].startswith("artifacts/art_")
+            written = store.run_path(run_id) / body["path"]
+            assert written.is_file()
+
+    def test_upload_strips_path_components(self):
+        # A filename with separators / .. must never escape artifacts/.
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            artifacts = (store.run_path(run_id) / "artifacts").resolve()
+            for hostile in ("../../../etc/passwd", "a/b.txt", "/abs/evil"):
+                status, body = _call(
+                    store, run_id, "POST", "/artifacts/upload",
+                    {"filename": hostile, "file_data": self._b64()},
+                )
+                assert status == 201
+                assert "/" not in body["filename"]
+                written = (store.run_path(run_id) / body["path"]).resolve()
+                assert artifacts in written.parents
+
+    def test_upload_rejects_bare_dotdot_filename(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, _ = _call(
+                store, run_id, "POST", "/artifacts/upload",
+                {"filename": "..", "file_data": self._b64()},
+            )
+            assert status == 400
+
+    def test_upload_unknown_run_is_404(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, _, _ = _setup(td)
+            status, _ = _call(
+                store, "run_missing", "POST", "/artifacts/upload",
+                {"filename": "x.txt", "file_data": self._b64()},
+            )
+            assert status == 404
+            assert not store.run_path("run_missing").exists()
+
+
+class TestVisibleAssets:
+    @staticmethod
+    def _attach_asset(handle, target_kind, target_id, name):
+        from arctx.core.schema.payloads import AssetPayload
+
+        payload = AssetPayload(
+            payload_id=handle._next_id("pl"),
+            target_id=target_id,
+            target_kind=target_kind,
+            asset_id=f"ast_{name}",
+            filename=f"{name}.png",
+            mime_type="image/png",
+            size_bytes=1,
+            path=f"artifacts/ast_{name}.png",
+        )
+        handle.run_graph.attach_payload(payload)
+        return payload
+
+    def _setup_assets(self, td):
+        from arctx.core.schema.payloads import StepPayload
+
+        store_dir = _store_dir(td)
+        run_init_command(
+            requirement_id="r", target_type="task", target_id="t",
+            run_id="srv_assets", store_dir=store_dir,
+        )
+        store = resolve_store(store_dir)
+        handle = store.load_run("srv_assets")
+        root = handle.root_node_id
+        sp = lambda: StepPayload(payload_id="_", target_id="_", type="x")  # noqa: E731
+        n1 = handle.add_step([root], sp()).output_node_id
+        n2 = handle.add_step([root], sp()).output_node_id
+        self._attach_asset(handle, "node", root, "root")
+        self._attach_asset(handle, "node", n1, "n1")
+        self._attach_asset(handle, "node", n2, "n2")
+        store.save_run(handle)
+        return store, "srv_assets", root, n1, n2
+
+    def _visible(self, store, run_id, from_id):
+        return dispatch(
+            store, run_id, "GET", "/assets/visible", None,
+            user_id="t", work_session_id="ws", query={"from": from_id},
+        )
+
+    def test_returns_ancestors_and_self_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _root, n1, _n2 = self._setup_assets(td)
+            status, body = self._visible(store, run_id, n1)
+            assert status == 200
+            names = {a["filename"] for a in body["assets"]}
+            # root (ancestor) + n1 (self); NOT n2 (sibling)
+            assert names == {"root.png", "n1.png"}
+
+    def test_root_sees_only_itself(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root, _n1, _n2 = self._setup_assets(td)
+            status, body = self._visible(store, run_id, root)
+            assert status == 200
+            assert {a["filename"] for a in body["assets"]} == {"root.png"}
+
+    def test_missing_from_is_400(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, *_ = self._setup_assets(td)
+            status, _ = dispatch(
+                store, run_id, "GET", "/assets/visible", None,
+                user_id="t", work_session_id="ws", query={},
+            )
+            assert status == 400
+
+    def test_unknown_record_is_404(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, *_ = self._setup_assets(td)
+            status, _ = self._visible(store, run_id, "n_bogus")
+            assert status == 404
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-q"])

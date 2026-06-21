@@ -52,12 +52,16 @@ def dispatch(
     *,
     user_id: str,
     work_session_id: str,
+    query: dict | None = None,
 ) -> tuple[int, dict]:
     """Route one request to a handler and return ``(status, body_dict)``.
 
     Never raises for client-facing errors: :class:`ApiError`, missing runs,
     and bad input all become a ``{"error": ...}`` body with an appropriate
     status code.
+
+    ``query`` carries parsed URL query parameters (values flattened to the
+    first occurrence); read routes that need them pull from it.
     """
     route = (method.upper(), path.rstrip("/") or "/")
     try:
@@ -65,6 +69,8 @@ def dispatch(
             return 200, {"status": "ok", "run_id": run_id}
         if route == ("GET", "/run"):
             return 200, _get_run(store, run_id, work_session_id)
+        if route == ("GET", "/assets/visible"):
+            return 200, _get_visible_assets(store, run_id, query or {})
         if route == ("POST", "/node"):
             return 201, _post_node(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/step"):
@@ -83,6 +89,8 @@ def dispatch(
             return 200, _post_ext_enable(store, run_id, body or {})
         if route == ("POST", "/ext/disable"):
             return 200, _post_ext_disable(store, run_id, body or {})
+        if route == ("POST", "/artifacts/upload"):
+            return 201, _post_artifacts_upload(store, run_id, body or {})
         return 404, {"error": f"no route for {method} {path}"}
     except ApiError as exc:
         return exc.status, {"error": exc.message}
@@ -110,16 +118,50 @@ def _get_run(store: Any, run_id: str, work_session_id: str) -> dict:
     return doc
 
 
+def _get_visible_assets(store: Any, run_id: str, query: dict) -> dict:
+    """List asset payloads referenceable from a given record.
+
+    ``from`` (a node or step id) is the viewer; an asset is returned when its
+    target is an ancestor of the viewer or the viewer itself (parents OK,
+    children excluded). Lineage is computed in :mod:`arctx.core.lineage`.
+    """
+    from arctx.core.lineage import is_visible_from
+
+    from_id = query.get("from")
+    if not from_id:
+        raise ApiError(400, "query parameter 'from' is required")
+    from_id = str(from_id)
+
+    handle = _load(store, run_id)
+    graph = handle.run_graph
+    if from_id in graph.nodes:
+        viewer = ("node", from_id)
+    elif from_id in graph.steps:
+        viewer = ("step", from_id)
+    else:
+        raise ApiError(404, f"unknown record: {from_id}")
+
+    assets: list[dict] = []
+    for payload in graph.payloads.values():
+        if getattr(payload, "payload_type", None) != "asset":
+            continue
+        target_kind = getattr(payload, "target_kind", None)
+        target_id = getattr(payload, "target_id", None)
+        if target_kind not in ("node", "step") or not target_id:
+            continue
+        try:
+            if is_visible_from(graph, (target_kind, target_id), viewer):
+                assets.append(payload.to_dict())
+        except KeyError:
+            # Asset attached to a record no longer in the graph; skip.
+            continue
+    return {"from": from_id, "assets": assets}
+
+
 def _payload_fields(body: dict) -> dict:
     """Pull the payload-shaping fields out of a request body."""
-    data: dict = {}
-    if body.get("type") is not None:
-        data["type"] = body["type"]
-    if body.get("content") is not None:
-        data["content"] = body["content"]
-    if body.get("metadata") is not None:
-        data["metadata"] = body["metadata"]
-    return data
+    exclude = {"payload_type", "target_id", "target_kind", "node_id", "input_node_ids", "output_node_id"}
+    return {k: v for k, v in body.items() if k not in exclude}
 
 
 def _has_payload_fields(body: dict) -> bool:
@@ -406,3 +448,51 @@ def _post_ext_disable(store, run_id, body) -> dict:
     from arctx_cli.commands.ext import run_ext_disable_command
     run_dir = str(store.run_path(run_id))
     return run_ext_disable_command(name=name.strip(), run_dir=run_dir)
+
+
+def _post_artifacts_upload(store, run_id, body) -> dict:
+    import base64
+    import mimetypes
+    import os
+    from arctx.core.ids import opaque_id
+
+    if not store.run_path(run_id).exists():
+        raise ApiError(404, f"unknown run_id: {run_id}")
+
+    filename = body.get("filename")
+    file_data_b64 = body.get("file_data")
+    if not filename or not file_data_b64:
+        raise ApiError(400, "filename and file_data are required")
+
+    # Only keep the basename: prevents path traversal and nested writes
+    # (the destination is always a flat file directly under artifacts/).
+    safe_name = os.path.basename(str(filename))
+    if safe_name in ("", ".", ".."):
+        raise ApiError(400, "invalid filename")
+
+    try:
+        file_content = base64.b64decode(file_data_b64)
+    except Exception as exc:
+        raise ApiError(400, f"invalid base64 data: {exc}")
+
+    art_id = opaque_id("art")
+    run_dir = store.run_path(run_id)
+    artifacts_dir = run_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    dest_filename = f"{art_id}_{safe_name}"
+    dest_path = artifacts_dir / dest_filename
+    dest_path.write_bytes(file_content)
+
+    mime_type, _ = mimetypes.guess_type(safe_name)
+    if not mime_type:
+        mime_type = "application/octet-stream"
+
+    return {
+        "artifact_id": art_id,
+        "filename": safe_name,
+        "mime_type": mime_type,
+        "size_bytes": len(file_content),
+        "path": f"artifacts/{dest_filename}",
+    }
+

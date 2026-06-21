@@ -22,9 +22,15 @@ from arctx_web.extensions import WebRequest, WebRoute
 from arctx_web.layouts import get_layout, save_layout
 
 # Paths handled by the JSON API; everything else is a static asset request.
-API_PATHS = frozenset({"/run", "/node", "/step", "/attach", "/cut", "/health"})
+API_PATHS = frozenset({
+    "/run", "/node", "/step", "/attach", "/cut", "/health", "/artifacts/upload",
+    "/ext", "/ext/enable", "/ext/disable", "/assets/visible",
+})
 WEB_API_PATHS = frozenset({"/web/layout"})
+
+
 ARTIFACT_PREFIX = "/artifacts/"
+
 
 
 def build_handler(
@@ -104,9 +110,15 @@ def build_handler(
             except (ValueError, json.JSONDecodeError) as exc:
                 self._send_json(400, {"error": f"invalid JSON body: {exc}"})
                 return
+            query = {
+                k: v[0]
+                for k, v in urllib.parse.parse_qs(
+                    urllib.parse.urlparse(self.path).query
+                ).items()
+            }
             status, payload = dispatch(
                 store, run_id, method, self._path(), body,
-                user_id=user_id, work_session_id=work_session_id,
+                user_id=user_id, work_session_id=work_session_id, query=query,
             )
             self._send_json(status, payload)
 
@@ -175,13 +187,6 @@ def build_handler(
                 return
             ctype, _ = mimetypes.guess_type(str(target))
             self._send_bytes(200, target.read_bytes(), ctype or "application/octet-stream")
-
-        # ----- verbs -----
-
-        def do_OPTIONS(self) -> None:  # noqa: N802
-            self.send_response(204)
-            self._cors()
-            self.end_headers()
 
         def do_GET(self) -> None:  # noqa: N802
             if self._is_api():

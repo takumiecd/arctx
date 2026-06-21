@@ -29,3 +29,5 @@ dist/
 # IDE / Agent state directories
 .claude/
 .antigravitycli/
+.codex/
+

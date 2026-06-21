@@ -3,13 +3,17 @@
 // step), or cut the selected record.
 
 import {
+  createContext,
+  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -61,7 +65,7 @@ interface DetailUnit {
 type AdoptMode = "explicit" | "history" | "reachable";
 
 type Tab = "content" | "flow" | "edit";
-type AttachPreset = "note" | "git_change" | "diagram" | "command_run" | "custom";
+type AttachPreset = "note" | "asset" | "git_change" | "diagram" | "command_run" | "custom";
 
 interface FieldDef {
   key: string;
@@ -145,6 +149,9 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
   const [customType, setCustomType] = useState("custom_data");
   const [customContent, setCustomContent] = useState("{}");
 
+  // Asset preset state (upload a file as an AssetPayload)
+  const [assetFile, setAssetFile] = useState<File | null>(null);
+
   const [adoptLaneId, setAdoptLaneId] = useState("");
   const [adoptMode, setAdoptMode] = useState<AdoptMode>("explicit");
 
@@ -194,7 +201,24 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
   });
 
   const attach = useMutation({
-    mutationFn: (target: AttachTarget) => {
+    mutationFn: async (target: AttachTarget) => {
+      // Asset is a core payload: upload the file, then attach an AssetPayload
+      // to the selected record (not a content-fields payload).
+      if (attachPreset === "asset") {
+        if (!assetFile) throw new Error("choose a file to attach");
+        const info = await client.uploadArtifact(assetFile);
+        await client.attachAsset({
+          target_id: target.selection.id,
+          target_kind: target.selection.kind,
+          asset_id: info.artifact_id,
+          filename: info.filename,
+          mime_type: info.mime_type,
+          size_bytes: info.size_bytes,
+          path: info.path,
+        });
+        return;
+      }
+
       let typeVal = "";
       let contentObj: Record<string, unknown> = {};
 
@@ -224,6 +248,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
       // Reset preset fields
       setFormValues({});
       setCustomContent("{}");
+      setAssetFile(null);
       invalidate();
     },
     onError: fail,
@@ -400,41 +425,47 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
             <>
               <h3>step payloads ({stepPayloads.length})</h3>
               {stepPayloads.length === 0 && <p className="muted">none</p>}
-              {stepPayloads.map((p) => (
-                <PayloadCard
-                  key={p.payload_id}
-                  doc={doc}
-                  payload={p}
-                  display={payloadDisplayFor(p, doc)}
-                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                />
-              ))}
+              <ScopedPayloads client={client} recordId={unit.stepId}>
+                {stepPayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
+              </ScopedPayloads>
 
               <h3>output node notes ({nodePayloads.length})</h3>
               {nodePayloads.length === 0 && <p className="muted">none</p>}
-              {nodePayloads.map((p) => (
-                <PayloadCard
-                  key={p.payload_id}
-                  doc={doc}
-                  payload={p}
-                  display={payloadDisplayFor(p, doc)}
-                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                />
-              ))}
+              <ScopedPayloads client={client} recordId={unit.outputNodeId}>
+                {nodePayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
+              </ScopedPayloads>
             </>
           ) : (
             <>
               <h3>node payloads ({nodePayloads.length})</h3>
               {nodePayloads.length === 0 && <p className="muted">none</p>}
-              {nodePayloads.map((p) => (
-                <PayloadCard
-                  key={p.payload_id}
-                  doc={doc}
-                  payload={p}
-                  display={payloadDisplayFor(p, doc)}
-                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                />
-              ))}
+              <ScopedPayloads client={client} recordId={unit.outputNodeId}>
+                {nodePayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
+              </ScopedPayloads>
             </>
           )}
         </section>
@@ -555,13 +586,14 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
               </select>
             </label>
 
-            <label>
+             <label>
               Preset Type
               <select
                 value={attachPreset}
                 onChange={(e) => setAttachPreset(e.target.value as AttachPreset)}
               >
                 <option value="note">Note (Markdown)</option>
+                <option value="asset">Asset (File)</option>
                 <option value="git_change">Git Change (Git Integration)</option>
                 <option value="diagram">Diagram (Mermaid / Graphviz)</option>
                 <option value="command_run">Command Run (Execution Log)</option>
@@ -608,6 +640,24 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
               </div>
             )}
 
+
+
+            {/* Asset Preset (upload a file as a core AssetPayload) */}
+            {attachPreset === "asset" && (
+              <label>
+                File
+                <input
+                  type="file"
+                  onChange={(e) => setAssetFile(e.target.files?.[0] ?? null)}
+                />
+                <span className="hint muted">
+                  Uploads the file into the run and attaches an asset payload to
+                  the selected record. It can then be referenced from this record
+                  and its descendants.
+                </span>
+              </label>
+            )}
+
             {/* Custom Preset (Raw JSON Mode) */}
             {attachPreset === "custom" && (
               <>
@@ -631,7 +681,11 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
             )}
 
             <button
-              disabled={attach.isPending || (attachPreset === "custom" && !!jsonError)}
+              disabled={
+                attach.isPending ||
+                (attachPreset === "custom" && !!jsonError) ||
+                (attachPreset === "asset" && !assetFile)
+              }
               onClick={() => attach.mutate(attachTarget)}
             >
               attach payload
@@ -1034,6 +1088,23 @@ function PayloadCard({
       <div className="payload-card-head">
         <strong>{display.title}</strong>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {payload.payload_type === "asset" && (
+            <button
+              type="button"
+              className="payload-copy-btn"
+              title="copy a markdown reference (paste into a note on this record or a descendant)"
+              onClick={() => {
+                const url = `/${String(payload.path ?? "").replace(/^\/+/, "")}`;
+                const name = String(payload.filename ?? "asset");
+                const md = String(payload.mime_type ?? "").startsWith("image/")
+                  ? `![${name}](${url})`
+                  : `[${name}](${url})`;
+                void navigator.clipboard?.writeText(md);
+              }}
+            >
+              copy md
+            </button>
+          )}
           {onCopyToEdit && (
             <button
               type="button"
@@ -1120,14 +1191,79 @@ function PayloadSectionBody({ section }: { section: PayloadSection }) {
   return <pre className="payload">{JSON.stringify(section.value, null, 2)}</pre>;
 }
 
+// Set of artifact URLs (e.g. "/artifacts/ast_xxx_file.png") that may be
+// referenced from the record currently being rendered. `null` means no
+// scoping (static/share mode, or still loading) — render everything.
+const ArtifactScopeContext = createContext<Set<string> | null>(null);
+
+function artifactKey(src: string): string {
+  let s = src;
+  if (s.startsWith("artifact://")) s = `/artifacts/${s.slice("artifact://".length).replace(/^\/+/, "")}`;
+  try {
+    return decodeURI(s);
+  } catch {
+    return s;
+  }
+}
+
+function isArtifactUrl(src: string): boolean {
+  return src.startsWith("/artifacts/") || src.startsWith("artifact://");
+}
+
+// Wraps a record's payload cards, providing the set of assets visible from
+// that record so embedded artifact URLs out of scope (descendants/unrelated)
+// are not rendered. Live mode only; static shares render everything.
+function ScopedPayloads({
+  client,
+  recordId,
+  children,
+}: {
+  client: RunClient;
+  recordId: string;
+  children: ReactNode;
+}) {
+  const { data } = useQuery({
+    queryKey: ["visibleAssets", recordId],
+    queryFn: () => client.visibleAssets(recordId),
+    enabled: client.writable && !!recordId,
+  });
+  const scope = useMemo(() => {
+    if (!client.writable || !data) return null;
+    const set = new Set<string>();
+    for (const a of data) {
+      const path = String((a as { path?: unknown }).path ?? "").replace(/^\/+/, "");
+      if (path) set.add(artifactKey(`/${path}`));
+    }
+    return set;
+  }, [client.writable, data]);
+  return <ArtifactScopeContext.Provider value={scope}>{children}</ArtifactScopeContext.Provider>;
+}
+
 function MarkdownView({ value }: { value: unknown }) {
   return (
     <div className="payload-markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{ img: ScopedMarkdownImg }}
+      >
         {formatValue(value)}
       </ReactMarkdown>
     </div>
   );
+}
+
+function ScopedMarkdownImg({ src, alt }: { src?: string; alt?: string }) {
+  const scope = useContext(ArtifactScopeContext);
+  const raw = typeof src === "string" ? src : "";
+  if (isArtifactUrl(raw) && scope && !scope.has(artifactKey(raw))) {
+    return <span className="muted payload-media-blocked">⚠ asset not in scope</span>;
+  }
+  const safe = isArtifactUrl(raw) ? safeImageSrc(raw) : raw;
+  if (!safe) {
+    return <span className="muted payload-media-blocked">blocked image source</span>;
+  }
+  return <img src={safe} alt={alt ?? ""} loading="lazy" />;
 }
 
 function PayloadMediaView({ media }: { media: PayloadMedia }) {

@@ -105,11 +105,39 @@ class CutPayload(PayloadBase):
         return to_jsonable(self)  # type: ignore[return-value]
 
 
+@dataclass(frozen=True)
+class AssetPayload(PayloadBase):
+    """A file asset (image, video, document, …) attached to a Node or Step.
+
+    The file itself lives under ``<run_dir>/artifacts/`` and is referenced by
+    the run-relative ``path``. Asset visibility (which records may reference an
+    asset by URL) is computed from the DAG at read time in
+    :mod:`arctx.core.lineage`: an asset is reachable from the record it is
+    attached to and that record's descendants.
+    """
+
+    payload_id: str
+    target_id: str
+    target_kind: Literal["node", "step"]
+
+    asset_id: str          # Unique id of the asset (e.g. ast_<uuid>)
+    filename: str          # Original filename
+    mime_type: str         # MIME type (e.g. image/png)
+    size_bytes: int        # File size in bytes
+    path: str              # Run-relative path (e.g. artifacts/<asset_id>_filename)
+
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+    payload_type: str = field(default="asset", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return to_jsonable(self)  # type: ignore[return-value]
+
+
 # ---------------------------------------------------------------------------
 # Payload union type (core only — extensions extend via registration)
 # ---------------------------------------------------------------------------
 
-Payload = NodePayload | StepPayload | CutPayload
+Payload = NodePayload | StepPayload | CutPayload | AssetPayload
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +203,20 @@ def _cut_from_dict(data: dict[str, JSONValue]) -> CutPayload:
     )
 
 
+def _asset_from_dict(data: dict[str, JSONValue]) -> AssetPayload:
+    return AssetPayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        target_kind=data["target_kind"],  # type: ignore[arg-type]
+        asset_id=str(data["asset_id"]),
+        filename=str(data["filename"]),
+        mime_type=str(data["mime_type"]),
+        size_bytes=int(data["size_bytes"]),  # type: ignore[arg-type]
+        path=str(data["path"]),
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
 def _generic_custom_from_dict(cls: type[PayloadBase], data: dict[str, JSONValue]) -> PayloadBase:
     """Best-effort reconstruction for user-registered subclasses."""
     import dataclasses
@@ -193,10 +235,12 @@ def _generic_custom_from_dict(cls: type[PayloadBase], data: dict[str, JSONValue]
 register_payload_class(NodePayload)
 register_payload_class(StepPayload)
 register_payload_class(CutPayload)
+register_payload_class(AssetPayload)
 
 register_payload_decoder("node_payload", _node_payload_from_dict)
 register_payload_decoder("step_payload", _step_payload_from_dict)
 register_payload_decoder("cut", _cut_from_dict)
+register_payload_decoder("asset", _asset_from_dict)
 
 
 # ---------------------------------------------------------------------------

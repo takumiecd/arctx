@@ -36,7 +36,12 @@ class ExtensionAwareStore:
 
         run_path = self._store.run_path(run_id)
         for item in load_enabled(run_path):
-            load_extension(item.name).register_schema()
+            try:
+                load_extension(item.name).register_schema()
+            except KeyError:
+                # Unknown extension name (e.g. "asset", now a core payload, or a
+                # third-party ext not installed). Skip rather than crash on load.
+                continue
         handle = self._store.load_run(run_id)
         from arctx.ext import attach_enabled_extensions
 
