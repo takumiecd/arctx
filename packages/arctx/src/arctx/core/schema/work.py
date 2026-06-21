@@ -8,8 +8,8 @@ from arctx.core.types import JSONValue, to_jsonable
 
 
 @dataclass(frozen=True)
-class WorkSession:
-    """A **Lane**: a named, append-only unit of work within a run.
+class Lane:
+    """A named, append-only unit of work within a run.
 
     A lane is NOT owned by one user — it may be SOLO (every event from one actor)
     or COLLABORATIVE (events from several). Membership is open: any actor may
@@ -18,10 +18,9 @@ class WorkSession:
     the lane (``created_by``). Lanes nest/branch via ``parent_work_session_id``
     and are never deleted — closing is ``status``, rejection is a cut.
 
-    ``Lane`` is the canonical public name; the field names keep the
-    ``work_session`` spelling for storage/back-compat (``lane_id`` /
-    ``created_by`` / ``parent_lane_id`` are read-only aliases). A full field
-    rename + storage migration is a separate follow-up.
+    Field names keep the historical ``work_session`` spelling for storage
+    compatibility. Use the lane aliases (``lane_id`` / ``created_by`` /
+    ``parent_lane_id``) in new code where possible.
     """
 
     work_session_id: str
@@ -52,8 +51,8 @@ class WorkSession:
         return to_jsonable(self)  # type: ignore[return-value]
 
 
-#: Canonical public name for the work-unit concept (solo-or-collaborative).
-Lane = WorkSession
+#: Back-compat alias. New code should import/use :class:`Lane`.
+WorkSession = Lane
 
 
 @dataclass(frozen=True)
@@ -77,7 +76,7 @@ class WorkEvent:
         return to_jsonable(self)  # type: ignore[return-value]
 
 
-def work_session_from_dict(data: dict[str, JSONValue]) -> WorkSession:
+def lane_from_dict(data: dict[str, JSONValue]) -> Lane:
     # Accept both the storage field names and the Lane aliases, so records
     # written either way (and older runs without ``name``) load unchanged.
     def pick(*keys):
@@ -87,7 +86,7 @@ def work_session_from_dict(data: dict[str, JSONValue]) -> WorkSession:
         return None
 
     parent = pick("parent_work_session_id", "parent_lane_id")
-    return WorkSession(
+    return Lane(
         work_session_id=str(pick("work_session_id", "lane_id")),
         run_id=str(data["run_id"]),
         user_id=str(pick("user_id", "created_by")),
@@ -100,8 +99,9 @@ def work_session_from_dict(data: dict[str, JSONValue]) -> WorkSession:
     )
 
 
-#: Alias: lanes deserialize through the same back-compat reader.
-lane_from_dict = work_session_from_dict
+def work_session_from_dict(data: dict[str, JSONValue]) -> Lane:
+    """Back-compat deserializer name for older callers."""
+    return lane_from_dict(data)
 
 
 def work_event_from_dict(data: dict[str, JSONValue]) -> WorkEvent:

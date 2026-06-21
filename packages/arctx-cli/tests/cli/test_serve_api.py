@@ -9,7 +9,9 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from arctx.core.lanes import validate_lanes
 from arctx.session import resolve_store
+
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.serve.api import dispatch
 
@@ -31,9 +33,13 @@ def _setup(td: str, run_id: str = "srv_run"):
 
 
 def _call(store, run_id, method, path, body=None):
+    return _call_as(store, run_id, method, path, body, work_session_id="ws_test")
+
+
+def _call_as(store, run_id, method, path, body=None, *, work_session_id: str):
     return dispatch(
         store, run_id, method, path, body,
-        user_id="tester", work_session_id="ws_test",
+        user_id="tester", work_session_id=work_session_id,
     )
 
 
@@ -52,6 +58,8 @@ class TestReadRoutes:
             assert status == 200
             assert body["arctx_export_version"] == 1
             assert body["root_node_id"] == root
+            assert body["current_lane_id"] == "ws_test"
+            assert body["current_lane_name"] == "ws_test"
             assert any(n["node_id"] == root for n in body["nodes"])
 
     def test_unknown_route(self):
@@ -93,6 +101,23 @@ class TestWriteRoutes:
             status, body = _call(store, run_id, "POST", "/step", {"type": "x"})
             assert status == 400
             assert "input_node_ids" in body["error"]
+
+    def test_post_step_rejects_second_lane_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            status, _ = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "first",
+            })
+            assert status == 201
+
+            status, body = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "second",
+            })
+            assert status == 400
+            assert "multiple_lane_roots" in body["error"]
+
+            handle = store.load_run(run_id)
+            assert len(handle.run_graph.steps) == 1
 
     def test_post_attach(self):
         with tempfile.TemporaryDirectory() as td:
@@ -209,6 +234,162 @@ class TestWriteRoutes:
             })
             assert status == 201
             assert body["payload"]["target_kind"] == "node"
+
+    def test_post_lane_create_then_visible_in_run(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            assert status == 201
+            assert body["lane"]["name"] == "math"
+            lane_id = body["lane"]["work_session_id"]
+
+            _, run = _call(store, run_id, "GET", "/run")
+            assert any(lane["work_session_id"] == lane_id for lane in run["lanes"])
+
+    def test_post_lane_create_rejects_duplicate_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, _ = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            assert status == 201
+
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            assert status == 400
+            assert "already exists" in body["error"]
+
+    def test_post_lane_adopt_explicit_records(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            lane_id = lane_body["lane"]["work_session_id"]
+            _, made = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root],
+                "type": "derive",
+            })
+            step_id = made["step"]["step_id"]
+            output_id = made["step"]["output_node_id"]
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": lane_id,
+                "record_ids": [step_id, output_id],
+                "reason": "manual repair",
+            })
+            assert status == 201
+            assert body["lane_id"] == lane_id
+            assert body["adopted_record_ids"] == [step_id, output_id]
+            assert body["mode"] == "explicit"
+
+            _, run = _call(store, run_id, "GET", "/run")
+            prov = run["record_provenance"][step_id]
+            assert prov["lane_id"] == lane_id
+            assert prov["membership_kind"] == "adopted"
+            assert prov["event_type"] == "lane_adopted"
+
+    def test_post_lane_adopt_by_name_history(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, made = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root],
+                "type": "derive",
+            })
+            output_id = made["step"]["output_node_id"]
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "name": "math",
+                "history_node_id": output_id,
+            })
+            assert status == 201
+            assert body["mode"] == "history"
+            assert output_id in body["adopted_record_ids"]
+
+    def test_post_lane_adopt_unknown_lane(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": "missing",
+                "record_ids": [root],
+            })
+            assert status == 404
+            assert "unknown lane" in body["error"]
+
+    def test_post_lane_adopt_requires_one_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": lane_body["lane"]["work_session_id"],
+                "record_ids": [root],
+                "history_node_id": root,
+            })
+            assert status == 400
+            assert "exactly one" in body["error"]
+
+    def test_post_lane_adopt_rejects_multiple_lane_roots(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            math_id = math_body["lane"]["work_session_id"]
+            exp_id = exp_body["lane"]["work_session_id"]
+
+            _, math_root = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "math",
+            }, work_session_id=math_id)
+            math_node = math_root["step"]["output_node_id"]
+            _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [math_node], "type": "experiment",
+            }, work_session_id=exp_id)
+            _, other = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [math_node], "type": "other",
+            }, work_session_id=math_id)
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": exp_id,
+                "record_ids": [
+                    other["step"]["step_id"],
+                    other["step"]["output_node_id"],
+                ],
+            })
+
+            assert status == 400
+            assert "multiple_lane_roots" in body["error"]
+            handle = store.load_run(run_id)
+            assert not any(
+                issue.severity == "error"
+                for issue in validate_lanes(
+                    handle.run_graph,
+                    root_node_id=handle.root_node_id,
+                )
+            )
+
+
+class TestExtensionRoutes:
+    def test_get_ext(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "GET", "/ext")
+            assert status == 200
+            assert "extensions" in body
+            assert any(ext["name"] == "git" for ext in body["extensions"])
+
+    def test_post_ext_enable_disable(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/ext/enable", {"name": "git"})
+            assert status == 200
+            assert body["status"] in ("enabled", "already_enabled")
+
+            status, body = _call(store, run_id, "GET", "/ext")
+            git_ext = next(ext for ext in body["extensions"] if ext["name"] == "git")
+            assert git_ext["enabled"] is True
+
+            status, body = _call(store, run_id, "POST", "/ext/disable", {"name": "git"})
+            assert status == 200
+            assert body["status"] == "disabled"
+
+            status, body = _call(store, run_id, "GET", "/ext")
+            git_ext = next(ext for ext in body["extensions"] if ext["name"] == "git")
+            assert git_ext["enabled"] is False
 
 
 if __name__ == "__main__":  # pragma: no cover

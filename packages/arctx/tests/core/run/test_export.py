@@ -12,7 +12,6 @@ import arctx as arctx
 from arctx.core.run.export import ExportOptions, export
 from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
-from arctx.ext import attach_extensions
 from arctx.ext.git.payloads import RemoteRef, RepoPayload
 
 
@@ -126,6 +125,9 @@ class TestJsonExport:
         assert doc["root_node_id"] == h.root_node_id
         for key in ("nodes", "steps", "payloads", "repos"):
             assert isinstance(doc[key], list)
+        for key in ("lanes", "work_sessions", "work_events", "groups", "lane_boundaries"):
+            assert isinstance(doc[key], list)
+        assert isinstance(doc["record_provenance"], dict)
         assert doc["counts"]["nodes"] == len(doc["nodes"])
         # Root node is always present.
         assert any(n["node_id"] == h.root_node_id for n in doc["nodes"])
@@ -177,3 +179,56 @@ class TestJsonExport:
 
         with_local = json.loads(export(h, "json", ExportOptions(include_local=True)))
         assert with_local["repos"][0]["local_path"] == "/Users/secret/dev/proj"
+
+    def test_lane_groups_and_record_provenance(self):
+        h = _make_handle()
+        h.ensure_lane(name="math-analysis", lane_id="lane_math", created_by="alice")
+        t = h.add_step(
+            [h.root_node_id],
+            _step_payload(h, 7),
+            user_id="alice",
+            work_session_id="lane_math",
+        )
+
+        doc = json.loads(export(h, "json", ExportOptions()))
+
+        group = next(g for g in doc["groups"] if g["group_id"] == "lane:lane_math")
+        assert group["kind"] == "lane"
+        assert group["label"] == "math-analysis"
+        assert t.output_node_id in group["node_ids"]
+        assert t.step_id in group["step_ids"]
+
+        node_prov = doc["record_provenance"][t.output_node_id]
+        assert node_prov["lane_id"] == "lane_math"
+        assert node_prov["lane_name"] == "math-analysis"
+        assert node_prov["user_id"] == "alice"
+
+        assert any(s["work_session_id"] == "lane_math" for s in doc["work_sessions"])
+        assert any(e["target_id"] == t.step_id for e in doc["work_events"])
+
+    def test_lane_adoption_export_keeps_created_provenance(self):
+        h = _make_handle()
+        h.ensure_lane(name="seed", lane_id="lane_seed", created_by="alice")
+        h.ensure_lane(name="math-analysis", lane_id="lane_math", created_by="alice")
+        t = h.add_step(
+            [h.root_node_id],
+            _step_payload(h, 7),
+            user_id="alice",
+            work_session_id="lane_seed",
+        )
+        h.adopt_lane_records(
+            "lane_math",
+            [t.step_id, t.output_node_id],
+            user_id="bob",
+            mode="explicit",
+            target_id=t.output_node_id,
+        )
+
+        doc = json.loads(export(h, "json", ExportOptions()))
+
+        group = next(g for g in doc["groups"] if g["group_id"] == "lane:lane_math")
+        assert t.output_node_id in group["node_ids"]
+        assert t.step_id in group["step_ids"]
+        assert doc["record_provenance"][t.step_id]["lane_id"] == "lane_math"
+        assert doc["record_provenance"][t.step_id]["membership_kind"] == "adopted"
+        assert doc["created_provenance"][t.step_id]["lane_id"] == "lane_seed"

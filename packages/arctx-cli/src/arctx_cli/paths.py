@@ -16,6 +16,7 @@ from arctx.paths import (  # noqa: F401
     arctx_lane_path,
     write_arctx_id,
     write_arctx_lane,
+    arctx_lanes_path,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "arctx_lane_path",
     "write_arctx_id",
     "write_arctx_lane",
+    "arctx_lanes_path",
 ]

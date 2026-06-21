@@ -39,6 +39,62 @@ export interface RunRepo {
   [key: string]: unknown;
 }
 
+export interface RunWorkSession {
+  work_session_id: string;
+  run_id: string;
+  user_id: string;
+  parent_work_session_id?: string | null;
+  started_at?: string | null;
+  closed_at?: string | null;
+  status?: string;
+  metadata?: Record<string, unknown>;
+  name?: string | null;
+}
+
+export interface RunWorkEvent {
+  event_id: string;
+  run_id: string;
+  work_session_id: string;
+  user_id: string;
+  event_type: string;
+  target_kind?: string | null;
+  target_id?: string | null;
+  created_records?: string[];
+  summary?: string | null;
+  data?: Record<string, unknown>;
+  created_at?: string | null;
+  seq?: number | null;
+}
+
+export interface RecordProvenance {
+  record_id: string;
+  lane_id: string;
+  lane_name?: string | null;
+  user_id: string;
+  event_id: string;
+  event_type: string;
+  created_at?: string | null;
+  membership_kind?: "created" | "adopted" | string;
+}
+
+export interface RunGroup {
+  group_id: string;
+  kind: "lane" | string;
+  lane_id?: string;
+  label: string;
+  node_ids: string[];
+  step_ids: string[];
+  color_key?: string;
+}
+
+export interface LaneBoundary {
+  from_lane_id: string;
+  to_lane_id: string;
+  step_id: string;
+  input_node_id: string;
+  output_node_id: string;
+}
+
 export interface RunDocument {
   arctx_export_version: number;
   run_id: string;
@@ -48,6 +104,15 @@ export interface RunDocument {
   steps: RunStep[];
   payloads: RunPayload[];
   repos: RunRepo[];
+  lanes?: RunWorkSession[];
+  work_sessions?: RunWorkSession[];
+  work_events?: RunWorkEvent[];
+  record_provenance?: Record<string, RecordProvenance>;
+  created_provenance?: Record<string, RecordProvenance>;
+  groups?: RunGroup[];
+  lane_boundaries?: LaneBoundary[];
+  current_lane_id?: string;
+  current_lane_name?: string | null;
 }
 
 export interface WebLayout {
@@ -96,4 +161,40 @@ export interface CutRequest {
   target_id: string;
   target_kind: "node" | "step";
   reason?: string;
+}
+
+export interface CreateLaneRequest {
+  name: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateLaneResponse {
+  lane: RunWorkSession;
+}
+
+export interface AdoptLaneRequest {
+  lane_id?: string;
+  name?: string;
+  record_ids?: string[];
+  history_node_id?: string;
+  reachable_node_id?: string;
+  reason?: string;
+}
+
+export interface AdoptLaneResponse {
+  lane_id: string;
+  name?: string | null;
+  adopted_record_ids: string[];
+  count: number;
+  mode: "explicit" | "history" | "reachable" | string;
+  event_id: string;
+}
+
+export interface ExtensionItem {
+  name: string;
+  enabled: boolean;
+}
+
+export interface ExtensionsResponse {
+  extensions: ExtensionItem[];
 }

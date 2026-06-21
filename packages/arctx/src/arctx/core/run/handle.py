@@ -10,7 +10,7 @@ from arctx.core.ids import opaque_id, slugify, timestamp_id
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node
 from arctx.core.schema.requirements import Requirement
-from arctx.core.schema.work import WorkEvent, WorkSession
+from arctx.core.schema.work import Lane, WorkEvent, WorkSession
 from arctx.core.types import JSONValue
 
 
@@ -56,25 +56,16 @@ class RunHandle:
         work_session_id: str | None,
         metadata: dict[str, JSONValue] | None = None,
         name: str | None = None,
-    ) -> WorkSession | None:
+    ) -> Lane | None:
+        """Back-compat wrapper for :meth:`ensure_lane`."""
         if user_id is None or work_session_id is None:
             return None
-        existing = self.run_graph.work_sessions.get(work_session_id)
-        if existing is not None:
-            # Lanes have OPEN membership: a different actor may append to a shared
-            # lane. Per-action attribution lives on each WorkEvent.user_id, so we
-            # do NOT lock the lane to its creator — just return the existing lane.
-            return existing
-        session = WorkSession(
-            work_session_id=work_session_id,
-            run_id=self.run_id,
-            user_id=user_id,
-            started_at=datetime.now(timezone.utc).isoformat(),
-            metadata=dict(metadata or {}),
+        return self.ensure_lane(
             name=name,
+            lane_id=work_session_id,
+            created_by=user_id,
+            metadata=metadata,
         )
-        self.run_graph.add_work_session(session)
-        return session
 
     def ensure_lane(
         self,
@@ -84,7 +75,7 @@ class RunHandle:
         created_by: str | None = None,
         parent_lane_id: str | None = None,
         metadata: dict[str, JSONValue] | None = None,
-    ) -> WorkSession:
+    ) -> Lane:
         """Create or return a Lane — a solo-or-collaborative append-only unit.
 
         A lane is not owned by one user: ``created_by`` only records who opened
@@ -92,10 +83,10 @@ class RunHandle:
         is per :class:`WorkEvent`). ``lane_id`` defaults to a fresh opaque id.
         """
         lid = lane_id or opaque_id("lane")
-        existing = self.run_graph.work_sessions.get(lid)
+        existing = self.run_graph.lanes.get(lid)
         if existing is not None:
             return existing
-        lane = WorkSession(
+        lane = Lane(
             work_session_id=lid,
             run_id=self.run_id,
             user_id=created_by or "",
@@ -104,7 +95,7 @@ class RunHandle:
             metadata=dict(metadata or {}),
             name=name,
         )
-        self.run_graph.add_work_session(lane)
+        self.run_graph.add_lane(lane)
         return lane
 
     def record_work_event(
@@ -112,6 +103,7 @@ class RunHandle:
         *,
         user_id: str | None,
         work_session_id: str | None,
+        lane_id: str | None = None,
         event_type: str,
         target_kind: str | None = None,
         target_id: str | None = None,
@@ -119,13 +111,14 @@ class RunHandle:
         summary: str | None = None,
         data: dict[str, JSONValue] | None = None,
     ) -> WorkEvent | None:
-        if user_id is None or work_session_id is None:
+        lid = lane_id or work_session_id
+        if user_id is None or lid is None:
             return None
-        self.ensure_work_session(user_id=user_id, work_session_id=work_session_id)
+        self.ensure_lane(created_by=user_id, lane_id=lid)
         event = WorkEvent(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=work_session_id,
+            work_session_id=lid,
             user_id=user_id,
             event_type=event_type,
             target_kind=target_kind,
@@ -161,6 +154,7 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 # Bind verb implementations.
 from arctx.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from arctx.core.run.cut import cut_impl as _cut_impl  # noqa: E402
+from arctx.core.run.lane import adopt_lane_records_impl as _adopt_lane_records_impl  # noqa: E402
 from arctx.core.run.node import add_node_impl as _add_node_impl  # noqa: E402
 from arctx.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from arctx.core.run.trace import trace_impl as _trace_impl  # noqa: E402
@@ -170,6 +164,7 @@ RunHandle.add_step = _add_step_impl
 RunHandle.add_node = _add_node_impl
 RunHandle.attach = _attach_impl
 RunHandle.cut = _cut_impl
+RunHandle.adopt_lane_records = _adopt_lane_records_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl
 RunHandle.outcomes = _outcomes_impl

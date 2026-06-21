@@ -2,7 +2,13 @@
 // live mode) lets you add a step (from a node), attach a payload (to a node or
 // step), or cut the selected record.
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -13,7 +19,17 @@ import "katex/dist/katex.min.css";
 import type { RunClient } from "./api";
 import type { RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
-import { nodeLabel, payloadsForNode, payloadsForStep, stepType } from "./model";
+import {
+  laneColors,
+  laneLabel,
+  laneOptions,
+  nodeLabel,
+  payloadsForNode,
+  payloadsForStep,
+  provenanceFor,
+  stepType,
+  type LaneColorOverrides,
+} from "./model";
 import {
   payloadDisplayFor,
   payloadElementFor,
@@ -27,6 +43,7 @@ interface Props {
   selection: Selection;
   client: RunClient;
   onSelect: (sel: Selection) => void;
+  laneColorOverrides: LaneColorOverrides;
 }
 
 interface AttachTarget {
@@ -41,43 +58,172 @@ interface DetailUnit {
   selected: Exclude<Selection, null>;
 }
 
-export function Panel({ doc, selection, client, onSelect }: Props) {
+type AdoptMode = "explicit" | "history" | "reachable";
+
+type Tab = "content" | "flow" | "edit";
+type AttachPreset = "note" | "git_change" | "diagram" | "command_run" | "custom";
+
+interface FieldDef {
+  key: string;
+  label: string;
+  type: "text" | "number" | "textarea" | "select";
+  placeholder?: string;
+  defaultValue?: any;
+  options?: (doc: RunDocument) => { value: string; label: string }[];
+}
+
+interface PayloadSchema {
+  type: string;
+  label: string;
+  fields: FieldDef[];
+}
+
+const PAYLOAD_SCHEMAS: Record<string, PayloadSchema> = {
+  note: {
+    type: "note",
+    label: "Note (Markdown)",
+    fields: [
+      { key: "text", label: "Note Text", type: "textarea", placeholder: "Markdown supported text..." }
+    ]
+  },
+  git_change: {
+    type: "git_change",
+    label: "Git Change (Git Integration)",
+    fields: [
+      {
+        key: "repo_id",
+        label: "Repository",
+        type: "select",
+        options: (doc) => doc.repos.map((r) => ({ value: r.repo_id, label: r.slug || r.repo_id }))
+      },
+      { key: "branch", label: "Branch", type: "text", defaultValue: "main" },
+      { key: "head_commit", label: "Commit SHA", type: "text", placeholder: "Head commit hash..." }
+    ]
+  },
+  diagram: {
+    type: "diagram",
+    label: "Diagram (Mermaid / Graphviz)",
+    fields: [
+      { key: "title", label: "Title", type: "text", placeholder: "Diagram Title" },
+      { key: "format", label: "Format", type: "select", options: () => [{ value: "mermaid", label: "Mermaid" }, { value: "graphviz", label: "Graphviz" }] },
+      { key: "source", label: "Source Code", type: "textarea", placeholder: "graph TD; A-->B" }
+    ]
+  },
+  command_run: {
+    type: "command_run",
+    label: "Command Run (Execution Log)",
+    fields: [
+      { key: "command", label: "Command", type: "text", placeholder: "npm test" },
+      { key: "exit_code", label: "Exit Code", type: "number", defaultValue: 0 },
+      { key: "cwd", label: "Working Directory (Cwd)", type: "text" },
+      { key: "stdout", label: "Stdout", type: "textarea" },
+      { key: "stderr", label: "Stderr", type: "textarea" }
+    ]
+  }
+};
+
+export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: Props) {
   const qc = useQueryClient();
   const [panelWidth, startPanelResize] = useResizablePanelWidth();
+  const [activeTab, setActiveTab] = useState<Tab>("content");
+
+  // Step state
   const [stepType, setStepType] = useState("experiment");
+  const [stepRawJsonMode, setStepRawJsonMode] = useState(false);
+  const [stepNoteText, setStepNoteText] = useState("");
   const [stepContent, setStepContent] = useState("{}");
-  const [attachType, setAttachType] = useState("note");
-  const [attachContent, setAttachContent] = useState('{"text": ""}');
+  const [stepJsonError, setStepJsonError] = useState<string | null>(null);
+
+  // Attach state
+  const [attachPreset, setAttachPreset] = useState<AttachPreset>("note");
   const [attachTargetKey, setAttachTargetKey] = useState("step");
+
+  // Form values state for schema-driven dynamic fields
+  const [formValues, setFormValues] = useState<Record<string, any>>({});
+
+  // Custom preset states
+  const [customType, setCustomType] = useState("custom_data");
+  const [customContent, setCustomContent] = useState("{}");
+
+  const [adoptLaneId, setAdoptLaneId] = useState("");
+  const [adoptMode, setAdoptMode] = useState<AdoptMode>("explicit");
+
+  const [jsonError, setJsonError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
   const fail = (e: Error) => setError(e.message);
 
+  // Populate dynamic form defaults based on current preset and document repos
+  useEffect(() => {
+    const schema = PAYLOAD_SCHEMAS[attachPreset];
+    if (!schema) return;
+    const initialValues: Record<string, any> = {};
+    for (const f of schema.fields) {
+      if (f.type === "select" && f.options) {
+        const opts = f.options(doc);
+        initialValues[f.key] = formValues[f.key] ?? opts[0]?.value ?? "";
+      } else {
+        initialValues[f.key] = formValues[f.key] ?? f.defaultValue ?? "";
+      }
+    }
+    setFormValues((prev) => ({ ...prev, ...initialValues }));
+  }, [attachPreset, doc]);
+
   const addStep = useMutation({
-    mutationFn: (nodeId: string) =>
-      client.addStep({
+    mutationFn: (nodeId: string) => {
+      let contentObj: Record<string, unknown> = {};
+      if (stepRawJsonMode) {
+        contentObj = parseJson(stepContent);
+      } else {
+        contentObj = stepNoteText ? { text: stepNoteText } : {};
+      }
+      return client.addStep({
         input_node_ids: [nodeId],
         type: stepType,
-        content: parseJson(stepContent),
-      }),
+        content: contentObj,
+      });
+    },
     onSuccess: () => {
       setError(null);
+      setStepNoteText("");
+      setStepContent("{}");
       invalidate();
     },
     onError: fail,
   });
 
   const attach = useMutation({
-    mutationFn: (target: AttachTarget) =>
-      client.attach({
+    mutationFn: (target: AttachTarget) => {
+      let typeVal = "";
+      let contentObj: Record<string, unknown> = {};
+
+      if (attachPreset === "custom") {
+        typeVal = customType;
+        contentObj = parseJson(customContent);
+      } else {
+        const schema = PAYLOAD_SCHEMAS[attachPreset];
+        typeVal = schema.type;
+        // Build payload content filtering to match schema keys
+        const filtered: Record<string, unknown> = {};
+        for (const f of schema.fields) {
+          filtered[f.key] = formValues[f.key] ?? f.defaultValue ?? "";
+        }
+        contentObj = filtered;
+      }
+
+      return client.attach({
         target_id: target.selection.id,
         target_kind: target.selection.kind,
-        type: attachType,
-        content: parseJson(attachContent),
-      }),
+        type: typeVal,
+        content: contentObj,
+      });
+    },
     onSuccess: () => {
       setError(null);
+      // Reset preset fields
+      setFormValues({});
+      setCustomContent("{}");
       invalidate();
     },
     onError: fail,
@@ -93,9 +239,94 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
     onError: fail,
   });
 
+  const adoptLane = useMutation({
+    mutationFn: (unit: DetailUnit) =>
+      client.adoptLane(adoptLaneRequest(unit, adoptLaneId, adoptMode)),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: fail,
+  });
+
+  // Automatically switch tab depending on whether selection has payloads
   useEffect(() => {
     setAttachTargetKey("step");
+    setAdoptMode("explicit");
+
+    if (selection) {
+      const unit = detailUnitFor(doc, selection);
+      const stepPayloads = unit.stepId ? payloadsForStep(doc, unit.stepId) : [];
+      const nodePayloads = payloadsForNode(doc, unit.outputNodeId);
+      const hasPayloads = stepPayloads.length > 0 || nodePayloads.length > 0;
+      setActiveTab(hasPayloads ? "content" : "flow");
+    }
   }, [selection?.kind, selection?.id]);
+
+  const handleCopyToEdit = (text: string) => {
+    setAttachPreset("note");
+    setFormValues((prev) => ({ ...prev, text }));
+    setActiveTab("edit");
+    setAttachTargetKey("step");
+  };
+
+  // Real-time JSON validation for customContent
+  useEffect(() => {
+    if (attachPreset !== "custom") {
+      setJsonError(null);
+      return;
+    }
+    const trimmed = customContent.trim();
+    if (!trimmed) {
+      setJsonError(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        setJsonError("JSON must be an object");
+      } else {
+        setJsonError(null);
+      }
+    } catch (e) {
+      setJsonError((e as Error).message);
+    }
+  }, [customContent, attachPreset]);
+
+  // Real-time JSON validation for stepContent
+  useEffect(() => {
+    if (!stepRawJsonMode) {
+      setStepJsonError(null);
+      return;
+    }
+    const trimmed = stepContent.trim();
+    if (!trimmed) {
+      setStepJsonError(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        setStepJsonError("JSON must be an object");
+      } else {
+        setStepJsonError(null);
+      }
+    } catch (e) {
+      setStepJsonError((e as Error).message);
+    }
+  }, [stepContent, stepRawJsonMode]);
+
+  const lanes = laneOptions(doc);
+  useEffect(() => {
+    if (!lanes.length) {
+      setAdoptLaneId("");
+      return;
+    }
+    if (!lanes.some((lane) => lane.lane_id === adoptLaneId)) {
+      const currentLane = lanes.find((lane) => lane.lane_id === doc.current_lane_id);
+      setAdoptLaneId(currentLane?.lane_id ?? lanes[0].lane_id ?? "");
+    }
+  }, [adoptLaneId, doc.current_lane_id, lanes]);
 
   if (!selection) {
     return (
@@ -120,104 +351,385 @@ export function Panel({ doc, selection, client, onSelect }: Props) {
         <code>{(unit.stepId ?? unit.outputNodeId).slice(0, 12)}</code>
       </h2>
 
-      <section className="panel-view">
-        <SelectionContext doc={doc} unit={unit} onSelect={onSelect} />
+      {client.writable ? (
+        <div className="panel-tabs">
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "content" ? " active" : ""}`}
+            onClick={() => setActiveTab("content")}
+          >
+            Content
+          </button>
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "flow" ? " active" : ""}`}
+            onClick={() => setActiveTab("flow")}
+          >
+            Flow
+          </button>
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "edit" ? " active" : ""}`}
+            onClick={() => setActiveTab("edit")}
+          >
+            Edit
+          </button>
+        </div>
+      ) : (
+        <div className="panel-tabs">
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "content" ? " active" : ""}`}
+            onClick={() => setActiveTab("content")}
+          >
+            Content
+          </button>
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "flow" ? " active" : ""}`}
+            onClick={() => setActiveTab("flow")}
+          >
+            Flow
+          </button>
+        </div>
+      )}
 
-        {unit.stepId ? (
-          <>
-            <h3>step payloads ({stepPayloads.length})</h3>
-            {stepPayloads.length === 0 && <p className="muted">none</p>}
-            {stepPayloads.map((p) => (
-              <PayloadCard key={p.payload_id} doc={doc} payload={p} display={payloadDisplayFor(p, doc)} />
-            ))}
+      {activeTab === "content" && (
+        <section className="panel-view">
+          {unit.stepId ? (
+            <>
+              <h3>step payloads ({stepPayloads.length})</h3>
+              {stepPayloads.length === 0 && <p className="muted">none</p>}
+              {stepPayloads.map((p) => (
+                <PayloadCard
+                  key={p.payload_id}
+                  doc={doc}
+                  payload={p}
+                  display={payloadDisplayFor(p, doc)}
+                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                />
+              ))}
 
-            <h3>output node notes ({nodePayloads.length})</h3>
-            {nodePayloads.length === 0 && <p className="muted">none</p>}
-            {nodePayloads.map((p) => (
-              <PayloadCard key={p.payload_id} doc={doc} payload={p} display={payloadDisplayFor(p, doc)} />
-            ))}
-          </>
-        ) : (
-          <>
-            <h3>node payloads ({nodePayloads.length})</h3>
-            {nodePayloads.length === 0 && <p className="muted">none</p>}
-            {nodePayloads.map((p) => (
-              <PayloadCard key={p.payload_id} doc={doc} payload={p} display={payloadDisplayFor(p, doc)} />
-            ))}
-          </>
-        )}
-      </section>
+              <h3>output node notes ({nodePayloads.length})</h3>
+              {nodePayloads.length === 0 && <p className="muted">none</p>}
+              {nodePayloads.map((p) => (
+                <PayloadCard
+                  key={p.payload_id}
+                  doc={doc}
+                  payload={p}
+                  display={payloadDisplayFor(p, doc)}
+                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                />
+              ))}
+            </>
+          ) : (
+            <>
+              <h3>node payloads ({nodePayloads.length})</h3>
+              {nodePayloads.length === 0 && <p className="muted">none</p>}
+              {nodePayloads.map((p) => (
+                <PayloadCard
+                  key={p.payload_id}
+                  doc={doc}
+                  payload={p}
+                  display={payloadDisplayFor(p, doc)}
+                  onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                />
+              ))}
+            </>
+          )}
+        </section>
+      )}
 
-      {!client.writable && <p className="muted">read-only (share mode)</p>}
+      {activeTab === "flow" && (
+        <section className="panel-view">
+          <ProvenanceCard doc={doc} unit={unit} laneColorOverrides={laneColorOverrides} />
+          <SelectionContext doc={doc} unit={unit} onSelect={onSelect} />
+        </section>
+      )}
 
-      {client.writable && (
-        <details className="actions panel-edit">
-          <summary>edit this unit</summary>
+      {activeTab === "edit" && client.writable && (
+        <section className="actions panel-edit-tabs">
           {error && <p className="error">{error}</p>}
 
           {unit.outputNodeId && (
-            <>
+            <div className="edit-section">
               <h3>add next step from output node</h3>
               <label>
                 type
                 <input value={stepType} onChange={(e) => setStepType(e.target.value)} />
               </label>
-              <label>
-                content (JSON)
-                <textarea
-                  rows={3}
-                  value={stepContent}
-                  onChange={(e) => setStepContent(e.target.value)}
-                />
-              </label>
-              <button disabled={addStep.isPending} onClick={() => addStep.mutate(unit.outputNodeId)}>
+
+              <div style={{ margin: "8px 0" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={stepRawJsonMode}
+                    onChange={(e) => setStepRawJsonMode(e.target.checked)}
+                    style={{ width: "auto", margin: 0 }}
+                  />
+                  Raw JSON content mode
+                </label>
+              </div>
+
+              {stepRawJsonMode ? (
+                <label>
+                  content (JSON)
+                  <textarea
+                    rows={3}
+                    value={stepContent}
+                    onChange={(e) => setStepContent(e.target.value)}
+                  />
+                </label>
+              ) : (
+                <label>
+                  Step Message (Markdown supported)
+                  <textarea
+                    rows={3}
+                    placeholder="Describe this step..."
+                    value={stepNoteText}
+                    onChange={(e) => setStepNoteText(e.target.value)}
+                  />
+                </label>
+              )}
+              {stepJsonError && <p className="error hint">{stepJsonError}</p>}
+              <button
+                disabled={addStep.isPending || (stepRawJsonMode && !!stepJsonError)}
+                onClick={() => addStep.mutate(unit.outputNodeId)}
+              >
                 add step
               </button>
-            </>
+            </div>
           )}
 
-          <h3>attach payload</h3>
-          <label>
-            target
-            <select value={attachTarget.key} onChange={(e) => setAttachTargetKey(e.target.value)}>
-              {attachTargets.map((target) => (
-                <option key={target.key} value={target.key}>
-                  {target.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            type
-            <input value={attachType} onChange={(e) => setAttachType(e.target.value)} />
-          </label>
-          <label>
-            content (JSON)
-            <textarea
-              rows={3}
-              value={attachContent}
-              onChange={(e) => setAttachContent(e.target.value)}
-            />
-          </label>
-          <button disabled={attach.isPending} onClick={() => attach.mutate(attachTarget)}>
-            attach payload
-          </button>
+          <div className="edit-section">
+            <h3>adopt into lane</h3>
+            {lanes.length === 0 ? (
+              <p className="muted">create a lane first</p>
+            ) : (
+              <>
+                <label>
+                  lane
+                  <select value={adoptLaneId} onChange={(e) => setAdoptLaneId(e.target.value)}>
+                    {lanes.map((lane) => (
+                      <option key={lane.group_id} value={lane.lane_id}>
+                        {lane.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  scope
+                  <select
+                    value={adoptMode}
+                    onChange={(e) => setAdoptMode(e.target.value as AdoptMode)}
+                  >
+                    <option value="explicit">{explicitAdoptLabel(unit)}</option>
+                    <option value="history" disabled={!unit.outputNodeId}>
+                      history ending at output node
+                    </option>
+                    <option value="reachable" disabled={!unit.outputNodeId}>
+                      reachable from output node
+                    </option>
+                  </select>
+                </label>
+                <button
+                  disabled={adoptLane.isPending || !adoptLaneId}
+                  onClick={() => adoptLane.mutate(unit)}
+                >
+                  adopt records
+                </button>
+              </>
+            )}
+          </div>
 
-          <h3>cut</h3>
-          <button
-            className="danger"
-            disabled={cut.isPending}
-            onClick={() => {
-              cut.mutate(selection);
-              onSelect(null);
-            }}
-          >
-            cut this {selection.kind}
-          </button>
-        </details>
+          <div className="edit-section">
+            <h3>attach payload</h3>
+            <label>
+              target
+              <select value={attachTarget.key} onChange={(e) => setAttachTargetKey(e.target.value)}>
+                {attachTargets.map((target) => (
+                  <option key={target.key} value={target.key}>
+                    {target.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Preset Type
+              <select
+                value={attachPreset}
+                onChange={(e) => setAttachPreset(e.target.value as AttachPreset)}
+              >
+                <option value="note">Note (Markdown)</option>
+                <option value="git_change">Git Change (Git Integration)</option>
+                <option value="diagram">Diagram (Mermaid / Graphviz)</option>
+                <option value="command_run">Command Run (Execution Log)</option>
+                <option value="custom">Custom JSON</option>
+              </select>
+            </label>
+
+            {/* Dynamic Preset fields */}
+            {attachPreset !== "custom" && PAYLOAD_SCHEMAS[attachPreset] && (
+              <div className="dynamic-fields">
+                {PAYLOAD_SCHEMAS[attachPreset].fields.map((field) => {
+                  const val = formValues[field.key] ?? "";
+                  const onChange = (v: any) => setFormValues((prev) => ({ ...prev, [field.key]: v }));
+
+                  return (
+                    <label key={field.key}>
+                      {field.label}
+                      {field.type === "textarea" ? (
+                        <textarea
+                          rows={field.key === "source" ? 6 : 3}
+                          placeholder={field.placeholder}
+                          value={val}
+                          onChange={(e) => onChange(e.target.value)}
+                        />
+                      ) : field.type === "select" ? (
+                        <select value={val} onChange={(e) => onChange(e.target.value)}>
+                          {field.options && field.options(doc).map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={field.type}
+                          placeholder={field.placeholder}
+                          value={val}
+                          onChange={(e) => onChange(field.type === "number" ? Number(e.target.value) : e.target.value)}
+                        />
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Custom Preset (Raw JSON Mode) */}
+            {attachPreset === "custom" && (
+              <>
+                <label>
+                  Payload Type
+                  <input
+                    value={customType}
+                    onChange={(e) => setCustomType(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Content (JSON)
+                  <textarea
+                    rows={4}
+                    value={customContent}
+                    onChange={(e) => setCustomContent(e.target.value)}
+                  />
+                </label>
+                {jsonError && <p className="error hint">{jsonError}</p>}
+              </>
+            )}
+
+            <button
+              disabled={attach.isPending || (attachPreset === "custom" && !!jsonError)}
+              onClick={() => attach.mutate(attachTarget)}
+            >
+              attach payload
+            </button>
+          </div>
+
+          <div className="danger-zone">
+            <h4>Danger Zone</h4>
+            <p>Cutting this unit will make it and its descendants inactive.</p>
+            <button
+              className="danger"
+              disabled={cut.isPending}
+              onClick={() => {
+                cut.mutate(selection);
+                onSelect(null);
+              }}
+            >
+              cut this {selection.kind}
+            </button>
+          </div>
+        </section>
       )}
     </aside>
   );
+}
+
+function ProvenanceCard({
+  doc,
+  unit,
+  laneColorOverrides,
+}: {
+  doc: RunDocument;
+  unit: DetailUnit;
+  laneColorOverrides: LaneColorOverrides;
+}) {
+  const primaryId = unit.stepId ?? unit.outputNodeId;
+  const primaryKind = unit.stepId ? "step" : "node";
+  const provenance =
+    provenanceFor(doc, primaryId) ??
+    (unit.outputNodeId ? provenanceFor(doc, unit.outputNodeId) : null);
+
+  if (!provenance) {
+    return (
+      <section className="provenance-card missing">
+        <h3>provenance</h3>
+        <div className="provenance-row">
+          <span>lane</span>
+          <strong>none recorded</strong>
+        </div>
+        <p className="muted">
+          This record has no lane provenance. It may have been created before lane
+          attribution was recorded, or without a work session.
+        </p>
+      </section>
+    );
+  }
+
+  const lane = provenance.lane_name || laneLabel(doc, provenance.lane_id);
+  const actorLabel = provenance.membership_kind === "adopted" ? "adopted by" : "created by";
+  return (
+    <section className="provenance-card" style={laneVars(doc, provenance.lane_id, laneColorOverrides)}>
+      <h3>provenance</h3>
+      <div className="provenance-row">
+        <span>lane</span>
+        <strong className="lane-pill">{lane}</strong>
+      </div>
+      <div className="provenance-row">
+        <span>record</span>
+        <code>{primaryKind}:{primaryId.slice(0, 12)}</code>
+      </div>
+      <div className="provenance-row">
+        <span>{actorLabel}</span>
+        <strong>{provenance.user_id}</strong>
+      </div>
+      <div className="provenance-row">
+        <span>event</span>
+        <code>{provenance.event_type}</code>
+      </div>
+      {provenance.created_at && (
+        <div className="provenance-row">
+          <span>created at</span>
+          <time>{provenance.created_at}</time>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function laneVars(
+  doc: RunDocument,
+  laneId: string,
+  laneColorOverrides: LaneColorOverrides,
+): CSSProperties {
+  const colors = laneColors(doc, laneId, laneColorOverrides);
+  return {
+    "--lane-color": colors.laneColor,
+    "--lane-bg": colors.laneBg,
+  } as CSSProperties;
 }
 
 function parseJson(raw: string): Record<string, unknown> {
@@ -228,6 +740,31 @@ function parseJson(raw: string): Record<string, unknown> {
     throw new Error("content must be a JSON object");
   }
   return parsed as Record<string, unknown>;
+}
+
+function adoptLaneRequest(unit: DetailUnit, laneId: string, mode: AdoptMode) {
+  const base = {
+    lane_id: laneId,
+    reason: "web lane adoption",
+  };
+  if (mode === "history") {
+    return { ...base, history_node_id: unit.outputNodeId };
+  }
+  if (mode === "reachable") {
+    return { ...base, reachable_node_id: unit.outputNodeId };
+  }
+  return { ...base, record_ids: explicitAdoptRecordIds(unit) };
+}
+
+function explicitAdoptRecordIds(unit: DetailUnit): string[] {
+  if (unit.stepId) {
+    return [unit.stepId, unit.outputNodeId].filter(Boolean);
+  }
+  return [unit.outputNodeId];
+}
+
+function explicitAdoptLabel(unit: DetailUnit): string {
+  return unit.stepId ? "selected unit (step + output)" : "selected node only";
 }
 
 function useResizablePanelWidth(): [
@@ -484,17 +1021,33 @@ function PayloadCard({
   doc,
   payload,
   display,
+  onCopyToEdit,
 }: {
   doc: RunDocument;
   payload: RunPayload;
   display: PayloadDisplay;
+  onCopyToEdit?: (text: string) => void;
 }) {
   const element = payloadElementFor(payload);
   return (
     <section className={`payload-card${display.raw ? " raw" : ""}`}>
       <div className="payload-card-head">
         <strong>{display.title}</strong>
-        <code>{payload.payload_id.slice(0, 12)}</code>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {onCopyToEdit && (
+            <button
+              type="button"
+              className="payload-copy-btn"
+              onClick={() => {
+                const text = typeof payload.content?.text === "string" ? payload.content.text : "";
+                onCopyToEdit(text);
+              }}
+            >
+              Copy to Edit
+            </button>
+          )}
+          <code>{payload.payload_id.slice(0, 12)}</code>
+        </div>
       </div>
       {display.summary && <p className="payload-summary">{display.summary}</p>}
       {display.media?.map((media, index) => (

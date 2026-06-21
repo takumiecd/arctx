@@ -17,6 +17,17 @@ Payload のインデックスは target から導出されます: `payloads_by_n
 トポロジのインデックスは step の端点から導出されます:
 `steps_by_input_node` と `step_by_output_node`。
 
+## Lane membership
+
+lane は append-only な `WorkEvent` から導出される「現在の所属」です。
+run root node は lane 所属モデルの対象外です。run root 以外の node と全 step は
+必ず 1 つの lane に所属している必要があります。
+
+lane validation では step とその output node を 1 つの unit として扱います。
+lane root は producer-less な lane node だけでなく、別 lane の input から入る
+lane 内 entry step の output node でも構いません。ただし run root 自体を lane root
+にすることはできません。
+
 コア payload は汎用の `NodePayload` / `StepPayload` に加えて `CutPayload` です。
 `CutPayload` は node または step を無効化する append-only な手段で、対象は
 ストレージから削除されません。

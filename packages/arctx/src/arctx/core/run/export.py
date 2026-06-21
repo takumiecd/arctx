@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from arctx.core.cuts import inactive_node_ids, inactive_step_ids
+from arctx.core.lanes import lane_export_view
 from arctx.core.run.handle import RunHandle
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
@@ -404,6 +405,7 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
     steps_out.sort(key=lambda d: str(d["step_id"]))
 
     payloads_out = []
+    payload_ids = set()
     for p in graph.payloads.values():
         # Repo registry entries are surfaced in ``repos``; don't duplicate them.
         if p.payload_type == "repo":
@@ -412,6 +414,7 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
             continue
         if p.target_kind == "step" and p.target_id not in step_ids:
             continue
+        payload_ids.add(p.payload_id)
         payloads_out.append(p.to_dict())
     payloads_out.sort(key=lambda d: str(d.get("payload_id")))
 
@@ -420,6 +423,14 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
         if not opts.include_local:
             e = {k: v for k, v in e.items() if k != "local_path"}
         repos_out.append(e)
+
+    lanes = lane_export_view(
+        graph,
+        node_ids=node_ids,
+        step_ids=step_ids,
+        payload_ids=payload_ids,
+        root_node_id=handle.root_node_id,
+    )
 
     return {
         "arctx_export_version": 1,
@@ -434,6 +445,13 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
         "steps": steps_out,
         "payloads": payloads_out,
         "repos": repos_out,
+        "lanes": lanes["lanes"],
+        "work_sessions": lanes["work_sessions"],
+        "work_events": lanes["work_events"],
+        "record_provenance": lanes["record_provenance"],
+        "created_provenance": lanes["created_provenance"],
+        "groups": lanes["groups"],
+        "lane_boundaries": lanes["lane_boundaries"],
     }
 
 

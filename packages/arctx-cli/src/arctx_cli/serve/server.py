@@ -55,9 +55,14 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
             except (ValueError, json.JSONDecodeError) as exc:
                 self._send(400, {"error": f"invalid JSON body: {exc}"})
                 return
+            ws_id = (
+                self.headers.get("X-Arctx-Work-Session-Id")
+                or self.headers.get("X-Arctx-Lane-Id")
+                or work_session_id
+            )
             status, payload = dispatch(
                 store, run_id, method, path, body,
-                user_id=user_id, work_session_id=work_session_id,
+                user_id=user_id, work_session_id=ws_id,
             )
             self._send(status, payload)
 
@@ -91,7 +96,8 @@ def serve(
     )
     httpd = ThreadingHTTPServer((host, port), handler)
     print(f"arctx serve: http://{host}:{port}  (run {run_id})")
-    print("  GET /run · POST /step · POST /attach · POST /cut · GET /health")
+    print("  GET /run · POST /step · POST /attach · POST /cut")
+    print("  POST /lane · POST /lane/adopt · GET /health")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
