@@ -486,6 +486,9 @@ function GraphCanvas({
       onConnectEnd={writable ? onConnectEnd : undefined}
       nodesConnectable={writable}
       connectionMode={ConnectionMode.Loose}
+      panOnScroll={true}
+      zoomOnScroll={false}
+      zoomActivationKeyCode="Control"
       fitView
       proOptions={{ hideAttribution: true }}
     >
