@@ -110,6 +110,42 @@ class LaneValidationIssue:
         }
 
 
+def lane_validation_errors(
+    graph: RunGraph,
+    *,
+    root_node_id: str | None = None,
+) -> tuple[LaneValidationIssue, ...]:
+    """Return only blocking lane validation errors."""
+    return tuple(
+        issue
+        for issue in validate_lanes(graph, root_node_id=root_node_id)
+        if issue.severity == "error"
+    )
+
+
+def format_lane_validation_errors(
+    issues: tuple[LaneValidationIssue, ...] | list[LaneValidationIssue],
+) -> str:
+    """Format lane validation errors for writer-facing exceptions."""
+    if not issues:
+        return "lane validation failed"
+    rendered = "; ".join(f"{issue.code}: {issue.message}" for issue in issues[:3])
+    if len(issues) > 3:
+        rendered += f"; ... and {len(issues) - 3} more"
+    return f"lane validation failed: {rendered}"
+
+
+def ensure_valid_lanes(
+    graph: RunGraph,
+    *,
+    root_node_id: str | None = None,
+) -> None:
+    """Raise when lane invariants have blocking errors."""
+    errors = lane_validation_errors(graph, root_node_id=root_node_id)
+    if errors:
+        raise ValueError(format_lane_validation_errors(errors))
+
+
 def lane_label(session: WorkSession | None, lane_id: str) -> str:
     """Return the human label for a lane id."""
     if session is None:

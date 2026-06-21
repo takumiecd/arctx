@@ -261,7 +261,7 @@ def _adoption_record_ids(
             + trace.step_ids
             + trace.payload_ids
         )
-        return tuple(dict.fromkeys(ids)), "history", node_id
+        return _without_run_root(handle, ids), "history", node_id
 
     node_id = str(reachable_node_id)
     if node_id not in handle.run_graph.nodes:
@@ -272,7 +272,17 @@ def _adoption_record_ids(
         + tuple(reachable["step_ids"])
         + tuple(reachable["payload_ids"])
     )
-    return tuple(dict.fromkeys(ids)), "reachable", node_id
+    return _without_run_root(handle, ids), "reachable", node_id
+
+
+def _without_run_root(handle, ids) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            str(record_id)
+            for record_id in ids
+            if str(record_id) != handle.root_node_id
+        )
+    )
 
 
 def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:

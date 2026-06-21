@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from arctx.core.lanes import ensure_valid_lanes
 from arctx.core.schema.work import WorkEvent
 from arctx.core.types import JSONValue
 
@@ -52,4 +53,16 @@ def adopt_lane_records_impl(
     )
     if event is None:  # defensive; user_id/lane_id were validated above.
         raise RuntimeError("failed to record lane adoption event")
+    try:
+        ensure_valid_lanes(self.run_graph, root_node_id=self.root_node_id)
+    except ValueError:
+        if self.run_graph.work_events and self.run_graph.work_events[-1] == event:
+            self.run_graph.work_events.pop()
+        else:  # defensive: keep rollback correct if hooks append extra events later.
+            self.run_graph.work_events = [
+                existing
+                for existing in self.run_graph.work_events
+                if existing.event_id != event.event_id
+            ]
+        raise
     return event

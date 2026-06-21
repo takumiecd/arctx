@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from arctx.core.lanes import ensure_valid_lanes
 from arctx.core.run.export import ExportOptions, json_document
 from arctx.payload_builder import build_payload
 
@@ -140,6 +141,7 @@ def _post_node(store, run_id, body, user_id, work_session_id) -> dict:
         )
         result["payload"] = attached.to_dict()
 
+    _ensure_lane_integrity(handle)
     maybe_append_or_save(
         store=store, handle=handle,
         user_id=user_id, work_session_id=work_session_id, before=before,
@@ -169,6 +171,7 @@ def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
         user_id=user_id,
         work_session_id=work_session_id,
     )
+    _ensure_lane_integrity(handle)
     maybe_append_or_save(
         store=store, handle=handle,
         user_id=user_id, work_session_id=work_session_id, before=before,
@@ -347,7 +350,7 @@ def _adoption_record_ids(handle, body: dict) -> tuple[tuple[str, ...], str, str]
             + trace.step_ids
             + trace.payload_ids
         )
-        return tuple(dict.fromkeys(ids)), "history", node_id
+        return _without_run_root(handle, ids), "history", node_id
 
     node_id = str(reachable_node_id)
     if node_id not in handle.run_graph.nodes:
@@ -358,4 +361,18 @@ def _adoption_record_ids(handle, body: dict) -> tuple[tuple[str, ...], str, str]
         + tuple(reachable["step_ids"])
         + tuple(reachable["payload_ids"])
     )
-    return tuple(dict.fromkeys(ids)), "reachable", node_id
+    return _without_run_root(handle, ids), "reachable", node_id
+
+
+def _without_run_root(handle, ids) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            str(record_id)
+            for record_id in ids
+            if str(record_id) != handle.root_node_id
+        )
+    )
+
+
+def _ensure_lane_integrity(handle) -> None:
+    ensure_valid_lanes(handle.run_graph, root_node_id=handle.root_node_id)

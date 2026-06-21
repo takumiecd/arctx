@@ -170,12 +170,14 @@ def test_validate_lanes_reports_records_unreachable_from_explicit_root():
         created_by="alice",
         metadata={"root_node_id": root.node_id},
     )
-    h.adopt_lane_records(
-        "lane_math",
-        [root.node_id, stray.node_id],
+    h.record_work_event(
         user_id="alice",
-        mode="explicit",
+        work_session_id="lane_math",
+        event_type="lane_adopted",
+        target_kind="subgraph",
         target_id=root.node_id,
+        created_records=(),
+        data={"record_ids": [root.node_id, stray.node_id], "mode": "fixture"},
     )
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
@@ -258,6 +260,45 @@ def test_adopt_lane_records_rejects_run_root():
             mode="explicit",
             target_id=h.root_node_id,
         )
+
+
+def test_adopt_lane_records_rejects_invalid_lane_roots():
+    h = _handle()
+    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
+    h.ensure_lane(name="experiment", lane_id="lane_exp", created_by="alice")
+    math_root = h.add_step(
+        [h.root_node_id],
+        _payload(h, "math"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+    h.add_step(
+        [math_root.output_node_id],
+        _payload(h, "experiment"),
+        user_id="alice",
+        work_session_id="lane_exp",
+    )
+    other = h.add_step(
+        [math_root.output_node_id],
+        _payload(h, "other"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+
+    before = tuple(event.event_id for event in h.run_graph.work_events)
+    with pytest.raises(ValueError, match="multiple_lane_roots"):
+        h.adopt_lane_records(
+            "lane_exp",
+            [other.step_id, other.output_node_id],
+            user_id="alice",
+            mode="explicit",
+            target_id=other.step_id,
+        )
+
+    assert tuple(event.event_id for event in h.run_graph.work_events) == before
+    membership = lane_membership(h.run_graph, root_node_id=h.root_node_id)
+    assert membership.step_to_lane[other.step_id] == "lane_math"
+    assert membership.node_to_lane[other.output_node_id] == "lane_math"
 
 
 def test_validate_lanes_errors_when_non_root_node_has_no_lane():

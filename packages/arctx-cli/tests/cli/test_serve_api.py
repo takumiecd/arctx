@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from arctx.core.lanes import validate_lanes
 from arctx.session import resolve_store
 
 from arctx_cli.commands.init import run_init_command
@@ -32,9 +33,13 @@ def _setup(td: str, run_id: str = "srv_run"):
 
 
 def _call(store, run_id, method, path, body=None):
+    return _call_as(store, run_id, method, path, body, work_session_id="ws_test")
+
+
+def _call_as(store, run_id, method, path, body=None, *, work_session_id: str):
     return dispatch(
         store, run_id, method, path, body,
-        user_id="tester", work_session_id="ws_test",
+        user_id="tester", work_session_id=work_session_id,
     )
 
 
@@ -96,6 +101,23 @@ class TestWriteRoutes:
             status, body = _call(store, run_id, "POST", "/step", {"type": "x"})
             assert status == 400
             assert "input_node_ids" in body["error"]
+
+    def test_post_step_rejects_second_lane_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            status, _ = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "first",
+            })
+            assert status == 201
+
+            status, body = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "second",
+            })
+            assert status == 400
+            assert "multiple_lane_roots" in body["error"]
+
+            handle = store.load_run(run_id)
+            assert len(handle.run_graph.steps) == 1
 
     def test_post_attach(self):
         with tempfile.TemporaryDirectory() as td:
@@ -301,6 +323,44 @@ class TestWriteRoutes:
             })
             assert status == 400
             assert "exactly one" in body["error"]
+
+    def test_post_lane_adopt_rejects_multiple_lane_roots(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            math_id = math_body["lane"]["work_session_id"]
+            exp_id = exp_body["lane"]["work_session_id"]
+
+            _, math_root = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "math",
+            }, work_session_id=math_id)
+            math_node = math_root["step"]["output_node_id"]
+            _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [math_node], "type": "experiment",
+            }, work_session_id=exp_id)
+            _, other = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [math_node], "type": "other",
+            }, work_session_id=math_id)
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": exp_id,
+                "record_ids": [
+                    other["step"]["step_id"],
+                    other["step"]["output_node_id"],
+                ],
+            })
+
+            assert status == 400
+            assert "multiple_lane_roots" in body["error"]
+            handle = store.load_run(run_id)
+            assert not any(
+                issue.severity == "error"
+                for issue in validate_lanes(
+                    handle.run_graph,
+                    root_node_id=handle.root_node_id,
+                )
+            )
 
 
 if __name__ == "__main__":  # pragma: no cover
