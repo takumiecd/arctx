@@ -61,7 +61,7 @@ interface DetailUnit {
 type AdoptMode = "explicit" | "history" | "reachable";
 
 type Tab = "content" | "flow" | "edit";
-type AttachPreset = "note" | "git_change" | "diagram" | "command_run" | "custom";
+type AttachPreset = "note" | "asset" | "git_change" | "diagram" | "command_run" | "custom";
 
 interface FieldDef {
   key: string;
@@ -145,6 +145,10 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
   const [customType, setCustomType] = useState("custom_data");
   const [customContent, setCustomContent] = useState("{}");
 
+  // Asset preset / note picker states
+  const [assetFile, setAssetFile] = useState<File | null>(null);
+  const [pickerAssets, setPickerAssets] = useState<RunPayload[]>([]);
+
   const [adoptLaneId, setAdoptLaneId] = useState("");
   const [adoptMode, setAdoptMode] = useState<AdoptMode>("explicit");
 
@@ -195,6 +199,23 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
 
   const attach = useMutation({
     mutationFn: async (target: AttachTarget) => {
+      // Asset is a core payload: upload the file, then attach an AssetPayload
+      // to the selected record (not a content-fields payload).
+      if (attachPreset === "asset") {
+        if (!assetFile) throw new Error("choose a file to attach");
+        const info = await client.uploadArtifact(assetFile);
+        await client.attachAsset({
+          target_id: target.selection.id,
+          target_kind: target.selection.kind,
+          asset_id: info.artifact_id,
+          filename: info.filename,
+          mime_type: info.mime_type,
+          size_bytes: info.size_bytes,
+          path: info.path,
+        });
+        return;
+      }
+
       let typeVal = "";
       let contentObj: Record<string, unknown> = {};
 
@@ -224,6 +245,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
       // Reset preset fields
       setFormValues({});
       setCustomContent("{}");
+      setAssetFile(null);
       invalidate();
     },
     onError: fail,
@@ -562,6 +584,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
                 onChange={(e) => setAttachPreset(e.target.value as AttachPreset)}
               >
                 <option value="note">Note (Markdown)</option>
+                <option value="asset">Asset (File)</option>
                 <option value="git_change">Git Change (Git Integration)</option>
                 <option value="diagram">Diagram (Mermaid / Graphviz)</option>
                 <option value="command_run">Command Run (Execution Log)</option>
@@ -597,6 +620,22 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
                                 if (!file) return;
                                 try {
                                   const info = await client.uploadArtifact(file);
+                                  // In a note, also record the upload as a core
+                                  // asset payload on the target so the file is a
+                                  // first-class, referenceable record (not just a
+                                  // floating artifact).
+                                  if (attachPreset === "note") {
+                                    await client.attachAsset({
+                                      target_id: attachTarget.selection.id,
+                                      target_kind: attachTarget.selection.kind,
+                                      asset_id: info.artifact_id,
+                                      filename: info.filename,
+                                      mime_type: info.mime_type,
+                                      size_bytes: info.size_bytes,
+                                      path: info.path,
+                                    });
+                                    invalidate();
+                                  }
                                   const isImage = file.type.startsWith("image/");
                                   const markdown = isImage
                                     ? `\n![${file.name}](/${info.path})\n`
@@ -615,6 +654,38 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
                             >
                               📎 Attach File
                             </button>
+                            {attachPreset === "note" && (
+                              <select
+                                value=""
+                                style={{ marginLeft: "6px", fontSize: "11px" }}
+                                onFocus={async () => {
+                                  try {
+                                    setPickerAssets(
+                                      await client.visibleAssets(attachTarget.selection.id),
+                                    );
+                                  } catch (err: any) {
+                                    setError(err.message);
+                                  }
+                                }}
+                                onChange={(e) => {
+                                  const a = pickerAssets.find((x) => x.payload_id === e.target.value);
+                                  if (!a) return;
+                                  const url = `/${String(a.path).replace(/^\/+/, "")}`;
+                                  const name = String(a.filename);
+                                  const md = String(a.mime_type).startsWith("image/")
+                                    ? `\n![${name}](${url})\n`
+                                    : `\n[${name}](${url})\n`;
+                                  onChange(val + md);
+                                }}
+                              >
+                                <option value="">📁 Insert asset…</option>
+                                {pickerAssets.map((a) => (
+                                  <option key={a.payload_id} value={a.payload_id}>
+                                    {String(a.filename)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                           </div>
                         </div>
                       ) : field.type === "select" ? (
@@ -641,6 +712,22 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
 
 
 
+            {/* Asset Preset (upload a file as a core AssetPayload) */}
+            {attachPreset === "asset" && (
+              <label>
+                File
+                <input
+                  type="file"
+                  onChange={(e) => setAssetFile(e.target.files?.[0] ?? null)}
+                />
+                <span className="hint muted">
+                  Uploads the file into the run and attaches an asset payload to
+                  the selected record. It can then be referenced from this record
+                  and its descendants.
+                </span>
+              </label>
+            )}
+
             {/* Custom Preset (Raw JSON Mode) */}
             {attachPreset === "custom" && (
               <>
@@ -664,7 +751,11 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
             )}
 
             <button
-              disabled={attach.isPending || (attachPreset === "custom" && !!jsonError)}
+              disabled={
+                attach.isPending ||
+                (attachPreset === "custom" && !!jsonError) ||
+                (attachPreset === "asset" && !assetFile)
+              }
               onClick={() => attach.mutate(attachTarget)}
             >
               attach payload

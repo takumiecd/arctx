@@ -162,6 +162,29 @@ export interface AttachRequest {
   payload_type?: string;
 }
 
+export interface UploadedArtifact {
+  artifact_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  path: string;
+}
+
+export interface AttachAssetRequest {
+  target_id: string;
+  target_kind: "node" | "step";
+  asset_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  path: string;
+}
+
+export interface VisibleAssetsResponse {
+  from: string;
+  assets: RunPayload[];
+}
+
 export interface CutRequest {
   target_id: string;
   target_kind: "node" | "step";
