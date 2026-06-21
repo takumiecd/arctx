@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from arctx.session import resolve_store
+
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.serve.api import dispatch
 
@@ -209,6 +210,95 @@ class TestWriteRoutes:
             })
             assert status == 201
             assert body["payload"]["target_kind"] == "node"
+
+    def test_post_lane_create_then_visible_in_run(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            assert status == 201
+            assert body["lane"]["name"] == "math"
+            lane_id = body["lane"]["work_session_id"]
+
+            _, run = _call(store, run_id, "GET", "/run")
+            assert any(lane["work_session_id"] == lane_id for lane in run["lanes"])
+
+    def test_post_lane_create_rejects_duplicate_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, _ = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            assert status == 201
+
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            assert status == 400
+            assert "already exists" in body["error"]
+
+    def test_post_lane_adopt_explicit_records(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            lane_id = lane_body["lane"]["work_session_id"]
+            _, made = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root],
+                "type": "derive",
+            })
+            step_id = made["step"]["step_id"]
+            output_id = made["step"]["output_node_id"]
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": lane_id,
+                "record_ids": [step_id, output_id],
+                "reason": "manual repair",
+            })
+            assert status == 201
+            assert body["lane_id"] == lane_id
+            assert body["adopted_record_ids"] == [step_id, output_id]
+            assert body["mode"] == "explicit"
+
+            _, run = _call(store, run_id, "GET", "/run")
+            prov = run["record_provenance"][step_id]
+            assert prov["lane_id"] == lane_id
+            assert prov["membership_kind"] == "adopted"
+            assert prov["event_type"] == "lane_adopted"
+
+    def test_post_lane_adopt_by_name_history(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, made = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root],
+                "type": "derive",
+            })
+            output_id = made["step"]["output_node_id"]
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "name": "math",
+                "history_node_id": output_id,
+            })
+            assert status == 201
+            assert body["mode"] == "history"
+            assert output_id in body["adopted_record_ids"]
+
+    def test_post_lane_adopt_unknown_lane(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": "missing",
+                "record_ids": [root],
+            })
+            assert status == 404
+            assert "unknown lane" in body["error"]
+
+    def test_post_lane_adopt_requires_one_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": lane_body["lane"]["work_session_id"],
+                "record_ids": [root],
+                "history_node_id": root,
+            })
+            assert status == 400
+            assert "exactly one" in body["error"]
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -7,10 +7,14 @@
 // `pickClient()` chooses based on what the page provides.
 
 import type {
+  AdoptLaneRequest,
+  AdoptLaneResponse,
   AddNodeRequest,
   AddStepRequest,
   AddStepResponse,
   AttachRequest,
+  CreateLaneRequest,
+  CreateLaneResponse,
   CutRequest,
   RunDocument,
   WebLayout,
@@ -25,6 +29,8 @@ export interface RunClient {
   addStep(req: AddStepRequest): Promise<AddStepResponse>;
   attach(req: AttachRequest): Promise<void>;
   cut(req: CutRequest): Promise<void>;
+  createLane(req: CreateLaneRequest): Promise<CreateLaneResponse>;
+  adoptLane(req: AdoptLaneRequest): Promise<AdoptLaneResponse>;
 }
 
 class ReadOnlyError extends Error {
@@ -73,6 +79,15 @@ export class LiveClient implements RunClient {
   async cut(req: CutRequest) {
     await this.req("/cut", { method: "POST", body: JSON.stringify(req) });
   }
+  async createLane(req: CreateLaneRequest) {
+    return this.req<CreateLaneResponse>("/lane", { method: "POST", body: JSON.stringify(req) });
+  }
+  async adoptLane(req: AdoptLaneRequest) {
+    return this.req<AdoptLaneResponse>("/lane/adopt", {
+      method: "POST",
+      body: JSON.stringify(req),
+    });
+  }
 }
 
 export class StaticClient implements RunClient {
@@ -97,6 +112,12 @@ export class StaticClient implements RunClient {
     throw new ReadOnlyError();
   }
   async cut(): Promise<void> {
+    throw new ReadOnlyError();
+  }
+  async createLane(): Promise<CreateLaneResponse> {
+    throw new ReadOnlyError();
+  }
+  async adoptLane(): Promise<AdoptLaneResponse> {
     throw new ReadOnlyError();
   }
 }

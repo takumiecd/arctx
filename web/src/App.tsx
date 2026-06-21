@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { pickClient } from "./api";
 import { Graph, type Selection } from "./Graph";
 import { Panel } from "./Panel";
-import { laneColors, laneGroups, type LaneColorOverrides } from "./model";
+import { laneColors, laneOptions, type LaneColorOverrides } from "./model";
 import type { RunDocument } from "./types";
 
 const client = pickClient();
@@ -14,6 +14,7 @@ export function App() {
   const [collapsedLaneIds, setCollapsedLaneIds] = useState<Set<string>>(() => new Set());
   const [laneColorOverrides, setLaneColorOverrides] = useState<LaneColorOverrides>({});
   const [laneColorRunId, setLaneColorRunId] = useState<string | null>(null);
+  const [newLaneName, setNewLaneName] = useState("");
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
   const { data, isLoading, error } = useQuery({
@@ -32,6 +33,13 @@ export function App() {
   const addNode = useMutation({
     mutationFn: () => client.addNode({}),
     onSuccess: invalidate,
+  });
+  const createLane = useMutation({
+    mutationFn: (name: string) => client.createLane({ name }),
+    onSuccess: () => {
+      setNewLaneName("");
+      invalidate();
+    },
   });
 
   // Step creation by dragging on the canvas. Output node omitted -> new node;
@@ -64,8 +72,8 @@ export function App() {
   if (error) return <div className="center error">{(error as Error).message}</div>;
   if (!data) return <div className="center">no run</div>;
 
-  const actionError = (addNode.error ?? createStep.error) as Error | null;
-  const lanes = laneGroups(data);
+  const actionError = (addNode.error ?? createLane.error ?? createStep.error) as Error | null;
+  const lanes = laneOptions(data);
   const knownLaneIds = new Set(lanes.map((lane) => lane.lane_id).filter(Boolean) as string[]);
   const visibleCollapsedLaneIds = new Set(
     [...collapsedLaneIds].filter((laneId) => knownLaneIds.has(laneId)),
@@ -130,6 +138,26 @@ export function App() {
         )}
         {lanes.length === 0 && data.counts.nodes > 1 && (
           <span className="lane-empty">no lane metadata</span>
+        )}
+        {client.writable && (
+          <form
+            className="lane-create"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = newLaneName.trim();
+              if (name) createLane.mutate(name);
+            }}
+          >
+            <input
+              aria-label="new lane name"
+              placeholder="new lane"
+              value={newLaneName}
+              onChange={(event) => setNewLaneName(event.currentTarget.value)}
+            />
+            <button disabled={createLane.isPending || !newLaneName.trim()} type="submit">
+              + lane
+            </button>
+          </form>
         )}
         {client.writable && (
           <button className="add-node" disabled={addNode.isPending} onClick={() => addNode.mutate()}>

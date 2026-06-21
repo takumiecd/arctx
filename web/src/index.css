@@ -32,6 +32,34 @@ header .add-node:disabled {
   opacity: 0.5;
   cursor: default;
 }
+.lane-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+.lane-create input {
+  width: 110px;
+  padding: 3px 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+}
+.lane-create button {
+  padding: 3px 9px;
+  border: 1px solid #0f766e;
+  background: #0f766e;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.lane-create button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .lane-toolbar {
   display: inline-flex;
   align-items: center;

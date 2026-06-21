@@ -4,7 +4,8 @@ Web GUI for arctx runs (React + React Flow + Vite). One frontend, two data
 modes — the UI only talks to a `RunClient`, so the same components serve both:
 
 - **Live mode (read + write)** — talks to `arctx serve`'s HTTP API. Add nodes
-  and steps, attach payloads to a node or step, and cut records from the canvas.
+  and steps, create lanes, adopt existing records into lanes, attach payloads to
+  a node or step, and cut records from the canvas.
 - **Static / share mode (read-only)** — renders a run document embedded in the
   page (`<script id="arctx-run" type="application/json">…</script>`). No backend.
 

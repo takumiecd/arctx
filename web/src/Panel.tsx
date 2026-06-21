@@ -22,6 +22,7 @@ import type { Selection } from "./Graph";
 import {
   laneColors,
   laneLabel,
+  laneOptions,
   nodeLabel,
   payloadsForNode,
   payloadsForStep,
@@ -57,6 +58,8 @@ interface DetailUnit {
   selected: Exclude<Selection, null>;
 }
 
+type AdoptMode = "explicit" | "history" | "reachable";
+
 export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: Props) {
   const qc = useQueryClient();
   const [panelWidth, startPanelResize] = useResizablePanelWidth();
@@ -65,6 +68,8 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
   const [attachType, setAttachType] = useState("note");
   const [attachContent, setAttachContent] = useState('{"text": ""}');
   const [attachTargetKey, setAttachTargetKey] = useState("step");
+  const [adoptLaneId, setAdoptLaneId] = useState("");
+  const [adoptMode, setAdoptMode] = useState<AdoptMode>("explicit");
   const [error, setError] = useState<string | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
@@ -109,9 +114,31 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
     onError: fail,
   });
 
+  const adoptLane = useMutation({
+    mutationFn: (unit: DetailUnit) =>
+      client.adoptLane(adoptLaneRequest(unit, adoptLaneId, adoptMode)),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: fail,
+  });
+
   useEffect(() => {
     setAttachTargetKey("step");
+    setAdoptMode("explicit");
   }, [selection?.kind, selection?.id]);
+
+  const lanes = laneOptions(doc);
+  useEffect(() => {
+    if (!lanes.length) {
+      setAdoptLaneId("");
+      return;
+    }
+    if (!lanes.some((lane) => lane.lane_id === adoptLaneId)) {
+      setAdoptLaneId(lanes[0].lane_id ?? "");
+    }
+  }, [adoptLaneId, lanes]);
 
   if (!selection) {
     return (
@@ -189,6 +216,45 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
               </label>
               <button disabled={addStep.isPending} onClick={() => addStep.mutate(unit.outputNodeId)}>
                 add step
+              </button>
+            </>
+          )}
+
+          <h3>adopt into lane</h3>
+          {lanes.length === 0 ? (
+            <p className="muted">create a lane first</p>
+          ) : (
+            <>
+              <label>
+                lane
+                <select value={adoptLaneId} onChange={(e) => setAdoptLaneId(e.target.value)}>
+                  {lanes.map((lane) => (
+                    <option key={lane.group_id} value={lane.lane_id}>
+                      {lane.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                scope
+                <select
+                  value={adoptMode}
+                  onChange={(e) => setAdoptMode(e.target.value as AdoptMode)}
+                >
+                  <option value="explicit">selected record only</option>
+                  <option value="history" disabled={!unit.outputNodeId}>
+                    history ending at output node
+                  </option>
+                  <option value="reachable" disabled={!unit.outputNodeId}>
+                    reachable from output node
+                  </option>
+                </select>
+              </label>
+              <button
+                disabled={adoptLane.isPending || !adoptLaneId}
+                onClick={() => adoptLane.mutate(unit)}
+              >
+                adopt records
               </button>
             </>
           )}
@@ -319,6 +385,20 @@ function parseJson(raw: string): Record<string, unknown> {
     throw new Error("content must be a JSON object");
   }
   return parsed as Record<string, unknown>;
+}
+
+function adoptLaneRequest(unit: DetailUnit, laneId: string, mode: AdoptMode) {
+  const base = {
+    lane_id: laneId,
+    reason: "web lane adoption",
+  };
+  if (mode === "history") {
+    return { ...base, history_node_id: unit.outputNodeId };
+  }
+  if (mode === "reachable") {
+    return { ...base, reachable_node_id: unit.outputNodeId };
+  }
+  return { ...base, record_ids: [unit.selected.id] };
 }
 
 function useResizablePanelWidth(): [

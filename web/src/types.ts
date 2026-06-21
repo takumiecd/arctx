@@ -160,3 +160,30 @@ export interface CutRequest {
   target_kind: "node" | "step";
   reason?: string;
 }
+
+export interface CreateLaneRequest {
+  name: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateLaneResponse {
+  lane: RunWorkSession;
+}
+
+export interface AdoptLaneRequest {
+  lane_id?: string;
+  name?: string;
+  record_ids?: string[];
+  history_node_id?: string;
+  reachable_node_id?: string;
+  reason?: string;
+}
+
+export interface AdoptLaneResponse {
+  lane_id: string;
+  name?: string | null;
+  adopted_record_ids: string[];
+  count: number;
+  mode: "explicit" | "history" | "reachable" | string;
+  event_id: string;
+}

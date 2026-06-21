@@ -13,6 +13,8 @@ Routes (the GUI data contract):
 - ``POST /step``    -> create a Step from input nodes; returns the new step
 - ``POST /attach``  -> attach a payload to a Node or Step; returns the payload
 - ``POST /cut``     -> cut a node or step; returns the cut payload
+- ``POST /lane``    -> create a lane
+- ``POST /lane/adopt`` -> adopt existing records into a lane
 
 Write routes reuse the exact same building blocks as the ``arctx add`` /
 ``arctx attach`` / ``arctx cut`` CLI commands (``build_payload`` +
@@ -70,6 +72,10 @@ def dispatch(
             return 201, _post_attach(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/cut"):
             return 201, _post_cut(store, run_id, body or {}, user_id, work_session_id)
+        if route == ("POST", "/lane"):
+            return 201, _post_lane(store, run_id, body or {}, user_id)
+        if route == ("POST", "/lane/adopt"):
+            return 201, _post_lane_adopt(store, run_id, body or {}, user_id)
         return 404, {"error": f"no route for {method} {path}"}
     except ApiError as exc:
         return exc.status, {"error": exc.message}
@@ -243,3 +249,109 @@ def _post_cut(store, run_id, body, user_id, work_session_id) -> dict:
         user_id=user_id, work_session_id=work_session_id, before=before,
     )
     return {"payload": cut.to_dict()}
+
+
+def _post_lane(store, run_id, body, user_id) -> dict:
+    name = body.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ApiError(400, "name is required")
+    metadata = body.get("metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ApiError(400, "metadata must be an object")
+
+    handle = _load(store, run_id)
+    if any(lane.name == name.strip() for lane in handle.run_graph.lanes.values()):
+        raise ApiError(400, f"lane already exists: {name.strip()!r}")
+    lane = handle.ensure_lane(name=name.strip(), created_by=user_id, metadata=metadata)
+    store.save_run(handle)
+    return {"lane": lane.to_dict()}
+
+
+def _post_lane_adopt(store, run_id, body, user_id) -> dict:
+    lane_ref = body.get("lane_id") or body.get("name")
+    if not isinstance(lane_ref, str) or not lane_ref.strip():
+        raise ApiError(400, "lane_id or name is required")
+
+    handle = _load(store, run_id)
+    lane = handle.run_graph.lanes.get(lane_ref)
+    if lane is None:
+        lane = next(
+            (
+                candidate
+                for candidate in handle.run_graph.lanes.values()
+                if candidate.name == lane_ref
+            ),
+            None,
+        )
+    if lane is None:
+        raise ApiError(404, f"unknown lane: {lane_ref}")
+
+    ids, mode, target_id = _adoption_record_ids(handle, body)
+    before = graph_counts(handle)
+    event = handle.adopt_lane_records(
+        lane.work_session_id,
+        ids,
+        user_id=user_id,
+        mode=mode,
+        target_id=target_id,
+        reason=body.get("reason") if isinstance(body.get("reason"), str) else None,
+    )
+    maybe_append_or_save(
+        store=store,
+        handle=handle,
+        user_id=user_id,
+        work_session_id=lane.work_session_id,
+        before=before,
+    )
+    return {
+        "lane_id": lane.work_session_id,
+        "name": lane.name,
+        "adopted_record_ids": list(ids),
+        "count": len(ids),
+        "mode": mode,
+        "event_id": event.event_id,
+    }
+
+
+def _adoption_record_ids(handle, body: dict) -> tuple[tuple[str, ...], str, str]:
+    record_ids = body.get("record_ids")
+    history_node_id = body.get("history_node_id")
+    reachable_node_id = body.get("reachable_node_id")
+    sources = [
+        isinstance(record_ids, list) and bool(record_ids),
+        history_node_id is not None,
+        reachable_node_id is not None,
+    ]
+    if sum(1 for enabled in sources if enabled) != 1:
+        raise ApiError(
+            400,
+            "choose exactly one of record_ids, history_node_id, reachable_node_id",
+        )
+
+    if isinstance(record_ids, list) and record_ids:
+        ids = tuple(dict.fromkeys(str(record_id) for record_id in record_ids))
+        return ids, "explicit", ids[0]
+
+    if history_node_id is not None:
+        node_id = str(history_node_id)
+        if node_id not in handle.run_graph.nodes:
+            raise ApiError(404, f"unknown node_id: {node_id}")
+        trace = handle.trace(node_id)
+        ids = (
+            trace.past_node_ids
+            + (trace.current_node_id,)
+            + trace.step_ids
+            + trace.payload_ids
+        )
+        return tuple(dict.fromkeys(ids)), "history", node_id
+
+    node_id = str(reachable_node_id)
+    if node_id not in handle.run_graph.nodes:
+        raise ApiError(404, f"unknown node_id: {node_id}")
+    reachable = handle.run_graph.reachable_from(node_id)
+    ids = (
+        tuple(reachable["node_ids"])
+        + tuple(reachable["step_ids"])
+        + tuple(reachable["payload_ids"])
+    )
+    return tuple(dict.fromkeys(ids)), "reachable", node_id
