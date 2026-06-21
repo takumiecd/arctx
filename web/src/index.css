@@ -928,3 +928,101 @@ code {
   height: 100vh;
   color: #64748b;
 }
+
+/* Panel Redesign Tabs & Edit improvements */
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 12px;
+}
+
+.panel-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease-in-out;
+  text-align: center;
+}
+
+.panel-tab-btn:hover {
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.panel-tab-btn.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  font-weight: 600;
+}
+
+.payload-copy-btn {
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.1s ease;
+}
+
+.payload-copy-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.panel-edit-tabs {
+  margin-top: 12px;
+}
+
+.edit-section {
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+
+.edit-section:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.danger-zone {
+  margin-top: 24px;
+  padding: 12px;
+  border: 1px solid #fee2e2;
+  border-radius: 6px;
+  background: #fef2f2;
+}
+
+.danger-zone h4 {
+  margin: 0 0 6px;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.danger-zone p {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #7f1d1d;
+  line-height: 1.4;
+}
+
+.error.hint {
+  font-size: 11px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
