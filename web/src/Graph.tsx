@@ -128,11 +128,11 @@ function LaneCollapsedNode({ data }: NodeProps) {
 }
 
 const nodeTypes = { dag: DagNode, laneGroup: LaneGroupNode, laneCollapsed: LaneCollapsedNode };
-const NODE_WIDTH = 76;
-const NODE_HEIGHT = 34;
-const LANE_GROUP_PADDING_X = 34;
-const LANE_GROUP_PADDING_TOP = 38;
-const LANE_GROUP_PADDING_BOTTOM = 28;
+const NODE_WIDTH = 150;
+const NODE_HEIGHT = 58;
+const LANE_GROUP_PADDING_X = 42;
+const LANE_GROUP_PADDING_TOP = 44;
+const LANE_GROUP_PADDING_BOTTOM = 34;
 
 interface Props {
   doc: RunDocument;

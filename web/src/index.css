@@ -172,11 +172,11 @@ main {
 .lane-group-box {
   width: 100%;
   height: 100%;
-  border: 2px solid var(--lane-color);
+  border: 1.5px solid var(--lane-color);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--lane-bg) 72%, transparent);
+  background: color-mix(in srgb, var(--lane-bg) 38%, transparent);
   pointer-events: none;
-  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--lane-bg) 28%, transparent);
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--lane-bg) 10%, transparent);
 }
 .lane-group-box span {
   position: absolute;
@@ -192,6 +192,7 @@ main {
   white-space: nowrap;
   font-size: 11px;
   font-weight: 700;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.14);
 }
 .lane-collapsed-node {
   display: grid;
