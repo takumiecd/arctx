@@ -83,3 +83,101 @@ arctx init req_demo --extension myext
   ]
 }
 ```
+
+---
+
+## 4. arctx-web 用の拡張機能 (GUI の拡張)
+
+`arctx-web` パッケージは、ブラウザ側 (React GUI) の表示コードやカスタムルートをロードするための **Web 拡張機能** の仕組みを持っています。
+これを利用して、独自の Payload 表示コード (Mermaid レンダラーや Git 差分ビューワなど) を GUI に注入できます。
+
+### `WebExtension` プロトコルの実装
+
+Python 側で `arctx_web.extensions.WebExtensionBase` を継承したクラスを作成します。
+
+```python
+# my_arctx_web_ext/extension.py
+from arctx_web.extensions import WebExtensionBase, WebRoute, WebRequest
+
+def my_custom_handler(req: WebRequest) -> tuple[int, dict]:
+    # リクエストの処理 (JSON レスポンス)
+    return 200, {"success": True, "data": req.body}
+
+class MyWebExtension(WebExtensionBase):
+    def scripts(self) -> list[str]:
+        """ブラウザに挿入する JavaScript コードのスニペット。
+        グローバル API `window.arctxWeb` を通じて、カスタムレンダラーを登録できます。
+        """
+        return [
+            """
+            if (window.arctxWeb) {
+                window.arctxWeb.registerPayloadRenderer("my_payload_type", (payload) => {
+                    return {
+                        title: "マイカスタム表示",
+                        summary: payload.content.title,
+                        fields: [{ label: "データ", value: payload.content.val }]
+                    };
+                });
+            }
+            """
+        ]
+
+    def routes(self) -> list[WebRoute]:
+        """この Web 拡張が提供するカスタム JSON API ルート"""
+        return [
+            WebRoute(method="POST", path="/web/myext/custom", handler=my_custom_handler)
+        ]
+```
+
+### `pyproject.toml` への登録
+
+Web 拡張をロードさせるには、`arctx_web.extensions` entry-point グループに登録します。
+
+```toml
+[project.entry-points."arctx_web.extensions"]
+myext = "my_arctx_web_ext.extension:MyWebExtension"
+```
+
+---
+
+## 5. コアと拡張の疎結合（デカップリング）の設計指針
+
+拡張機能を実装するにあたって、**「arctx のコアコード (CLI / Web サーバーやフロントエンドの UI) は、特定の拡張機能に依存したロジックを直接持つべきではない」** という強い設計指針があります。
+
+### ❌ 避けるべき実装方法 (密結合)
+- CLI サーバー（`arctx serve`）のルーティングテーブルに `/assets/upload` のように、特定の拡張機能だけで使う特定のルートを直接登録する。
+- React の UI コードの中に `attachPreset === "asset"` や `payload_type === "asset"` のような特定の拡張機能を前提としたフォームの定義やアタッチ処理を直接記述する。
+
+### ⭕ 推奨される実装方法 (疎結合)
+- サーバーコアは**汎用的なインターフェースのみ**を提供します。
+  - 例：ファイル添付（画像や動画など）を扱いたい場合、特定の `asset` 拡張専用の API を作るのではなく、汎用的なアーティファクト保存 API である `POST /artifacts/upload` を提供します。
+- 独自の UI や表示ロジックが必要な場合は、上記 `WebExtension.scripts()` を通じて、**拡張機能の側から動的に JavaScript をフロントエンドに注入**し、レンダラーを登録します。
+
+---
+
+## 6. 添付ファイル・メディアの扱い方（汎用的な方法）
+
+ARCTX では、画像・動画・ドキュメントなどの添付ファイルは拡張機能に特別に依存したものではなく、**「アーティファクト」**として汎用的に扱われます。
+
+### 1. ファイルのアップロードと保存場所
+- API `POST /artifacts/upload` に Base64 形式でファイルを送信すると、現在起動している run の `artifacts/` ディレクトリ内に `art_<uuid>_<filename>` として物理的に保存され、以下のようなパスが返ってきます。
+  - 返却パスの例：`artifacts/art_17df20b5_my_chart.png`
+
+### 2. Markdown からの参照方法
+アップロードされたファイルは、Markdown (Noteなど) から直接、相対パスまたは `/` 始まりの絶対パスのようにして参照することができます。これにより、GUI でのインライン描画や PDF 出力などが自然に機能します。
+
+* **画像を表示する場合**
+  ```markdown
+  ![代替テキスト](/artifacts/art_17df20b5_my_chart.png)
+  ```
+* **動画をインラインで再生させる場合**
+  ```markdown
+  <video src="/artifacts/art_1234abcd_video.mp4" controls width="100%"></video>
+  ```
+* **ファイルをダウンロードリンクにする場合**
+  ```markdown
+  [ダウンロード](artifacts/art_5678efgh_document.pdf)
+  ```
+
+この仕組みにより、エクスポートされた Markdown ファイルなどを他者に共有した際にも、同じ `artifacts/` フォルダごと持ち運ぶだけで、パスが壊れずに再表示が可能です。
+

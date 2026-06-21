@@ -36,8 +36,8 @@ export interface RunClient {
   getExtensions(): Promise<ExtensionsResponse>;
   enableExtension(name: string): Promise<void>;
   disableExtension(name: string): Promise<void>;
-  uploadAsset(file: File): Promise<{
-    asset_id: string;
+  uploadArtifact(file: File): Promise<{
+    artifact_id: string;
     filename: string;
     mime_type: string;
     size_bytes: number;
@@ -114,29 +114,32 @@ export class LiveClient implements RunClient {
   async disableExtension(name: string) {
     await this.req("/ext/disable", { method: "POST", body: JSON.stringify({ name }) });
   }
-  async uploadAsset(file: File) {
-    const formData = new FormData();
-    formData.append("file", file);
-    const headers: Record<string, string> = {};
-    if (this.activeLaneId) {
-      headers["X-Arctx-Work-Session-Id"] = this.activeLaneId;
-    }
-    const res = await fetch(this.base + "/assets/upload", {
-      method: "POST",
-      headers,
-      body: formData,
+  async uploadArtifact(file: File) {
+    const fileLoaded = new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64Data = result.split(",")[1] || result;
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
-    }
-    return data as {
-      asset_id: string;
+    const base64Data = await fileLoaded;
+
+    return this.req<{
+      artifact_id: string;
       filename: string;
       mime_type: string;
       size_bytes: number;
       path: string;
-    };
+    }>("/artifacts/upload", {
+      method: "POST",
+      body: JSON.stringify({
+        filename: file.name,
+        file_data: base64Data,
+      }),
+    });
   }
 }
 
@@ -180,7 +183,7 @@ export class StaticClient implements RunClient {
   async disableExtension(): Promise<void> {
     throw new ReadOnlyError();
   }
-  async uploadAsset(): Promise<any> {
+  async uploadArtifact(): Promise<any> {
     throw new ReadOnlyError();
   }
 }

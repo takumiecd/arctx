@@ -83,6 +83,8 @@ def dispatch(
             return 200, _post_ext_enable(store, run_id, body or {})
         if route == ("POST", "/ext/disable"):
             return 200, _post_ext_disable(store, run_id, body or {})
+        if route == ("POST", "/artifacts/upload"):
+            return 201, _post_artifacts_upload(store, run_id, body or {})
         return 404, {"error": f"no route for {method} {path}"}
     except ApiError as exc:
         return exc.status, {"error": exc.message}
@@ -400,3 +402,41 @@ def _post_ext_disable(store, run_id, body) -> dict:
     from arctx_cli.commands.ext import run_ext_disable_command
     run_dir = str(store.run_path(run_id))
     return run_ext_disable_command(name=name.strip(), run_dir=run_dir)
+
+
+def _post_artifacts_upload(store, run_id, body) -> dict:
+    import base64
+    import mimetypes
+    from arctx.core.ids import opaque_id
+
+    filename = body.get("filename")
+    file_data_b64 = body.get("file_data")
+    if not filename or not file_data_b64:
+        raise ApiError(400, "filename and file_data are required")
+
+    try:
+        file_content = base64.b64decode(file_data_b64)
+    except Exception as exc:
+        raise ApiError(400, f"invalid base64 data: {exc}")
+
+    art_id = opaque_id("art")
+    run_dir = store.run_path(run_id)
+    artifacts_dir = run_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    dest_filename = f"{art_id}_{filename}"
+    dest_path = artifacts_dir / dest_filename
+    dest_path.write_bytes(file_content)
+
+    mime_type, _ = mimetypes.guess_type(filename)
+    if not mime_type:
+        mime_type = "application/octet-stream"
+
+    return {
+        "artifact_id": art_id,
+        "filename": filename,
+        "mime_type": mime_type,
+        "size_bytes": len(file_content),
+        "path": f"artifacts/{dest_filename}",
+    }
+

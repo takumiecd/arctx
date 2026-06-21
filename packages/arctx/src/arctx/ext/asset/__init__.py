@@ -55,18 +55,18 @@ class AssetNamespace:
             mime_type = "application/octet-stream"
         size_bytes = file_path.stat().st_size
 
-        # 3. Copy file to <run_dir>/assets/
+        # 3. Copy file to <run_dir>/artifacts/
         run_dir = runs_dir() / self.handle.run_id
-        assets_dir = run_dir / "assets"
-        assets_dir.mkdir(parents=True, exist_ok=True)
+        artifacts_dir = run_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
 
         dest_filename = f"{asset_id}_{filename}"
-        dest_path = assets_dir / dest_filename
+        dest_path = artifacts_dir / dest_filename
         shutil.copy2(file_path, dest_path)
 
         # 4. Create and attach the AssetPayload
         # Relative path is stored for portability
-        rel_path = f"assets/{dest_filename}"
+        rel_path = f"artifacts/{dest_filename}"
         payload_id = self.handle._next_id("pl")
 
         from arctx.ext.asset.payloads import AssetPayload

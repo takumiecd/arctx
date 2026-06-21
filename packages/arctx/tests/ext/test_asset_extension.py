@@ -21,7 +21,7 @@ def test_asset_payload_deserialization():
         "filename": "test_image.png",
         "mime_type": "image/png",
         "size_bytes": 1024,
-        "path": "assets/ast_123_test_image.png",
+        "path": "artifacts/ast_123_test_image.png",
         "metadata": {"caption": "Test Image"},
     }
 
@@ -58,7 +58,7 @@ def test_asset_extension_attach(tmp_path, monkeypatch):
     assert payload.filename == "my_photo.jpg"
     assert payload.mime_type == "image/jpeg"
     assert payload.size_bytes == len("dummy binary data")
-    assert payload.path.startswith("assets/")
+    assert payload.path.startswith("artifacts/")
 
     # 5. Assert file is copied inside run directory
     copied_file = tmp_path / "run_test" / payload.path

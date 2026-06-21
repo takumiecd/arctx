@@ -22,7 +22,6 @@ export default defineConfig({
       "^/ext(/.*)?$": apiTarget,
       "^/health$": apiTarget,
       "^/web(/.*)?$": apiTarget,
-      "^/assets(/.*)?$": apiTarget,
     },
   },
 });
