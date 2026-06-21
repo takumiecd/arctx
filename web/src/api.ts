@@ -22,6 +22,7 @@ import type {
 
 export interface RunClient {
   readonly writable: boolean;
+  activeLaneId: string | null;
   getRun(): Promise<RunDocument>;
   getLayout(): Promise<WebLayout>;
   saveLayout(layout: WebLayout): Promise<WebLayout>;
@@ -41,11 +42,16 @@ class ReadOnlyError extends Error {
 
 export class LiveClient implements RunClient {
   readonly writable = true;
+  activeLaneId: string | null = null;
   constructor(private readonly base: string = "") {}
 
   private async req<T>(path: string, init?: RequestInit): Promise<T> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.activeLaneId) {
+      headers["X-Arctx-Work-Session-Id"] = this.activeLaneId;
+    }
     const res = await fetch(this.base + path, {
-      headers: { "Content-Type": "application/json" },
+      headers,
       ...init,
     });
     const data = await res.json().catch(() => ({}));
@@ -92,6 +98,7 @@ export class LiveClient implements RunClient {
 
 export class StaticClient implements RunClient {
   readonly writable = false;
+  activeLaneId: string | null = null;
   constructor(private readonly doc: RunDocument) {}
   async getRun() {
     return this.doc;

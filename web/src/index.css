@@ -32,88 +32,217 @@ header .add-node:disabled {
   opacity: 0.5;
   cursor: default;
 }
-.current-lane {
+.show-cuts-toggle {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   margin-left: 12px;
-  padding: 2px 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: #475569;
+  vertical-align: middle;
+}
+.show-cuts-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
+/* Popover container */
+.lane-selector-popover {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 12px;
+}
+
+/* Trigger button */
+.lane-trigger-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 999px;
   background: #f8fafc;
   color: #475569;
-  font-size: 12px;
-  line-height: 20px;
-  vertical-align: middle;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease-in-out;
 }
-.current-lane strong {
+.lane-trigger-button:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
   color: #0f172a;
 }
-.lane-create {
+.lane-trigger-button strong {
+  color: #0f172a;
+}
+
+/* Dropdown menu panel */
+.lane-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  z-index: 100;
+  min-width: 260px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lane-dropdown-empty {
+  padding: 12px 16px;
+  color: #94a3b8;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* List container */
+.lane-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0 4px;
+}
+
+/* Each lane menu item */
+.lane-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 6px;
+  transition: background 0.1s ease;
+  --lane-color: #64748b;
+  --lane-bg: #f8fafc;
+}
+.lane-menu-item:hover {
+  background: #f1f5f9;
+}
+.lane-menu-item.active {
+  background: var(--lane-bg);
+}
+.lane-menu-item.menu-collapsed {
+  opacity: 0.45;
+  filter: grayscale(0.4);
+}
+
+/* Collapse/Expand triangle button */
+.lane-collapse-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 12px;
-  vertical-align: middle;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 4px;
+  padding: 0;
 }
-.lane-create input {
-  width: 110px;
-  padding: 3px 7px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+.lane-collapse-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #0f172a;
+}
+.lane-collapse-toggle-btn.collapsed {
+  color: #94a3b8;
+}
+
+/* Activate (Set current) button click area */
+.lane-activate-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
   font: inherit;
   font-size: 13px;
+  color: #334155;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.lane-create button {
-  padding: 3px 9px;
+.lane-menu-item.active .lane-activate-btn {
+  color: #0f172a;
+  font-weight: 600;
+}
+.lane-color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lane-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.active-badge {
+  font-size: 10px;
+  background: var(--lane-color);
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-weight: normal;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Divider line */
+.lane-dropdown-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 6px 0;
+}
+
+/* Lane creation form inside dropdown */
+.lane-create-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+}
+.lane-create-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+.lane-create-form input:focus {
+  border-color: #2563eb;
+}
+.lane-create-form button {
+  padding: 5px 12px;
   border: 1px solid #0f766e;
   background: #0f766e;
   color: #fff;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
+  font-weight: 500;
 }
-.lane-create button:disabled {
+.lane-create-form button:disabled {
   opacity: 0.5;
   cursor: default;
 }
-.lane-toolbar {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 12px;
-  vertical-align: middle;
-}
-.lane-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.lane-control.current .lane-chip {
-  border-width: 2px;
-  font-weight: 700;
-  box-shadow:
-    inset 4px 0 0 var(--lane-color),
-    0 0 0 2px rgb(15 23 42 / 0.08);
-}
-.lane-chip {
-  padding: 2px 9px 2px 7px;
-  border: 1px solid var(--lane-color);
-  border-radius: 999px;
-  background: var(--lane-bg);
-  color: #0f172a;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 20px;
-  box-shadow: inset 4px 0 0 var(--lane-color);
-}
-.lane-chip:hover {
-  filter: saturate(1.15);
-}
-.lane-chip.collapsed {
-  background: #fff;
-  color: #64748b;
-}
+
 .lane-color-picker {
   position: relative;
   display: inline-grid;
