@@ -490,8 +490,9 @@ function GraphCanvas({
       panOnScrollSpeed={1.2}
       zoomOnScroll={false}
       zoomActivationKeyCode="Control"
-      panOnDrag={false}
-      selectionOnDrag={true}
+      panOnDrag={true}
+      selectionOnDrag={false}
+      multiSelectionKeyCode="Shift"
       fitView
       proOptions={{ hideAttribution: true }}
     >
