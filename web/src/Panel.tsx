@@ -20,6 +20,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 
+import { artifactSrc } from "./api";
 import type { RunClient } from "./api";
 import type { RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
@@ -48,6 +49,7 @@ interface Props {
   client: RunClient;
   onSelect: (sel: Selection) => void;
   laneColorOverrides: LaneColorOverrides;
+  dark: boolean;
 }
 
 interface AttachTarget {
@@ -126,7 +128,7 @@ const PAYLOAD_SCHEMAS: Record<string, PayloadSchema> = {
   }
 };
 
-export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: Props) {
+export function Panel({ doc, selection, client, onSelect, laneColorOverrides, dark }: Props) {
   const qc = useQueryClient();
   const [panelWidth, startPanelResize] = useResizablePanelWidth();
   const [activeTab, setActiveTab] = useState<Tab>("content");
@@ -476,7 +478,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides }: 
 
         {activeTab === "flow" && (
           <section className="panel-view">
-            <ProvenanceCard doc={doc} unit={unit} laneColorOverrides={laneColorOverrides} />
+            <ProvenanceCard doc={doc} unit={unit} laneColorOverrides={laneColorOverrides} dark={dark} />
             <SelectionContext doc={doc} unit={unit} onSelect={onSelect} />
           </section>
         )}
@@ -718,10 +720,12 @@ function ProvenanceCard({
   doc,
   unit,
   laneColorOverrides,
+  dark,
 }: {
   doc: RunDocument;
   unit: DetailUnit;
   laneColorOverrides: LaneColorOverrides;
+  dark: boolean;
 }) {
   const primaryId = unit.stepId ?? unit.outputNodeId;
   const primaryKind = unit.stepId ? "step" : "node";
@@ -748,7 +752,7 @@ function ProvenanceCard({
   const lane = provenance.lane_name || laneLabel(doc, provenance.lane_id);
   const actorLabel = provenance.membership_kind === "adopted" ? "adopted by" : "created by";
   return (
-    <section className="provenance-card" style={laneVars(doc, provenance.lane_id, laneColorOverrides)}>
+    <section className="provenance-card" style={laneVars(doc, provenance.lane_id, laneColorOverrides, dark)}>
       <h3>provenance</h3>
       <div className="provenance-row">
         <span>lane</span>
@@ -780,8 +784,9 @@ function laneVars(
   doc: RunDocument,
   laneId: string,
   laneColorOverrides: LaneColorOverrides,
+  dark: boolean,
 ): CSSProperties {
-  const colors = laneColors(doc, laneId, laneColorOverrides);
+  const colors = laneColors(doc, laneId, laneColorOverrides, dark);
   return {
     "--lane-color": colors.laneColor,
     "--lane-bg": colors.laneBg,
@@ -1374,7 +1379,9 @@ function safeImageSrc(src: string): string | null {
 function artifactPath(path: string): string | null {
   const parts = path.split("/").filter(Boolean);
   if (!parts.length || parts.some((part) => part === "." || part === "..")) return null;
-  return `/artifacts/${parts.map(encodeURIComponent).join("/")}`;
+  // artifactSrc appends ?run= when the picker has switched runs, so the file
+  // resolves against the selected run rather than the server's bound run.
+  return artifactSrc(`/artifacts/${parts.map(encodeURIComponent).join("/")}`);
 }
 
 function tableData(value: unknown): { columns: string[]; rows: Record<string, unknown>[] } | null {

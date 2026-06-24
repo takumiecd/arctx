@@ -12,6 +12,7 @@ import json
 import subprocess
 import tempfile
 import threading
+import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -176,15 +177,6 @@ class TestApiDelegation:
                 assert status == 201
                 assert body["step"]["input_node_ids"] == [root]
 
-    def test_post_node_routes_to_api(self):
-        # Regression: /node must be treated as an API route, not a static path.
-        with tempfile.TemporaryDirectory() as td:
-            store, run_id, _ = _make_run(td)
-            with _Server(store, run_id, _fake_static(td)) as s:
-                status, body = s.post("/node", {})
-                assert status == 201
-                assert "node" in body
-
     def test_web_extension_route(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, _ = _make_run(td)
@@ -219,6 +211,76 @@ class TestApiDelegation:
                 assert status_get == 200
                 assert body_get == content
                 assert "text/plain" in ctype_get
+
+
+class TestRunSwitching:
+    def _second_run(self, store_dir: str):
+        result = run_init_command(
+            requirement_id="req2", target_type="task", target_id="t2",
+            run_id="other_run", store_dir=store_dir,
+        )
+        return "other_run", result["root_node_id"]
+
+    def test_runs_lists_all_runs(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            self._second_run(str(Path(td) / "runs"))
+            with _Server(store, run_id, _fake_static(td)) as s:
+                status, body, _ = s.get("/runs")
+                assert status == 200
+                ids = {r["run_id"] for r in json.loads(body)["runs"]}
+                assert {"gui_run", "other_run"} <= ids
+
+    def test_run_query_targets_other_run(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root_a = _make_run(td)
+            other_id, root_b = self._second_run(str(Path(td) / "runs"))
+            with _Server(store, run_id, _fake_static(td)) as s:
+                # No override -> bound run.
+                _, body, _ = s.get("/run")
+                assert json.loads(body)["root_node_id"] == root_a
+                # ?run= override -> the other run's document.
+                _, body_b, _ = s.get(f"/run?run={other_id}")
+                doc_b = json.loads(body_b)
+                assert doc_b["run_id"] == other_id
+                assert doc_b["root_node_id"] == root_b
+
+    def test_post_runs_creates_and_serves(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            with _Server(store, run_id, _fake_static(td)) as s:
+                status, body = s.post("/runs", {"run_id": "made_in_web"})
+                assert status == 201
+                assert body["run"]["run_id"] == "made_in_web"
+                # Listed and reachable via the run override.
+                _, listing, _ = s.get("/runs")
+                assert "made_in_web" in {r["run_id"] for r in json.loads(listing)["runs"]}
+                _, doc, _ = s.get("/run?run=made_in_web")
+                assert json.loads(doc)["run_id"] == "made_in_web"
+
+    def test_unknown_run_override_falls_back_to_bound(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root_a = _make_run(td)
+            with _Server(store, run_id, _fake_static(td)) as s:
+                _, body, _ = s.get("/run?run=does_not_exist")
+                assert json.loads(body)["root_node_id"] == root_a
+
+    def test_artifact_served_from_overridden_run(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            other_id, _ = self._second_run(str(Path(td) / "runs"))
+            art = store.run_path(other_id) / "artifacts"
+            art.mkdir(parents=True)
+            (art / "b.png").write_bytes(b"runB-bytes")
+            with _Server(store, run_id, _fake_static(td)) as s:
+                # Without the override the file lives in the other run, so 404.
+                with pytest.raises(urllib.error.HTTPError) as excinfo:
+                    s.get("/artifacts/b.png")
+                assert excinfo.value.code == 404
+                # With ?run= the artifact resolves against the selected run.
+                status_ok, body, _ = s.get(f"/artifacts/b.png?run={other_id}")
+                assert status_ok == 200
+                assert body == b"runB-bytes"
 
 
 class TestWebLayoutApi:

@@ -12,6 +12,10 @@ modes — the UI only talks to a `RunClient`, so the same components serve both:
 The data contract is exactly `arctx export --format json`
 (`arctx.core.run.export.json_document`), mirrored in `src/types.ts`.
 
+![arctx web GUI demo](../examples/demo_web.gif)
+
+*Click nodes to inspect git changes, benchmark payloads, and cut reasons. Toggle "show cuts" to reveal abandoned branches.*
+
 ## Live mode
 
 In one terminal, serve a run:

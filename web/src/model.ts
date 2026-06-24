@@ -107,12 +107,14 @@ export function laneColors(
   doc: RunDocument,
   laneId: string,
   overrides: LaneColorOverrides = {},
+  dark = false,
 ): LaneColors {
   const override = normalizeHexColor(overrides[laneId]);
   if (override) {
-    return { laneColor: override, laneBg: tintHexColor(override) };
+    return { laneColor: override, laneBg: dark ? shadeHexColor(override) : tintHexColor(override) };
   }
-  const [laneColor, laneBg] = LANE_COLORS[laneColorIndex(doc, laneId)];
+  const palette = dark ? LANE_COLORS_DARK : LANE_COLORS;
+  const [laneColor, laneBg] = palette[laneColorIndex(doc, laneId)];
   return { laneColor, laneBg };
 }
 
@@ -127,6 +129,19 @@ const LANE_COLORS = [
   ["#4f46e5", "#e0e7ff"],
 ] as const;
 
+const LANE_COLORS_DARK = [
+  ["#3b82f6", "#172554"],
+  ["#10b981", "#064e3b"],
+  ["#eab308", "#422006"],
+  ["#ef4444", "#450a0a"],
+  ["#8b5cf6", "#2e1065"],
+  ["#06b6d4", "#164e63"],
+  ["#ec4899", "#500724"],
+  ["#6366f1", "#1e1b4b"],
+] as const;
+
+
+
 function normalizeHexColor(color: string | undefined): string | null {
   if (!color || !/^#[0-9a-fA-F]{6}$/.test(color)) return null;
   return color.toLowerCase();
@@ -136,6 +151,13 @@ function tintHexColor(color: string): string {
   const channels = [1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16));
   const tinted = channels.map((channel) => Math.round(channel + (255 - channel) * 0.86));
   return `#${tinted.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function shadeHexColor(color: string): string {
+  const base = [15, 23, 42]; // #0f172a
+  const channels = [1, 3, 5].map((start) => Number.parseInt(color.slice(start, start + 2), 16));
+  const shaded = channels.map((ch, i) => Math.round(base[i] + (ch - base[i]) * 0.22));
+  return `#${shaded.map((ch) => Math.max(0, Math.min(255, ch)).toString(16).padStart(2, "0")).join("")}`;
 }
 
 function firstMeaningfulPayload(payloads: RunPayload[]): RunPayload | null {

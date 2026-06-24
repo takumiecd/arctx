@@ -15,9 +15,9 @@ git clone https://github.com/takumiecd/arctx && cd arctx
 ./examples/quickstart_demo.sh      # prints the graph + writes a shareable HTML
 ```
 
-![ARCTX benchmark graph — baseline, a cut dead-end, and the winning branch](examples/arctx-benchmark-graph.png)
+![ARCTX web GUI — baseline, a cut dead-end, and the winning branch](examples/demo_web.gif)
 
-*What `quickstart_demo.sh` records: both hypotheses fan out from one baseline; the slower cache attempt is cut (✂) **with its reason** while the built-in `sum()` winner stays active — the whole decision survives in one graph.*
+*What `quickstart_demo.sh` records: both hypotheses fan out from one baseline; the slower cache attempt is cut (✂) **with its reason** while the built-in `sum()` winner stays active — the whole decision survives in one graph. Toggle "show cuts" to reveal or hide the dead end.*
 
 ## Packages
 
@@ -237,7 +237,7 @@ git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 
 Both branches land in the same `RunGraph` as sibling steps off `$BASE`. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
 
-![ARCTX multi-agent graph — Claude and Codex as sibling steps off one baseline](examples/arctx-multi-agent-graph.png)
+![ARCTX CLI Demo](examples/demo_cli.gif)
 
 *Two agents, one run: each commit is attributed to its own `work-session` and both land as sibling steps off the shared baseline — no race, no overwrite.*
 

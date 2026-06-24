@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from arctx_cli.commands.add import run_add_node_command, run_add_step_command
+from arctx_cli.commands.add import run_add_step_command
 from arctx_cli.commands.attach import run_attach_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.log import run_log_command
@@ -24,30 +24,6 @@ def _init(td: str, run_id: str = "run_dag_core") -> dict:
         run_id=run_id,
         store_dir=_store_dir(td),
     )
-
-
-def test_add_node_creates_standalone_node_with_payload(tmp_path):
-    td = str(tmp_path)
-    _init(td)
-
-    result = run_add_node_command(
-        run_id="run_dag_core",
-        title="baseline",
-        payload_kind=None,
-        payload_type="node_payload",
-        field_data={},
-        json_data={},
-        store_dir=_store_dir(td),
-    )
-
-    node_id = result["node"]["node_id"]
-    assert node_id.startswith("n_")
-    assert result["payload"]["content"]["title"] == "baseline"
-
-    store = resolve_store(_store_dir(td))
-    handle = store.load_run("run_dag_core")
-    assert node_id in handle.run_graph.nodes
-    assert handle.run_graph.step_to_node(node_id) is None
 
 
 def test_add_step_wraps_step_as_step(tmp_path):

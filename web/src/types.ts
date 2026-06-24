@@ -125,13 +125,33 @@ export interface WebLayout {
   nodes: Record<string, { x: number; y: number }>;
 }
 
-// ----- write request bodies (POST routes of `arctx serve`) -----
-
-export interface AddNodeRequest {
-  type?: string;
-  content?: Record<string, unknown>;
-  payload_type?: string;
+// One entry of the run picker (GET /runs). Mirrors `store.list_runs()`.
+export interface RunSummary {
+  run_id: string;
+  requirement_id?: string;
+  target_type?: string;
+  target_id?: string;
 }
+
+export interface RunsResponse {
+  runs: RunSummary[];
+  current_run_id?: string;
+}
+
+export interface CreateRunRequest {
+  run_id: string;
+  requirement_id?: string;
+  target_type?: string;
+  target_id?: string;
+}
+
+export interface CreateRunResponse {
+  run: RunSummary;
+  run_id: string;
+  root_node_id: string;
+}
+
+// ----- write request bodies (POST routes of `arctx serve`) -----
 
 export interface AddStepRequest {
   input_node_ids: string[];

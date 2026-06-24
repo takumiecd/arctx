@@ -23,7 +23,8 @@ from arctx_web.layouts import get_layout, save_layout
 
 # Paths handled by the JSON API; everything else is a static asset request.
 API_PATHS = frozenset({
-    "/run", "/node", "/step", "/attach", "/cut", "/health", "/artifacts/upload",
+    "/run", "/runs", "/node", "/step", "/attach", "/cut", "/health",
+    "/artifacts/upload",
     "/ext", "/ext/enable", "/ext/disable", "/assets/visible",
 })
 WEB_API_PATHS = frozenset({"/web/layout"})
@@ -59,7 +60,10 @@ def build_handler(
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", cors_origin)
             self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, X-Arctx-Run-Id, X-Arctx-Work-Session-Id, X-Arctx-Lane-Id",
+            )
 
         def _send_json(self, status: int, payload: dict) -> None:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -81,6 +85,23 @@ def build_handler(
 
         def _path(self) -> str:
             return self.path.split("?", 1)[0]
+
+        def _effective_run_id(self) -> str:
+            # The GUI run picker targets a different run per request via ?run=
+            # or the X-Arctx-Run-Id header. Honor it only when the run exists;
+            # otherwise stay on the bound run so a stale id can't break the page.
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            override = (
+                (query.get("run") or [None])[0]
+                or self.headers.get("X-Arctx-Run-Id")
+            )
+            if override and override != run_id:
+                try:
+                    if store.run_path(override).exists():
+                        return override
+                except (ValueError, OSError):
+                    pass
+            return run_id
 
         def _is_api(self) -> bool:
             return self._path() in API_PATHS
@@ -117,12 +138,13 @@ def build_handler(
                 ).items()
             }
             status, payload = dispatch(
-                store, run_id, method, self._path(), body,
+                store, self._effective_run_id(), method, self._path(), body,
                 user_id=user_id, work_session_id=work_session_id, query=query,
             )
             self._send_json(status, payload)
 
         def _web_api(self, method: str) -> None:
+            effective_run_id = self._effective_run_id()
             route = (method.upper(), self._path())
             handler = route_map.get(route)
             if handler is not None:
@@ -130,8 +152,8 @@ def build_handler(
                     status, payload = handler(
                         WebRequest(
                             store=store,
-                            run_id=run_id,
-                            run_dir=store.run_path(run_id),
+                            run_id=effective_run_id,
+                            run_dir=store.run_path(effective_run_id),
                             body=self._read_body() or {},
                             user_id=user_id,
                             work_session_id=work_session_id,
@@ -144,7 +166,7 @@ def build_handler(
             if self._path() != "/web/layout":
                 self._send_json(404, {"error": "not found"})
                 return
-            run_dir = store.run_path(run_id)
+            run_dir = store.run_path(effective_run_id)
             if method == "GET":
                 self._send_json(200, get_layout(run_dir))
                 return
@@ -181,7 +203,9 @@ def build_handler(
             self._send_bytes(200, data, ctype or "application/octet-stream")
 
         def _serve_artifact(self) -> None:
-            target = _resolve_artifact(store.run_path(run_id), self._path())
+            target = _resolve_artifact(
+                store.run_path(self._effective_run_id()), self._path()
+            )
             if target is None or not target.is_file():
                 self._send_bytes(404, b"not found", "text/plain")
                 return

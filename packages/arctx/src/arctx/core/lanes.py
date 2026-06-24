@@ -174,7 +174,7 @@ def lane_root_candidates(
 
     If the lane metadata names ``root_node_id`` / ``anchor_node_id``, that node
     is the lane root. Otherwise roots are inferred from the lane-local topology
-    at the unit level. A lane root may be either:
+    at the unit level. A lane root candidate may be either:
 
     - a lane-owned node with no producing step in the same lane, or
     - the output node of a lane-owned entry step whose input comes from another
@@ -182,7 +182,10 @@ def lane_root_candidates(
 
     The second form matches the UI's "step + output node" unit: a lane can
     start by deriving a new lane-root node from an external node without making
-    that external input part of the lane.
+    that external input part of the lane. This is the only *valid* lane root —
+    a lane root must be a step output. A truly producer-less candidate (no
+    producing step at all) is still returned here so reachability can traverse
+    from it, but ``validate_lanes`` flags it as ``lane_root_not_step_output``.
     """
     run_root = _membership_root_node_id(graph, root_node_id)
     membership = membership or lane_membership(graph, root_node_id=run_root)
@@ -575,8 +578,26 @@ def validate_lanes(
             )
         )
 
+    # The run root is the only legitimately producer-less node. Every other
+    # node — including a lane root — must be the output of a step (a Node is
+    # born only as a Step's output now that add_node is gone). A producer-less
+    # node that a lane treats as its root is a degenerate lane entry.
     for node_id in graph.roots():
-        if node_id == run_root or node_id in lane_roots:
+        if node_id == run_root:
+            continue
+        if node_id in lane_roots:
+            issues.append(
+                LaneValidationIssue(
+                    code="lane_root_not_step_output",
+                    severity="error",
+                    message=(
+                        "lane root must be a step output, but is producer-less: "
+                        f"{node_id}"
+                    ),
+                    record_id=node_id,
+                    lane_id=membership.node_to_lane.get(node_id),
+                )
+            )
             continue
         issues.append(
             LaneValidationIssue(

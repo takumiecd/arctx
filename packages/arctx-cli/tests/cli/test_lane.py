@@ -6,7 +6,9 @@ import tempfile
 from argparse import Namespace
 from pathlib import Path
 
-from arctx_cli.commands.add import run_add_node_command, run_add_step_command
+from arctx.core.schema.payloads import StepPayload
+
+from arctx_cli.commands.add import run_add_step_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.lane import (
     list_lanes,
@@ -30,6 +32,27 @@ def _init(td: str) -> dict:
         run_id="run_lane",
         store_dir=_store_dir(td),
     )
+
+
+def _seed_default_lane_node(sd: str) -> str:
+    """Add a step (with its output node) into the ``default`` lane low-level.
+
+    Exercises the non-blocking ``default_lane_membership`` warning. A bare
+    producer-less node would now also trip the ``lane_root_not_step_output``
+    error, so we derive the node as a step output instead — a lane root must be
+    a step output.
+    """
+    store = resolve_store(sd)
+    handle = store.load_run("run_lane")
+    payload = StepPayload(payload_id=handle._next_id("pl"), target_id="pending", type="seed")
+    step = handle.add_step(
+        [handle.root_node_id],
+        payload,
+        user_id="alice",
+        work_session_id="default",
+    )
+    store.save_run(handle)
+    return step.output_node_id
 
 
 def test_create_then_switch_named_lane():
@@ -119,17 +142,7 @@ def test_validate_lane_run_reports_issues():
     with tempfile.TemporaryDirectory() as td:
         _init(td)
         sd = _store_dir(td)
-        run_add_node_command(
-            run_id="run_lane",
-            title=None,
-            payload_kind=None,
-            payload_type="node_payload",
-            field_data={},
-            json_data={},
-            store_dir=sd,
-            user_id="alice",
-            work_session_id="default",
-        )
+        _seed_default_lane_node(sd)
 
         result = validate_lane_run(run_id="run_lane", store_dir=sd)
 

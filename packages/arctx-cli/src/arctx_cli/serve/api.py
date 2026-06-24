@@ -8,8 +8,9 @@ only translates bytes to/from this function.
 Routes (the GUI data contract):
 
 - ``GET  /health``  -> ``{"status": "ok", "run_id": ...}``
+- ``GET  /runs``    -> list available runs in the store (for the GUI run picker)
+- ``POST /runs``    -> create a new run; returns its summary
 - ``GET  /run``     -> the full :func:`arctx.core.run.export.json_document`
-- ``POST /node``    -> create a standalone Node (with an optional payload)
 - ``POST /step``    -> create a Step from input nodes; returns the new step
 - ``POST /attach``  -> attach a payload to a Node or Step; returns the payload
 - ``POST /cut``     -> cut a node or step; returns the cut payload
@@ -24,9 +25,14 @@ how records are written.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from arctx.core.lanes import ensure_valid_lanes
+from arctx.core.lanes import (
+    LaneValidationIssue,
+    format_lane_validation_errors,
+    lane_validation_errors,
+)
 from arctx.core.run.export import ExportOptions, json_document
 from arctx.payload_builder import build_payload
 
@@ -67,12 +73,14 @@ def dispatch(
     try:
         if route == ("GET", "/health"):
             return 200, {"status": "ok", "run_id": run_id}
+        if route == ("GET", "/runs"):
+            return 200, {"runs": store.list_runs(), "current_run_id": run_id}
+        if route == ("POST", "/runs"):
+            return 201, _post_runs(store, body or {})
         if route == ("GET", "/run"):
             return 200, _get_run(store, run_id, work_session_id)
         if route == ("GET", "/assets/visible"):
             return 200, _get_visible_assets(store, run_id, query or {})
-        if route == ("POST", "/node"):
-            return 201, _post_node(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/step"):
             return 201, _post_step(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/attach"):
@@ -107,6 +115,57 @@ def _load(store: Any, run_id: str):
     if not store.run_path(run_id).exists():
         raise ApiError(404, f"unknown run_id: {run_id}")
     return store.load_run(run_id)
+
+
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _post_runs(store: Any, body: dict) -> dict:
+    """Create a new run in the store and return its summary.
+
+    The GUI sends a human-chosen ``run_id`` (the directory name), so it is
+    validated against a conservative charset to prevent path traversal. Other
+    requirement fields fall back to the run id, matching ``arctx init``'s
+    defaults (target_type ``code``).
+    """
+    import arctx as arctx
+    from arctx.core.schema.requirements import Requirement
+
+    raw_id = body.get("run_id") or body.get("name")
+    if not isinstance(raw_id, str) or not raw_id.strip():
+        raise ApiError(400, "run_id (or name) is required")
+    run_id = raw_id.strip()
+    if run_id in (".", "..") or not _RUN_ID_RE.match(run_id):
+        raise ApiError(
+            400,
+            "run_id may contain only letters, digits, '.', '_' and '-'",
+        )
+    if store.run_path(run_id).exists():
+        raise ApiError(400, f"run already exists: {run_id!r}")
+
+    requirement_id = str(body.get("requirement_id") or run_id)
+    target_type = str(body.get("target_type") or "code")
+    target_id = str(body.get("target_id") or requirement_id)
+
+    handle = arctx.init(
+        Requirement(
+            requirement_id=requirement_id,
+            target_type=target_type,
+            target_id=target_id,
+        ),
+        run_id=run_id,
+    )
+    store.save_run(handle)
+    return {
+        "run": {
+            "run_id": handle.run_id,
+            "requirement_id": requirement_id,
+            "target_type": target_type,
+            "target_id": target_id,
+        },
+        "run_id": handle.run_id,
+        "root_node_id": handle.root_node_id,
+    }
 
 
 def _get_run(store: Any, run_id: str, work_session_id: str) -> dict:
@@ -164,39 +223,6 @@ def _payload_fields(body: dict) -> dict:
     return {k: v for k, v in body.items() if k not in exclude}
 
 
-def _has_payload_fields(body: dict) -> bool:
-    return any(body.get(k) is not None for k in ("type", "content", "metadata", "payload_type"))
-
-
-def _post_node(store, run_id, body, user_id, work_session_id) -> dict:
-    """Create a standalone Node, optionally with an initial node payload."""
-    handle = _load(store, run_id)
-    before = graph_counts(handle)
-    node = handle.add_node(user_id=user_id, work_session_id=work_session_id)
-
-    result: dict = {"node": node.to_dict()}
-    if _has_payload_fields(body):
-        payload = build_payload(
-            payload_type=str(body.get("payload_type", "node_payload")),
-            target_kind="node",
-            target_id="pending",
-            payload_id="pending",
-            json_data=_payload_fields(body),
-        )
-        attached = handle.attach(
-            node.node_id, payload,
-            user_id=user_id, work_session_id=work_session_id,
-        )
-        result["payload"] = attached.to_dict()
-
-    _ensure_lane_integrity(handle)
-    maybe_append_or_save(
-        store=store, handle=handle,
-        user_id=user_id, work_session_id=work_session_id, before=before,
-    )
-    return result
-
-
 def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
     inputs = body.get("input_node_ids")
     if not isinstance(inputs, list) or not inputs:
@@ -204,6 +230,7 @@ def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
     output_node_id = body.get("output_node_id")
 
     handle = _load(store, run_id)
+    baseline = _lane_error_baseline(handle)
     payload = build_payload(
         payload_type=str(body.get("payload_type", "step_payload")),
         target_kind="step",
@@ -219,7 +246,7 @@ def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
         user_id=user_id,
         work_session_id=work_session_id,
     )
-    _ensure_lane_integrity(handle)
+    _ensure_lane_integrity(handle, baseline=baseline)
     maybe_append_or_save(
         store=store, handle=handle,
         user_id=user_id, work_session_id=work_session_id, before=before,
@@ -422,8 +449,44 @@ def _without_run_root(handle, ids) -> tuple[str, ...]:
     )
 
 
-def _ensure_lane_integrity(handle) -> None:
-    ensure_valid_lanes(handle.run_graph, root_node_id=handle.root_node_id)
+def _issue_key(issue: LaneValidationIssue) -> tuple[str, str | None, str | None]:
+    """Stable identity for a lane validation issue (ignores volatile counts)."""
+    return (issue.code, issue.record_id, issue.lane_id)
+
+
+def _lane_error_baseline(handle) -> frozenset[tuple[str, str | None, str | None]]:
+    """Capture pre-existing lane errors so writes are judged by their delta.
+
+    Legacy runs created before lane provenance existed carry records with no
+    lane membership. Those errors are not this write's fault, so we record them
+    up front and only block on errors the current write introduces.
+    """
+    return frozenset(
+        _issue_key(issue)
+        for issue in lane_validation_errors(
+            handle.run_graph, root_node_id=handle.root_node_id
+        )
+    )
+
+
+def _ensure_lane_integrity(
+    handle,
+    *,
+    baseline: frozenset[tuple[str, str | None, str | None]] | None = None,
+) -> None:
+    """Reject a write that introduces new lane invariant violations.
+
+    With ``baseline`` (the errors present before the write), pre-existing
+    violations on legacy runs are tolerated; only newly-introduced errors
+    block the write. Without it, every error blocks.
+    """
+    errors = lane_validation_errors(handle.run_graph, root_node_id=handle.root_node_id)
+    if baseline is not None:
+        errors = tuple(
+            issue for issue in errors if _issue_key(issue) not in baseline
+        )
+    if errors:
+        raise ValueError(format_lane_validation_errors(errors))
 
 
 def _get_ext(store, run_id) -> dict:

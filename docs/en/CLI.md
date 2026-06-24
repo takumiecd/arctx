@@ -83,8 +83,7 @@ Core commands:
 
 ## DAG Records
 
-- `arctx add node`: add a standalone node.
-- `arctx add step --from NODE --type TYPE --field key=value`: add a step and its output node.
+- `arctx add step --from NODE --type TYPE --field key=value`: add a step and its output node. A node is born only as a step's output (or the run root).
 - `arctx attach <node-or-step-id> --type TYPE --field key=value`: attach a payload.
 - `arctx payload add --node NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: attach a cyclic-capable diagram/model artifact when the `diagram` extension is enabled.
 - `arctx show <node-or-step-or-payload-id>`: inspect one record with attached payloads.

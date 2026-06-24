@@ -150,6 +150,7 @@ interface Props {
   laneColorOverrides: LaneColorOverrides;
   writable: boolean;
   showCuts: boolean;
+  dark: boolean;
 }
 
 type Side = "top" | "right" | "bottom" | "left";
@@ -177,6 +178,7 @@ function buildEdges(
   collapsedLaneIds: Set<string>,
   laneColorOverrides: LaneColorOverrides,
   showCuts: boolean,
+  dark: boolean,
 ): Edge[] {
   const out: Edge[] = [];
   const inactiveNodeIds = new Set(
@@ -188,7 +190,7 @@ function buildEdges(
 
     const stepLaneId = laneIdForRecord(doc, s.step_id) ?? laneIdForRecord(doc, s.output_node_id);
     const laneColor = stepLaneId
-      ? laneColors(doc, stepLaneId, laneColorOverrides).laneColor
+      ? laneColors(doc, stepLaneId, laneColorOverrides, dark).laneColor
       : "#475569";
     const edgeColor = s.inactive ? "#94a3b8" : laneColor;
     const label = stepType(doc, s.step_id);
@@ -275,6 +277,7 @@ function GraphCanvas({
   laneColorOverrides,
   writable,
   showCuts,
+  dark,
 }: Props) {
   const reactFlow = useReactFlow<Node, Edge>();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -317,7 +320,7 @@ function GraphCanvas({
         if (!group.lane_id || collapsedLaneIds.has(group.lane_id)) continue;
         const box = laneBounds(group, resolvedPositions);
         if (!box) continue;
-        const colors = laneColors(doc, group.lane_id, laneColorOverrides);
+        const colors = laneColors(doc, group.lane_id, laneColorOverrides, dark);
         nextNodes.push({
           id: group.group_id,
           type: "laneGroup",
@@ -334,7 +337,7 @@ function GraphCanvas({
         if (!group.lane_id || !collapsedLaneIds.has(group.lane_id)) continue;
         const collapsedId = `lane:${group.lane_id}`;
         const box = laneBounds(group, resolvedPositions);
-        const colors = laneColors(doc, group.lane_id, laneColorOverrides);
+        const colors = laneColors(doc, group.lane_id, laneColorOverrides, dark);
         nextNodes.push({
           id: collapsedId,
           type: "laneCollapsed",
@@ -358,7 +361,7 @@ function GraphCanvas({
         if (!showCuts && n.inactive) continue;
         const laneId = laneIdForRecord(doc, n.node_id);
         if (laneId && collapsedLaneIds.has(laneId)) continue;
-        const colors = laneId ? laneColors(doc, laneId, laneColorOverrides) : {};
+        const colors = laneId ? laneColors(doc, laneId, laneColorOverrides, dark) : {};
         const label = laneId ? laneLabel(doc, laneId) : undefined;
         nextNodes.push({
           id: n.node_id,
@@ -379,7 +382,7 @@ function GraphCanvas({
 
       return nextNodes;
     });
-  }, [collapsedLaneIds, doc, laneColorOverrides, savedNodePositions, setNodes, showCuts]);
+  }, [collapsedLaneIds, dark, doc, laneColorOverrides, savedNodePositions, setNodes, showCuts]);
 
   // Edge paths should follow where nodes actually are, including after a user
   // drags nodes around. Use the nearest side instead of letting React Flow
@@ -390,8 +393,8 @@ function GraphCanvas({
     for (const n of nodes) {
       positions[n.id] = n.position;
     }
-    setEdges(buildEdges(doc, positions, collapsedLaneIds, laneColorOverrides, showCuts));
-  }, [collapsedLaneIds, doc, laneColorOverrides, nodes, setEdges, showCuts]);
+    setEdges(buildEdges(doc, positions, collapsedLaneIds, laneColorOverrides, showCuts, dark));
+  }, [collapsedLaneIds, dark, doc, laneColorOverrides, nodes, setEdges, showCuts]);
 
   const inputsFor = (source: string | null): string[] => {
     if (!source) return [];
@@ -498,7 +501,7 @@ function GraphCanvas({
       fitView
       proOptions={{ hideAttribution: true }}
     >
-      <Background />
+      <Background color={document.documentElement.getAttribute("data-theme") === "dark" ? "#334155" : undefined} />
       <Controls />
     </ReactFlow>
   );

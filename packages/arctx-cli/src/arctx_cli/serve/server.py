@@ -30,7 +30,10 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Access-Control-Allow-Origin", cors_origin)
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, X-Arctx-Run-Id, X-Arctx-Work-Session-Id, X-Arctx-Lane-Id",
+            )
             self.end_headers()
             self.wfile.write(data)
 
@@ -63,8 +66,15 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
                 or self.headers.get("X-Arctx-Lane-Id")
                 or work_session_id
             )
+            # The GUI can target a different run per request (its run picker)
+            # via ?run= or the X-Arctx-Run-Id header; fall back to the bound run.
+            req_run_id = (
+                query.get("run")
+                or self.headers.get("X-Arctx-Run-Id")
+                or run_id
+            )
             status, payload = dispatch(
-                store, run_id, method, path, body,
+                store, req_run_id, method, path, body,
                 user_id=user_id, work_session_id=ws_id, query=query,
             )
             self._send(status, payload)
