@@ -108,7 +108,7 @@ Current commands:
   `export ARCTX_RUN_ID=<run>` for `eval` (terminal-scoped) instead of writing the
   repo pointer.
 - `init` / `list` — create / list runs
-- `add node` / `add step` — DAG core surface. Both the public CLI and internal storage use `Step` (the `Transition` rename is complete)
+- `add step` — DAG core surface. Both the public CLI and internal storage use `Step` (the `Transition` rename is complete). Nodes are not created standalone; a Node is born only as a Step's output (or the run root). There is no `add node` command / `RunHandle.add_node` verb / `POST /node` endpoint.
 - `attach <id>` — attach a generic payload to a Node or Step by resolving the record id
 - `log` — user-facing DAG history command; wraps outline dump / trace behavior
 - Internal compatibility helpers remain in `commands.step`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add step`, `show`, and `attach`.
