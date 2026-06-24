@@ -15,12 +15,15 @@ export function App() {
   const [laneColorOverrides, setLaneColorOverrides] = useState<LaneColorOverrides>({});
   const [laneColorRunId, setLaneColorRunId] = useState<string | null>(null);
   const [newLaneName, setNewLaneName] = useState("");
+  const [newRunName, setNewRunName] = useState("");
   const [showCuts, setShowCuts] = useState<boolean>(false);
   const [activeLaneId, setActiveLaneId] = useState<string | null>(null);
   const [showLanesMenu, setShowLanesMenu] = useState<boolean>(false);
   const [showExtsMenu, setShowExtsMenu] = useState<boolean>(false);
+  const [showRunsMenu, setShowRunsMenu] = useState<boolean>(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const extPopoverRef = useRef<HTMLDivElement>(null);
+  const runsPopoverRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
@@ -41,6 +44,34 @@ export function App() {
     queryKey: ["extensions"],
     queryFn: () => client.getExtensions(),
     enabled: client.writable && Boolean(data),
+  });
+
+  const { data: runsData } = useQuery({
+    queryKey: ["runs"],
+    queryFn: () => client.listRuns(),
+    enabled: client.writable,
+  });
+
+  // Switch the live API to another run. Reset all per-run UI state, point the
+  // client at the new run, and refetch everything for it.
+  const switchRun = (runId: string) => {
+    setShowRunsMenu(false);
+    if (runId === data?.run_id) return;
+    client.activeRunId = runId;
+    setActiveLaneId(null);
+    setSelection(null);
+    setCollapsedLaneIds(new Set());
+    setNewLaneName("");
+    qc.invalidateQueries();
+  };
+
+  const createRun = useMutation({
+    mutationFn: (name: string) => client.createRun({ run_id: name }),
+    onSuccess: (res) => {
+      setNewRunName("");
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      switchRun(res.run_id);
+    },
   });
 
   const toggleExtension = useMutation({
@@ -102,6 +133,9 @@ export function App() {
       if (extPopoverRef.current && !extPopoverRef.current.contains(target)) {
         setShowExtsMenu(false);
       }
+      if (runsPopoverRef.current && !runsPopoverRef.current.contains(target)) {
+        setShowRunsMenu(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside, { capture: true });
     return () => {
@@ -160,7 +194,74 @@ export function App() {
   return (
     <div className="layout">
       <header>
-        <strong>arctx</strong> <code>{data.run_id}</code>
+        <strong>arctx</strong>{" "}
+        {client.writable ? (
+          <span className="lane-selector-popover" ref={runsPopoverRef}>
+            <button
+              type="button"
+              className="lane-trigger-button"
+              onClick={() => setShowRunsMenu(!showRunsMenu)}
+              title="switch run"
+            >
+              <code>{data.run_id}</code> ▾
+            </button>
+            {showRunsMenu && (
+              <div className="lane-dropdown-menu">
+                {!runsData || runsData.length === 0 ? (
+                  <div className="lane-dropdown-empty">no runs found</div>
+                ) : (
+                  <div className="lane-list">
+                    {runsData.map((run) => {
+                      const current = run.run_id === data.run_id;
+                      return (
+                        <div
+                          key={run.run_id}
+                          className={`lane-menu-item${current ? " active" : ""}`}
+                        >
+                          <button
+                            type="button"
+                            className="lane-activate-btn"
+                            onClick={() => switchRun(run.run_id)}
+                            title={run.requirement_id || run.run_id}
+                          >
+                            <span className="lane-name">{run.run_id}</span>
+                            {current && <span className="active-badge">current</span>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="lane-dropdown-divider" />
+                <form
+                  className="lane-create-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const name = newRunName.trim();
+                    if (name) createRun.mutate(name);
+                  }}
+                >
+                  <input
+                    aria-label="new run id"
+                    placeholder="new run id"
+                    value={newRunName}
+                    onChange={(event) => setNewRunName(event.currentTarget.value)}
+                  />
+                  <button disabled={createRun.isPending || !newRunName.trim()} type="submit">
+                    + run
+                  </button>
+                </form>
+                {createRun.error && (
+                  <div className="lane-dropdown-empty" style={{ color: "#dc2626" }}>
+                    {(createRun.error as Error).message}
+                  </div>
+                )}
+              </div>
+            )}
+          </span>
+        ) : (
+          <code>{data.run_id}</code>
+        )}
         <span className="muted">
           {" "}
           · {data.counts.nodes} nodes · {data.counts.steps} steps

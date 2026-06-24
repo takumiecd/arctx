@@ -20,6 +20,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 
+import { artifactSrc } from "./api";
 import type { RunClient } from "./api";
 import type { RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
@@ -1374,7 +1375,9 @@ function safeImageSrc(src: string): string | null {
 function artifactPath(path: string): string | null {
   const parts = path.split("/").filter(Boolean);
   if (!parts.length || parts.some((part) => part === "." || part === "..")) return null;
-  return `/artifacts/${parts.map(encodeURIComponent).join("/")}`;
+  // artifactSrc appends ?run= when the picker has switched runs, so the file
+  // resolves against the selected run rather than the server's bound run.
+  return artifactSrc(`/artifacts/${parts.map(encodeURIComponent).join("/")}`);
 }
 
 function tableData(value: unknown): { columns: string[]; rows: Record<string, unknown>[] } | null {

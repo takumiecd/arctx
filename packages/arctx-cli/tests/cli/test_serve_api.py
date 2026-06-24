@@ -62,6 +62,55 @@ class TestReadRoutes:
             assert body["current_lane_name"] == "ws_test"
             assert any(n["node_id"] == root for n in body["nodes"])
 
+    def test_get_runs_lists_store(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            run_init_command(
+                requirement_id="req2", target_type="code", target_id="t2",
+                run_id="srv_run_2", store_dir=_store_dir(td),
+            )
+            status, body = _call(store, run_id, "GET", "/runs")
+            assert status == 200
+            ids = {r["run_id"] for r in body["runs"]}
+            assert {run_id, "srv_run_2"} <= ids
+            assert body["current_run_id"] == run_id
+
+    def test_post_runs_creates_run(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/runs", {"run_id": "fresh_run"})
+            assert status == 201
+            assert body["run"]["run_id"] == "fresh_run"
+            assert store.run_path("fresh_run").exists()
+            # It now shows up in the listing.
+            _, listing = _call(store, run_id, "GET", "/runs")
+            assert "fresh_run" in {r["run_id"] for r in listing["runs"]}
+            # And it can be served immediately.
+            status, doc = _call(store, "fresh_run", "GET", "/run")
+            assert status == 200
+            assert doc["run_id"] == "fresh_run"
+
+    def test_post_runs_requires_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/runs", {})
+            assert status == 400
+            assert "run_id" in body["error"]
+
+    def test_post_runs_rejects_unsafe_id(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/runs", {"run_id": "../escape"})
+            assert status == 400
+            assert "run_id" in body["error"]
+
+    def test_post_runs_rejects_duplicate(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/runs", {"run_id": run_id})
+            assert status == 400
+            assert "already exists" in body["error"]
+
     def test_unknown_route(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, _ = _setup(td)
@@ -118,6 +167,50 @@ class TestWriteRoutes:
 
             handle = store.load_run(run_id)
             assert len(handle.run_graph.steps) == 1
+
+    def test_writes_tolerate_preexisting_lane_errors(self):
+        # Legacy runs created before lane provenance carry records with no lane
+        # membership. A write must not be blocked by those pre-existing errors;
+        # only errors the write itself introduces should block it.
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            status, made = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "x",
+            })
+            assert status == 201
+
+            # Strip lane provenance to simulate a pre-lane run, then drop any
+            # cached graph so the store reloads the legacy-shaped records.
+            run_dir = Path(store.run_path(run_id))
+            (run_dir / "work_events.jsonl").write_text("")
+            cache = run_dir / "run.cache.pkl"
+            if cache.exists():
+                cache.unlink()
+
+            legacy = store.load_run(run_id)
+            assert any(
+                issue.code == "step_without_lane"
+                for issue in validate_lanes(
+                    legacy.run_graph, root_node_id=legacy.root_node_id
+                )
+            )
+
+            # Creating a lane and adding records into it still succeeds despite
+            # the pre-existing legacy violations.
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "L1"})
+            assert status == 201
+            lane_id = body["lane"]["work_session_id"]
+
+            status, node = _call_as(
+                store, run_id, "POST", "/node", {}, work_session_id=lane_id
+            )
+            assert status == 201
+            status, _ = _call_as(
+                store, run_id, "POST", "/step",
+                {"input_node_ids": [node["node"]["node_id"]], "type": "y"},
+                work_session_id=lane_id,
+            )
+            assert status == 201
 
     def test_post_attach(self):
         with tempfile.TemporaryDirectory() as td:

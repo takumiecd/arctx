@@ -16,18 +16,44 @@ import type {
   AttachAssetRequest,
   CreateLaneRequest,
   CreateLaneResponse,
+  CreateRunRequest,
+  CreateRunResponse,
   CutRequest,
   RunDocument,
   RunPayload,
+  RunSummary,
+  RunsResponse,
   UploadedArtifact,
   VisibleAssetsResponse,
   WebLayout,
   ExtensionsResponse,
 } from "./types";
 
+// The run the live API should target, overriding the server's bound run. Set
+// by the run picker. Kept module-level (not just on the client) so artifact
+// <img>/link URLs — which can't send request headers — can append `?run=`.
+let activeRunId: string | null = null;
+export function setActiveRunId(id: string | null): void {
+  activeRunId = id;
+}
+export function getActiveRunId(): string | null {
+  return activeRunId;
+}
+
+// Append the active run override to an artifact URL so it resolves against the
+// run currently selected in the picker rather than the server's bound run.
+export function artifactSrc(url: string): string {
+  if (!activeRunId) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}run=${encodeURIComponent(activeRunId)}`;
+}
+
 export interface RunClient {
   readonly writable: boolean;
   activeLaneId: string | null;
+  activeRunId: string | null;
+  listRuns(): Promise<RunSummary[]>;
+  createRun(req: CreateRunRequest): Promise<CreateRunResponse>;
   getRun(): Promise<RunDocument>;
   getLayout(): Promise<WebLayout>;
   saveLayout(layout: WebLayout): Promise<WebLayout>;
@@ -54,12 +80,22 @@ class ReadOnlyError extends Error {
 export class LiveClient implements RunClient {
   readonly writable = true;
   activeLaneId: string | null = null;
+  // Mirror onto the module-level state so artifact URLs (no headers) agree.
+  get activeRunId(): string | null {
+    return getActiveRunId();
+  }
+  set activeRunId(value: string | null) {
+    setActiveRunId(value);
+  }
   constructor(private readonly base: string = "") {}
 
   private async req<T>(path: string, init?: RequestInit): Promise<T> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (this.activeLaneId) {
       headers["X-Arctx-Work-Session-Id"] = this.activeLaneId;
+    }
+    if (this.activeRunId) {
+      headers["X-Arctx-Run-Id"] = this.activeRunId;
     }
     const res = await fetch(this.base + path, {
       headers,
@@ -72,6 +108,16 @@ export class LiveClient implements RunClient {
     return data as T;
   }
 
+  async listRuns() {
+    const res = await this.req<RunsResponse>("/runs");
+    return res.runs;
+  }
+  createRun(req: CreateRunRequest) {
+    return this.req<CreateRunResponse>("/runs", {
+      method: "POST",
+      body: JSON.stringify(req),
+    });
+  }
   getRun() {
     return this.req<RunDocument>("/run");
   }
@@ -152,7 +198,14 @@ export class LiveClient implements RunClient {
 export class StaticClient implements RunClient {
   readonly writable = false;
   activeLaneId: string | null = null;
+  activeRunId: string | null = null;
   constructor(private readonly doc: RunDocument) {}
+  async listRuns(): Promise<RunSummary[]> {
+    return [];
+  }
+  async createRun(): Promise<CreateRunResponse> {
+    throw new ReadOnlyError();
+  }
   async getRun() {
     return this.doc;
   }
