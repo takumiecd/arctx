@@ -123,12 +123,6 @@ export function App() {
     },
   });
 
-  // Standalone node creation isn't tied to a selection, so it lives in the
-  // header rather than the per-selection panel.
-  const addNode = useMutation({
-    mutationFn: () => client.addNode({}),
-    onSuccess: invalidate,
-  });
   const createLane = useMutation({
     mutationFn: (name: string) => client.createLane({ name }),
     onSuccess: () => {
@@ -196,7 +190,7 @@ export function App() {
   if (error) return <div className="center error">{(error as Error).message}</div>;
   if (!data) return <div className="center">no run</div>;
 
-  const actionError = (addNode.error ?? createLane.error ?? createStep.error ?? toggleExtension.error) as Error | null;
+  const actionError = (createLane.error ?? createStep.error ?? toggleExtension.error) as Error | null;
   const dark = resolvedTheme === "dark";
   const lanes = laneOptions(data);
   const currentLaneId = activeLaneId || data.current_lane_id;
@@ -447,11 +441,6 @@ export function App() {
               </div>
             )}
           </div>
-        )}
-        {client.writable && (
-          <button className="add-node" disabled={addNode.isPending} onClick={() => addNode.mutate()}>
-            + node
-          </button>
         )}
         <label className="show-cuts-toggle" title="Show cut (inactive) nodes and steps">
           <input

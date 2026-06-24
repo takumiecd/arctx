@@ -9,7 +9,6 @@
 import type {
   AdoptLaneRequest,
   AdoptLaneResponse,
-  AddNodeRequest,
   AddStepRequest,
   AddStepResponse,
   AttachRequest,
@@ -57,7 +56,6 @@ export interface RunClient {
   getRun(): Promise<RunDocument>;
   getLayout(): Promise<WebLayout>;
   saveLayout(layout: WebLayout): Promise<WebLayout>;
-  addNode(req: AddNodeRequest): Promise<void>;
   addStep(req: AddStepRequest): Promise<AddStepResponse>;
   attach(req: AttachRequest): Promise<void>;
   attachAsset(req: AttachAssetRequest): Promise<void>;
@@ -129,9 +127,6 @@ export class LiveClient implements RunClient {
       method: "PUT",
       body: JSON.stringify(layout),
     }).catch(() => layout);
-  }
-  async addNode(req: AddNodeRequest) {
-    await this.req("/node", { method: "POST", body: JSON.stringify(req) });
   }
   async addStep(req: AddStepRequest) {
     return this.req<AddStepResponse>("/step", { method: "POST", body: JSON.stringify(req) });
@@ -214,9 +209,6 @@ export class StaticClient implements RunClient {
   }
   async saveLayout(layout: WebLayout) {
     return layout;
-  }
-  async addNode(): Promise<void> {
-    throw new ReadOnlyError();
   }
   async addStep(): Promise<AddStepResponse> {
     throw new ReadOnlyError();

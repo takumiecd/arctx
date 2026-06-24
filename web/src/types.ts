@@ -153,12 +153,6 @@ export interface CreateRunResponse {
 
 // ----- write request bodies (POST routes of `arctx serve`) -----
 
-export interface AddNodeRequest {
-  type?: string;
-  content?: Record<string, unknown>;
-  payload_type?: string;
-}
-
 export interface AddStepRequest {
   input_node_ids: string[];
   // When set, the step connects into this existing (producer-less) node instead
