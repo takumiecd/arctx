@@ -6,7 +6,7 @@ import tempfile
 from argparse import Namespace
 from pathlib import Path
 
-from arctx.core.schema.graph import Node
+from arctx.core.schema.payloads import StepPayload
 
 from arctx_cli.commands.add import run_add_step_command
 from arctx_cli.commands.init import run_init_command
@@ -35,25 +35,24 @@ def _init(td: str) -> dict:
 
 
 def _seed_default_lane_node(sd: str) -> str:
-    """Mint a producer-less node into the ``default`` lane low-level.
+    """Add a step (with its output node) into the ``default`` lane low-level.
 
-    Standalone nodes have no CLI command; this reproduces the old
-    ``add node --work-session default`` fixture for lane validation.
+    Exercises the non-blocking ``default_lane_membership`` warning. A bare
+    producer-less node would now also trip the ``lane_root_not_step_output``
+    error, so we derive the node as a step output instead — a lane root must be
+    a step output.
     """
     store = resolve_store(sd)
     handle = store.load_run("run_lane")
-    node = Node(node_id=handle._next_id("n"))
-    handle.run_graph.add_node(node)
-    handle.record_work_event(
+    payload = StepPayload(payload_id=handle._next_id("pl"), target_id="pending", type="seed")
+    step = handle.add_step(
+        [handle.root_node_id],
+        payload,
         user_id="alice",
         work_session_id="default",
-        event_type="node_added",
-        target_kind="node",
-        target_id=node.node_id,
-        created_records=(node.node_id,),
     )
     store.save_run(handle)
-    return node.node_id
+    return step.output_node_id
 
 
 def test_create_then_switch_named_lane():

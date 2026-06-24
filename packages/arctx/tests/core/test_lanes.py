@@ -390,6 +390,42 @@ def test_validate_lanes_errors_when_producerless_node_is_not_run_or_lane_root():
     )
 
 
+def test_validate_lanes_errors_when_lane_root_is_producerless():
+    h = _handle()
+    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
+    # A producer-less node treated as the lane's root (the degenerate shape the
+    # removed add_node verb produced). A lane root must be a step output.
+    seed = _seed_node(h, work_session_id="lane_math")
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert any(
+        issue.code == "lane_root_not_step_output"
+        and issue.record_id == seed.node_id
+        and issue.lane_id == "lane_math"
+        and issue.severity == "error"
+        for issue in issues
+    )
+
+
+def test_validate_lanes_accepts_entry_step_output_as_lane_root():
+    h = _handle()
+    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
+    # The valid shape: derive the lane root via an entry step from the run root.
+    entry = h.add_step(
+        [h.root_node_id],
+        _payload(h, "derive"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert lane_root_candidates(h.run_graph, "lane_math") == (entry.output_node_id,)
+    assert not any(issue.code == "lane_root_not_step_output" for issue in issues)
+    assert not any(issue.severity == "error" for issue in issues)
+
+
 def test_lane_export_view_is_json_ready():
     h = _handle()
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
