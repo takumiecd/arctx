@@ -22,7 +22,7 @@ def add_step_impl(
     The Step gets:
     - An output Node: a freshly minted one by default, or *output_node_id* when
       given (used to connect a step into an existing node that has no producer
-      yet — e.g. a standalone node added via ``add_node``).
+      yet — e.g. the run root or a node imported via sync).
     - A copy of *payload* with a new payload_id and the step's target_id.
 
     *payload* must be a step-targeting payload (target_kind="step").

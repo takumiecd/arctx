@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from arctx.core.lanes import validate_lanes
+from arctx.core.schema.graph import Node
 from arctx.session import resolve_store
 
 from arctx_cli.commands.init import run_init_command
@@ -18,6 +19,29 @@ from arctx_cli.serve.api import dispatch
 
 def _store_dir(td: str) -> str:
     return str(Path(td) / "runs")
+
+
+def _seed_orphan(store, run_id, *, work_session_id: str = "ws_test") -> str:
+    """Mint a producer-less node low-level, joined to *work_session_id*'s lane.
+
+    No serve route mints standalone nodes anymore (POST /node is gone); a
+    producer-less node only arises from the run root or an imported subgraph.
+    This builds one directly — recording the matching ``node_added`` work event
+    so it has lane provenance — so the step output_node_id route can be exercised.
+    """
+    handle = store.load_run(run_id)
+    node = Node(node_id=handle._next_id("n"))
+    handle.run_graph.add_node(node)
+    handle.record_work_event(
+        user_id="tester",
+        work_session_id=work_session_id,
+        event_type="node_added",
+        target_kind="node",
+        target_id=node.node_id,
+        created_records=(node.node_id,),
+    )
+    store.save_run(handle)
+    return node.node_id
 
 
 def _setup(td: str, run_id: str = "srv_run"):
@@ -201,13 +225,9 @@ class TestWriteRoutes:
             assert status == 201
             lane_id = body["lane"]["work_session_id"]
 
-            status, node = _call_as(
-                store, run_id, "POST", "/node", {}, work_session_id=lane_id
-            )
-            assert status == 201
             status, _ = _call_as(
                 store, run_id, "POST", "/step",
-                {"input_node_ids": [node["node"]["node_id"]], "type": "y"},
+                {"input_node_ids": [root], "type": "y"},
                 work_session_id=lane_id,
             )
             assert status == 201
@@ -249,31 +269,6 @@ class TestWriteRoutes:
             assert status == 400
             assert "target_kind" in body["error"]
 
-    def test_post_node_bare(self):
-        with tempfile.TemporaryDirectory() as td:
-            store, run_id, _ = _setup(td)
-            status, body = _call(store, run_id, "POST", "/node", {})
-            assert status == 201
-            new_id = body["node"]["node_id"]
-            assert "payload" not in body
-
-            _, run = _call(store, run_id, "GET", "/run")
-            assert any(n["node_id"] == new_id for n in run["nodes"])
-
-    def test_post_node_with_payload(self):
-        with tempfile.TemporaryDirectory() as td:
-            store, run_id, _ = _setup(td)
-            status, body = _call(store, run_id, "POST", "/node", {
-                "type": "note", "content": {"text": "seed"},
-            })
-            assert status == 201
-            assert body["payload"]["content"] == {"text": "seed"}
-            node_id = body["node"]["node_id"]
-
-            _, run = _call(store, run_id, "GET", "/run")
-            pl = next(p for p in run["payloads"] if p["target_id"] == node_id)
-            assert pl["content"] == {"text": "seed"}
-
     def test_post_attach_to_step(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
@@ -297,8 +292,7 @@ class TestWriteRoutes:
     def test_post_step_into_existing_output_node(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
-            _, made = _call(store, run_id, "POST", "/node", {})
-            orphan = made["node"]["node_id"]
+            orphan = _seed_orphan(store, run_id)
 
             status, body = _call(store, run_id, "POST", "/step", {
                 "input_node_ids": [root], "output_node_id": orphan, "type": "derive",

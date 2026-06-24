@@ -6,6 +6,7 @@ import pytest
 
 from arctx import init
 from arctx.core.run.dump import DumpOptions, render_mermaid, render_outline
+from arctx.core.schema.graph import Node
 from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
 
@@ -76,7 +77,10 @@ def test_outline_depth_option():
 
 def test_outline_lists_orphan_components():
     run, t1, n1, t2 = _make_run()
-    orphan = run.add_node()
+    # A producer-less node (as an imported subgraph would yield). No public verb
+    # mints these, so build one directly in the graph container.
+    orphan = Node(node_id=run._next_id("n"))
+    run.run_graph.add_node(orphan)
 
     out = render_outline(run, DumpOptions())
 

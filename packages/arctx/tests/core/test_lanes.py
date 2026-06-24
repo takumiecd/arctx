@@ -13,6 +13,7 @@ from arctx.core.lanes import (
     lane_subgraph,
     validate_lanes,
 )
+from arctx.core.schema.graph import Node
 from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
 
@@ -26,6 +27,27 @@ def _handle(run_id: str = "run_lanes"):
 
 def _payload(handle, label: str = "step") -> StepPayload:
     return StepPayload(payload_id=handle._next_id("pl"), target_id="pending", type=label)
+
+
+def _seed_node(handle, *, work_session_id: str | None = None, user_id: str = "alice") -> Node:
+    """Mint a producer-less Node low-level for lane-validation fixtures.
+
+    Standalone nodes have no public verb anymore; they only arise from imported
+    subgraphs. When *work_session_id* is given, record the matching ``node_added``
+    work event so the node joins that lane (mirrors the old ``add_node`` verb).
+    """
+    node = Node(node_id=handle._next_id("n"))
+    handle.run_graph.add_node(node)
+    if work_session_id is not None:
+        handle.record_work_event(
+            user_id=user_id,
+            work_session_id=work_session_id,
+            event_type="node_added",
+            target_kind="node",
+            target_id=node.node_id,
+            created_records=(node.node_id,),
+        )
+    return node
 
 
 def test_lane_membership_groups_step_and_output_node():
@@ -122,7 +144,7 @@ def test_validate_lanes_reports_output_lane_mismatch():
     h = _handle()
     h.ensure_lane(name="seed", lane_id="lane_seed", created_by="alice")
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
-    seed = h.add_node(user_id="alice", work_session_id="lane_seed")
+    seed = _seed_node(h, work_session_id="lane_seed")
 
     step = h.add_step(
         [h.root_node_id],
@@ -143,8 +165,8 @@ def test_validate_lanes_reports_output_lane_mismatch():
 def test_validate_lanes_reports_multiple_lane_roots():
     h = _handle()
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
-    first = h.add_node(user_id="alice", work_session_id="lane_math")
-    second = h.add_node(user_id="alice", work_session_id="lane_math")
+    first = _seed_node(h, work_session_id="lane_math")
+    second = _seed_node(h, work_session_id="lane_math")
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
@@ -162,8 +184,8 @@ def test_validate_lanes_reports_multiple_lane_roots():
 
 def test_validate_lanes_reports_records_unreachable_from_explicit_root():
     h = _handle()
-    root = h.add_node()
-    stray = h.add_node()
+    root = _seed_node(h)
+    stray = _seed_node(h)
     h.ensure_lane(
         name="math",
         lane_id="lane_math",
@@ -216,7 +238,7 @@ def test_lane_root_candidates_treat_entry_step_output_as_root():
 
 def test_validate_lanes_warns_about_default_lane_membership():
     h = _handle()
-    h.add_node(user_id="alice", work_session_id="default")
+    _seed_node(h, work_session_id="default")
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
@@ -303,7 +325,7 @@ def test_adopt_lane_records_rejects_invalid_lane_roots():
 
 def test_validate_lanes_errors_when_non_root_node_has_no_lane():
     h = _handle()
-    node = h.add_node()
+    node = _seed_node(h)
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
@@ -356,7 +378,7 @@ def test_validate_lanes_errors_when_lane_root_is_run_root():
 
 def test_validate_lanes_errors_when_producerless_node_is_not_run_or_lane_root():
     h = _handle()
-    stray = h.add_node()
+    stray = _seed_node(h)
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 

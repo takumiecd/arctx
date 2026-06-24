@@ -11,7 +11,6 @@ Routes (the GUI data contract):
 - ``GET  /runs``    -> list available runs in the store (for the GUI run picker)
 - ``POST /runs``    -> create a new run; returns its summary
 - ``GET  /run``     -> the full :func:`arctx.core.run.export.json_document`
-- ``POST /node``    -> create a standalone Node (with an optional payload)
 - ``POST /step``    -> create a Step from input nodes; returns the new step
 - ``POST /attach``  -> attach a payload to a Node or Step; returns the payload
 - ``POST /cut``     -> cut a node or step; returns the cut payload
@@ -82,8 +81,6 @@ def dispatch(
             return 200, _get_run(store, run_id, work_session_id)
         if route == ("GET", "/assets/visible"):
             return 200, _get_visible_assets(store, run_id, query or {})
-        if route == ("POST", "/node"):
-            return 201, _post_node(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/step"):
             return 201, _post_step(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/attach"):
@@ -224,40 +221,6 @@ def _payload_fields(body: dict) -> dict:
     """Pull the payload-shaping fields out of a request body."""
     exclude = {"payload_type", "target_id", "target_kind", "node_id", "input_node_ids", "output_node_id"}
     return {k: v for k, v in body.items() if k not in exclude}
-
-
-def _has_payload_fields(body: dict) -> bool:
-    return any(body.get(k) is not None for k in ("type", "content", "metadata", "payload_type"))
-
-
-def _post_node(store, run_id, body, user_id, work_session_id) -> dict:
-    """Create a standalone Node, optionally with an initial node payload."""
-    handle = _load(store, run_id)
-    baseline = _lane_error_baseline(handle)
-    before = graph_counts(handle)
-    node = handle.add_node(user_id=user_id, work_session_id=work_session_id)
-
-    result: dict = {"node": node.to_dict()}
-    if _has_payload_fields(body):
-        payload = build_payload(
-            payload_type=str(body.get("payload_type", "node_payload")),
-            target_kind="node",
-            target_id="pending",
-            payload_id="pending",
-            json_data=_payload_fields(body),
-        )
-        attached = handle.attach(
-            node.node_id, payload,
-            user_id=user_id, work_session_id=work_session_id,
-        )
-        result["payload"] = attached.to_dict()
-
-    _ensure_lane_integrity(handle, baseline=baseline)
-    maybe_append_or_save(
-        store=store, handle=handle,
-        user_id=user_id, work_session_id=work_session_id, before=before,
-    )
-    return result
 
 
 def _post_step(store, run_id, body, user_id, work_session_id) -> dict:

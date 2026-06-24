@@ -6,7 +6,7 @@ import pytest
 
 from arctx import init
 from arctx.core.cuts import is_active_node
-from arctx.core.schema.graph import Step
+from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import (
     CutPayload,
     NodePayload,
@@ -26,6 +26,17 @@ def _tp(t_type: str = "experiment") -> StepPayload:
 
 def _np(text: str = "hello") -> NodePayload:
     return NodePayload(payload_id="_", target_id="_", type="note", content={"text": text})
+
+
+def _orphan(run) -> Node:
+    """Mint a producer-less Node directly in the graph container.
+
+    Standalone nodes have no public verb; in practice they arise only from the
+    run root or an imported (synced) subgraph. Tests build them low-level.
+    """
+    node = Node(node_id=run._next_id("n"))
+    run.run_graph.add_node(node)
+    return node
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +105,7 @@ def test_step_rejects_cut_node():
 
 def test_step_into_existing_output_node():
     run = init(_req())
-    orphan = run.add_node()  # standalone node, no producer
+    orphan = _orphan(run)  # producer-less node
     t = run.add_step([run.root_node_id], _tp(), output_node_id=orphan.node_id)
     assert t.output_node_id == orphan.node_id
     assert t.input_node_ids == (run.root_node_id,)
@@ -106,7 +117,7 @@ def test_step_into_existing_multi_input():
     run = init(_req())
     a = run.add_step([run.root_node_id], _tp()).output_node_id
     b = run.add_step([run.root_node_id], _tp()).output_node_id
-    sink = run.add_node()
+    sink = _orphan(run)
     t = run.add_step([a, b], _tp("join"), output_node_id=sink.node_id)
     assert set(t.input_node_ids) == {a, b}
     assert t.output_node_id == sink.node_id
@@ -122,7 +133,7 @@ def test_step_output_node_rejects_existing_producer():
 
 def test_step_output_node_rejects_self_input():
     run = init(_req())
-    orphan = run.add_node()
+    orphan = _orphan(run)
     with pytest.raises(ValueError, match="cannot also be an input"):
         run.add_step([orphan.node_id], _tp(), output_node_id=orphan.node_id)
 

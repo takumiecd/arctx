@@ -6,7 +6,9 @@ import tempfile
 from argparse import Namespace
 from pathlib import Path
 
-from arctx_cli.commands.add import run_add_node_command, run_add_step_command
+from arctx.core.schema.graph import Node
+
+from arctx_cli.commands.add import run_add_step_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.lane import (
     list_lanes,
@@ -30,6 +32,28 @@ def _init(td: str) -> dict:
         run_id="run_lane",
         store_dir=_store_dir(td),
     )
+
+
+def _seed_default_lane_node(sd: str) -> str:
+    """Mint a producer-less node into the ``default`` lane low-level.
+
+    Standalone nodes have no CLI command; this reproduces the old
+    ``add node --work-session default`` fixture for lane validation.
+    """
+    store = resolve_store(sd)
+    handle = store.load_run("run_lane")
+    node = Node(node_id=handle._next_id("n"))
+    handle.run_graph.add_node(node)
+    handle.record_work_event(
+        user_id="alice",
+        work_session_id="default",
+        event_type="node_added",
+        target_kind="node",
+        target_id=node.node_id,
+        created_records=(node.node_id,),
+    )
+    store.save_run(handle)
+    return node.node_id
 
 
 def test_create_then_switch_named_lane():
@@ -119,17 +143,7 @@ def test_validate_lane_run_reports_issues():
     with tempfile.TemporaryDirectory() as td:
         _init(td)
         sd = _store_dir(td)
-        run_add_node_command(
-            run_id="run_lane",
-            title=None,
-            payload_kind=None,
-            payload_type="node_payload",
-            field_data={},
-            json_data={},
-            store_dir=sd,
-            user_id="alice",
-            work_session_id="default",
-        )
+        _seed_default_lane_node(sd)
 
         result = validate_lane_run(run_id="run_lane", store_dir=sd)
 
