@@ -9,6 +9,19 @@ import type { RunDocument } from "./types";
 
 const client = pickClient();
 
+type ThemePreference = "light" | "dark" | "system";
+
+function getInitialPreference(): ThemePreference {
+  const stored = window.localStorage.getItem("arctx.theme");
+  if (stored === "dark" || stored === "light" || stored === "system") return stored;
+  return "system";
+}
+
+function resolveTheme(pref: ThemePreference): "light" | "dark" {
+  if (pref !== "system") return pref;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 export function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [collapsedLaneIds, setCollapsedLaneIds] = useState<Set<string>>(() => new Set());
@@ -21,12 +34,39 @@ export function App() {
   const [showLanesMenu, setShowLanesMenu] = useState<boolean>(false);
   const [showExtsMenu, setShowExtsMenu] = useState<boolean>(false);
   const [showRunsMenu, setShowRunsMenu] = useState<boolean>(false);
+  const [themePref, setThemePref] = useState<ThemePreference>(getInitialPreference);
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() => {
+    const t = resolveTheme(getInitialPreference());
+    document.documentElement.setAttribute("data-theme", t);
+    return t;
+  });
   const popoverRef = useRef<HTMLDivElement>(null);
   const extPopoverRef = useRef<HTMLDivElement>(null);
   const runsPopoverRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
+
+  // ── Theme persistence ─────────────────────────────────────────
+  useEffect(() => {
+    const resolved = resolveTheme(themePref);
+    setResolvedTheme(resolved);
+    document.documentElement.setAttribute("data-theme", resolved);
+    window.localStorage.setItem("arctx.theme", themePref);
+  }, [themePref]);
+
+  // Track OS preference changes when in "system" mode
+  useEffect(() => {
+    if (themePref !== "system") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => {
+      const resolved = resolveTheme("system");
+      setResolvedTheme(resolved);
+      document.documentElement.setAttribute("data-theme", resolved);
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [themePref]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["run"],
@@ -157,6 +197,7 @@ export function App() {
   if (!data) return <div className="center">no run</div>;
 
   const actionError = (addNode.error ?? createLane.error ?? createStep.error ?? toggleExtension.error) as Error | null;
+  const dark = resolvedTheme === "dark";
   const lanes = laneOptions(data);
   const currentLaneId = activeLaneId || data.current_lane_id;
   const currentLaneName =
@@ -252,7 +293,7 @@ export function App() {
                   </button>
                 </form>
                 {createRun.error && (
-                  <div className="lane-dropdown-empty" style={{ color: "#dc2626" }}>
+                  <div className="lane-dropdown-empty" style={{ color: "var(--color-error)" }}>
                     {(createRun.error as Error).message}
                   </div>
                 )}
@@ -291,7 +332,7 @@ export function App() {
                         <div
                           key={lane.group_id}
                           className={`lane-menu-item${current ? " active" : ""}${collapsed ? " menu-collapsed" : ""}`}
-                          style={laneChipStyle(data, laneId, laneColorOverrides)}
+                          style={laneChipStyle(data, laneId, laneColorOverrides, dark)}
                         >
                           <button
                             type="button"
@@ -317,7 +358,7 @@ export function App() {
                             <span className="sr-only">change {lane.label} color</span>
                             <input
                               type="color"
-                              value={laneColors(data, laneId, laneColorOverrides).laneColor}
+                              value={laneColors(data, laneId, laneColorOverrides, dark).laneColor}
                               onChange={(event) => setLaneColor(laneId, event.currentTarget.value)}
                             />
                           </label>
@@ -376,7 +417,7 @@ export function App() {
             </button>
             {showExtsMenu && (
               <div className="lane-dropdown-menu" style={{ minWidth: "220px" }}>
-                <div style={{ padding: "8px 12px", fontWeight: "600", fontSize: "12px", color: "#475569", borderBottom: "1px solid #e2e8f0" }}>
+                <div style={{ padding: "8px 12px", fontWeight: "600", fontSize: "12px", color: "var(--color-text-muted)", borderBottom: "1px solid var(--color-border)" }}>
                   enable/disable extensions
                 </div>
                 {(!extensionsData || !Array.isArray(extensionsData.extensions) || extensionsData.extensions.length === 0) ? (
@@ -389,7 +430,7 @@ export function App() {
                         className="lane-menu-item"
                         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px" }}
                       >
-                        <span style={{ fontSize: "13px", fontWeight: "500", color: "#334155" }}>{ext.name}</span>
+                        <span style={{ fontSize: "13px", fontWeight: "500", color: "var(--color-text-secondary)" }}>{ext.name}</span>
                         <label style={{ display: "inline-flex", alignItems: "center", cursor: "pointer" }}>
                           <input
                             type="checkbox"
@@ -420,6 +461,28 @@ export function App() {
           />
           <span>show cuts</span>
         </label>
+        <span className="theme-switcher" role="radiogroup" aria-label="Theme">
+          {(["light", "system", "dark"] as const).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              className={`theme-switcher-btn${themePref === opt ? " active" : ""}`}
+              onClick={() => setThemePref(opt)}
+              title={opt === "system" ? "Follow system" : opt === "light" ? "Light" : "Dark"}
+              aria-label={opt === "system" ? "Follow system" : opt === "light" ? "Light" : "Dark"}
+              role="radio"
+              aria-checked={themePref === opt}
+            >
+              {opt === "light" ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              ) : opt === "dark" ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              )}
+            </button>
+          ))}
+        </span>
         {client.writable && (
           <span className="muted hint"> · drag from a node to make a step</span>
         )}
@@ -444,6 +507,7 @@ export function App() {
             laneColorOverrides={laneColorOverrides}
             writable={client.writable}
             showCuts={showCuts}
+            dark={dark}
           />
         </div>
         <Panel
@@ -452,6 +516,7 @@ export function App() {
           client={client}
           onSelect={setSelection}
           laneColorOverrides={laneColorOverrides}
+          dark={dark}
         />
       </main>
     </div>
@@ -462,8 +527,9 @@ function laneChipStyle(
   doc: RunDocument,
   laneId: string,
   laneColorOverrides: LaneColorOverrides,
+  dark: boolean,
 ): CSSProperties {
-  const colors = laneColors(doc, laneId, laneColorOverrides);
+  const colors = laneColors(doc, laneId, laneColorOverrides, dark);
   return {
     "--lane-color": colors.laneColor,
     "--lane-bg": colors.laneBg,
