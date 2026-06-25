@@ -5,7 +5,15 @@ from __future__ import annotations
 from collections import deque
 
 from arctx.core.cuts import is_inactive_step
+from arctx.core.schema.payloads import SummaryPayload
 from arctx.core.schema.snapshots import TraceContext
+
+
+def _has_summary(graph, node_id: str) -> bool:
+    """Whether a node carries a descriptive summary payload."""
+    return any(
+        isinstance(p, SummaryPayload) for p in graph.payloads_for_node(node_id)
+    )
 
 
 def trace_impl(
@@ -14,8 +22,16 @@ def trace_impl(
     *,
     depth: int | None = None,
     include_raw_refs: bool = True,
+    stop_at_summary: bool = False,
 ) -> TraceContext:
-    """Walk history backwards from a node via step edges."""
+    """Walk history backwards from a node via step edges.
+
+    When *stop_at_summary* is set, the backward walk prunes a branch once it
+    reaches an ancestor node that carries a ``type="summary"`` payload: that
+    summary node and its payloads are included, but the walk does not traverse
+    past it. This yields the "nearest summary + steps below it" context used for
+    LLM hand-off, instead of the full history. The starting node is never a stop.
+    """
     if node_id not in self.run_graph.nodes:
         raise KeyError(f"unknown node_id: {node_id}")
 
@@ -30,6 +46,10 @@ def trace_impl(
     while queue:
         current, remaining = queue.popleft()
         if remaining is not None and remaining <= 0:
+            continue
+        if stop_at_summary and current != node_id and _has_summary(self.run_graph, current):
+            # Include the summary node (payloads already collected when it was
+            # enqueued) but do not walk past it.
             continue
 
         incoming = self.run_graph.steps_to_node(current)

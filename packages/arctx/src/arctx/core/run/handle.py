@@ -159,11 +159,13 @@ from arctx.core.run.lane import adopt_lane_records_impl as _adopt_lane_records_i
 from arctx.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from arctx.core.run.trace import trace_impl as _trace_impl  # noqa: E402
 from arctx.core.run.step import add_step_impl as _add_step_impl  # noqa: E402
+from arctx.core.run.reparent import reparent_impl as _reparent_impl  # noqa: E402
 
 RunHandle.add_step = _add_step_impl
 RunHandle.attach = _attach_impl
 RunHandle.attach_asset = _attach_asset_impl
 RunHandle.cut = _cut_impl
+RunHandle.reparent = _reparent_impl
 RunHandle.adopt_lane_records = _adopt_lane_records_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl

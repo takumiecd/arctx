@@ -23,7 +23,9 @@ class RunGraph:
 
     # Reverse-lookup indices (not persisted; rebuilt on load).
     steps_by_input_node: dict[str, list[str]] = field(default_factory=dict)
-    step_by_output_node: dict[str, str] = field(default_factory=dict)
+    # A node may be the output of multiple steps (append-only re-parent), but at
+    # most one of them is active at a time. The list preserves insertion order.
+    step_by_output_node: dict[str, list[str]] = field(default_factory=dict)
     payloads_by_node: dict[str, list[str]] = field(default_factory=dict)
     payloads_by_step: dict[str, list[str]] = field(default_factory=dict)
 
@@ -77,15 +79,13 @@ class RunGraph:
         for nid in step.input_node_ids:
             if nid not in self.nodes:
                 raise KeyError(f"unknown input_node_id: {nid}")
-        # Enforce uniqueness: output node must belong to exactly one step.
+        # A node may have multiple producing steps (append-only re-parent). The
+        # "at most one active producer" policy is enforced by the write verbs,
+        # not by this structural append.
         if step.output_node_id:
-            if step.output_node_id in self.step_by_output_node:
-                existing = self.step_by_output_node[step.output_node_id]
-                raise ValueError(
-                    f"output_node_id {step.output_node_id!r} already used by "
-                    f"step {existing!r}"
-                )
-            self.step_by_output_node[step.output_node_id] = step.step_id
+            producers = self.step_by_output_node.setdefault(step.output_node_id, [])
+            if step.step_id not in producers:
+                producers.append(step.step_id)
         for nid in step.input_node_ids:
             self.steps_by_input_node.setdefault(nid, []).append(step.step_id)
         self.steps[step.step_id] = step
@@ -110,12 +110,33 @@ class RunGraph:
     def steps_from_node(self, node_id: str) -> list[str]:
         return list(self.steps_by_input_node.get(node_id, ()))
 
+    def producers_of(self, node_id: str) -> list[str]:
+        """All steps whose output is *node_id* (active or not), in insertion order."""
+        return list(self.step_by_output_node.get(node_id, ()))
+
     def step_to_node(self, node_id: str) -> str | None:
-        return self.step_by_output_node.get(node_id)
+        """The single active producing step of *node_id*, or None.
+
+        With the "at most one active producer" invariant the active subgraph is a
+        tree, so this resolves to the one producer that carries the effective
+        lineage. Falls back to the first producer when none is active (the node
+        is inactive anyway) so callers always get a structural anchor.
+        """
+        producers = self.step_by_output_node.get(node_id)
+        if not producers:
+            return None
+        if len(producers) == 1:
+            return producers[0]
+        from arctx.core.cuts import inactive_step_ids
+
+        inactive = inactive_step_ids(self)
+        for step_id in producers:
+            if step_id not in inactive:
+                return step_id
+        return producers[0]
 
     def steps_to_node(self, node_id: str) -> list[str]:
-        t_id = self.step_by_output_node.get(node_id)
-        return [t_id] if t_id is not None else []
+        return list(self.step_by_output_node.get(node_id, ()))
 
     def step_inputs(self, step_id: str) -> list[str]:
         t = self.steps.get(step_id)
@@ -217,25 +238,18 @@ class RunGraph:
         ancestors: set[str] = set()
         queue: deque[str] = deque()
 
-        # Seed with the direct parents of node_id.
-        t_id = self.step_by_output_node.get(node_id)
-        if t_id is not None:
-            step = self.steps[t_id]
-            for parent in step.input_node_ids:
-                if parent not in ancestors:
-                    ancestors.add(parent)
-                    queue.append(parent)
+        def _enqueue_parents(target: str) -> None:
+            # Follow every producer (active or not): cycle detection must be
+            # conservative over the full structure, not just the active edge.
+            for t_id in self.step_by_output_node.get(target, ()):  # type: ignore[union-attr]
+                for parent in self.steps[t_id].input_node_ids:
+                    if parent not in ancestors:
+                        ancestors.add(parent)
+                        queue.append(parent)
 
+        _enqueue_parents(node_id)
         while queue:
-            current = queue.popleft()
-            t_id = self.step_by_output_node.get(current)
-            if t_id is None:
-                continue
-            step = self.steps[t_id]
-            for parent in step.input_node_ids:
-                if parent not in ancestors:
-                    ancestors.add(parent)
-                    queue.append(parent)
+            _enqueue_parents(queue.popleft())
 
         return ancestors
 

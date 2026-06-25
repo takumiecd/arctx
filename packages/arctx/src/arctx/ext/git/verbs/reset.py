@@ -97,7 +97,7 @@ def reset_impl(
     )
 
     target_sha: str | None = None
-    incoming_t_id = graph.step_by_output_node.get(to_node_id)
+    incoming_t_id = graph.step_to_node(to_node_id)
     if incoming_t_id is not None:
         target_sha = current_sha(graph, incoming_t_id)
 

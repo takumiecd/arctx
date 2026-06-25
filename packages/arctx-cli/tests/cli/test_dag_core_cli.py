@@ -163,3 +163,62 @@ def test_log_to_returns_trace_context(tmp_path):
 
     assert result["history"]["current_node_id"] == step["output_node_id"]
     assert init["root_node_id"] in result["history"]["past_node_ids"]
+
+
+def test_attach_summary_then_log_from_summary_truncates(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+
+    def _step(parent: str, title: str) -> dict:
+        return run_add_step_command(
+            run_id="run_dag_core",
+            input_node_ids=[parent],
+            title=title,
+            payload_kind=None,
+            payload_type="step_payload",
+            field_data={},
+            json_data={},
+            store_dir=_store_dir(td),
+        )["step"]
+
+    n1 = _step(init["root_node_id"], "s1")["output_node_id"]
+    n2 = _step(n1, "s2")["output_node_id"]
+    n3 = _step(n2, "s3")["output_node_id"]
+
+    # Write a summary via the generic attach surface (--payload-type summary).
+    summary = run_attach_command(
+        run_id="run_dag_core",
+        target_id=n2,
+        payload_kind="summary",
+        payload_type="summary",
+        field_data={"text": "context up to n2"},
+        json_data={},
+        store_dir=_store_dir(td),
+    )["payload"]
+    assert summary["payload_type"] == "summary"
+    assert summary["text"] == "context up to n2"
+
+    full = run_log_command(
+        run_id="run_dag_core",
+        from_node_id=None,
+        to_node_id=n3,
+        depth=None,
+        full_payloads=False,
+        store_dir=_store_dir(td),
+    )
+    assert init["root_node_id"] in full["history"]["past_node_ids"]
+
+    pruned = run_log_command(
+        run_id="run_dag_core",
+        from_node_id=None,
+        to_node_id=n3,
+        depth=None,
+        full_payloads=False,
+        store_dir=_store_dir(td),
+        stop_at_summary=True,
+    )
+    past = pruned["history"]["past_node_ids"]
+    assert n2 in past
+    assert n1 not in past
+    assert init["root_node_id"] not in past
+    assert summary["payload_id"] in pruned["history"]["payload_ids"]

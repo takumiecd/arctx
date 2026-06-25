@@ -16,6 +16,11 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--to", dest="to_node", default=None, metavar="NODE_ID")
     parser.add_argument("--depth", type=int, default=None)
     parser.add_argument("--full-payloads", action="store_true")
+    parser.add_argument(
+        "--from-summary",
+        action="store_true",
+        help="With --to, stop the backward walk at the nearest summary node",
+    )
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
     return parser
@@ -29,15 +34,19 @@ def run_log_command(
     depth: int | None,
     full_payloads: bool,
     store_dir: str,
+    stop_at_summary: bool = False,
 ) -> dict:
     if from_node_id is not None and to_node_id is not None:
         raise ValueError("--from and --to are mutually exclusive")
+    if stop_at_summary and to_node_id is None:
+        raise ValueError("--from-summary requires --to")
     if to_node_id is not None:
         return run_trace_command(
             run_id=run_id,
             from_node_id=to_node_id,
             depth=depth,
             store_dir=store_dir,
+            stop_at_summary=stop_at_summary,
         )
     rendered = run_dump_command(
         run_id=run_id,
@@ -58,6 +67,7 @@ def cli_log(args) -> int:
         depth=args.depth,
         full_payloads=args.full_payloads,
         store_dir=args.store_dir,
+        stop_at_summary=args.from_summary,
     )
     if "log" in result:
         print(result["log"])

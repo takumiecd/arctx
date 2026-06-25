@@ -87,10 +87,10 @@ def verify_impl(
             continue
 
         for input_node_id in step.input_node_ids:
-            if input_node_id not in graph.step_by_output_node:
+            in_t_id = graph.step_to_node(input_node_id)
+            if in_t_id is None:
                 continue
 
-            in_t_id = graph.step_by_output_node[input_node_id]
             input_sha = current_sha(graph, in_t_id)
 
             if input_sha is None:

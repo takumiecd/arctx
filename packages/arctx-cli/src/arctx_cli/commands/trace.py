@@ -23,6 +23,7 @@ def run_trace_command(
     from_node_id: str,
     depth: int | None,
     store_dir: str,
+    stop_at_summary: bool = False,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -31,6 +32,7 @@ def run_trace_command(
     history = handle.trace(
         from_node_id,
         depth=depth,
+        stop_at_summary=stop_at_summary,
     )
     return {"history": history.to_dict()}
 

@@ -43,7 +43,7 @@ def test_add_step_basic():
     t = Step("t_1", ("n_a",), "n_b")
     g.add_step(t)
     assert "t_1" in g.steps
-    assert g.step_by_output_node["n_b"] == "t_1"
+    assert g.step_by_output_node["n_b"] == ["t_1"]
     assert "t_1" in g.steps_by_input_node.get("n_a", [])
 
 
@@ -59,11 +59,15 @@ def test_add_step_unknown_output_raises():
         g.add_step(Step("t_1", ("n_a",), "n_x"))
 
 
-def test_add_step_duplicate_output_raises():
+def test_add_step_allows_multiple_producers_structurally():
+    # A node may be the output of multiple steps (append-only re-parent). The
+    # "at most one active producer" policy is enforced by the write verbs, not
+    # by the structural append.
     g = _graph_with_nodes("n_a", "n_b", "n_c")
     g.add_step(Step("t_1", ("n_a",), "n_b"))
-    with pytest.raises(ValueError, match="already used"):
-        g.add_step(Step("t_2", ("n_a",), "n_b"))
+    g.add_step(Step("t_2", ("n_c",), "n_b"))
+    assert g.step_by_output_node["n_b"] == ["t_1", "t_2"]
+    assert g.producers_of("n_b") == ["t_1", "t_2"]
 
 
 def test_add_step_duplicate_id_raises():

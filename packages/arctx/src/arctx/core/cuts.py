@@ -19,26 +19,45 @@ def cut_node_ids(graph: RunGraph) -> set[str]:
 
 
 def _compute_inactive(graph: RunGraph) -> tuple[set[str], set[str]]:
+    """Propagate cuts to a fixpoint.
+
+    Two monotone rules, iterated until stable:
+
+    - A Step is inactive if it is cut, or if **any** of its input nodes is
+      inactive (a step cannot run on a dead input).
+    - A Node is inactive if it is cut, or if it has producing steps and
+      **all** of them are inactive. A node with at least one active producer
+      stays active — this is what makes append-only re-parent work.
+
+    With the "one active producer per node" invariant this reduces to the old
+    behavior for any node that has a single producer.
+    """
     inactive_steps: set[str] = set(cut_step_ids(graph))
     inactive_nodes: set[str] = set(cut_node_ids(graph))
 
-    frontier_nodes = list(inactive_nodes)
-    frontier_steps = list(inactive_steps)
+    # Producers per node (all producing steps, active or not).
+    producers: dict[str, list[str]] = {}
+    for step_id, step in graph.steps.items():
+        if step.output_node_id:
+            producers.setdefault(step.output_node_id, []).append(step_id)
 
-    while frontier_nodes or frontier_steps:
-        while frontier_steps:
-            step_id = frontier_steps.pop()
-            out = graph.step_output(step_id)
-            if out and out not in inactive_nodes:
-                inactive_nodes.add(out)
-                frontier_nodes.append(out)
+    changed = True
+    while changed:
+        changed = False
 
-        while frontier_nodes:
-            node_id = frontier_nodes.pop()
-            for step_id in graph.steps_from_node(node_id):
-                if step_id not in inactive_steps:
-                    inactive_steps.add(step_id)
-                    frontier_steps.append(step_id)
+        for step_id, step in graph.steps.items():
+            if step_id in inactive_steps:
+                continue
+            if any(nid in inactive_nodes for nid in step.input_node_ids):
+                inactive_steps.add(step_id)
+                changed = True
+
+        for node_id, prod in producers.items():
+            if node_id in inactive_nodes:
+                continue
+            if all(step_id in inactive_steps for step_id in prod):
+                inactive_nodes.add(node_id)
+                changed = True
 
     return inactive_steps, inactive_nodes
 
