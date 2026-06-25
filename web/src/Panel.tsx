@@ -132,6 +132,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   const qc = useQueryClient();
   const [panelWidth, startPanelResize] = useResizablePanelWidth();
   const [activeTab, setActiveTab] = useState<Tab>("content");
+  const [isFocused, setIsFocused] = useState(false);
 
   // Step state
   const [stepType, setStepType] = useState("experiment");
@@ -357,10 +358,34 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
 
   if (!selection) {
     return (
-      <aside className="panel" style={{ width: panelWidth }}>
+      <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
         <PanelResizeHandle onPointerDown={startPanelResize} />
         <div className="panel-content">
-          <p className="muted">Select a node or step.</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <p className="muted" style={{ margin: 0 }}>Select a node or step.</p>
+            <button 
+              type="button" 
+              className="panel-focus-btn" 
+              title={isFocused ? "Exit Focus Mode" : "Focus Mode"}
+              onClick={() => setIsFocused(!isFocused)}
+            >
+              {isFocused ? (
+                <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                  <polyline points="4 14 10 14 10 20" />
+                  <polyline points="20 10 14 10 14 4" />
+                  <line x1="14" y1="10" x2="21" y2="3" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                  <polyline points="15 3 21 3 21 9" />
+                  <polyline points="9 21 3 21 3 15" />
+                  <line x1="21" y1="3" x2="14" y2="10" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
       </aside>
     );
@@ -373,13 +398,37 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   const attachTarget = attachTargets.find((target) => target.key === attachTargetKey) ?? attachTargets[0];
 
   return (
-    <aside className="panel" style={{ width: panelWidth }}>
+    <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
       <PanelResizeHandle onPointerDown={startPanelResize} />
       <div className="panel-content">
-        <h2>
-          {unit.stepId ? "step + output" : "node"}{" "}
-          <code>{(unit.stepId ?? unit.outputNodeId).slice(0, 12)}</code>
-        </h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+          <h2 style={{ margin: 0 }}>
+            {unit.stepId ? "step + output" : "node"}{" "}
+            <code>{(unit.stepId ?? unit.outputNodeId).slice(0, 12)}</code>
+          </h2>
+          <button 
+            type="button" 
+            className="panel-focus-btn" 
+            title={isFocused ? "Exit Focus Mode" : "Focus Mode"}
+            onClick={() => setIsFocused(!isFocused)}
+          >
+            {isFocused ? (
+              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <polyline points="4 14 10 14 10 20" />
+                <polyline points="20 10 14 10 14 4" />
+                <line x1="14" y1="10" x2="21" y2="3" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            )}
+          </button>
+        </div>
 
         {client.writable ? (
           <div className="panel-tabs">
