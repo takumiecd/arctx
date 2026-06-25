@@ -25,6 +25,7 @@ import type { RunClient } from "./api";
 import type { RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
 import {
+  isDirectlyCut,
   laneColors,
   laneLabel,
   laneOptions,
@@ -132,6 +133,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   const qc = useQueryClient();
   const [panelWidth, startPanelResize] = useResizablePanelWidth();
   const [activeTab, setActiveTab] = useState<Tab>("content");
+  const [isFocused, setIsFocused] = useState(false);
 
   // Step state
   const [stepType, setStepType] = useState("experiment");
@@ -139,6 +141,9 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   const [stepNoteText, setStepNoteText] = useState("");
   const [stepContent, setStepContent] = useState("{}");
   const [stepJsonError, setStepJsonError] = useState<string | null>(null);
+
+  // Reparent state (comma-separated new input node ids)
+  const [reparentInputs, setReparentInputs] = useState("");
 
   // Attach state
   const [attachPreset, setAttachPreset] = useState<AttachPreset>("note");
@@ -266,6 +271,31 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
     onError: fail,
   });
 
+  const uncut = useMutation({
+    mutationFn: (sel: Exclude<Selection, null>) =>
+      client.uncut({ target_id: sel.id, target_kind: sel.kind }),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: fail,
+  });
+
+  const reparent = useMutation({
+    mutationFn: (vars: { nodeId: string; inputs: string[]; type: string }) =>
+      client.reparent({
+        node_id: vars.nodeId,
+        input_node_ids: vars.inputs,
+        type: vars.type || "reparent",
+      }),
+    onSuccess: () => {
+      setError(null);
+      setReparentInputs("");
+      invalidate();
+    },
+    onError: fail,
+  });
+
   const adoptLane = useMutation({
     mutationFn: (unit: DetailUnit) =>
       client.adoptLane(adoptLaneRequest(unit, adoptLaneId, adoptMode)),
@@ -357,10 +387,34 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
 
   if (!selection) {
     return (
-      <aside className="panel" style={{ width: panelWidth }}>
+      <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
         <PanelResizeHandle onPointerDown={startPanelResize} />
         <div className="panel-content">
-          <p className="muted">Select a node or step.</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <p className="muted" style={{ margin: 0 }}>Select a node or step.</p>
+            <button 
+              type="button" 
+              className="panel-focus-btn" 
+              title={isFocused ? "Exit Focus Mode" : "Focus Mode"}
+              onClick={() => setIsFocused(!isFocused)}
+            >
+              {isFocused ? (
+                <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                  <polyline points="4 14 10 14 10 20" />
+                  <polyline points="20 10 14 10 14 4" />
+                  <line x1="14" y1="10" x2="21" y2="3" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                  <polyline points="15 3 21 3 21 9" />
+                  <polyline points="9 21 3 21 3 15" />
+                  <line x1="21" y1="3" x2="14" y2="10" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
       </aside>
     );
@@ -373,13 +427,37 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   const attachTarget = attachTargets.find((target) => target.key === attachTargetKey) ?? attachTargets[0];
 
   return (
-    <aside className="panel" style={{ width: panelWidth }}>
+    <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
       <PanelResizeHandle onPointerDown={startPanelResize} />
       <div className="panel-content">
-        <h2>
-          {unit.stepId ? "step + output" : "node"}{" "}
-          <code>{(unit.stepId ?? unit.outputNodeId).slice(0, 12)}</code>
-        </h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+          <h2 style={{ margin: 0 }}>
+            {unit.stepId ? "step + output" : "node"}{" "}
+            <code>{(unit.stepId ?? unit.outputNodeId).slice(0, 12)}</code>
+          </h2>
+          <button 
+            type="button" 
+            className="panel-focus-btn" 
+            title={isFocused ? "Exit Focus Mode" : "Focus Mode"}
+            onClick={() => setIsFocused(!isFocused)}
+          >
+            {isFocused ? (
+              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <polyline points="4 14 10 14 10 20" />
+                <polyline points="20 10 14 10 14 4" />
+                <line x1="14" y1="10" x2="21" y2="3" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            )}
+          </button>
+        </div>
 
         {client.writable ? (
           <div className="panel-tabs">
@@ -533,6 +611,43 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
                   onClick={() => addStep.mutate(unit.outputNodeId)}
                 >
                   add step
+                </button>
+              </div>
+            )}
+
+            {unit.outputNodeId && unit.outputNodeId !== doc.root_node_id && (
+              <div className="edit-section">
+                <h3>reparent (rewire inputs)</h3>
+                <p className="muted">
+                  Append a new producing step from these inputs and cut the old
+                  producer. The node and its descendants are kept.
+                </p>
+                <label>
+                  new input node ids (comma-separated)
+                  <input
+                    value={reparentInputs}
+                    placeholder="n_..., n_..."
+                    onChange={(e) => setReparentInputs(e.target.value)}
+                  />
+                </label>
+                <label>
+                  type
+                  <input value={stepType} onChange={(e) => setStepType(e.target.value)} />
+                </label>
+                <button
+                  disabled={reparent.isPending || reparentInputs.trim() === ""}
+                  onClick={() =>
+                    reparent.mutate({
+                      nodeId: unit.outputNodeId,
+                      inputs: reparentInputs
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                      type: stepType,
+                    })
+                  }
+                >
+                  reparent
                 </button>
               </div>
             )}
@@ -697,17 +812,31 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
 
             <div className="danger-zone">
               <h4>Danger Zone</h4>
-              <p>Cutting this unit will make it and its descendants inactive.</p>
-              <button
-                className="danger"
-                disabled={cut.isPending}
-                onClick={() => {
-                  cut.mutate(selection);
-                  onSelect(null);
-                }}
-              >
-                cut this {selection.kind}
-              </button>
+              {isDirectlyCut(doc, selection.id, selection.kind) ? (
+                <>
+                  <p>This {selection.kind} is cut. Uncut reinstates it (and any descendants that were only inactive because of this cut).</p>
+                  <button
+                    disabled={uncut.isPending}
+                    onClick={() => uncut.mutate(selection)}
+                  >
+                    uncut this {selection.kind}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>Cutting this unit will make it and its descendants inactive.</p>
+                  <button
+                    className="danger"
+                    disabled={cut.isPending}
+                    onClick={() => {
+                      cut.mutate(selection);
+                      onSelect(null);
+                    }}
+                  >
+                    cut this {selection.kind}
+                  </button>
+                </>
+              )}
             </div>
           </section>
         )}

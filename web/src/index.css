@@ -1222,3 +1222,46 @@ code {
 [data-theme="dark"] .react-flow__attribution a {
   color: var(--color-text-faint);
 }
+
+/* ─── Panel Focus Mode ─────────────────────────────────────────── */
+.panel.focused {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 100% !important;
+  max-width: none !important;
+  z-index: 100;
+  border-left: none;
+  background: var(--color-bg);
+}
+.panel.focused .panel-resize-handle {
+  display: none;
+}
+.panel-focus-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-faint);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.panel-focus-btn:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+}
+.panel-focus-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}

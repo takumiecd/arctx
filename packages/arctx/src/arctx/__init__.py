@@ -15,6 +15,8 @@ from arctx.core.schema import (
     Requirement,
     Step,
     StepPayload,
+    SummaryPayload,
+    UncutPayload,
     TraceContext,
     WorkEvent,
     WorkSession,
@@ -24,7 +26,7 @@ from arctx.core.types import (
     TargetKind,
 )
 
-__version__ = "0.3.0b1"
+__version__ = "0.3.0b2"
 
 
 def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
@@ -45,6 +47,8 @@ __all__ = [
     "TraceContext",
     "Step",
     "StepPayload",
+    "SummaryPayload",
+    "UncutPayload",
     "WorkEvent",
     "WorkSession",
     "init",

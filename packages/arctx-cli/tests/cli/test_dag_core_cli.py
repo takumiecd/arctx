@@ -8,7 +8,10 @@ from arctx_cli.commands.add import run_add_step_command
 from arctx_cli.commands.attach import run_attach_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.log import run_log_command
+from arctx_cli.commands.reparent import run_reparent_command
 from arctx_cli.commands.show import run_show_record_command
+from arctx_cli.commands.cut import run_cut_command
+from arctx_cli.commands.uncut import run_uncut_command
 from arctx_cli.context import resolve_store
 
 
@@ -163,3 +166,145 @@ def test_log_to_returns_trace_context(tmp_path):
 
     assert result["history"]["current_node_id"] == step["output_node_id"]
     assert init["root_node_id"] in result["history"]["past_node_ids"]
+
+
+def test_attach_summary_then_log_from_summary_truncates(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+
+    def _step(parent: str, title: str) -> dict:
+        return run_add_step_command(
+            run_id="run_dag_core",
+            input_node_ids=[parent],
+            title=title,
+            payload_kind=None,
+            payload_type="step_payload",
+            field_data={},
+            json_data={},
+            store_dir=_store_dir(td),
+        )["step"]
+
+    n1 = _step(init["root_node_id"], "s1")["output_node_id"]
+    n2 = _step(n1, "s2")["output_node_id"]
+    n3 = _step(n2, "s3")["output_node_id"]
+
+    # Write a summary via the generic attach surface (--payload-type summary).
+    summary = run_attach_command(
+        run_id="run_dag_core",
+        target_id=n2,
+        payload_kind="summary",
+        payload_type="summary",
+        field_data={"text": "context up to n2"},
+        json_data={},
+        store_dir=_store_dir(td),
+    )["payload"]
+    assert summary["payload_type"] == "summary"
+    assert summary["text"] == "context up to n2"
+
+    full = run_log_command(
+        run_id="run_dag_core",
+        from_node_id=None,
+        to_node_id=n3,
+        depth=None,
+        full_payloads=False,
+        store_dir=_store_dir(td),
+    )
+    assert init["root_node_id"] in full["history"]["past_node_ids"]
+
+    pruned = run_log_command(
+        run_id="run_dag_core",
+        from_node_id=None,
+        to_node_id=n3,
+        depth=None,
+        full_payloads=False,
+        store_dir=_store_dir(td),
+        stop_at_summary=True,
+    )
+    past = pruned["history"]["past_node_ids"]
+    assert n2 in past
+    assert n1 not in past
+    assert init["root_node_id"] not in past
+    assert summary["payload_id"] in pruned["history"]["payload_ids"]
+
+
+def test_reparent_command_rewires_and_preserves_descendants(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+
+    def _step(parent: str, title: str) -> dict:
+        return run_add_step_command(
+            run_id="run_dag_core",
+            input_node_ids=[parent],
+            title=title,
+            payload_kind=None,
+            payload_type="step_payload",
+            field_data={},
+            json_data={},
+            store_dir=_store_dir(td),
+        )["step"]
+
+    wrong = _step(init["root_node_id"], "wrong")["output_node_id"]
+    n = _step(wrong, "derive")["output_node_id"]
+    child = _step(n, "child")["output_node_id"]
+    right = _step(init["root_node_id"], "right")["output_node_id"]
+
+    result = run_reparent_command(
+        run_id="run_dag_core",
+        node_id=n,
+        input_node_ids=[right],
+        title="rederive",
+        payload_kind=None,
+        payload_type="step_payload",
+        field_data={},
+        json_data={},
+        reason="fixed base",
+        store_dir=_store_dir(td),
+    )
+    new_step = result["step"]
+    assert new_step["output_node_id"] == n
+    assert new_step["input_node_ids"] == [right]
+
+    handle = resolve_store(_store_dir(td)).load_run("run_dag_core")
+    from arctx.core.cuts import is_active_node
+
+    assert handle.run_graph.step_to_node(n) == new_step["step_id"]
+    assert is_active_node(handle.run_graph, n)
+    assert is_active_node(handle.run_graph, child)
+
+
+def test_cut_then_uncut_command_roundtrip(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+    n = run_add_step_command(
+        run_id="run_dag_core",
+        input_node_ids=[init["root_node_id"]],
+        title="s",
+        payload_kind=None,
+        payload_type="step_payload",
+        field_data={},
+        json_data={},
+        store_dir=_store_dir(td),
+    )["step"]["output_node_id"]
+
+    run_cut_command(
+        run_id="run_dag_core",
+        target_id=n,
+        target_kind="node",
+        reason="oops",
+        store_dir=_store_dir(td),
+    )
+    from arctx.core.cuts import is_active_node
+
+    handle = resolve_store(_store_dir(td)).load_run("run_dag_core")
+    assert not is_active_node(handle.run_graph, n)
+
+    result = run_uncut_command(
+        run_id="run_dag_core",
+        target_id=n,
+        target_kind="node",
+        reason="undo",
+        store_dir=_store_dir(td),
+    )
+    assert result["uncut"]["payload_type"] == "uncut"
+    handle = resolve_store(_store_dir(td)).load_run("run_dag_core")
+    assert is_active_node(handle.run_graph, n)

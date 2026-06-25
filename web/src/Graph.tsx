@@ -41,6 +41,7 @@ import {
   laneIdForRecord,
   laneLabel,
   nodeLabel,
+  nodeSummaryText,
   stepType,
   type LaneColorOverrides,
 } from "./model";
@@ -60,6 +61,7 @@ function DagNode({ data }: NodeProps) {
     title: string;
     isRoot: boolean;
     inactive: boolean;
+    summaryText?: string;
     laneLabel?: string;
     laneColor?: string;
     laneBg?: string;
@@ -84,6 +86,25 @@ function DagNode({ data }: NodeProps) {
       ))}
       {d.laneLabel && <em>{d.laneLabel}</em>}
       <span>{d.label}</span>
+      {d.summaryText && (
+        <span
+          title={`summary: ${d.summaryText}`}
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -6,
+            fontSize: 9,
+            lineHeight: "12px",
+            padding: "0 4px",
+            borderRadius: 6,
+            background: "#7c3aed",
+            color: "#fff",
+            pointerEvents: "none",
+          }}
+        >
+          ✦
+        </span>
+      )}
     </div>
   );
 }
@@ -373,6 +394,7 @@ function GraphCanvas({
             title: n.node_id,
             isRoot: n.node_id === doc.root_node_id,
             inactive: n.inactive,
+            summaryText: nodeSummaryText(doc, n.node_id) ?? undefined,
             laneLabel: label,
             ...colors,
           },

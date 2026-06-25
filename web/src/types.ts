@@ -211,6 +211,24 @@ export interface CutRequest {
   reason?: string;
 }
 
+// Reverse a cut (append-only). Mirrors `POST /uncut`.
+export interface UncutRequest {
+  target_id: string;
+  target_kind: "node" | "step";
+  reason?: string;
+}
+
+// Re-parent a node onto new inputs (append-only). Mirrors `POST /reparent`:
+// appends a new producing step and cuts the previously-active producer.
+export interface ReparentRequest {
+  node_id: string;
+  input_node_ids: string[];
+  type?: string;
+  content?: Record<string, unknown>;
+  payload_type?: string;
+  reason?: string;
+}
+
 export interface CreateLaneRequest {
   name: string;
   metadata?: Record<string, unknown>;

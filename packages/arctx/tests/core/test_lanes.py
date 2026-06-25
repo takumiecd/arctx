@@ -140,6 +140,40 @@ def test_lane_subgraph_returns_one_lane_records():
     assert subgraph["step_ids"] == (step.step_id,)
 
 
+def test_reparent_within_lane_stays_lane_valid():
+    h = _handle()
+    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
+
+    def step(parent: str, label: str) -> str:
+        return h.add_step(
+            [parent],
+            _payload(h, label),
+            user_id="alice",
+            work_session_id="lane_math",
+        ).output_node_id
+
+    r0 = step(h.root_node_id, "root")     # single lane root (from run root)
+    a = step(r0, "a")
+    n2 = step(a, "wrong")                  # n2 derived from the wrong base a
+    step(n2, "child")
+    b = step(r0, "b")                      # correct base, same lane, same root
+
+    h.reparent(
+        n2,
+        [b],
+        _payload(h, "rederive"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+
+    errors = [
+        i
+        for i in validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+        if i.severity == "error"
+    ]
+    assert errors == []
+
+
 def test_validate_lanes_reports_output_lane_mismatch():
     h = _handle()
     h.ensure_lane(name="seed", lane_id="lane_seed", created_by="alice")

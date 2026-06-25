@@ -14,6 +14,8 @@ Routes (the GUI data contract):
 - ``POST /step``    -> create a Step from input nodes; returns the new step
 - ``POST /attach``  -> attach a payload to a Node or Step; returns the payload
 - ``POST /cut``     -> cut a node or step; returns the cut payload
+- ``POST /uncut``   -> reverse a cut on a node or step; returns the uncut payload
+- ``POST /reparent`` -> re-parent a node onto new inputs; returns the new step
 - ``POST /lane``    -> create a lane
 - ``POST /lane/adopt`` -> adopt existing records into a lane
 
@@ -87,6 +89,10 @@ def dispatch(
             return 201, _post_attach(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/cut"):
             return 201, _post_cut(store, run_id, body or {}, user_id, work_session_id)
+        if route == ("POST", "/uncut"):
+            return 201, _post_uncut(store, run_id, body or {}, user_id, work_session_id)
+        if route == ("POST", "/reparent"):
+            return 201, _post_reparent(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/lane"):
             return 201, _post_lane(store, run_id, body or {}, user_id)
         if route == ("POST", "/lane/adopt"):
@@ -219,7 +225,10 @@ def _get_visible_assets(store: Any, run_id: str, query: dict) -> dict:
 
 def _payload_fields(body: dict) -> dict:
     """Pull the payload-shaping fields out of a request body."""
-    exclude = {"payload_type", "target_id", "target_kind", "node_id", "input_node_ids", "output_node_id"}
+    exclude = {
+        "payload_type", "target_id", "target_kind", "node_id",
+        "input_node_ids", "output_node_id", "reason",
+    }
     return {k: v for k, v in body.items() if k not in exclude}
 
 
@@ -331,6 +340,64 @@ def _post_cut(store, run_id, body, user_id, work_session_id) -> dict:
         user_id=user_id, work_session_id=work_session_id, before=before,
     )
     return {"payload": cut.to_dict()}
+
+
+def _post_uncut(store, run_id, body, user_id, work_session_id) -> dict:
+    target_id = body.get("target_id")
+    target_kind = body.get("target_kind")
+    if not target_id:
+        raise ApiError(400, "target_id is required")
+    if target_kind not in ("node", "step"):
+        raise ApiError(400, "target_kind must be 'node' or 'step'")
+
+    handle = _load(store, run_id)
+    before = graph_counts(handle)
+    uncut = handle.uncut(
+        str(target_id),
+        target_kind=target_kind,
+        reason=body.get("reason"),
+        user_id=user_id,
+        work_session_id=work_session_id,
+    )
+    maybe_append_or_save(
+        store=store, handle=handle,
+        user_id=user_id, work_session_id=work_session_id, before=before,
+    )
+    return {"payload": uncut.to_dict()}
+
+
+def _post_reparent(store, run_id, body, user_id, work_session_id) -> dict:
+    node_id = body.get("node_id") or body.get("target_id")
+    if not node_id:
+        raise ApiError(400, "node_id is required")
+    inputs = body.get("input_node_ids")
+    if not isinstance(inputs, list) or not inputs:
+        raise ApiError(400, "input_node_ids must be a non-empty list")
+
+    handle = _load(store, run_id)
+    baseline = _lane_error_baseline(handle)
+    payload = build_payload(
+        payload_type=str(body.get("payload_type", "step_payload")),
+        target_kind="step",
+        target_id="pending",
+        payload_id="pending",
+        json_data=_payload_fields(body),
+    )
+    before = graph_counts(handle)
+    step = handle.reparent(
+        str(node_id),
+        [str(n) for n in inputs],
+        payload,
+        reason=body.get("reason"),
+        user_id=user_id,
+        work_session_id=work_session_id,
+    )
+    _ensure_lane_integrity(handle, baseline=baseline)
+    maybe_append_or_save(
+        store=store, handle=handle,
+        user_id=user_id, work_session_id=work_session_id, before=before,
+    )
+    return {"step": step_view(step)}
 
 
 def _post_lane(store, run_id, body, user_id) -> dict:

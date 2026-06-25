@@ -62,7 +62,7 @@ def test_round_trip_indices_rebuilt():
         for nid in t.input_node_ids:
             assert tid in loaded.run_graph.steps_by_input_node.get(nid, [])
         if t.output_node_id:
-            assert loaded.run_graph.step_by_output_node.get(t.output_node_id) == tid
+            assert tid in loaded.run_graph.step_by_output_node.get(t.output_node_id, [])
 
 
 def test_round_trip_payloads_preserved():

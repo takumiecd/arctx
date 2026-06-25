@@ -11,6 +11,8 @@ from arctx.core.schema.payloads import (
     CutPayload,
     NodePayload,
     StepPayload,
+    SummaryPayload,
+    UncutPayload,
 )
 from arctx.ext.git.payloads import DiffSummary, GitChangePayload
 from arctx.core.schema.requirements import Requirement
@@ -110,7 +112,7 @@ def test_step_into_existing_output_node():
     assert t.output_node_id == orphan.node_id
     assert t.input_node_ids == (run.root_node_id,)
     # No new node was minted: the orphan is now the step's output.
-    assert run.run_graph.step_by_output_node[orphan.node_id] == t.step_id
+    assert run.run_graph.step_by_output_node[orphan.node_id] == [t.step_id]
 
 
 def test_step_into_existing_multi_input():
@@ -200,6 +202,63 @@ def test_cut_step():
 
 
 # ---------------------------------------------------------------------------
+# uncut
+# ---------------------------------------------------------------------------
+
+
+def test_uncut_node_reinstates_node_and_descendants():
+    run = init(_req())
+    n1 = run.add_step([run.root_node_id], _tp()).output_node_id
+    child = run.add_step([n1], _tp()).output_node_id
+    run.cut(n1, target_kind="node", reason="oops")
+    assert not is_active_node(run.run_graph, n1)
+    assert not is_active_node(run.run_graph, child)
+
+    reinstated = run.uncut(n1, target_kind="node", reason="undo")
+    assert isinstance(reinstated, UncutPayload)
+    assert is_active_node(run.run_graph, n1)
+    assert is_active_node(run.run_graph, child)
+
+
+def test_cut_uncut_cut_supersession_last_marker_wins():
+    run = init(_req())
+    n1 = run.add_step([run.root_node_id], _tp()).output_node_id
+    run.cut(n1, target_kind="node")
+    run.uncut(n1, target_kind="node")
+    assert is_active_node(run.run_graph, n1)
+    # Cutting again is allowed (the previous cut was superseded).
+    run.cut(n1, target_kind="node")
+    assert not is_active_node(run.run_graph, n1)
+
+
+def test_uncut_rejects_uncut_target():
+    run = init(_req())
+    n1 = run.add_step([run.root_node_id], _tp()).output_node_id
+    with pytest.raises(ValueError, match="not cut"):
+        run.uncut(n1, target_kind="node")
+
+
+def test_uncut_step_guards_against_second_active_producer():
+    run = init(_req())
+    # Re-parent n onto a new base; the old producer is cut.
+    wrong = run.add_step([run.root_node_id], _tp("wrong")).output_node_id
+    n = run.add_step([wrong], _tp("derive")).output_node_id
+    right = run.add_step([run.root_node_id], _tp("right")).output_node_id
+    old_producer = run.run_graph.step_to_node(n)
+    new_step = run.reparent(n, [right], _tp("rederive"))
+
+    # Uncutting the old producer would give n two active producers -> rejected.
+    with pytest.raises(ValueError, match="already has an active producer"):
+        run.uncut(old_producer, target_kind="step")
+
+    # Reverting the reparent properly: cut the new producer, then uncut works.
+    run.cut(new_step.step_id, target_kind="step")
+    run.uncut(old_producer, target_kind="step")
+    assert run.run_graph.step_to_node(n) == old_producer
+    assert is_active_node(run.run_graph, n)
+
+
+# ---------------------------------------------------------------------------
 # GitChangePayload on a step
 # ---------------------------------------------------------------------------
 
@@ -240,6 +299,92 @@ def test_trace_returns_history():
     ctx = run.trace(n1)
     # Should include the step that produced n1.
     assert t1.step_id in ctx.step_ids
+
+
+def _summary(text: str = "so far") -> SummaryPayload:
+    return SummaryPayload(payload_id="_", target_id="_", text=text)
+
+
+def test_trace_stop_at_summary_truncates_at_nearest_summary():
+    run = init(_req())
+    n1 = run.add_step([run.root_node_id], _tp()).output_node_id
+    n2 = run.add_step([n1], _tp()).output_node_id
+    n3 = run.add_step([n2], _tp()).output_node_id
+    summary = run.attach(n2, _summary("context up to n2"))
+
+    full = run.trace(n3)
+    assert n1 in full.past_node_ids
+    assert run.root_node_id in full.past_node_ids
+
+    pruned = run.trace(n3, stop_at_summary=True)
+    # The summary node is included, but history above it is pruned.
+    assert n2 in pruned.past_node_ids
+    assert n1 not in pruned.past_node_ids
+    assert run.root_node_id not in pruned.past_node_ids
+    # The summary payload itself is carried in the context.
+    assert summary.payload_id in pruned.payload_ids
+
+
+def test_trace_stop_at_summary_ignores_summary_on_start_node():
+    run = init(_req())
+    n1 = run.add_step([run.root_node_id], _tp()).output_node_id
+    run.attach(n1, _summary())
+    # A summary on the starting node must not short-circuit its own history.
+    ctx = run.trace(n1, stop_at_summary=True)
+    assert run.root_node_id in ctx.past_node_ids
+
+
+# ---------------------------------------------------------------------------
+# reparent
+# ---------------------------------------------------------------------------
+
+
+def test_reparent_preserves_descendants_and_keeps_one_active_producer():
+    run = init(_req())
+    # root -> wrong -> N -> child   (N derived from the wrong place)
+    wrong = run.add_step([run.root_node_id], _tp("wrong")).output_node_id
+    n = run.add_step([wrong], _tp("derive")).output_node_id
+    child = run.add_step([n], _tp("child")).output_node_id
+    # An alternative correct base, derived independently from root.
+    right = run.add_step([run.root_node_id], _tp("right")).output_node_id
+
+    old_producer = run.run_graph.step_to_node(n)
+    new_step = run.reparent(n, [right], _tp("rederive"))
+
+    # N now has two recorded producers, exactly one active (the new one).
+    producers = run.run_graph.producers_of(n)
+    assert set(producers) == {old_producer, new_step.step_id}
+    assert run.run_graph.step_to_node(n) == new_step.step_id
+
+    # N and its descendant survive; the old producer is inactive.
+    assert is_active_node(run.run_graph, n)
+    assert is_active_node(run.run_graph, child)
+    from arctx.core.cuts import is_inactive_step
+
+    assert is_inactive_step(run.run_graph, old_producer)
+    assert not is_inactive_step(run.run_graph, new_step.step_id)
+
+    # Effective history of N now goes through the correct base.
+    ctx = run.trace(n)
+    assert right in ctx.past_node_ids
+    assert wrong not in ctx.past_node_ids
+
+
+def test_reparent_rejects_cycle():
+    run = init(_req())
+    n = run.add_step([run.root_node_id], _tp()).output_node_id
+    downstream = run.add_step([n], _tp()).output_node_id
+    # Re-parenting n onto its own descendant would close a cycle.
+    with pytest.raises(ValueError, match="cycle"):
+        run.reparent(n, [downstream], _tp())
+
+
+def test_reparent_rejects_node_payload():
+    run = init(_req())
+    n = run.add_step([run.root_node_id], _tp()).output_node_id
+    other = run.add_step([run.root_node_id], _tp()).output_node_id
+    with pytest.raises(ValueError, match="step-targeting"):
+        run.reparent(n, [other], _np("nope"))
 
 
 # ---------------------------------------------------------------------------
