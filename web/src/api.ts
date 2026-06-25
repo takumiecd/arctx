@@ -18,10 +18,12 @@ import type {
   CreateRunRequest,
   CreateRunResponse,
   CutRequest,
+  ReparentRequest,
   RunDocument,
   RunPayload,
   RunSummary,
   RunsResponse,
+  UncutRequest,
   UploadedArtifact,
   VisibleAssetsResponse,
   WebLayout,
@@ -61,6 +63,8 @@ export interface RunClient {
   attachAsset(req: AttachAssetRequest): Promise<void>;
   visibleAssets(fromId: string): Promise<RunPayload[]>;
   cut(req: CutRequest): Promise<void>;
+  uncut(req: UncutRequest): Promise<void>;
+  reparent(req: ReparentRequest): Promise<AddStepResponse>;
   createLane(req: CreateLaneRequest): Promise<CreateLaneResponse>;
   adoptLane(req: AdoptLaneRequest): Promise<AdoptLaneResponse>;
   getExtensions(): Promise<ExtensionsResponse>;
@@ -149,6 +153,12 @@ export class LiveClient implements RunClient {
   async cut(req: CutRequest) {
     await this.req("/cut", { method: "POST", body: JSON.stringify(req) });
   }
+  async uncut(req: UncutRequest) {
+    await this.req("/uncut", { method: "POST", body: JSON.stringify(req) });
+  }
+  async reparent(req: ReparentRequest) {
+    return this.req<AddStepResponse>("/reparent", { method: "POST", body: JSON.stringify(req) });
+  }
   async createLane(req: CreateLaneRequest) {
     return this.req<CreateLaneResponse>("/lane", { method: "POST", body: JSON.stringify(req) });
   }
@@ -223,6 +233,12 @@ export class StaticClient implements RunClient {
     return [];
   }
   async cut(): Promise<void> {
+    throw new ReadOnlyError();
+  }
+  async uncut(): Promise<void> {
+    throw new ReadOnlyError();
+  }
+  async reparent(): Promise<AddStepResponse> {
     throw new ReadOnlyError();
   }
   async createLane(): Promise<CreateLaneResponse> {
