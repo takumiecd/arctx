@@ -23,7 +23,8 @@ from arctx_web.layouts import get_layout, save_layout
 
 # Paths handled by the JSON API; everything else is a static asset request.
 API_PATHS = frozenset({
-    "/run", "/runs", "/node", "/step", "/attach", "/cut", "/health",
+    "/run", "/runs", "/node", "/step", "/attach", "/cut", "/uncut",
+    "/reparent", "/health",
     "/artifacts/upload",
     "/ext", "/ext/enable", "/ext/disable", "/assets/visible",
 })
