@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arctx-web"
-version = "0.3.0b2"
+version = "0.3.0b3"
 description = "Web GUI for ARCTX — read/write DAG editing in the browser"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,8 +27,8 @@ classifiers = [
 # Reuses the serve dispatcher and run-resolution helpers from arctx-cli, so the
 # HTTP API contract has a single source of truth.
 dependencies = [
-    "arctx>=0.3.0b2",
-    "arctx-cli>=0.3.0b2",
+    "arctx>=0.3.0b3",
+    "arctx-cli>=0.3.0b3",
 ]
 
 [project.optional-dependencies]

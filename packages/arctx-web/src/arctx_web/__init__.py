@@ -6,4 +6,4 @@ reused from :mod:`arctx_cli.serve` so the data contract has one source of truth;
 this package only adds static-asset serving and browser launching.
 """
 
-__version__ = "0.3.0b2"
+__version__ = "0.3.0b3"
