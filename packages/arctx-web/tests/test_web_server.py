@@ -177,6 +177,34 @@ class TestApiDelegation:
                 assert status == 201
                 assert body["step"]["input_node_ids"] == [root]
 
+    def test_post_reparent_and_uncut_routed(self):
+        # Regression: these routes must reach the shared dispatcher, not fall
+        # through to the static handler's "not found".
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _make_run(td)
+            with _Server(store, run_id, _fake_static(td)) as s:
+                n1 = s.post("/step", {"input_node_ids": [root], "type": "a"})[1][
+                    "step"
+                ]["output_node_id"]
+                n2 = s.post("/step", {"input_node_ids": [n1], "type": "wrong"})[1][
+                    "step"
+                ]["output_node_id"]
+                n3 = s.post("/step", {"input_node_ids": [n1], "type": "right"})[1][
+                    "step"
+                ]["output_node_id"]
+
+                status, body = s.post(
+                    "/reparent", {"node_id": n2, "input_node_ids": [n3], "type": "redo"}
+                )
+                assert status == 201
+                assert body["step"]["output_node_id"] == n2
+
+                status, _ = s.post("/cut", {"target_id": n3, "target_kind": "node"})
+                assert status == 201
+                status, body = s.post("/uncut", {"target_id": n3, "target_kind": "node"})
+                assert status == 201
+                assert body["payload"]["payload_type"] == "uncut"
+
     def test_web_extension_route(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, _ = _make_run(td)
