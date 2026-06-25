@@ -22,11 +22,12 @@ import "katex/dist/katex.min.css";
 
 import { artifactSrc } from "./api";
 import type { RunClient } from "./api";
-import type { RunDocument, RunPayload } from "./types";
+import type { LaneEdgeSummary, RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
 import {
   isDirectlyCut,
   laneColors,
+  laneGroups,
   laneLabel,
   laneOptions,
   nodeLabel,
@@ -56,14 +57,16 @@ interface Props {
 interface AttachTarget {
   key: string;
   label: string;
-  selection: Exclude<Selection, null>;
+  selection: RecordSelection;
 }
 
 interface DetailUnit {
   stepId: string | null;
   outputNodeId: string;
-  selected: Exclude<Selection, null>;
+  selected: RecordSelection;
 }
+
+type RecordSelection = Extract<Exclude<Selection, null>, { kind: "node" | "step" }>;
 
 type AdoptMode = "explicit" | "history" | "reachable";
 
@@ -262,7 +265,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   });
 
   const cut = useMutation({
-    mutationFn: (sel: Exclude<Selection, null>) =>
+    mutationFn: (sel: RecordSelection) =>
       client.cut({ target_id: sel.id, target_kind: sel.kind }),
     onSuccess: () => {
       setError(null);
@@ -272,7 +275,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   });
 
   const uncut = useMutation({
-    mutationFn: (sel: Exclude<Selection, null>) =>
+    mutationFn: (sel: RecordSelection) =>
       client.uncut({ target_id: sel.id, target_kind: sel.kind }),
     onSuccess: () => {
       setError(null);
@@ -311,7 +314,9 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
     setAttachTargetKey("step");
     setAdoptMode("explicit");
 
-    if (selection) {
+    if (selection?.kind === "lane") {
+      setActiveTab("content");
+    } else if (selection) {
       const unit = detailUnitFor(doc, selection);
       const stepPayloads = unit.stepId ? payloadsForStep(doc, unit.stepId) : [];
       const nodePayloads = payloadsForNode(doc, unit.outputNodeId);
@@ -417,6 +422,22 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
           </div>
         </div>
       </aside>
+    );
+  }
+
+  if (selection.kind === "lane") {
+    return (
+      <LaneSummaryPanel
+        doc={doc}
+        laneId={selection.id}
+        isFocused={isFocused}
+        panelWidth={panelWidth}
+        onFocusToggle={() => setIsFocused(!isFocused)}
+        onResizeStart={startPanelResize}
+        onSelect={onSelect}
+        laneColorOverrides={laneColorOverrides}
+        dark={dark}
+      />
     );
   }
 
@@ -845,6 +866,177 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   );
 }
 
+function LaneSummaryPanel({
+  doc,
+  laneId,
+  isFocused,
+  panelWidth,
+  onFocusToggle,
+  onResizeStart,
+  onSelect,
+  laneColorOverrides,
+  dark,
+}: {
+  doc: RunDocument;
+  laneId: string;
+  isFocused: boolean;
+  panelWidth: number;
+  onFocusToggle: () => void;
+  onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onSelect: (sel: Selection) => void;
+  laneColorOverrides: LaneColorOverrides;
+  dark: boolean;
+}) {
+  const label = laneLabel(doc, laneId);
+  const group = laneGroups(doc).find((lane) => lane.lane_id === laneId);
+  const summaries = laneEdgeSummariesFor(doc, laneId);
+  const edgeNodeIds = new Set(summaries.map((summary) => summary.node_id));
+  return (
+    <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
+      <PanelResizeHandle onPointerDown={onResizeStart} />
+      <div className="panel-content">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+          <h2 style={{ margin: 0 }}>
+            lane <code>{label}</code>
+          </h2>
+          <FocusButton focused={isFocused} onClick={onFocusToggle} />
+        </div>
+
+        <section
+          className="provenance-card"
+          style={laneVars(doc, laneId, laneColorOverrides, dark)}
+        >
+          <h3>lane summary</h3>
+          <div className="provenance-row">
+            <span>lane</span>
+            <strong className="lane-pill">{label}</strong>
+          </div>
+          <div className="provenance-row">
+            <span>records</span>
+            <strong>
+              {group ? `${group.node_ids.length} nodes · ${group.step_ids.length} steps` : "none"}
+            </strong>
+          </div>
+          <div className="provenance-row">
+            <span>summaries</span>
+            <strong>{summaries.length}</strong>
+          </div>
+        </section>
+
+        <section className="panel-view">
+          <h3>terminal summaries ({summaries.length})</h3>
+          {summaries.length === 0 ? (
+            <p className="muted">
+              No summaries on active terminal nodes in this lane.
+            </p>
+          ) : (
+            <div className="lane-summary-list">
+              {summaries.map((summary) => (
+                <LaneSummaryCard
+                  key={summary.payload_id}
+                  summary={summary}
+                  onSelect={onSelect}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="record-context">
+          <h3>terminal nodes</h3>
+          {edgeNodeIds.size === 0 ? (
+            <p className="muted">No summarized terminal nodes.</p>
+          ) : (
+            <div className="flow-list">
+              {[...edgeNodeIds].map((nodeId) => (
+                <button
+                  key={nodeId}
+                  type="button"
+                  className="unit-card"
+                  onClick={() => onSelect({ kind: "node", id: nodeId })}
+                >
+                  <span className="unit-card-title">{nodeLabel(doc, nodeId)}</span>
+                  <span className="unit-card-ids">
+                    <code>n:{nodeId.slice(0, 8)}</code>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+function LaneSummaryCard({
+  summary,
+  onSelect,
+}: {
+  summary: LaneEdgeSummary;
+  onSelect: (sel: Selection) => void;
+}) {
+  return (
+    <article className="lane-summary-card">
+      <div className="payload-card-head">
+        <strong>node summary</strong>
+        <button
+          type="button"
+          className="summary-node-link"
+          onClick={() => onSelect({ kind: "node", id: summary.node_id })}
+        >
+          {summary.node_id.slice(0, 12)}
+        </button>
+      </div>
+      <div className="payload-markdown">
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+          {summary.text || "(summary)"}
+        </ReactMarkdown>
+      </div>
+      <div className="unit-card-ids">
+        <code>payload:{summary.payload_id.slice(0, 8)}</code>
+      </div>
+    </article>
+  );
+}
+
+function laneEdgeSummariesFor(doc: RunDocument, laneId: string): LaneEdgeSummary[] {
+  return (doc.lane_edge_summaries ?? []).filter((summary) => summary.lane_id === laneId);
+}
+
+function FocusButton({
+  focused,
+  onClick,
+}: {
+  focused: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="panel-focus-btn"
+      title={focused ? "Exit Focus Mode" : "Focus Mode"}
+      onClick={onClick}
+    >
+      {focused ? (
+        <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <polyline points="4 14 10 14 10 20" />
+          <polyline points="20 10 14 10 14 4" />
+          <line x1="14" y1="10" x2="21" y2="3" />
+          <line x1="3" y1="21" x2="10" y2="14" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <polyline points="15 3 21 3 21 9" />
+          <polyline points="9 21 3 21 3 15" />
+          <line x1="21" y1="3" x2="14" y2="10" />
+          <line x1="3" y1="21" x2="10" y2="14" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function ProvenanceCard({
   doc,
   unit,
@@ -1016,7 +1208,7 @@ function PanelResizeHandle({
   );
 }
 
-function detailUnitFor(doc: RunDocument, selection: Exclude<Selection, null>): DetailUnit {
+function detailUnitFor(doc: RunDocument, selection: RecordSelection): DetailUnit {
   if (selection.kind === "step") {
     const step = doc.steps.find((entry) => entry.step_id === selection.id);
     return {
@@ -1169,7 +1361,7 @@ function UnitCard({
   const stepSummary = firstPayloadSummary(doc, stepPayloads);
   const nodeSummary = firstPayloadSummary(doc, nodePayloads);
   const title = unitStepId ? stepType(doc, unitStepId) : nodeLabel(doc, nodeId);
-  const target: Exclude<Selection, null> = unitStepId
+  const target: RecordSelection = unitStepId
     ? { kind: "step", id: unitStepId }
     : { kind: "node", id: nodeId };
   return (

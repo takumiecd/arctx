@@ -50,6 +50,7 @@ import type { RunDocument, RunGroup } from "./types";
 export type Selection =
   | { kind: "node"; id: string }
   | { kind: "step"; id: string }
+  | { kind: "lane"; id: string }
   | null;
 
 // Custom node with source/target handles on each side. ConnectionMode.Loose
@@ -126,6 +127,7 @@ function LaneCollapsedNode({ data }: NodeProps) {
     laneBg: string;
     nodeCount: number;
     stepCount: number;
+    summaryCount: number;
   };
   const sides = [
     ["top", Position.Top],
@@ -145,6 +147,7 @@ function LaneCollapsedNode({ data }: NodeProps) {
       <span>
         {d.nodeCount} nodes · {d.stepCount} steps
       </span>
+      {d.summaryCount > 0 && <span>{d.summaryCount} summaries</span>}
     </div>
   );
 }
@@ -369,9 +372,12 @@ function GraphCanvas({
           selected: prevSel.get(collapsedId) ?? false,
           data: {
             label: group.label,
-            title: `lane ${group.label} (double-click to expand)`,
+            title: `lane ${group.label} (click for summaries, double-click to expand)`,
             nodeCount: group.node_ids.length,
             stepCount: group.step_ids.length,
+            summaryCount: (doc.lane_edge_summaries ?? []).filter(
+              (summary) => summary.lane_id === group.lane_id,
+            ).length,
             ...colors,
           },
           zIndex: 2,
@@ -428,8 +434,11 @@ function GraphCanvas({
     ({ nodes: ns, edges: es }: OnSelectionChangeParams) => {
       selectedNodeIds.current = ns.map((n) => n.id);
       if (ns.length === 1 && es.length === 0) {
-        if (!ns[0].id.startsWith("lane:")) {
-          onSelect({ kind: "node", id: ns[0].id });
+        const nodeId = ns[0].id;
+        if (nodeId.startsWith("lane:")) {
+          onSelect({ kind: "lane", id: nodeId.slice("lane:".length) });
+        } else {
+          onSelect({ kind: "node", id: nodeId });
         }
       } else if (es.length === 1 && ns.length === 0) {
         onSelect({ kind: "step", id: (es[0].data as { stepId: string }).stepId });
