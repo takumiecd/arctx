@@ -7,6 +7,8 @@ import pytest
 import arctx
 from arctx.core.lanes import (
     lane_boundaries,
+    lane_edge_node_ids,
+    lane_edge_summaries,
     lane_export_view,
     lane_membership,
     lane_root_candidates,
@@ -14,7 +16,7 @@ from arctx.core.lanes import (
     validate_lanes,
 )
 from arctx.core.schema.graph import Node
-from arctx.core.schema.payloads import StepPayload
+from arctx.core.schema.payloads import StepPayload, SummaryPayload
 from arctx.core.schema.requirements import Requirement
 
 
@@ -138,6 +140,66 @@ def test_lane_subgraph_returns_one_lane_records():
 
     assert subgraph["node_ids"] == (step.output_node_id,)
     assert subgraph["step_ids"] == (step.step_id,)
+
+
+def test_lane_edge_summaries_returns_summaries_on_terminal_lane_nodes():
+    h = _handle()
+    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
+    root = h.add_step(
+        [h.root_node_id],
+        _payload(h, "root"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+    left = h.add_step(
+        [root.output_node_id],
+        _payload(h, "left"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+    right = h.add_step(
+        [root.output_node_id],
+        _payload(h, "right"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+    left_child = h.add_step(
+        [left.output_node_id],
+        _payload(h, "left-child"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+
+    h.attach(
+        left.output_node_id,
+        SummaryPayload(payload_id="_", target_id="_", text="not terminal"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+    left_summary = h.attach(
+        left_child.output_node_id,
+        SummaryPayload(payload_id="_", target_id="_", text="left conclusion"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+    right_summary = h.attach(
+        right.output_node_id,
+        SummaryPayload(payload_id="_", target_id="_", text="right conclusion"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
+
+    summaries = lane_edge_summaries(h.run_graph, "lane_math")
+
+    assert set(lane_edge_node_ids(h.run_graph, "lane_math")) == {
+        left_child.output_node_id,
+        right.output_node_id,
+    }
+    assert {s.payload_id for s in summaries} == {
+        left_summary.payload_id,
+        right_summary.payload_id,
+    }
+    assert {s.text for s in summaries} == {"left conclusion", "right conclusion"}
 
 
 def test_reparent_within_lane_stays_lane_valid():
@@ -469,6 +531,12 @@ def test_lane_export_view_is_json_ready():
         user_id="alice",
         work_session_id="lane_math",
     )
+    summary = h.attach(
+        step.output_node_id,
+        SummaryPayload(payload_id="_", target_id="_", text="math conclusion"),
+        user_id="alice",
+        work_session_id="lane_math",
+    )
     payload_ids = set(h.run_graph.payloads)
 
     view = lane_export_view(
@@ -485,3 +553,12 @@ def test_lane_export_view_is_json_ready():
     assert view["created_provenance"][step.step_id]["lane_id"] == "lane_math"
     assert view["lanes"][0]["work_session_id"] == "lane_math"
     assert view["work_sessions"][0]["work_session_id"] == "lane_math"
+    assert view["lane_edge_summaries"] == [
+        {
+            "lane_id": "lane_math",
+            "node_id": step.output_node_id,
+            "payload_id": summary.payload_id,
+            "text": "math conclusion",
+            "metadata": {},
+        }
+    ]

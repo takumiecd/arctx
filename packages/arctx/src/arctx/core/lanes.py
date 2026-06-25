@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run_graph import RunGraph
+from arctx.core.schema.payloads import SummaryPayload
 from arctx.core.schema.work import WorkEvent, WorkSession
 
 
@@ -395,6 +397,69 @@ def lane_subgraph(graph: RunGraph, lane_id: str) -> dict[str, tuple[str, ...]]:
     }
 
 
+def lane_edge_node_ids(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
+    active_only: bool = True,
+) -> tuple[str, ...]:
+    """Return terminal nodes for one lane.
+
+    A lane edge is a lane-owned node that has no outgoing active step in the
+    same lane. Cross-lane outgoing steps do not make the source non-terminal for
+    this lane; they represent another lane continuing from this state.
+    """
+    membership = membership or lane_membership(graph, root_node_id=root_node_id)
+    lane_nodes = {
+        node_id
+        for node_id, owner in membership.node_to_lane.items()
+        if owner == lane_id
+    }
+    lane_steps = {
+        step_id
+        for step_id, owner in membership.step_to_lane.items()
+        if owner == lane_id
+    }
+    if active_only:
+        lane_nodes -= inactive_node_ids(graph)
+        lane_steps -= inactive_step_ids(graph)
+
+    out: list[str] = []
+    for node_id in sorted(lane_nodes):
+        if not any(step_id in lane_steps for step_id in graph.steps_from_node(node_id)):
+            out.append(node_id)
+    return tuple(out)
+
+
+def lane_edge_summaries(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
+    active_only: bool = True,
+) -> tuple[SummaryPayload, ...]:
+    """Return summaries attached to terminal nodes in one lane."""
+    edge_nodes = set(
+        lane_edge_node_ids(
+            graph,
+            lane_id,
+            membership,
+            root_node_id=root_node_id,
+            active_only=active_only,
+        )
+    )
+    if not edge_nodes:
+        return ()
+    return tuple(
+        payload
+        for payload in graph.payloads.values()
+        if isinstance(payload, SummaryPayload) and payload.target_id in edge_nodes
+    )
+
+
 def validate_lanes(
     graph: RunGraph,
     *,
@@ -708,6 +773,18 @@ def lane_export_view(
             boundary.to_dict()
             for boundary in lane_boundaries(graph, membership)
             if boundary.step_id in step_ids
+        ],
+        "lane_edge_summaries": [
+            {
+                "lane_id": group.lane_id,
+                "node_id": summary.target_id,
+                "payload_id": summary.payload_id,
+                "text": summary.text,
+                "metadata": summary.metadata,
+            }
+            for group in membership.groups
+            for summary in lane_edge_summaries(graph, group.lane_id, membership)
+            if summary.payload_id in payload_ids and summary.target_id in node_ids
         ],
     }
 

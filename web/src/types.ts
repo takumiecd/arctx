@@ -100,6 +100,14 @@ export interface LaneBoundary {
   output_node_id: string;
 }
 
+export interface LaneEdgeSummary {
+  lane_id: string;
+  node_id: string;
+  payload_id: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface RunDocument {
   arctx_export_version: number;
   run_id: string;
@@ -116,6 +124,7 @@ export interface RunDocument {
   created_provenance?: Record<string, RecordProvenance>;
   groups?: RunGroup[];
   lane_boundaries?: LaneBoundary[];
+  lane_edge_summaries?: LaneEdgeSummary[];
   current_lane_id?: string;
   current_lane_name?: string | null;
 }

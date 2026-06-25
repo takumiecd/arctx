@@ -452,6 +452,7 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
         "created_provenance": lanes["created_provenance"],
         "groups": lanes["groups"],
         "lane_boundaries": lanes["lane_boundaries"],
+        "lane_edge_summaries": lanes["lane_edge_summaries"],
     }
 
 

@@ -29,6 +29,7 @@ arctx lane geometry        # shorthand for switch; missing names are not created
                            # switch records <gitdir>/arctx-lane → persists across shells. No eval.
 arctx lane                 # show the current lane
 arctx lane list            # list lanes
+arctx lane summaries geometry # show summaries on terminal lane nodes
 arctx lane adopt geometry --history <tip> # adopt existing history into a lane without rewriting creation provenance
 ```
 

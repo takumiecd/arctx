@@ -24,7 +24,7 @@ import os
 import sys
 
 from arctx.core.append import AppendBatch
-from arctx.core.lanes import validate_lanes
+from arctx.core.lanes import lane_edge_node_ids, lane_edge_summaries, validate_lanes
 
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 from arctx_cli.context import (
@@ -57,7 +57,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         metavar="COMMAND|NAME",
         help=(
             "No args = current lane. Commands: create NAME, switch NAME, "
-            "adopt NAME, validate, list, show LANE."
+            "adopt NAME, validate, list, show LANE, summaries LANE."
         ),
     )
     parser.add_argument("--list", action="store_true", dest="list_lanes",
@@ -339,6 +339,34 @@ def show_lane(*, run_id: str, store_dir: str | None, name_or_id: str) -> dict:
     return {"run_id": run_id, "lane": lane.to_dict()}
 
 
+def lane_summaries(*, run_id: str, store_dir: str | None, name_or_id: str) -> dict:
+    """Return summaries attached to the active terminal nodes for one lane."""
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id}")
+    edge_node_ids = lane_edge_node_ids(
+        handle.run_graph,
+        lane.work_session_id,
+        root_node_id=handle.root_node_id,
+    )
+    summaries = lane_edge_summaries(
+        handle.run_graph,
+        lane.work_session_id,
+        root_node_id=handle.root_node_id,
+    )
+    return {
+        "run_id": run_id,
+        "lane": lane.to_dict(),
+        "edge_node_ids": list(edge_node_ids),
+        "summaries": [summary.to_dict() for summary in summaries],
+        "count": len(summaries),
+    }
+
+
 def validate_lane_run(*, run_id: str, store_dir: str | None) -> dict:
     """Return lane validation issues for a run."""
     store = resolve_store(store_dir)
@@ -434,6 +462,26 @@ def cli_lane(args) -> int:
                 name_or_id=argv[1],
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if command in ("summary", "summaries"):
+            if len(argv) != 2:
+                raise ValueError(f"usage: arctx lane {command} NAME_OR_ID")
+            result = lane_summaries(
+                run_id=resolve_run_id_from_args(args),
+                store_dir=args.store_dir,
+                name_or_id=argv[1],
+            )
+            if args.as_json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            elif not result["summaries"]:
+                print("(none)")
+            else:
+                for summary in result["summaries"]:
+                    print(
+                        f"{summary['target_id']} {summary['payload_id']} "
+                        f"{summary['text']}"
+                    )
             return 0
 
         if command is not None:

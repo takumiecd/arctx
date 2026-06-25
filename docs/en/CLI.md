@@ -79,6 +79,8 @@ Core commands:
 - `arctx lane adopt <name-or-id> --record ID`: register existing records as
   current members of a lane without rewriting creation provenance. Use
   `--history NODE` or `--reachable NODE` for subgraph adoption.
+- `arctx lane summaries <name-or-id>`: list `SummaryPayload`s on active terminal
+  nodes in the lane. Branched lanes can return multiple summaries.
 - `arctx export [--format md|tex|html]`: render a run as a shareable document.
 
 ## DAG Records
