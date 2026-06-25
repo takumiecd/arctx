@@ -25,6 +25,7 @@ import type { RunClient } from "./api";
 import type { RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
 import {
+  isDirectlyCut,
   laneColors,
   laneLabel,
   laneOptions,
@@ -140,6 +141,9 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   const [stepNoteText, setStepNoteText] = useState("");
   const [stepContent, setStepContent] = useState("{}");
   const [stepJsonError, setStepJsonError] = useState<string | null>(null);
+
+  // Reparent state (comma-separated new input node ids)
+  const [reparentInputs, setReparentInputs] = useState("");
 
   // Attach state
   const [attachPreset, setAttachPreset] = useState<AttachPreset>("note");
@@ -262,6 +266,31 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
       client.cut({ target_id: sel.id, target_kind: sel.kind }),
     onSuccess: () => {
       setError(null);
+      invalidate();
+    },
+    onError: fail,
+  });
+
+  const uncut = useMutation({
+    mutationFn: (sel: Exclude<Selection, null>) =>
+      client.uncut({ target_id: sel.id, target_kind: sel.kind }),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: fail,
+  });
+
+  const reparent = useMutation({
+    mutationFn: (vars: { nodeId: string; inputs: string[]; type: string }) =>
+      client.reparent({
+        node_id: vars.nodeId,
+        input_node_ids: vars.inputs,
+        type: vars.type || "reparent",
+      }),
+    onSuccess: () => {
+      setError(null);
+      setReparentInputs("");
       invalidate();
     },
     onError: fail,
@@ -586,6 +615,43 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
               </div>
             )}
 
+            {unit.outputNodeId && unit.outputNodeId !== doc.root_node_id && (
+              <div className="edit-section">
+                <h3>reparent (rewire inputs)</h3>
+                <p className="muted">
+                  Append a new producing step from these inputs and cut the old
+                  producer. The node and its descendants are kept.
+                </p>
+                <label>
+                  new input node ids (comma-separated)
+                  <input
+                    value={reparentInputs}
+                    placeholder="n_..., n_..."
+                    onChange={(e) => setReparentInputs(e.target.value)}
+                  />
+                </label>
+                <label>
+                  type
+                  <input value={stepType} onChange={(e) => setStepType(e.target.value)} />
+                </label>
+                <button
+                  disabled={reparent.isPending || reparentInputs.trim() === ""}
+                  onClick={() =>
+                    reparent.mutate({
+                      nodeId: unit.outputNodeId,
+                      inputs: reparentInputs
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                      type: stepType,
+                    })
+                  }
+                >
+                  reparent
+                </button>
+              </div>
+            )}
+
             <div className="edit-section">
               <h3>adopt into lane</h3>
               {lanes.length === 0 ? (
@@ -746,17 +812,31 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
 
             <div className="danger-zone">
               <h4>Danger Zone</h4>
-              <p>Cutting this unit will make it and its descendants inactive.</p>
-              <button
-                className="danger"
-                disabled={cut.isPending}
-                onClick={() => {
-                  cut.mutate(selection);
-                  onSelect(null);
-                }}
-              >
-                cut this {selection.kind}
-              </button>
+              {isDirectlyCut(doc, selection.id, selection.kind) ? (
+                <>
+                  <p>This {selection.kind} is cut. Uncut reinstates it (and any descendants that were only inactive because of this cut).</p>
+                  <button
+                    disabled={uncut.isPending}
+                    onClick={() => uncut.mutate(selection)}
+                  >
+                    uncut this {selection.kind}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>Cutting this unit will make it and its descendants inactive.</p>
+                  <button
+                    className="danger"
+                    disabled={cut.isPending}
+                    onClick={() => {
+                      cut.mutate(selection);
+                      onSelect(null);
+                    }}
+                  >
+                    cut this {selection.kind}
+                  </button>
+                </>
+              )}
             </div>
           </section>
         )}

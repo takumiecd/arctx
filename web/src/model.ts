@@ -24,6 +24,25 @@ export function payloadsForStep(doc: RunDocument, stepId: string): RunPayload[] 
   return doc.payloads.filter((p) => p.target_kind === "step" && p.target_id === stepId);
 }
 
+// Whether a record is currently *directly* cut (a CutPayload on it that has not
+// been superseded by a later UncutPayload). Mirrors the backend's last-marker-
+// wins rule (arctx.core.cuts); payloads are scanned in document order. Only a
+// directly-cut record can be uncut — inactivity inherited from a cut ancestor
+// is not directly reversible.
+export function isDirectlyCut(
+  doc: RunDocument,
+  recordId: string,
+  kind: "node" | "step",
+): boolean {
+  let cut = false;
+  for (const p of doc.payloads) {
+    if (p.target_id !== recordId || p.target_kind !== kind) continue;
+    if (p.payload_type === "cut") cut = true;
+    else if (p.payload_type === "uncut") cut = false;
+  }
+  return cut;
+}
+
 // The text of a node's SummaryPayload (payload_type "summary"), if any. A
 // summary is a descriptive context snapshot used for history truncation /
 // hand-off; it never changes the validity of the node or its descendants.
