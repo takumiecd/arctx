@@ -8,6 +8,7 @@ from arctx_cli.commands.add import run_add_step_command
 from arctx_cli.commands.attach import run_attach_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.log import run_log_command
+from arctx_cli.commands.reparent import run_reparent_command
 from arctx_cli.commands.show import run_show_record_command
 from arctx_cli.context import resolve_store
 
@@ -222,3 +223,48 @@ def test_attach_summary_then_log_from_summary_truncates(tmp_path):
     assert n1 not in past
     assert init["root_node_id"] not in past
     assert summary["payload_id"] in pruned["history"]["payload_ids"]
+
+
+def test_reparent_command_rewires_and_preserves_descendants(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+
+    def _step(parent: str, title: str) -> dict:
+        return run_add_step_command(
+            run_id="run_dag_core",
+            input_node_ids=[parent],
+            title=title,
+            payload_kind=None,
+            payload_type="step_payload",
+            field_data={},
+            json_data={},
+            store_dir=_store_dir(td),
+        )["step"]
+
+    wrong = _step(init["root_node_id"], "wrong")["output_node_id"]
+    n = _step(wrong, "derive")["output_node_id"]
+    child = _step(n, "child")["output_node_id"]
+    right = _step(init["root_node_id"], "right")["output_node_id"]
+
+    result = run_reparent_command(
+        run_id="run_dag_core",
+        node_id=n,
+        input_node_ids=[right],
+        title="rederive",
+        payload_kind=None,
+        payload_type="step_payload",
+        field_data={},
+        json_data={},
+        reason="fixed base",
+        store_dir=_store_dir(td),
+    )
+    new_step = result["step"]
+    assert new_step["output_node_id"] == n
+    assert new_step["input_node_ids"] == [right]
+
+    handle = resolve_store(_store_dir(td)).load_run("run_dag_core")
+    from arctx.core.cuts import is_active_node
+
+    assert handle.run_graph.step_to_node(n) == new_step["step_id"]
+    assert is_active_node(handle.run_graph, n)
+    assert is_active_node(handle.run_graph, child)

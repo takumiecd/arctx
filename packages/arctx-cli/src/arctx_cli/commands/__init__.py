@@ -37,6 +37,8 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.log import cli_log
     from arctx_cli.commands.migrate import add_parser as add_migrate_parser
     from arctx_cli.commands.migrate import cli_migrate
+    from arctx_cli.commands.reparent import add_parser as add_reparent_parser
+    from arctx_cli.commands.reparent import cli_reparent
     from arctx_cli.commands.pr import (
         add_accept_parser,
         add_propose_parser,
@@ -78,6 +80,7 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("log", add_log_parser, cli_log),
         CliCommand("migrate", add_migrate_parser, cli_migrate),
         CliCommand("cut", add_cut_parser, cli_cut),
+        CliCommand("reparent", add_reparent_parser, cli_reparent),
         CliCommand("propose", add_propose_parser, cli_propose),
         CliCommand("accept", add_accept_parser, cli_accept),
         CliCommand("reject", add_reject_parser, cli_reject),
