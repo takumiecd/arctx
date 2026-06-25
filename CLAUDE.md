@@ -31,7 +31,7 @@ Docs are Japanese-first and should match the current implementation:
 
 ## Version And Compatibility
 
-This project is `0.3.0b1` beta. Breaking changes are acceptable and expected. Do not add compatibility shims for removed APIs unless explicitly requested. Old run storage schemas do not need migration support by default.
+This project is `0.3.0b2` beta. Breaking changes are acceptable and expected. Do not add compatibility shims for removed APIs unless explicitly requested. Old run storage schemas do not need migration support by default.
 
 ## Architecture
 
@@ -62,6 +62,8 @@ Two-tier design. Core payloads live under `packages/arctx/src/arctx/core/schema/
 
 **Core typed payloads**:
 - `CutPayload(payload_id, target_id, target_kind, reason=None)` — append-only cut marker
+- `UncutPayload(payload_id, target_id, target_kind, reason=None)` — append-only reversal of a cut on the same target. Effective cut state is "last cut/uncut marker wins" (supersession), computed in `packages/arctx/src/arctx/core/cuts.py`. Cuts are never deleted.
+- `SummaryPayload(payload_id, target_id, text, metadata={})` — node-targeting context snapshot for history truncation / hand-off. Descriptive and monotonic (never changes node/descendant validity). `trace(..., stop_at_summary=True)` prunes the backward walk at the nearest summary.
 - `JoinPayload(payload_id, target_id, joined_views)` — step-targeting marker for a multi-input step that joins independent histories with no common ancestor (extension-agnostic; `target_kind="step"`)
 - `AssetPayload(payload_id, target_id, target_kind, asset_id, filename, mime_type, size_bytes, path)` — a file asset (image/video/document) attached to a Node or Step. The file lives under `<run_dir>/artifacts/`; `path` is run-relative. Asset is a **core payload, not an extension** (it depends on core lineage). Visibility — which records may reference an asset by URL — is computed at read time in `packages/arctx/src/arctx/core/lineage.py`: an asset is reachable from the record it is attached to and that record's descendants. Attach via `handle.attach_asset(...)` or `arctx asset attach`; files are uploaded through the generic `POST /artifacts/upload`. The visible set is served by `GET /assets/visible?from=<id>`.
 
@@ -86,7 +88,9 @@ Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`)
 - `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
 - `attach_asset(target_id, file_path, *, user_id=None, work_session_id=None) -> AssetPayload` — copy a file into `<run_dir>/artifacts/` and attach an `AssetPayload` to a Node or Step
 - `cut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> CutPayload` — mark a Node or Step inactive
-- `trace(node_id, ...)` (alias: `history`) — walk history backwards
+- `uncut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> UncutPayload` — append-only reversal of a cut (supersession). Step uncut is guarded so a node never gets a second active producer.
+- `reparent(node_id, new_input_node_ids, payload, *, reason=None, user_id=None, work_session_id=None) -> Step` — append a new producing Step (new inputs → `node_id`) and cut the previously-active producer, re-parenting a node while preserving its descendants. A node may have multiple producing Steps but at most one active (the active subgraph stays a tree); `payload` must be step-targeting.
+- `trace(node_id, ..., stop_at_summary=False)` (alias: `history`) — walk history backwards; `stop_at_summary` prunes at the nearest `SummaryPayload`
 - `outcomes(step_id)` — return output node info for a step
 
 Deleted verbs: `plan`, `predict`, `observe`, `note`.
