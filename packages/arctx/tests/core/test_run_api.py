@@ -12,6 +12,7 @@ from arctx.core.schema.payloads import (
     NodePayload,
     StepPayload,
     SummaryPayload,
+    UncutPayload,
 )
 from arctx.ext.git.payloads import DiffSummary, GitChangePayload
 from arctx.core.schema.requirements import Requirement
@@ -198,6 +199,63 @@ def test_cut_step():
     t1 = run.add_step([run.root_node_id], _tp())
     cut = run.cut(t1.step_id, target_kind="step")
     assert isinstance(cut, CutPayload)
+
+
+# ---------------------------------------------------------------------------
+# uncut
+# ---------------------------------------------------------------------------
+
+
+def test_uncut_node_reinstates_node_and_descendants():
+    run = init(_req())
+    n1 = run.add_step([run.root_node_id], _tp()).output_node_id
+    child = run.add_step([n1], _tp()).output_node_id
+    run.cut(n1, target_kind="node", reason="oops")
+    assert not is_active_node(run.run_graph, n1)
+    assert not is_active_node(run.run_graph, child)
+
+    reinstated = run.uncut(n1, target_kind="node", reason="undo")
+    assert isinstance(reinstated, UncutPayload)
+    assert is_active_node(run.run_graph, n1)
+    assert is_active_node(run.run_graph, child)
+
+
+def test_cut_uncut_cut_supersession_last_marker_wins():
+    run = init(_req())
+    n1 = run.add_step([run.root_node_id], _tp()).output_node_id
+    run.cut(n1, target_kind="node")
+    run.uncut(n1, target_kind="node")
+    assert is_active_node(run.run_graph, n1)
+    # Cutting again is allowed (the previous cut was superseded).
+    run.cut(n1, target_kind="node")
+    assert not is_active_node(run.run_graph, n1)
+
+
+def test_uncut_rejects_uncut_target():
+    run = init(_req())
+    n1 = run.add_step([run.root_node_id], _tp()).output_node_id
+    with pytest.raises(ValueError, match="not cut"):
+        run.uncut(n1, target_kind="node")
+
+
+def test_uncut_step_guards_against_second_active_producer():
+    run = init(_req())
+    # Re-parent n onto a new base; the old producer is cut.
+    wrong = run.add_step([run.root_node_id], _tp("wrong")).output_node_id
+    n = run.add_step([wrong], _tp("derive")).output_node_id
+    right = run.add_step([run.root_node_id], _tp("right")).output_node_id
+    old_producer = run.run_graph.step_to_node(n)
+    new_step = run.reparent(n, [right], _tp("rederive"))
+
+    # Uncutting the old producer would give n two active producers -> rejected.
+    with pytest.raises(ValueError, match="already has an active producer"):
+        run.uncut(old_producer, target_kind="step")
+
+    # Reverting the reparent properly: cut the new producer, then uncut works.
+    run.cut(new_step.step_id, target_kind="step")
+    run.uncut(old_producer, target_kind="step")
+    assert run.run_graph.step_to_node(n) == old_producer
+    assert is_active_node(run.run_graph, n)
 
 
 # ---------------------------------------------------------------------------

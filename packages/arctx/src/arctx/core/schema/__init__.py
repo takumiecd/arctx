@@ -8,6 +8,7 @@ from arctx.core.schema.payloads import (
     PayloadBase,
     StepPayload,
     SummaryPayload,
+    UncutPayload,
     payload_from_dict,
     register_payload_class,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "Step",
     "StepPayload",
     "SummaryPayload",
+    "UncutPayload",
     "WorkEvent",
     "WorkSession",
     "payload_from_dict",

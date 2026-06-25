@@ -10,6 +10,8 @@ from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.log import run_log_command
 from arctx_cli.commands.reparent import run_reparent_command
 from arctx_cli.commands.show import run_show_record_command
+from arctx_cli.commands.cut import run_cut_command
+from arctx_cli.commands.uncut import run_uncut_command
 from arctx_cli.context import resolve_store
 
 
@@ -268,3 +270,41 @@ def test_reparent_command_rewires_and_preserves_descendants(tmp_path):
     assert handle.run_graph.step_to_node(n) == new_step["step_id"]
     assert is_active_node(handle.run_graph, n)
     assert is_active_node(handle.run_graph, child)
+
+
+def test_cut_then_uncut_command_roundtrip(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+    n = run_add_step_command(
+        run_id="run_dag_core",
+        input_node_ids=[init["root_node_id"]],
+        title="s",
+        payload_kind=None,
+        payload_type="step_payload",
+        field_data={},
+        json_data={},
+        store_dir=_store_dir(td),
+    )["step"]["output_node_id"]
+
+    run_cut_command(
+        run_id="run_dag_core",
+        target_id=n,
+        target_kind="node",
+        reason="oops",
+        store_dir=_store_dir(td),
+    )
+    from arctx.core.cuts import is_active_node
+
+    handle = resolve_store(_store_dir(td)).load_run("run_dag_core")
+    assert not is_active_node(handle.run_graph, n)
+
+    result = run_uncut_command(
+        run_id="run_dag_core",
+        target_id=n,
+        target_kind="node",
+        reason="undo",
+        store_dir=_store_dir(td),
+    )
+    assert result["uncut"]["payload_type"] == "uncut"
+    handle = resolve_store(_store_dir(td)).load_run("run_dag_core")
+    assert is_active_node(handle.run_graph, n)

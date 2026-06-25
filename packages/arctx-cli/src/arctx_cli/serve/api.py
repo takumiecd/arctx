@@ -14,6 +14,7 @@ Routes (the GUI data contract):
 - ``POST /step``    -> create a Step from input nodes; returns the new step
 - ``POST /attach``  -> attach a payload to a Node or Step; returns the payload
 - ``POST /cut``     -> cut a node or step; returns the cut payload
+- ``POST /uncut``   -> reverse a cut on a node or step; returns the uncut payload
 - ``POST /reparent`` -> re-parent a node onto new inputs; returns the new step
 - ``POST /lane``    -> create a lane
 - ``POST /lane/adopt`` -> adopt existing records into a lane
@@ -88,6 +89,8 @@ def dispatch(
             return 201, _post_attach(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/cut"):
             return 201, _post_cut(store, run_id, body or {}, user_id, work_session_id)
+        if route == ("POST", "/uncut"):
+            return 201, _post_uncut(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/reparent"):
             return 201, _post_reparent(store, run_id, body or {}, user_id, work_session_id)
         if route == ("POST", "/lane"):
@@ -337,6 +340,30 @@ def _post_cut(store, run_id, body, user_id, work_session_id) -> dict:
         user_id=user_id, work_session_id=work_session_id, before=before,
     )
     return {"payload": cut.to_dict()}
+
+
+def _post_uncut(store, run_id, body, user_id, work_session_id) -> dict:
+    target_id = body.get("target_id")
+    target_kind = body.get("target_kind")
+    if not target_id:
+        raise ApiError(400, "target_id is required")
+    if target_kind not in ("node", "step"):
+        raise ApiError(400, "target_kind must be 'node' or 'step'")
+
+    handle = _load(store, run_id)
+    before = graph_counts(handle)
+    uncut = handle.uncut(
+        str(target_id),
+        target_kind=target_kind,
+        reason=body.get("reason"),
+        user_id=user_id,
+        work_session_id=work_session_id,
+    )
+    maybe_append_or_save(
+        store=store, handle=handle,
+        user_id=user_id, work_session_id=work_session_id, before=before,
+    )
+    return {"payload": uncut.to_dict()}
 
 
 def _post_reparent(store, run_id, body, user_id, work_session_id) -> dict:

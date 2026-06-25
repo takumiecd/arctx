@@ -38,6 +38,27 @@ def test_outline_contains_run_id():
     assert "dump_test" in out
 
 
+def test_outline_anchors_reparented_node_under_active_producer():
+    run = init(_req(), run_id="dump_reparent")
+    wrong = run.add_step([run.root_node_id], _tp("wrong")).output_node_id
+    n = run.add_step([wrong], _tp("derive")).output_node_id
+    child = run.add_step([n], _tp("child")).output_node_id
+    right = run.add_step([run.root_node_id], _tp("right")).output_node_id
+    new_step = run.reparent(n, [right], _tp("rederive"))
+
+    out = render_outline(run, DumpOptions())
+    lines = out.splitlines()
+
+    # The cut producer defers the node to its active producer (a back-ref).
+    deferred = next(line for line in lines if f"↻ {n}" in line)
+    assert "active producer" in deferred and new_step.step_id in deferred
+
+    # The descendant child is expanded under the active lineage, exactly once,
+    # after the active producer's step.
+    assert len([line for line in lines if child in line]) == 1
+    assert out.index(new_step.step_id) < out.index(child)
+
+
 def test_outline_contains_step_ids():
     run, t1, n1, t2 = _make_run()
     out = render_outline(run, DumpOptions())

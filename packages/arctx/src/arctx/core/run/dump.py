@@ -127,8 +127,25 @@ def render_outline(handle: RunHandle, opts: DumpOptions) -> str:
             extras = " " + " ".join(f"(+{n})" for n in t.input_node_ids[1:])
         lines.append(f"{prefix}{connector}→ {step_id}{cut}{extras}  {summary}")
         child_prefix = prefix + ("  " if is_last else "│ ")
-        if t.output_node_id:
-            emit_node(t.output_node_id, child_prefix, True, depth + 1)
+        out = t.output_node_id
+        if out:
+            active = graph.step_to_node(out)
+            defer = (
+                out not in visited_nodes
+                and step_id in inactive_trans
+                and active is not None
+                and active != step_id
+                and active not in inactive_trans
+            )
+            if defer:
+                # Re-parented node: its live lineage hangs under the active
+                # producer. Anchor the subtree there, not under this cut step.
+                ncut = " ✂" if out in inactive_nodes else ""
+                lines.append(
+                    f"{child_prefix}└─↻ {out}{ncut} ▸ active producer {active}"
+                )
+            else:
+                emit_node(out, child_prefix, True, depth + 1)
 
     emit_node(root_id, "", True, 0)
 

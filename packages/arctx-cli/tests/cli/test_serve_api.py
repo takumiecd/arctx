@@ -206,6 +206,37 @@ class TestWriteRoutes:
             assert status == 400
             assert "input_node_ids" in body["error"]
 
+    def test_post_uncut_reverses_cut(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, made = _call(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "x",
+            })
+            node = made["step"]["output_node_id"]
+
+            status, _ = _call(store, run_id, "POST", "/cut", {
+                "target_id": node, "target_kind": "node",
+            })
+            assert status == 201
+            handle = store.load_run(run_id)
+            from arctx.core.cuts import is_active_node
+            assert not is_active_node(handle.run_graph, node)
+
+            status, body = _call(store, run_id, "POST", "/uncut", {
+                "target_id": node, "target_kind": "node", "reason": "undo",
+            })
+            assert status == 201, body
+            assert body["payload"]["payload_type"] == "uncut"
+            handle = store.load_run(run_id)
+            assert is_active_node(handle.run_graph, node)
+
+    def test_post_uncut_requires_target_kind(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/uncut", {"target_id": "n_x"})
+            assert status == 400
+            assert "target_kind" in body["error"]
+
     def test_post_step_requires_inputs(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, _ = _setup(td)
