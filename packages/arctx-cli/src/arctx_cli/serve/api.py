@@ -33,6 +33,7 @@ from typing import Any
 from arctx.core.lanes import (
     LaneValidationIssue,
     format_lane_validation_errors,
+    lane_membership,
     lane_validation_errors,
 )
 from arctx.core.run.export import ExportOptions, json_document
@@ -466,15 +467,22 @@ def _adoption_record_ids(handle, body: dict) -> tuple[tuple[str, ...], str, str]
     record_ids = body.get("record_ids")
     history_node_id = body.get("history_node_id")
     reachable_node_id = body.get("reachable_node_id")
+    lane_head_node_id = body.get("lane_head_node_id")
+    lane_tail_node_id = body.get("lane_tail_node_id")
     sources = [
         isinstance(record_ids, list) and bool(record_ids),
         history_node_id is not None,
         reachable_node_id is not None,
+        lane_head_node_id is not None,
+        lane_tail_node_id is not None,
     ]
     if sum(1 for enabled in sources if enabled) != 1:
         raise ApiError(
             400,
-            "choose exactly one of record_ids, history_node_id, reachable_node_id",
+            (
+                "choose exactly one of record_ids, history_node_id, "
+                "reachable_node_id, lane_head_node_id, lane_tail_node_id"
+            ),
         )
 
     if isinstance(record_ids, list) and record_ids:
@@ -494,16 +502,100 @@ def _adoption_record_ids(handle, body: dict) -> tuple[tuple[str, ...], str, str]
         )
         return _without_run_root(handle, ids), "history", node_id
 
+    if lane_head_node_id is not None:
+        node_id = str(lane_head_node_id)
+        ids = _lane_local_head_record_ids(handle, node_id)
+        return _without_run_root(handle, ids), "lane_head", node_id
+
+    if lane_tail_node_id is not None:
+        node_id = str(lane_tail_node_id)
+        ids = _lane_local_tail_record_ids(handle, node_id)
+        return _without_run_root(handle, ids), "lane_tail", node_id
+
     node_id = str(reachable_node_id)
     if node_id not in handle.run_graph.nodes:
         raise ApiError(404, f"unknown node_id: {node_id}")
     reachable = handle.run_graph.reachable_from(node_id)
+    producer_step_id = handle.run_graph.step_to_node(node_id)
+    producer_step_ids = (producer_step_id,) if producer_step_id is not None else ()
     ids = (
-        tuple(reachable["node_ids"])
+        producer_step_ids
+        + (node_id,)
+        + tuple(reachable["node_ids"])
         + tuple(reachable["step_ids"])
         + tuple(reachable["payload_ids"])
     )
     return _without_run_root(handle, ids), "reachable", node_id
+
+
+def _lane_local_head_record_ids(handle, node_id: str) -> tuple[str, ...]:
+    graph = handle.run_graph
+    if node_id not in graph.nodes:
+        raise ApiError(404, f"unknown node_id: {node_id}")
+    membership = lane_membership(graph, root_node_id=handle.root_node_id)
+    lane_id = membership.node_to_lane.get(node_id)
+    if lane_id is None:
+        raise ApiError(400, f"node has no lane membership: {node_id}")
+
+    node_ids: set[str] = set()
+    step_ids: set[str] = set()
+
+    def visit_node(nid: str) -> None:
+        if nid in node_ids or membership.node_to_lane.get(nid) != lane_id:
+            return
+        node_ids.add(nid)
+        producer = graph.step_to_node(nid)
+        if producer is None or membership.step_to_lane.get(producer) != lane_id:
+            return
+        step_ids.add(producer)
+        for parent_id in graph.steps[producer].input_node_ids:
+            visit_node(parent_id)
+
+    visit_node(node_id)
+    return _with_payloads(graph, node_ids=node_ids, step_ids=step_ids)
+
+
+def _lane_local_tail_record_ids(handle, node_id: str) -> tuple[str, ...]:
+    graph = handle.run_graph
+    if node_id not in graph.nodes:
+        raise ApiError(404, f"unknown node_id: {node_id}")
+    membership = lane_membership(graph, root_node_id=handle.root_node_id)
+    lane_id = membership.node_to_lane.get(node_id)
+    if lane_id is None:
+        raise ApiError(400, f"node has no lane membership: {node_id}")
+
+    node_ids: set[str] = set()
+    step_ids: set[str] = set()
+
+    def include_producer(nid: str) -> None:
+        producer = graph.step_to_node(nid)
+        if producer is not None and membership.step_to_lane.get(producer) == lane_id:
+            step_ids.add(producer)
+
+    def visit_node(nid: str) -> None:
+        if nid in node_ids or membership.node_to_lane.get(nid) != lane_id:
+            return
+        node_ids.add(nid)
+        include_producer(nid)
+        for step_id in graph.steps_from_node(nid):
+            if membership.step_to_lane.get(step_id) != lane_id:
+                continue
+            out = graph.step_output(step_id)
+            if out and membership.node_to_lane.get(out) == lane_id:
+                step_ids.add(step_id)
+                visit_node(out)
+
+    visit_node(node_id)
+    return _with_payloads(graph, node_ids=node_ids, step_ids=step_ids)
+
+
+def _with_payloads(graph, *, node_ids: set[str], step_ids: set[str]) -> tuple[str, ...]:
+    payload_ids: list[str] = []
+    for node_id in sorted(node_ids):
+        payload_ids.extend(graph.payloads_by_node.get(node_id, ()))
+    for step_id in sorted(step_ids):
+        payload_ids.extend(graph.payloads_by_step.get(step_id, ()))
+    return tuple(sorted(node_ids) + sorted(step_ids) + sorted(set(payload_ids)))
 
 
 def _without_run_root(handle, ids) -> tuple[str, ...]:
@@ -625,4 +717,3 @@ def _post_artifacts_upload(store, run_id, body) -> dict:
         "size_bytes": len(file_content),
         "path": f"artifacts/{dest_filename}",
     }
-

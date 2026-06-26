@@ -71,14 +71,17 @@ class _Server:
     def url(self, path: str) -> str:
         return f"http://127.0.0.1:{self.port}{path}"
 
-    def get(self, path: str):
-        with urllib.request.urlopen(self.url(path)) as r:
+    def get(self, path: str, headers: dict | None = None):
+        req = urllib.request.Request(self.url(path), headers=headers or {}, method="GET")
+        with urllib.request.urlopen(req) as r:
             return r.status, r.read(), r.headers.get("Content-Type")
 
-    def post(self, path: str, obj: dict):
+    def post(self, path: str, obj: dict, headers: dict | None = None):
+        request_headers = {"Content-Type": "application/json"}
+        request_headers.update(headers or {})
         req = urllib.request.Request(
             self.url(path), data=json.dumps(obj).encode(),
-            headers={"Content-Type": "application/json"}, method="POST",
+            headers=request_headers, method="POST",
         )
         with urllib.request.urlopen(req) as r:
             return r.status, json.loads(r.read())
@@ -204,6 +207,45 @@ class TestApiDelegation:
                 status, body = s.post("/uncut", {"target_id": n3, "target_kind": "node"})
                 assert status == 201
                 assert body["payload"]["payload_type"] == "uncut"
+
+    def test_post_lane_routed(self):
+        # Regression: the bundled GUI server must forward lane routes to the
+        # shared arctx serve dispatcher.
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _make_run(td)
+            with _Server(store, run_id, _fake_static(td)) as s:
+                status, body = s.post("/lane", {"name": "math"})
+                assert status == 201
+                assert body["lane"]["name"] == "math"
+
+                _, run_body, _ = s.get("/run")
+                doc = json.loads(run_body)
+                lane_ids = {lane["work_session_id"] for lane in doc["lanes"]}
+                assert body["lane"]["work_session_id"] in lane_ids
+
+    def test_work_session_header_selects_current_lane_and_write_lane(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _make_run(td)
+            with _Server(store, run_id, _fake_static(td)) as s:
+                _, lane_body = s.post("/lane", {"name": "web-lane"})
+                lane_id = lane_body["lane"]["work_session_id"]
+                headers = {"X-Arctx-Work-Session-Id": lane_id}
+
+                status, body, _ = s.get("/run", headers=headers)
+                assert status == 200
+                assert json.loads(body)["current_lane_id"] == lane_id
+
+                status, made = s.post(
+                    "/step",
+                    {"input_node_ids": [root], "type": "x"},
+                    headers=headers,
+                )
+                assert status == 201
+                step_id = made["step"]["step_id"]
+
+                _, body, _ = s.get("/run", headers=headers)
+                doc = json.loads(body)
+                assert doc["record_provenance"][step_id]["lane_id"] == lane_id
 
     def test_web_extension_route(self):
         with tempfile.TemporaryDirectory() as td:

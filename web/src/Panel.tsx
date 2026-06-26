@@ -35,6 +35,7 @@ import {
   payloadsForStep,
   provenanceFor,
   stepType,
+  type LaneOption,
   type LaneColorOverrides,
 } from "./model";
 import {
@@ -67,8 +68,9 @@ interface DetailUnit {
 }
 
 type RecordSelection = Extract<Exclude<Selection, null>, { kind: "node" | "step" }>;
+type BulkSelection = Extract<Exclude<Selection, null>, { kind: "records" }>;
 
-type AdoptMode = "explicit" | "history" | "reachable";
+type AdoptMode = "explicit" | "history" | "reachable" | "lane_head" | "lane_tail";
 
 type Tab = "content" | "flow" | "edit";
 type AttachPreset = "note" | "asset" | "git_change" | "diagram" | "command_run" | "custom";
@@ -309,6 +311,20 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
     onError: fail,
   });
 
+  const adoptBulkLane = useMutation({
+    mutationFn: (sel: BulkSelection) =>
+      client.adoptLane({
+        lane_id: adoptLaneId,
+        record_ids: bulkRecordIds(sel, doc),
+        reason: "web bulk lane adoption",
+      }),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: fail,
+  });
+
   // Automatically switch tab depending on whether selection has payloads
   useEffect(() => {
     setAttachTargetKey("step");
@@ -316,6 +332,8 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
 
     if (selection?.kind === "lane") {
       setActiveTab("content");
+    } else if (selection?.kind === "records") {
+      setActiveTab("edit");
     } else if (selection) {
       const unit = detailUnitFor(doc, selection);
       const stepPayloads = unit.stepId ? payloadsForStep(doc, unit.stepId) : [];
@@ -323,7 +341,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
       const hasPayloads = stepPayloads.length > 0 || nodePayloads.length > 0;
       setActiveTab(hasPayloads ? "content" : "flow");
     }
-  }, [selection?.kind, selection?.id]);
+  }, [selection]);
 
   const handleCopyToEdit = (text: string) => {
     setAttachPreset("note");
@@ -437,6 +455,25 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
         onSelect={onSelect}
         laneColorOverrides={laneColorOverrides}
         dark={dark}
+      />
+    );
+  }
+
+  if (selection.kind === "records") {
+    return (
+      <BulkRecordsPanel
+        doc={doc}
+        selection={selection}
+        lanes={lanes}
+        adoptLaneId={adoptLaneId}
+        setAdoptLaneId={setAdoptLaneId}
+        adoptBulkLane={() => adoptBulkLane.mutate(selection)}
+        isPending={adoptBulkLane.isPending}
+        error={error}
+        isFocused={isFocused}
+        panelWidth={panelWidth}
+        onFocusToggle={() => setIsFocused(!isFocused)}
+        onResizeStart={startPanelResize}
       />
     );
   }
@@ -696,6 +733,12 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
                       onChange={(e) => setAdoptMode(e.target.value as AdoptMode)}
                     >
                       <option value="explicit">{explicitAdoptLabel(unit)}</option>
+                      <option value="lane_tail" disabled={!unit.outputNodeId}>
+                        selected unit to lane tail
+                      </option>
+                      <option value="lane_head" disabled={!unit.outputNodeId}>
+                        lane head to selected unit
+                      </option>
                       <option value="history" disabled={!unit.outputNodeId}>
                         history ending at output node
                       </option>
@@ -1135,6 +1178,12 @@ function adoptLaneRequest(unit: DetailUnit, laneId: string, mode: AdoptMode) {
   if (mode === "reachable") {
     return { ...base, reachable_node_id: unit.outputNodeId };
   }
+  if (mode === "lane_head") {
+    return { ...base, lane_head_node_id: unit.outputNodeId };
+  }
+  if (mode === "lane_tail") {
+    return { ...base, lane_tail_node_id: unit.outputNodeId };
+  }
   return { ...base, record_ids: explicitAdoptRecordIds(unit) };
 }
 
@@ -1147,6 +1196,159 @@ function explicitAdoptRecordIds(unit: DetailUnit): string[] {
 
 function explicitAdoptLabel(unit: DetailUnit): string {
   return unit.stepId ? "selected unit (step + output)" : "selected node only";
+}
+
+function bulkRecordIds(selection: BulkSelection, doc: RunDocument): string[] {
+  const ids: string[] = [];
+  for (const record of selection.records) {
+    if (record.kind === "node") {
+      const producer = doc.steps.find((step) => step.output_node_id === record.id);
+      if (producer) ids.push(producer.step_id);
+      ids.push(record.id);
+    } else {
+      ids.push(record.id);
+      const step = doc.steps.find((entry) => entry.step_id === record.id);
+      if (step?.output_node_id) ids.push(step.output_node_id);
+    }
+  }
+  return [...new Set(ids)];
+}
+
+function BulkRecordsPanel({
+  doc,
+  selection,
+  lanes,
+  adoptLaneId,
+  setAdoptLaneId,
+  adoptBulkLane,
+  isPending,
+  error,
+  isFocused,
+  panelWidth,
+  onFocusToggle,
+  onResizeStart,
+}: {
+  doc: RunDocument;
+  selection: BulkSelection;
+  lanes: LaneOption[];
+  adoptLaneId: string;
+  setAdoptLaneId: (id: string) => void;
+  adoptBulkLane: () => void;
+  isPending: boolean;
+  error: string | null;
+  isFocused: boolean;
+  panelWidth: number;
+  onFocusToggle: () => void;
+  onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<"selection" | "edit">("selection");
+  const recordIds = bulkRecordIds(selection, doc);
+  const nodeCount = selection.records.filter((record) => record.kind === "node").length;
+  const stepCount = selection.records.filter((record) => record.kind === "step").length;
+
+  return (
+    <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
+      <PanelResizeHandle onPointerDown={onResizeStart} />
+      <div className="panel-content">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+          <h2 style={{ margin: 0 }}>
+            multiple records <code>{recordIds.length}</code>
+          </h2>
+          <button
+            type="button"
+            className="panel-focus-btn"
+            title={isFocused ? "Exit Focus Mode" : "Focus Mode"}
+            onClick={onFocusToggle}
+          >
+            {isFocused ? (
+              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <polyline points="4 14 10 14 10 20" />
+                <polyline points="20 10 14 10 14 4" />
+                <line x1="14" y1="10" x2="21" y2="3" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            )}
+          </button>
+        </div>
+        {error && <div className="error">{error}</div>}
+
+        <div className="panel-tabs">
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "selection" ? " active" : ""}`}
+            onClick={() => setActiveTab("selection")}
+          >
+            Selection
+          </button>
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "edit" ? " active" : ""}`}
+            onClick={() => setActiveTab("edit")}
+          >
+            Edit
+          </button>
+        </div>
+
+        {activeTab === "selection" && (
+          <section className="panel-view">
+            <div className="edit-section">
+              <h3>overview</h3>
+              <p className="muted" style={{ marginTop: 0 }}>
+                {nodeCount} nodes · {stepCount} steps
+              </p>
+            </div>
+            <div className="edit-section">
+              <h3>record ids ({recordIds.length})</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {recordIds.map((id) => (
+                  <code key={id} style={{ fontSize: "11px", padding: "6px 8px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "4px", wordBreak: "break-all" }}>
+                    {id}
+                  </code>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "edit" && (
+          <section className="actions panel-edit-tabs">
+            <div className="edit-section">
+              <h3>move selection into lane</h3>
+              <p className="muted">
+                The move is accepted only if lane validation passes.
+              </p>
+              {lanes.length === 0 ? (
+                <p className="muted">create a lane first</p>
+              ) : (
+                <>
+                  <label>
+                    lane
+                    <select value={adoptLaneId} onChange={(e) => setAdoptLaneId(e.target.value)}>
+                      {lanes.map((lane) => (
+                        <option key={lane.group_id} value={lane.lane_id}>
+                          {lane.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button disabled={isPending || !adoptLaneId || recordIds.length === 0} onClick={adoptBulkLane}>
+                    move {recordIds.length} records
+                  </button>
+                </>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
+    </aside>
+  );
 }
 
 function useResizablePanelWidth(): [

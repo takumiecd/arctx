@@ -458,6 +458,117 @@ class TestWriteRoutes:
             assert body["mode"] == "history"
             assert output_id in body["adopted_record_ids"]
 
+    def test_post_lane_adopt_reachable_includes_producing_step(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            math_id = math_body["lane"]["work_session_id"]
+            exp_id = exp_body["lane"]["work_session_id"]
+
+            _, a = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "a",
+            }, work_session_id=math_id)
+            a_node = a["step"]["output_node_id"]
+            _, b = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [a_node], "type": "b",
+            }, work_session_id=math_id)
+            b_step = b["step"]["step_id"]
+            b_node = b["step"]["output_node_id"]
+            _, c = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [b_node], "type": "c",
+            }, work_session_id=math_id)
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": exp_id,
+                "reachable_node_id": b_node,
+            })
+
+            assert status == 201
+            assert b_step in body["adopted_record_ids"]
+            assert b_node in body["adopted_record_ids"]
+            assert c["step"]["step_id"] in body["adopted_record_ids"]
+
+            _, run = _call(store, run_id, "GET", "/run")
+            assert run["record_provenance"][b_step]["lane_id"] == exp_id
+            assert run["record_provenance"][b_node]["lane_id"] == exp_id
+
+    def test_post_lane_adopt_lane_tail_stays_within_source_lane(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            math_id = math_body["lane"]["work_session_id"]
+            exp_id = exp_body["lane"]["work_session_id"]
+
+            _, a = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "a",
+            }, work_session_id=math_id)
+            a_node = a["step"]["output_node_id"]
+            _, b = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [a_node], "type": "b",
+            }, work_session_id=math_id)
+            b_node = b["step"]["output_node_id"]
+            _, c = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [b_node], "type": "c",
+            }, work_session_id=math_id)
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": exp_id,
+                "lane_tail_node_id": b_node,
+            })
+
+            assert status == 201
+            assert a["step"]["step_id"] not in body["adopted_record_ids"]
+            assert a_node not in body["adopted_record_ids"]
+            assert b["step"]["step_id"] in body["adopted_record_ids"]
+            assert b_node in body["adopted_record_ids"]
+            assert c["step"]["step_id"] in body["adopted_record_ids"]
+            assert c["step"]["output_node_id"] in body["adopted_record_ids"]
+
+            _, run = _call(store, run_id, "GET", "/run")
+            assert run["record_provenance"][a_node]["lane_id"] == math_id
+            assert run["record_provenance"][b_node]["lane_id"] == exp_id
+            assert run["record_provenance"][c["step"]["output_node_id"]]["lane_id"] == exp_id
+
+    def test_post_lane_adopt_lane_head_stays_within_source_lane(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, root = _setup(td)
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            math_id = math_body["lane"]["work_session_id"]
+            exp_id = exp_body["lane"]["work_session_id"]
+
+            _, a = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [root], "type": "a",
+            }, work_session_id=math_id)
+            a_node = a["step"]["output_node_id"]
+            _, b = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [a_node], "type": "b",
+            }, work_session_id=math_id)
+            b_node = b["step"]["output_node_id"]
+            _, c = _call_as(store, run_id, "POST", "/step", {
+                "input_node_ids": [b_node], "type": "c",
+            }, work_session_id=math_id)
+
+            status, body = _call(store, run_id, "POST", "/lane/adopt", {
+                "lane_id": exp_id,
+                "lane_head_node_id": b_node,
+            })
+
+            assert status == 201
+            assert a["step"]["step_id"] in body["adopted_record_ids"]
+            assert a_node in body["adopted_record_ids"]
+            assert b["step"]["step_id"] in body["adopted_record_ids"]
+            assert b_node in body["adopted_record_ids"]
+            assert c["step"]["step_id"] not in body["adopted_record_ids"]
+            assert c["step"]["output_node_id"] not in body["adopted_record_ids"]
+
+            _, run = _call(store, run_id, "GET", "/run")
+            assert run["record_provenance"][a_node]["lane_id"] == exp_id
+            assert run["record_provenance"][b_node]["lane_id"] == exp_id
+            assert run["record_provenance"][c["step"]["output_node_id"]]["lane_id"] == math_id
+
     def test_post_lane_adopt_unknown_lane(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)

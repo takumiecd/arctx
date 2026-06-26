@@ -24,7 +24,7 @@ from arctx_web.layouts import get_layout, save_layout
 # Paths handled by the JSON API; everything else is a static asset request.
 API_PATHS = frozenset({
     "/run", "/runs", "/node", "/step", "/attach", "/cut", "/uncut",
-    "/reparent", "/health",
+    "/reparent", "/lane", "/lane/adopt", "/health",
     "/artifacts/upload",
     "/ext", "/ext/enable", "/ext/disable", "/assets/visible",
 })
@@ -104,6 +104,13 @@ def build_handler(
                     pass
             return run_id
 
+        def _effective_work_session_id(self) -> str:
+            return (
+                self.headers.get("X-Arctx-Work-Session-Id")
+                or self.headers.get("X-Arctx-Lane-Id")
+                or work_session_id
+            )
+
         def _is_api(self) -> bool:
             return self._path() in API_PATHS
 
@@ -140,7 +147,9 @@ def build_handler(
             }
             status, payload = dispatch(
                 store, self._effective_run_id(), method, self._path(), body,
-                user_id=user_id, work_session_id=work_session_id, query=query,
+                user_id=user_id,
+                work_session_id=self._effective_work_session_id(),
+                query=query,
             )
             self._send_json(status, payload)
 
@@ -157,7 +166,7 @@ def build_handler(
                             run_dir=store.run_path(effective_run_id),
                             body=self._read_body() or {},
                             user_id=user_id,
-                            work_session_id=work_session_id,
+                            work_session_id=self._effective_work_session_id(),
                         )
                     )
                     self._send_json(status, payload)

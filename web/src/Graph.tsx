@@ -51,6 +51,7 @@ export type Selection =
   | { kind: "node"; id: string }
   | { kind: "step"; id: string }
   | { kind: "lane"; id: string }
+  | { kind: "records"; records: { kind: "node" | "step"; id: string }[] }
   | null;
 
 // Custom node with source/target handles on each side. ConnectionMode.Loose
@@ -442,6 +443,23 @@ function GraphCanvas({
         }
       } else if (es.length === 1 && ns.length === 0) {
         onSelect({ kind: "step", id: (es[0].data as { stepId: string }).stepId });
+      } else if (ns.length + es.length > 1) {
+        const records = [
+          ...ns
+            .filter((node) => !node.id.startsWith("lane:"))
+            .map((node) => ({ kind: "node" as const, id: node.id })),
+          ...es.map((edge) => ({
+            kind: "step" as const,
+            id: (edge.data as { stepId: string }).stepId,
+          })),
+        ];
+        if (records.length > 0) {
+          onSelect({ kind: "records", records });
+        } else {
+          onSelect(null);
+        }
+      } else {
+        onSelect(null);
       }
     },
     [onSelect],

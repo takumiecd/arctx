@@ -253,6 +253,8 @@ export interface AdoptLaneRequest {
   record_ids?: string[];
   history_node_id?: string;
   reachable_node_id?: string;
+  lane_head_node_id?: string;
+  lane_tail_node_id?: string;
   reason?: string;
 }
 
