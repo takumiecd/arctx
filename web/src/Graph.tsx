@@ -162,6 +162,7 @@ const LANE_GROUP_PADDING_BOTTOM = 34;
 
 interface Props {
   doc: RunDocument;
+  selection: Selection | null;
   savedNodePositions: Record<string, Pos>;
   onSelect: (sel: Selection) => void;
   onNodePositionsChanged: (positions: Record<string, Pos>) => void;
@@ -237,6 +238,7 @@ function buildEdges(
         type: "smoothstep",
         label: label === "step" ? undefined : label,
         data: { stepId: s.step_id },
+        selectable: false,
         labelStyle: { fontSize: 11 },
         labelBgPadding: [6, 3],
         labelBgBorderRadius: 4,
@@ -292,6 +294,7 @@ function eventClientPosition(event: MouseEvent | TouchEvent): Pos | null {
 
 function GraphCanvas({
   doc,
+  selection,
   savedNodePositions,
   onSelect,
   onNodePositionsChanged,
@@ -312,6 +315,7 @@ function GraphCanvas({
   // selection (used as step inputs when several nodes are selected).
   const dragSource = useRef<string | null>(null);
   const selectedNodeIds = useRef<string[]>([]);
+  const ignoreNextEmptySelection = useRef(false);
   const pendingNodePositions = useRef<Map<string, Pos>>(new Map());
 
   // Rebuild from the run document, preserving manual positions and selection
@@ -425,6 +429,45 @@ function GraphCanvas({
     setEdges(buildEdges(doc, positions, collapsedLaneIds, laneColorOverrides, showCuts, dark));
   }, [collapsedLaneIds, dark, doc, laneColorOverrides, nodes, setEdges, showCuts]);
 
+  useEffect(() => {
+    const targetSelectedNodes = new Set<string>();
+    if (selection) {
+      if (selection.kind === "node") targetSelectedNodes.add(selection.id);
+      else if (selection.kind === "lane") targetSelectedNodes.add(`lane:${selection.id}`);
+      else if (selection.kind === "records") {
+        for (const r of selection.records) {
+          if (r.kind === "node") targetSelectedNodes.add(r.id);
+        }
+      }
+    }
+
+    setNodes((nds) => {
+      let changed = false;
+      const nextNds = nds.map((n) => {
+        const isSelected = targetSelectedNodes.has(n.id);
+        if (n.selected !== isSelected) {
+          changed = true;
+          return { ...n, selected: isSelected };
+        }
+        return n;
+      });
+      return changed ? nextNds : nds;
+    });
+  }, [selection, setNodes]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+          e.stopPropagation();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, []);
+
   const inputsFor = (source: string | null): string[] => {
     if (!source) return [];
     const sel = selectedNodeIds.current;
@@ -433,33 +476,45 @@ function GraphCanvas({
 
   const onSelectionChange = useCallback(
     ({ nodes: ns, edges: es }: OnSelectionChangeParams) => {
-      selectedNodeIds.current = ns.map((n) => n.id);
-      if (ns.length === 1 && es.length === 0) {
-        const nodeId = ns[0].id;
-        if (nodeId.startsWith("lane:")) {
-          onSelect({ kind: "lane", id: nodeId.slice("lane:".length) });
-        } else {
-          onSelect({ kind: "node", id: nodeId });
+      if (ignoreNextEmptySelection.current && ns.length === 0 && es.length === 0) {
+        ignoreNextEmptySelection.current = false;
+        return;
+      }
+
+      const uniqueNodeIds = new Set(
+        ns.filter((n) => !n.id.startsWith("lane:") && n.type !== "laneGroup").map((n) => n.id)
+      );
+      selectedNodeIds.current = [...uniqueNodeIds];
+      const uniqueStepIds = new Set(
+        es.map((e) => (e.data as { stepId?: string })?.stepId).filter(Boolean) as string[]
+      );
+      const laneIds = new Set(
+        ns.filter((n) => n.id.startsWith("lane:")).map((n) => n.id.slice("lane:".length))
+      );
+
+      const totalItems = uniqueNodeIds.size + uniqueStepIds.size + laneIds.size;
+
+      if (totalItems === 0) {
+        onSelect(null);
+      } else if (totalItems === 1) {
+        if (uniqueNodeIds.size === 1) {
+          onSelect({ kind: "node", id: [...uniqueNodeIds][0] });
+        } else if (uniqueStepIds.size === 1) {
+          onSelect({ kind: "step", id: [...uniqueStepIds][0] });
+        } else if (laneIds.size === 1) {
+          onSelect({ kind: "lane", id: [...laneIds][0] });
         }
-      } else if (es.length === 1 && ns.length === 0) {
-        onSelect({ kind: "step", id: (es[0].data as { stepId: string }).stepId });
-      } else if (ns.length + es.length > 1) {
-        const records = [
-          ...ns
-            .filter((node) => !node.id.startsWith("lane:"))
-            .map((node) => ({ kind: "node" as const, id: node.id })),
-          ...es.map((edge) => ({
-            kind: "step" as const,
-            id: (edge.data as { stepId: string }).stepId,
-          })),
+      } else {
+        const records: { kind: "node" | "step"; id: string }[] = [
+          ...[...uniqueNodeIds].map((id) => ({ kind: "node" as const, id })),
+          ...[...uniqueStepIds].map((id) => ({ kind: "step" as const, id })),
         ];
+
         if (records.length > 0) {
           onSelect({ kind: "records", records });
         } else {
           onSelect(null);
         }
-      } else {
-        onSelect(null);
       }
     },
     [onSelect],
@@ -532,6 +587,18 @@ function GraphCanvas({
       }
       onNodeDoubleClick={(_event, node) => {
         if (node.id.startsWith("lane:")) onToggleLane(node.id.slice("lane:".length));
+      }}
+      onEdgeClick={(event, edge) => {
+        event.stopPropagation();
+        ignoreNextEmptySelection.current = true;
+        selectedNodeIds.current = [];
+        const stepId = (edge.data as { stepId?: string })?.stepId;
+        if (stepId) onSelect({ kind: "step", id: stepId });
+      }}
+      onPaneClick={() => {
+        ignoreNextEmptySelection.current = false;
+        selectedNodeIds.current = [];
+        onSelect(null);
       }}
       onSelectionChange={onSelectionChange}
       onConnect={writable ? onConnect : undefined}

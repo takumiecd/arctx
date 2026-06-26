@@ -315,7 +315,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
     mutationFn: (sel: BulkSelection) =>
       client.adoptLane({
         lane_id: adoptLaneId,
-        record_ids: bulkRecordIds(sel, doc),
+        record_ids: laneAdoptionRecordIds(sel, doc),
         reason: "web bulk lane adoption",
       }),
     onSuccess: () => {
@@ -1198,7 +1198,11 @@ function explicitAdoptLabel(unit: DetailUnit): string {
   return unit.stepId ? "selected unit (step + output)" : "selected node only";
 }
 
-function bulkRecordIds(selection: BulkSelection, doc: RunDocument): string[] {
+function selectedRecordIds(selection: BulkSelection): string[] {
+  return [...new Set(selection.records.map((record) => record.id))];
+}
+
+function laneAdoptionRecordIds(selection: BulkSelection, doc: RunDocument): string[] {
   const ids: string[] = [];
   for (const record of selection.records) {
     if (record.kind === "node") {
@@ -1212,6 +1216,10 @@ function bulkRecordIds(selection: BulkSelection, doc: RunDocument): string[] {
     }
   }
   return [...new Set(ids)];
+}
+
+function visibleRecordIds(ids: string[]): string[] {
+  return ids.slice(0, 24);
 }
 
 function BulkRecordsPanel({
@@ -1242,7 +1250,10 @@ function BulkRecordsPanel({
   onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }) {
   const [activeTab, setActiveTab] = useState<"selection" | "edit">("selection");
-  const recordIds = bulkRecordIds(selection, doc);
+  const recordIds = selectedRecordIds(selection);
+  const adoptionRecordIds = laneAdoptionRecordIds(selection, doc);
+  const previewRecordIds = visibleRecordIds(recordIds);
+  const hiddenRecordCount = recordIds.length - previewRecordIds.length;
   const nodeCount = selection.records.filter((record) => record.kind === "node").length;
   const stepCount = selection.records.filter((record) => record.kind === "step").length;
 
@@ -1306,13 +1317,18 @@ function BulkRecordsPanel({
             </div>
             <div className="edit-section">
               <h3>record ids ({recordIds.length})</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                {recordIds.map((id) => (
-                  <code key={id} style={{ fontSize: "11px", padding: "6px 8px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "4px", wordBreak: "break-all" }}>
+              <div className="record-id-list">
+                {previewRecordIds.map((id) => (
+                  <code key={id} className="record-id-chip">
                     {id}
                   </code>
                 ))}
               </div>
+              {hiddenRecordCount > 0 && (
+                <p className="muted" style={{ marginBottom: 0 }}>
+                  and {hiddenRecordCount} more selected records
+                </p>
+              )}
             </div>
           </section>
         )}
@@ -1322,7 +1338,7 @@ function BulkRecordsPanel({
             <div className="edit-section">
               <h3>move selection into lane</h3>
               <p className="muted">
-                The move is accepted only if lane validation passes.
+                Moves the selected records. Related producer/output records are included when needed for lane consistency.
               </p>
               {lanes.length === 0 ? (
                 <p className="muted">create a lane first</p>
@@ -1338,8 +1354,8 @@ function BulkRecordsPanel({
                       ))}
                     </select>
                   </label>
-                  <button disabled={isPending || !adoptLaneId || recordIds.length === 0} onClick={adoptBulkLane}>
-                    move {recordIds.length} records
+                  <button disabled={isPending || !adoptLaneId || adoptionRecordIds.length === 0} onClick={adoptBulkLane}>
+                    move {adoptionRecordIds.length} records
                   </button>
                 </>
               )}

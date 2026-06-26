@@ -481,6 +481,7 @@ export function App() {
         <div className="canvas">
           <Graph
             doc={data}
+            selection={selection}
             savedNodePositions={savedLayout?.nodes ?? {}}
             onSelect={setSelection}
             onNodePositionsChanged={(positions) => {

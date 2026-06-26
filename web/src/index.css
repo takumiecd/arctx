@@ -585,6 +585,23 @@ main {
 .panel-view {
   min-width: 0;
 }
+.record-id-list {
+  display: grid;
+  gap: 6px;
+  max-height: 210px;
+  overflow: auto;
+}
+.record-id-chip {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-bg);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .record-context {
   margin: 8px 0 14px;
 }
