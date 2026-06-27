@@ -26,7 +26,7 @@ def cli_guide(args) -> int:
 ## Recommended Workflow
 1. **Understand Context**: Use `arctx dump` to view the graph. Check your **Current Lane** and **Active Frontiers** at the bottom of this guide to know where to resume work.
 2. **Isolate Approaches**: Use lanes to explore different solutions independently.
-3. **Record Everything**: Record your steps (e.g., via `arctx add step` or `arctx git commit`). The graph should capture *how* you solved the problem, not just the final result.
+3. **Record Everything**: Record your steps (e.g., via `arctx add` or `arctx git commit`). The graph should capture *how* you solved the problem, not just the final result.
 4. **Merge & Summarize**: Once you have explored multiple paths or completed a complex task, use `arctx lane join` to merge your active frontiers and attach a summary of your findings.
 
 ## Essential Core Commands
