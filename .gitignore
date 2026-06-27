@@ -6,6 +6,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .uv-cache/
+.uv-tools/
 .venv/
 .coverage
 htmlcov/
@@ -25,9 +26,9 @@ run.json
 # Package build artifacts
 dist/
 *.egg-info/
+packages/arctx/src/arctx/web/static/
 
 # IDE / Agent state directories
 .claude/
 .antigravitycli/
 .codex/
-
