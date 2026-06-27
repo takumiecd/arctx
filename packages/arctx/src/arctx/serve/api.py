@@ -395,7 +395,13 @@ def _adoption_record_ids(handle, body: dict) -> tuple[tuple[str, ...], str, str]
     reachable = handle.run_graph.reachable_from(node_id)
     producer_step_id = handle.run_graph.step_to_node(node_id)
     producer_step_ids = (producer_step_id,) if producer_step_id is not None else ()
-    ids = (node_id,) + tuple(reachable.node_ids) + producer_step_ids + tuple(reachable.step_ids)
+    ids = (
+        (node_id,)
+        + tuple(reachable["node_ids"])
+        + producer_step_ids
+        + tuple(reachable["step_ids"])
+        + tuple(reachable["payload_ids"])
+    )
     return _without_run_root(handle, ids), "reachable", node_id
 
 
@@ -403,7 +409,7 @@ def _lane_local_head_record_ids(handle, node_id: str) -> tuple[str, ...]:
     if node_id not in handle.run_graph.nodes:
         raise ApiError(404, f"unknown node_id: {node_id}")
     membership = lane_membership(handle.run_graph)
-    lane_id = membership.lane_for_node_id(node_id)
+    lane_id = membership.node_to_lane.get(node_id)
     if lane_id is None:
         raise ApiError(400, f"node {node_id} is not lane-owned")
     ids: list[str] = [node_id]
@@ -412,14 +418,14 @@ def _lane_local_head_record_ids(handle, node_id: str) -> tuple[str, ...]:
         step_id = handle.run_graph.step_to_node(current)
         if step_id is None:
             break
-        if membership.lane_for_step_id(step_id) != lane_id:
+        if membership.step_to_lane.get(step_id) != lane_id:
             break
         ids.append(step_id)
         step = handle.run_graph.steps[step_id]
         if not step.input_node_ids:
             break
         parent = step.input_node_ids[0]
-        if membership.lane_for_node_id(parent) != lane_id:
+        if membership.node_to_lane.get(parent) != lane_id:
             break
         ids.append(parent)
         current = parent
@@ -430,20 +436,23 @@ def _lane_local_tail_record_ids(handle, node_id: str) -> tuple[str, ...]:
     if node_id not in handle.run_graph.nodes:
         raise ApiError(404, f"unknown node_id: {node_id}")
     membership = lane_membership(handle.run_graph)
-    lane_id = membership.lane_for_node_id(node_id)
+    lane_id = membership.node_to_lane.get(node_id)
     if lane_id is None:
         raise ApiError(400, f"node {node_id} is not lane-owned")
     ids: list[str] = [node_id]
+    producer_step_id = handle.run_graph.step_to_node(node_id)
+    if producer_step_id is not None and membership.step_to_lane.get(producer_step_id) == lane_id:
+        ids.append(producer_step_id)
     frontier = [node_id]
     seen_nodes = {node_id}
     while frontier:
         current = frontier.pop()
         for step_id in handle.run_graph.steps_from_node(current):
-            if membership.lane_for_step_id(step_id) != lane_id:
+            if membership.step_to_lane.get(step_id) != lane_id:
                 continue
             ids.append(step_id)
             child = handle.run_graph.steps[step_id].output_node_id
-            if child in seen_nodes or membership.lane_for_node_id(child) != lane_id:
+            if child in seen_nodes or membership.node_to_lane.get(child) != lane_id:
                 continue
             seen_nodes.add(child)
             ids.append(child)
@@ -470,33 +479,47 @@ def _get_ext(store, run_id: str) -> dict:
     from arctx.ext.enabled import load_enabled
 
     enabled = {item.name for item in load_enabled(store.run_path(run_id))}
-    return {"available": list_available(), "enabled": sorted(enabled)}
+    extensions = [
+        {"name": name, "enabled": name in enabled}
+        for name in list_available()
+    ]
+    return {
+        "extensions": extensions,
+        "available": [item["name"] for item in extensions],
+        "enabled": sorted(enabled),
+    }
 
 
 def _post_ext_enable(store, run_id: str, body: dict) -> dict:
     from arctx.ext import load_extension
-    from arctx.ext.enabled import enable_extension
+    from arctx.ext.enabled import EnabledExtension, add_enabled, load_enabled
 
     name = body.get("name")
     if not isinstance(name, str) or not name.strip():
         raise ApiError(400, "name is required")
     ext = load_extension(name.strip())
-    enable_extension(store.run_path(run_id), ext.name, ext.version)
-    return {"enabled": ext.name, "version": ext.version}
+    before = {item.name for item in load_enabled(store.run_path(run_id))}
+    add_enabled(store.run_path(run_id), EnabledExtension(name=ext.name, version=ext.version))
+    status = "already_enabled" if ext.name in before else "enabled"
+    return {"status": status, "name": ext.name, "version": ext.version}
 
 
 def _post_ext_disable(store, run_id: str, body: dict) -> dict:
-    from arctx.ext.enabled import disable_extension
+    from arctx.ext.enabled import load_enabled, save_enabled
 
     name = body.get("name")
     if not isinstance(name, str) or not name.strip():
         raise ApiError(400, "name is required")
-    disable_extension(store.run_path(run_id), name.strip())
-    return {"disabled": name.strip()}
+    ext_name = name.strip()
+    current = load_enabled(store.run_path(run_id))
+    kept = [item for item in current if item.name != ext_name]
+    save_enabled(store.run_path(run_id), kept)
+    return {"status": "disabled", "name": ext_name}
 
 
 def _post_artifacts_upload(store, run_id: str, body: dict) -> dict:
     import base64
+    import uuid
     from pathlib import Path
 
     filename = body.get("filename")
@@ -514,11 +537,15 @@ def _post_artifacts_upload(store, run_id: str, body: dict) -> dict:
     except ValueError as exc:
         raise ApiError(400, f"invalid base64 file_data: {exc}") from exc
 
+    if not store.run_path(run_id).exists():
+        raise ApiError(404, f"unknown run_id: {run_id}")
+
+    stem = f"art_{uuid.uuid4().hex[:8]}_{safe_name}"
     artifacts_dir = store.run_path(run_id) / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    target = artifacts_dir / safe_name
+    target = artifacts_dir / stem
     target.write_bytes(raw)
-    return {"filename": safe_name, "size_bytes": len(raw), "path": f"artifacts/{safe_name}"}
+    return {"filename": safe_name, "size_bytes": len(raw), "path": f"artifacts/{stem}"}
 
 
 def _resolve_target_kind(handle, record_id: str) -> str:
