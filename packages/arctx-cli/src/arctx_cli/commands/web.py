@@ -1,8 +1,4 @@
-"""``arctx-web`` entry point.
-
-Resolves a run (reusing arctx-cli's run/user resolution), locates the built
-frontend, serves both over HTTP, and opens a browser.
-"""
+"""Serve the bundled ARCTX web GUI for one run."""
 
 from __future__ import annotations
 
@@ -10,29 +6,24 @@ import argparse
 import sys
 import webbrowser
 
+from arctx.web.assets import find_static_dir
+from arctx.web.extensions import load_enabled_routes, load_enabled_scripts
+from arctx.web.server import serve_gui
+
 from arctx_cli.context import (
+    resolve_lane_id_from_args,
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_lane_id_from_args,
 )
 
-from arctx_web.assets import find_static_dir
-from arctx_web.extensions import load_enabled_routes, load_enabled_scripts
-from arctx_web.server import serve_gui
 
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="arctx-web",
-        description="Serve the arctx web GUI for one run (read/write).",
-    )
+def add_parser(subparsers) -> argparse.ArgumentParser:
+    parser = subparsers.add_parser("web", help="Serve the bundled web GUI for one run")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8788, help="Bind port (default: 8788)")
-    parser.add_argument("--cors-origin", default="*",
-                        help="Access-Control-Allow-Origin value (default: *)")
-    parser.add_argument("--no-browser", action="store_true",
-                        help="Do not open a browser automatically")
+    parser.add_argument("--cors-origin", default="*", help="Access-Control-Allow-Origin value (default: *)")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open a browser automatically")
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
@@ -40,17 +31,13 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Serve the browser GUI for one ARCTX run."""
-    args = _build_parser().parse_args(argv)
-
+def cli_web(args) -> int:
     static_dir = find_static_dir()
     if static_dir is None:
         print(
-            "arctx-web: no built frontend found.\n"
+            "arctx web: no built frontend found.\n"
             "  Build it first:  npm --prefix web install && npm --prefix web run build\n"
-            "  or bundle it:    python -m arctx_web.bundle\n"
-            "  or point at one: ARCTX_WEB_STATIC=/path/to/dist arctx-web",
+            "  or point at one: ARCTX_WEB_STATIC=/path/to/dist arctx web",
             file=sys.stderr,
         )
         return 1
@@ -58,8 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     store = resolve_store(args.store_dir)
     run_id = resolve_run_id_from_args(args)
     if not store.run_path(run_id).exists():
-        print(f"arctx-web: unknown run_id: {run_id}", file=sys.stderr)
-        return 1
+        raise KeyError(f"unknown run_id: {run_id}")
+
     extension_scripts = load_enabled_scripts(store.run_path(run_id))
     extension_routes = load_enabled_routes(store.run_path(run_id))
 
@@ -81,7 +68,3 @@ def main(argv: list[str] | None = None) -> int:
         on_ready=_open,
     )
     return 0
-
-
-if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())

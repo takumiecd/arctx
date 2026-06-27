@@ -1,9 +1,4 @@
-"""arctx-web extension discovery and script loading.
-
-This is intentionally separate from ``arctx.ext``. Core ARCTX extensions own
-schema, verbs, and CLI behavior; arctx-web extensions own browser-side display
-code such as payload renderers.
-"""
+"""Browser-side extension discovery for the bundled GUI."""
 
 from __future__ import annotations
 
@@ -15,13 +10,9 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from arctx.ext.enabled import load_enabled
 
-ENTRY_POINT_GROUP = "arctx_web.extensions"
-
 
 @dataclass(frozen=True)
 class WebRequest:
-    """Context passed to an arctx-web extension route."""
-
     store: Any
     run_id: str
     run_dir: Path
@@ -35,39 +26,34 @@ WebRouteHandler = Callable[[WebRequest], tuple[int, dict[str, Any]]]
 
 @dataclass(frozen=True)
 class WebRoute:
-    """One JSON route contributed by an arctx-web extension."""
-
     method: str
     path: str
     handler: WebRouteHandler
 
 
+ENTRY_POINT_GROUP = "arctx_web.extensions"
+
+
 @runtime_checkable
 class WebExtension(Protocol):
-    """Browser-side contribution for one arctx extension."""
-
     def scripts(self) -> list[str]:
         """Return JavaScript snippets to inject into the GUI page."""
 
     def routes(self) -> list[WebRoute]:
-        """Return JSON API routes owned by this web extension."""
+        """Return JSON routes owned by this web extension."""
 
 
 class WebExtensionBase:
-    """Convenience base class for arctx-web extensions."""
-
     def scripts(self) -> list[str]:
-        """Return JavaScript snippets to inject into the GUI page."""
         return []
 
     def routes(self) -> list[WebRoute]:
-        """Return JSON API routes owned by this web extension."""
         return []
 
 
 _BUILTIN: dict[str, str] = {
-    "diagram": "arctx_web.ext.diagram:DiagramWebExtension",
-    "git": "arctx_web.ext.git:GitWebExtension",
+    "diagram": "arctx.web.ext.diagram:DiagramWebExtension",
+    "git": "arctx.web.ext.git:GitWebExtension",
 }
 
 
@@ -93,12 +79,6 @@ def _load_provider(name: str) -> WebExtension | None:
 
 
 def load_enabled_scripts(run_dir: str | Path) -> list[str]:
-    """Load web scripts for extensions enabled on this run.
-
-    Entry point names must match the ARCTX extension names recorded in
-    ``extensions.json``. Missing web extensions are ignored; not every core
-    extension needs browser-side display code.
-    """
     scripts: list[str] = []
     for item in load_enabled(run_dir):
         provider = _load_provider(item.name)
@@ -109,7 +89,6 @@ def load_enabled_scripts(run_dir: str | Path) -> list[str]:
 
 
 def load_enabled_routes(run_dir: str | Path) -> list[WebRoute]:
-    """Load JSON routes for extensions enabled on this run."""
     routes: list[WebRoute] = []
     for item in load_enabled(run_dir):
         provider = _load_provider(item.name)
@@ -130,8 +109,6 @@ def _instantiate(raw: object) -> WebExtension:
 
 
 class _ScriptOnlyExtension(WebExtensionBase):
-    """Adapter for older web extensions that only contributed scripts."""
-
     def __init__(self, raw: object) -> None:
         self._raw: Any = raw
 

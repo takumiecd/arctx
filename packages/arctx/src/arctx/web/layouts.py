@@ -1,9 +1,4 @@
-"""Per-run web layout sidecar storage.
-
-Layouts are GUI view state, not ARCTX graph data.  They are stored alongside a
-run as ``web_layouts.json`` so node positions can persist without polluting the
-core append-only graph or payload history.
-"""
+"""Per-run sidecar storage for graph layout state."""
 
 from __future__ import annotations
 
@@ -53,11 +48,9 @@ def save_layout(run_dir: str | Path, body: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(nodes, dict):
         raise ValueError("nodes must be an object")
     cleaned = _clean_nodes(nodes)
-
     doc = load_layouts(run_dir)
     doc["layouts"][view] = {"nodes": cleaned}
-    path = layout_path(run_dir)
-    path.write_text(
+    layout_path(run_dir).write_text(
         json.dumps(doc, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )

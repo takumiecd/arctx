@@ -1,9 +1,4 @@
-"""HTTP server that serves the GUI: API routes + static frontend.
-
-The API routes are delegated verbatim to :func:`arctx_cli.serve.api.dispatch`
-(one source of truth for the data contract). Everything else is served from the
-built frontend directory, with an SPA fallback to ``index.html``.
-"""
+"""Serve the bundled GUI: shared API routes plus static frontend assets."""
 
 from __future__ import annotations
 
@@ -16,23 +11,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from arctx_cli.serve.api import dispatch
+from arctx.serve.api import dispatch
+from arctx.web.extensions import WebRequest, WebRoute
+from arctx.web.layouts import get_layout, save_layout
 
-from arctx_web.extensions import WebRequest, WebRoute
-from arctx_web.layouts import get_layout, save_layout
-
-# Paths handled by the JSON API; everything else is a static asset request.
 API_PATHS = frozenset({
     "/run", "/runs", "/node", "/step", "/attach", "/cut", "/uncut",
-    "/reparent", "/lane", "/lane/adopt", "/health",
-    "/artifacts/upload",
+    "/reparent", "/lane", "/lane/adopt", "/health", "/artifacts/upload",
     "/ext", "/ext/enable", "/ext/disable", "/assets/visible",
 })
 WEB_API_PATHS = frozenset({"/web/layout"})
-
-
 ARTIFACT_PREFIX = "/artifacts/"
-
 
 
 def build_handler(
@@ -46,17 +35,11 @@ def build_handler(
     extension_routes: list[WebRoute] | tuple[WebRoute, ...] = (),
     cors_origin: str = "*",
 ) -> type[BaseHTTPRequestHandler]:
-    """Build a request handler class bound to one run and a static dir."""
-    route_map = {
-        (route.method.upper(), route.path.rstrip("/") or "/"): route.handler
-        for route in extension_routes
-    }
+    route_map = {(route.method.upper(), route.path.rstrip("/") or "/"): route.handler for route in extension_routes}
 
     class _Handler(BaseHTTPRequestHandler):
         def log_message(self, *_: Any) -> None:
             pass
-
-        # ----- helpers -----
 
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", cors_origin)
@@ -82,20 +65,12 @@ def build_handler(
             self.end_headers()
             self.wfile.write(data)
 
-        # ----- routing -----
-
         def _path(self) -> str:
             return self.path.split("?", 1)[0]
 
         def _effective_run_id(self) -> str:
-            # The GUI run picker targets a different run per request via ?run=
-            # or the X-Arctx-Run-Id header. Honor it only when the run exists;
-            # otherwise stay on the bound run so a stale id can't break the page.
             query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            override = (
-                (query.get("run") or [None])[0]
-                or self.headers.get("X-Arctx-Run-Id")
-            )
+            override = (query.get("run") or [None])[0] or self.headers.get("X-Arctx-Run-Id")
             if override and override != run_id:
                 try:
                     if store.run_path(override).exists():
@@ -105,11 +80,7 @@ def build_handler(
             return run_id
 
         def _effective_lane_id(self) -> str:
-            return (
-                self.headers.get("X-Arctx-Work-Session-Id")
-                or self.headers.get("X-Arctx-Lane-Id")
-                or lane_id
-            )
+            return self.headers.get("X-Arctx-Work-Session-Id") or self.headers.get("X-Arctx-Lane-Id") or lane_id
 
         def _is_api(self) -> bool:
             return self._path() in API_PATHS
@@ -139,14 +110,13 @@ def build_handler(
             except (ValueError, json.JSONDecodeError) as exc:
                 self._send_json(400, {"error": f"invalid JSON body: {exc}"})
                 return
-            query = {
-                k: v[0]
-                for k, v in urllib.parse.parse_qs(
-                    urllib.parse.urlparse(self.path).query
-                ).items()
-            }
+            query = {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).items()}
             status, payload = dispatch(
-                store, self._effective_run_id(), method, self._path(), body,
+                store,
+                self._effective_run_id(),
+                method,
+                self._path(),
+                body,
                 user_id=user_id,
                 lane_id=self._effective_lane_id(),
                 query=query,
@@ -182,20 +152,17 @@ def build_handler(
                 return
             if method == "PUT":
                 try:
-                    body = self._read_body() or {}
-                    self._send_json(200, save_layout(run_dir, body))
+                    self._send_json(200, save_layout(run_dir, self._read_body() or {}))
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._send_json(400, {"error": str(exc)})
                 return
             self._send_json(405, {"error": "method not allowed"})
 
         def _resolve_static(self, url_path: str) -> Path:
-            # Normalize and confine to static_dir (no path traversal).
             rel = posixpath.normpath(url_path).lstrip("/")
             target = (static_dir / rel).resolve()
             root = static_dir.resolve()
             if target == root or root not in target.parents:
-                # Directory or outside root -> SPA fallback.
                 return root / "index.html"
             if not target.is_file():
                 return root / "index.html"
@@ -213,16 +180,14 @@ def build_handler(
             self._send_bytes(200, data, ctype or "application/octet-stream")
 
         def _serve_artifact(self) -> None:
-            target = _resolve_artifact(
-                store.run_path(self._effective_run_id()), self._path()
-            )
+            target = _resolve_artifact(store.run_path(self._effective_run_id()), self._path())
             if target is None or not target.is_file():
                 self._send_bytes(404, b"not found", "text/plain")
                 return
             ctype, _ = mimetypes.guess_type(str(target))
             self._send_bytes(200, target.read_bytes(), ctype or "application/octet-stream")
 
-        def do_GET(self) -> None:  # noqa: N802
+        def do_GET(self) -> None:
             if self._is_api():
                 self._api("GET")
             elif self._is_web_api():
@@ -232,7 +197,7 @@ def build_handler(
             else:
                 self._serve_static()
 
-        def do_POST(self) -> None:  # noqa: N802
+        def do_POST(self) -> None:
             if self._is_api():
                 self._api("POST")
             elif self._is_web_api():
@@ -240,7 +205,7 @@ def build_handler(
             else:
                 self._send_json(404, {"error": "not found"})
 
-        def do_PUT(self) -> None:  # noqa: N802
+        def do_PUT(self) -> None:
             if self._is_web_api():
                 self._web_api("PUT")
             else:
@@ -263,40 +228,36 @@ def serve_gui(
     cors_origin: str = "*",
     on_ready: Callable[[str], None] | None = None,
 ) -> None:
-    """Run a blocking server that serves the GUI and the run API.
-
-    ``on_ready`` (if given) is called with the bound URL once the socket is
-    listening, before the blocking serve loop — used to open a browser.
-    """
     handler = build_handler(
-        store, run_id, static_dir=static_dir,
-        user_id=user_id, lane_id=lane_id, cors_origin=cors_origin,
+        store,
+        run_id,
+        static_dir=static_dir,
+        user_id=user_id,
+        lane_id=lane_id,
+        cors_origin=cors_origin,
         extension_scripts=extension_scripts,
         extension_routes=extension_routes,
     )
     httpd = ThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}/"
-    print(f"arctx-web: {url}  (run {run_id})")
+    print(f"arctx web: {url}  (run {run_id})")
     if on_ready is not None:
         on_ready(url)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\narctx-web: stopped")
+        print("\narctx web: stopped")
     finally:
         httpd.server_close()
 
 
 def _inject_extension_scripts(data: bytes, scripts: list[str] | tuple[str, ...]) -> bytes:
     html = data.decode("utf-8")
-    tags = "\n".join(
-        f'<script data-arctx-web-extension>{_escape_script(script)}</script>' for script in scripts
-    )
+    tags = "\n".join(f'<script data-arctx-web-extension>{_escape_script(script)}</script>' for script in scripts)
     if not tags:
         return data
-    marker = "</head>"
-    if marker in html:
-        html = html.replace(marker, tags + "\n" + marker, 1)
+    if "</head>" in html:
+        html = html.replace("</head>", tags + "\n</head>", 1)
     elif "</html>" in html:
         html = html.replace("</html>", tags + "\n</html>", 1)
     else:

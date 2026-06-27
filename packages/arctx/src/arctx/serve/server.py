@@ -1,10 +1,4 @@
-"""Thin ``http.server`` shell around :func:`arctx_cli.serve.api.dispatch`.
-
-Stdlib only. The handler does just three things: read the JSON body, call
-``dispatch``, and write the JSON response (with CORS headers so a frontend dev
-server on another origin can talk to it). All routing/verb logic lives in
-``api.py``; keep this module dumb.
-"""
+"""Thin stdlib HTTP shell around :func:`arctx.serve.api.dispatch`."""
 
 from __future__ import annotations
 
@@ -13,14 +7,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from arctx_cli.serve.api import dispatch
+from arctx.serve.api import dispatch
 
 
-def _make_handler(store: Any, run_id: str, *, user_id: str,
-                  lane_id: str, cors_origin: str):
+def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_origin: str):
     class _Handler(BaseHTTPRequestHandler):
-        # Quiet by default; the CLI prints its own startup line.
-        def log_message(self, *_: Any) -> None:  # noqa: D401
+        def log_message(self, *_: Any) -> None:
             pass
 
         def _send(self, status: int, payload: dict) -> None:
@@ -37,7 +29,7 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
             self.end_headers()
             self.wfile.write(data)
 
-        def do_OPTIONS(self) -> None:  # noqa: N802 (stdlib naming)
+        def do_OPTIONS(self) -> None:
             self._send(204, {})
 
         def _read_body(self) -> dict | None:
@@ -61,28 +53,28 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
             except (ValueError, json.JSONDecodeError) as exc:
                 self._send(400, {"error": f"invalid JSON body: {exc}"})
                 return
-            ws_id = (
+            request_lane_id = (
                 self.headers.get("X-Arctx-Work-Session-Id")
                 or self.headers.get("X-Arctx-Lane-Id")
                 or lane_id
             )
-            # The GUI can target a different run per request (its run picker)
-            # via ?run= or the X-Arctx-Run-Id header; fall back to the bound run.
-            req_run_id = (
-                query.get("run")
-                or self.headers.get("X-Arctx-Run-Id")
-                or run_id
-            )
+            request_run_id = query.get("run") or self.headers.get("X-Arctx-Run-Id") or run_id
             status, payload = dispatch(
-                store, req_run_id, method, path, body,
-                user_id=user_id, lane_id=ws_id, query=query,
+                store,
+                request_run_id,
+                method,
+                path,
+                body,
+                user_id=user_id,
+                lane_id=request_lane_id,
+                query=query,
             )
             self._send(status, payload)
 
-        def do_GET(self) -> None:  # noqa: N802
+        def do_GET(self) -> None:
             self._handle("GET")
 
-        def do_POST(self) -> None:  # noqa: N802
+        def do_POST(self) -> None:
             self._handle("POST")
 
     return _Handler
@@ -98,15 +90,7 @@ def serve(
     lane_id: str = "default",
     cors_origin: str = "*",
 ) -> None:
-    """Run a blocking HTTP server exposing one run for read/write.
-
-    Returns only when interrupted (Ctrl-C). Binds ``host``/``port`` and serves
-    until then.
-    """
-    handler = _make_handler(
-        store, run_id,
-        user_id=user_id, lane_id=lane_id, cors_origin=cors_origin,
-    )
+    handler = _make_handler(store, run_id, user_id=user_id, lane_id=lane_id, cors_origin=cors_origin)
     httpd = ThreadingHTTPServer((host, port), handler)
     print(f"arctx serve: http://{host}:{port}  (run {run_id})")
     print("  GET /run · POST /step · POST /attach · POST /cut")

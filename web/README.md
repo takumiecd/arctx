@@ -1,4 +1,4 @@
-# arctx-web
+# arctx web
 
 Web GUI for arctx runs (React + React Flow + Vite). One frontend, two data
 modes — the UI only talks to a `RunClient`, so the same components serve both:
@@ -18,14 +18,14 @@ The data contract is exactly `arctx export --format json`
 
 ## Live mode
 
-In one terminal, serve a run:
+In one terminal, start the bundled GUI:
 
 ```sh
-arctx serve --run <RUN_ID>          # default http://127.0.0.1:8787
+arctx web --run <RUN_ID>            # default http://127.0.0.1:8788
 ```
 
-In another, start the frontend (the Vite dev server proxies API routes to
-`arctx serve`):
+For frontend development, run the Vite dev server separately and proxy API
+routes to `arctx serve`:
 
 ```sh
 cd web
@@ -36,7 +36,7 @@ npm run dev                         # http://localhost:5173
 Point at a non-default backend with `VITE_ARCTX_API` (dev proxy) or the `?api=`
 query param (built app), e.g. `?api=http://127.0.0.1:9000`.
 
-When served by `arctx-web`, manual node positions are persisted in
+When served by `arctx web`, manual node positions are persisted in
 `<run_dir>/web_layouts.json` through `/web/layout`. Plain `arctx serve` does not
 provide that endpoint, so the frontend simply uses automatic layout there.
 
@@ -86,7 +86,7 @@ frontend chooses how to display them by `payload_type`, or by
 Unknown payloads fall back to raw JSON.
 
 Built-in renderers cover core payloads plus the standard `git` and `command`
-extension payloads. When served through `arctx-web`, third-party renderer
+extension payloads. When served through `arctx web`, third-party renderer
 scripts are loaded from the `arctx_web.extensions` entry point group for
 extensions enabled on the run. Extra renderers can also be registered from any
 script loaded by the page:
@@ -125,7 +125,7 @@ directly.
 
 Image sources are intentionally restricted to `data:image/png|jpeg|webp` and
 run artifacts (`artifact://plots/loss.png`, served as `/artifacts/plots/loss.png`
-by `arctx-web`). Sections support `json`, `list`, `text`, `table`, `markdown`,
+by `arctx web`). Sections support `json`, `list`, `text`, `table`, `markdown`,
 `diff`, and `image`; markdown is rendered as safe text, not raw HTML.
 
 For trusted local extensions that need richer UI, register a custom element.

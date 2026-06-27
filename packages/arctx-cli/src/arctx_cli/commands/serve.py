@@ -3,12 +3,14 @@
 This is the live-mode backend for GUI surfaces. ``GET /run`` returns the same
 JSON document as ``arctx export --format json``; the ``POST`` routes write
 through the same verbs as ``arctx add`` / ``arctx cut``. See
-:mod:`arctx_cli.serve` for the route table.
+:mod:`arctx.serve` for the route table.
 """
 
 from __future__ import annotations
 
 import argparse
+
+from arctx.serve import serve
 
 from arctx_cli.context import (
     resolve_run_id_from_args,
@@ -16,7 +18,6 @@ from arctx_cli.context import (
     resolve_user_id_from_args,
     resolve_lane_id_from_args,
 )
-from arctx_cli.serve import serve
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:

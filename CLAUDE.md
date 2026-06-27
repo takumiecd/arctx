@@ -31,7 +31,7 @@ Docs are Japanese-first and should match the current implementation:
 
 ## Version And Compatibility
 
-This project is `0.3.0b3` beta. Breaking changes are acceptable and expected. Do not add compatibility shims for removed APIs unless explicitly requested. Old run storage schemas do not need migration support by default.
+This project is `0.3.1b1` beta. Breaking changes are acceptable and expected. Do not add compatibility shims for removed APIs unless explicitly requested. Old run storage schemas do not need migration support by default.
 
 ## Architecture
 
