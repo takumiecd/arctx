@@ -372,8 +372,8 @@ export function App() {
                         if (name) {
                           createLane.mutate(name, {
                             onSuccess: (res) => {
-                              if (res.lane?.work_session_id) {
-                                setActiveLaneId(res.lane.work_session_id);
+                              if (res.lane?.lane_id) {
+                                setActiveLaneId(res.lane.lane_id);
                               }
                             }
                           });

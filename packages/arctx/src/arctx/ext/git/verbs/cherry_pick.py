@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from arctx.core.schema.graph import Node, Step
-from arctx.core.schema.work_helpers import make_session_pointer_event
+from arctx.core.schema.work_helpers import make_lane_pointer_event
 from arctx.ext.git.events import make_branch_tip_event
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.payloads import BranchPayload, CherryPickPayload, GitChangePayload
@@ -141,7 +141,7 @@ def cherry_pick_impl(
         )
         self.run_graph.add_work_event(tip_event)
 
-        sp_event = make_session_pointer_event(
+        sp_event = make_lane_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
             lane_id=lane_id,

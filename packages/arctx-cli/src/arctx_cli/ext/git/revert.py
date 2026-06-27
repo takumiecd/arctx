@@ -2,7 +2,7 @@
 
 Drives a ``git revert`` and records the corresponding arctx Step with
 BranchPayload, GitChangePayload, RevertPayload, BranchTipEvent, and
-SessionPointerEvent.
+LanePointerEvent.
 """
 
 from __future__ import annotations

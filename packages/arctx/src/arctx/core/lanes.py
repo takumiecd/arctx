@@ -758,7 +758,6 @@ def lane_export_view(
     ]
     return {
         "lanes": sessions,
-        "lanes": sessions,
         "work_events": events,
         "record_provenance": {
             record_id: provenance.to_dict()

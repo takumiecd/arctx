@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from arctx.ext.git.payloads import BranchPayload, CherryPickPayload, GitChangePayload, RevertPayload
-from arctx.core.schema.work_helpers import latest_branch_tip, latest_session_pointer
+from arctx.core.schema.work_helpers import latest_branch_tip, latest_lane_pointer
 import arctx as arctx
 from arctx.ext import attach_extensions
 from arctx.core.schema.requirements import Requirement
@@ -146,7 +146,7 @@ class TestRevertImplDryRun:
         )
         assert payloads_before == payloads_after
 
-    def test_session_pointer_advances(self):
+    def test_lane_pointer_advances(self):
         handle = _make_handle()
         _first_commit(handle, sha="sha_orig")
 
@@ -158,7 +158,7 @@ class TestRevertImplDryRun:
             head_commit="sha_rev",
             dry_run=True,
         )
-        sp = latest_session_pointer(handle.run_graph, "ws_1")
+        sp = latest_lane_pointer(handle.run_graph, "ws_1")
         assert sp is not None
         assert t.output_node_id in sp.data["current_node_ids"]
 
@@ -249,7 +249,7 @@ class TestRevertImplDryRun:
             head_commit="sha_rev_no_event",
             dry_run=True,
         )
-        # No extra branch_tip / session_pointer events.
+        # No extra branch_tip / lane_pointer events.
         assert len(handle.run_graph.work_events) == initial_events
 
     def test_current_sha_is_new_sha(self):

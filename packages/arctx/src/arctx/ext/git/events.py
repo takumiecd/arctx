@@ -35,7 +35,7 @@ def make_branch_tip_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=lane_id,
+        lane_id=lane_id,
         user_id=user_id,
         event_type=BRANCH_TIP_EVENT,
         data={
@@ -60,7 +60,7 @@ def make_amend_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=lane_id,
+        lane_id=lane_id,
         user_id=user_id,
         event_type=AMEND_EVENT,
         data={
@@ -85,7 +85,7 @@ def make_rebase_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=lane_id,
+        lane_id=lane_id,
         user_id=user_id,
         event_type=REBASE_EVENT,
         data={
@@ -111,7 +111,7 @@ def make_reset_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=lane_id,
+        lane_id=lane_id,
         user_id=user_id,
         event_type=RESET_EVENT,
         data={

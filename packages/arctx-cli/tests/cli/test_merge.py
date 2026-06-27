@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from arctx.core.schema.work_helpers import make_session_pointer_event
+from arctx.core.schema.work_helpers import make_lane_pointer_event
 
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.context import resolve_store
@@ -41,7 +41,7 @@ def _build_two_branch_run(handle, ws_main: str = "ws_main", ws_feat: str = "ws_f
     n_main = t_main.output_node_id
 
     # Reset feature session to root.
-    sp = make_session_pointer_event(
+    sp = make_lane_pointer_event(
         event_id=handle._next_id("we"),
         run_id=handle.run_id,
         lane_id=ws_feat,

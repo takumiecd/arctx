@@ -12,7 +12,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
@@ -44,7 +44,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_create.add_argument("--json", default=None, help="Payload fields as a JSON object")
     sp_create.add_argument("--store-dir", default=None)
     sp_create.add_argument("--user", default=None)
-    sp_create.add_argument("--work-session", default=None)
+    sp_create.add_argument("--lane", default=None)
 
     sp_show = step_sub.add_parser("show", help="Show one step")
     sp_show.add_argument("step_id")
@@ -77,7 +77,7 @@ def run_step_command(
     content: dict,
     store_dir: str,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -94,13 +94,13 @@ def run_step_command(
         input_node_ids,
         payload,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
     maybe_append_or_save(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         before=before,
     )
     return {"step": step.to_dict()}
@@ -115,7 +115,7 @@ def run_step_create_command(
     json_data: dict,
     store_dir: str,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -134,13 +134,13 @@ def run_step_create_command(
         input_node_ids,
         payload,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
     maybe_append_or_save(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         before=before,
     )
     return {"step": step.to_dict()}
@@ -157,7 +157,7 @@ def cli_step(args) -> int:
                 json_data=parse_json_object(args.json),
                 store_dir=args.store_dir,
                 user_id=resolve_user_id_from_args(args),
-                work_session_id=resolve_work_session_id_from_args(args),
+                lane_id=resolve_lane_id_from_args(args),
             )
             print(json.dumps(result["step"], ensure_ascii=False, indent=2))
             return 0

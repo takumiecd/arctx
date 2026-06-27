@@ -22,8 +22,8 @@ from arctx.ext.git.events import (
     make_branch_tip_event,
 )
 from arctx.core.schema.work_helpers import (
-    latest_session_pointer,
-    make_session_pointer_event,
+    latest_lane_pointer,
+    make_lane_pointer_event,
 )
 
 if TYPE_CHECKING:
@@ -79,7 +79,7 @@ def resolve_current_node_ids(
 ) -> tuple[str, ...]:
     """Return the current node IDs for a session, or (root,) if none."""
     if lane_id is not None:
-        sp_event = latest_session_pointer(self.run_graph, lane_id)
+        sp_event = latest_lane_pointer(self.run_graph, lane_id)
         if sp_event is not None:
             raw = sp_event.data.get("current_node_ids") or []
             return tuple(str(n) for n in raw)
@@ -222,7 +222,7 @@ def record_forward_step(
         )
         self.run_graph.add_work_event(tip_event)
 
-        sp_event = make_session_pointer_event(
+        sp_event = make_lane_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
             lane_id=lane_id,

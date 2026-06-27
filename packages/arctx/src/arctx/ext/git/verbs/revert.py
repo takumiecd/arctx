@@ -118,7 +118,7 @@ def revert_impl(
     )
 
     from arctx.core.schema.graph import Node  # noqa: PLC0415
-    from arctx.core.schema.work_helpers import make_session_pointer_event  # noqa: PLC0415
+    from arctx.core.schema.work_helpers import make_lane_pointer_event  # noqa: PLC0415
     from arctx.ext.git.events import (  # noqa: PLC0415
         make_branch_tip_event,
     )
@@ -178,7 +178,7 @@ def revert_impl(
         )
         self.run_graph.add_work_event(tip_event)
 
-        sp_event = make_session_pointer_event(
+        sp_event = make_lane_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
             lane_id=lane_id,

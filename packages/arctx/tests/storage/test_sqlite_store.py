@@ -110,7 +110,7 @@ def test_append_batch_allows_shared_lane_multi_actor():
                 lane_id="ws_shared",
                 lane=Lane("ws_shared", run.run_id, "user_a"),
                 records=(),
-                events=(WorkEvent(event_id="we_a", run_id=run.run_id, work_session_id="ws_shared", user_id="user_a", event_type="note"),),
+                events=(WorkEvent(event_id="we_a", run_id=run.run_id, lane_id="ws_shared", user_id="user_a", event_type="note"),),
             )
         )
 
@@ -123,7 +123,7 @@ def test_append_batch_allows_shared_lane_multi_actor():
                 lane_id="ws_shared",
                 lane=Lane("ws_shared", run.run_id, "user_b"),
                 records=(),
-                events=(WorkEvent(event_id="we_b", run_id=run.run_id, work_session_id="ws_shared", user_id="user_b", event_type="note"),),
+                events=(WorkEvent(event_id="we_b", run_id=run.run_id, lane_id="ws_shared", user_id="user_b", event_type="note"),),
             )
         )
 

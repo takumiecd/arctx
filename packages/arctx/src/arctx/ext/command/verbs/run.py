@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from arctx.core.schema.graph import Node, Step
-from arctx.core.schema.work_helpers import latest_session_pointer, make_session_pointer_event
+from arctx.core.schema.work_helpers import latest_lane_pointer, make_lane_pointer_event
 from arctx.ext.command.payloads import CommandRunPayload
 
 if TYPE_CHECKING:
@@ -83,7 +83,7 @@ def run_impl(
     self.run_graph.attach_payload(payload)
 
     if user_id is not None and lane_id is not None:
-        pointer = make_session_pointer_event(
+        pointer = make_lane_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
             lane_id=lane_id,
@@ -122,7 +122,7 @@ def _resolve_current_node_ids(
     lane_id: str | None,
 ) -> tuple[str, ...]:
     if lane_id is not None:
-        pointer = latest_session_pointer(handle.run_graph, lane_id)
+        pointer = latest_lane_pointer(handle.run_graph, lane_id)
         if pointer is not None:
             raw_node_ids = pointer.data.get("current_node_ids") or []
             return tuple(str(node_id) for node_id in raw_node_ids)

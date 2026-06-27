@@ -1107,7 +1107,7 @@ function ProvenanceCard({
         </div>
         <p className="muted">
           This record has no lane provenance. It may have been created before lane
-          attribution was recorded, or without a work session.
+          attribution was recorded, or without a lane.
         </p>
       </section>
     );

@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Literal
 
 from arctx.core.cuts import cut_step_ids
 from arctx.core.schema.work_helpers import (
-    latest_session_pointer,
-    make_session_pointer_event,
+    latest_lane_pointer,
+    make_lane_pointer_event,
 )
 from arctx.ext.git.events import make_reset_event
 from arctx.ext.git.helpers.repo import resolve_worktree_path
@@ -79,7 +79,7 @@ def reset_impl(
 
     from_node_id: str
     if lane_id is not None:
-        sp = latest_session_pointer(graph, lane_id)
+        sp = latest_lane_pointer(graph, lane_id)
         if sp is not None:
             raw = sp.data.get("current_node_ids") or []
             ids = [str(n) for n in raw]
@@ -118,7 +118,7 @@ def reset_impl(
 
     current_branch: str | None = branch
     if current_branch is None and lane_id is not None:
-        sp = latest_session_pointer(graph, lane_id)
+        sp = latest_lane_pointer(graph, lane_id)
         if sp is not None:
             current_branch = sp.data.get("current_branch")
 
@@ -139,7 +139,7 @@ def reset_impl(
         graph.add_work_event(reset_event)
         event_id = reset_event.event_id
 
-        sp_event = make_session_pointer_event(
+        sp_event = make_lane_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
             lane_id=lane_id,

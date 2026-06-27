@@ -9,11 +9,11 @@ from arctx.core.schema.graph import Node
 from arctx.core.schema.requirements import Requirement
 from arctx.core.schema.work_helpers import (
     BRANCH_TIP_EVENT,
-    SESSION_POINTER_EVENT,
+    LANE_POINTER_EVENT,
     latest_branch_tip,
-    latest_session_pointer,
+    latest_lane_pointer,
     make_branch_tip_event,
-    make_session_pointer_event,
+    make_lane_pointer_event,
 )
 from arctx.ext import attach_extensions
 from arctx.ext.git.payloads import GitChangePayload, MergePayload
@@ -53,8 +53,8 @@ def _make_two_branch_run():
     n1 = t1.output_node_id
 
     # Advance feature branch from root (not from n1).
-    # We need to set session pointer to root for ws_feature first.
-    sp_event = make_session_pointer_event(
+    # We need to set lane pointer to root for ws_feature first.
+    sp_event = make_lane_pointer_event(
         event_id=handle._next_id("we"),
         run_id=handle.run_id,
         lane_id="ws_feature",
@@ -144,7 +144,7 @@ class TestMergeImplDryRun:
         assert tip_event is not None
         assert tip_event.data["tip_node_id"] == merge_t.output_node_id
 
-    def test_session_pointer_advances(self):
+    def test_lane_pointer_advances(self):
         handle, n_root, n1, n2, t1, t2 = _make_two_branch_run()
 
         merge_t = handle.git.merge(
@@ -155,7 +155,7 @@ class TestMergeImplDryRun:
             head_commit="sha_merge",
             dry_run=True,
         )
-        sp = latest_session_pointer(handle.run_graph, "ws_main")
+        sp = latest_lane_pointer(handle.run_graph, "ws_main")
         assert sp is not None
         assert merge_t.output_node_id in sp.data["current_node_ids"]
         # After merge, should be a single output node.
@@ -177,7 +177,7 @@ class TestMergeImplDryRun:
         )
 
         # Advance feature from root.
-        sp = make_session_pointer_event(
+        sp = make_lane_pointer_event(
             event_id=handle._next_id("we"),
             run_id=handle.run_id,
             lane_id="ws_feat",
@@ -227,12 +227,12 @@ class TestMergeImplDryRun:
             dry_run=True,
             # user_id and lane_id are None
         )
-        # No BranchTipEvent or SessionPointerEvent should be added.
+        # No BranchTipEvent or LanePointerEvent should be added.
         new_events = handle.run_graph.work_events[initial_event_count:]
         new_typed = [
             e
             for e in new_events
-            if e.event_type in (SESSION_POINTER_EVENT, BRANCH_TIP_EVENT)
+            if e.event_type in (LANE_POINTER_EVENT, BRANCH_TIP_EVENT)
         ]
         assert len(new_typed) == 0
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from arctx.ext.git.payloads import BranchPayload, CherryPickPayload, GitChangePayload
-from arctx.core.schema.work_helpers import latest_branch_tip, latest_session_pointer
+from arctx.core.schema.work_helpers import latest_branch_tip, latest_lane_pointer
 import arctx as arctx
 from arctx.ext import attach_extensions
 from arctx.core.schema.requirements import Requirement
@@ -139,7 +139,7 @@ class TestCherryPickImplDryRun:
         )
         assert branch_payloads[0].branch == "hotfix"
 
-    def test_session_pointer_advances(self):
+    def test_lane_pointer_advances(self):
         handle = _make_handle()
         _first_commit(handle, sha="sha_src6")
 
@@ -151,7 +151,7 @@ class TestCherryPickImplDryRun:
             head_commit="sha_cp6",
             dry_run=True,
         )
-        sp = latest_session_pointer(handle.run_graph, "ws_1")
+        sp = latest_lane_pointer(handle.run_graph, "ws_1")
         assert sp is not None
         assert t.output_node_id in sp.data["current_node_ids"]
 

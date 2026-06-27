@@ -31,7 +31,7 @@ def _add_session(graph: RunGraph, session_id: str = "ws_1") -> None:
     session = Lane(
         lane_id=session_id,
         run_id="run_1",
-        user_id="user",
+        created_by="user",
     )
     graph.add_lane(session)
 

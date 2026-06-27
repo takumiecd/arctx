@@ -7,11 +7,11 @@ import pytest
 from arctx.core.schema.work import Lane
 from arctx.core.schema.work_helpers import (
     BRANCH_TIP_EVENT,
-    SESSION_POINTER_EVENT,
+    LANE_POINTER_EVENT,
     latest_branch_tip,
-    latest_session_pointer,
+    latest_lane_pointer,
     make_branch_tip_event,
-    make_session_pointer_event,
+    make_lane_pointer_event,
 )
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node
@@ -24,15 +24,15 @@ def _make_graph_with_session(session_id: str = "ws_1", user_id: str = "user") ->
     session = Lane(
         lane_id=session_id,
         run_id="run_1",
-        user_id=user_id,
+        created_by=user_id,
     )
     graph.add_lane(session)
     return graph
 
 
-class TestMakeSessionPointerEvent:
+class TestMakeLanePointerEvent:
     def test_event_type(self):
-        ev = make_session_pointer_event(
+        ev = make_lane_pointer_event(
             event_id="we_1",
             run_id="run_1",
             lane_id="ws_1",
@@ -40,10 +40,10 @@ class TestMakeSessionPointerEvent:
             current_node_ids=("n_abc",),
             current_branch="main",
         )
-        assert ev.event_type == SESSION_POINTER_EVENT
+        assert ev.event_type == LANE_POINTER_EVENT
 
     def test_data_fields(self):
-        ev = make_session_pointer_event(
+        ev = make_lane_pointer_event(
             event_id="we_1",
             run_id="run_1",
             lane_id="ws_1",
@@ -55,7 +55,7 @@ class TestMakeSessionPointerEvent:
         assert ev.data["current_branch"] == "feature"
 
     def test_current_branch_none(self):
-        ev = make_session_pointer_event(
+        ev = make_lane_pointer_event(
             event_id="we_1",
             run_id="run_1",
             lane_id="ws_1",
@@ -66,7 +66,7 @@ class TestMakeSessionPointerEvent:
         assert ev.data["current_branch"] is None
 
     def test_metadata(self):
-        ev = make_session_pointer_event(
+        ev = make_lane_pointer_event(
             event_id="we_x",
             run_id="run_1",
             lane_id="ws_1",
@@ -105,25 +105,25 @@ class TestMakeBranchTipEvent:
         assert ev.data["tip_node_id"] == "n_tip"
 
 
-class TestLatestSessionPointer:
+class TestLatestLanePointer:
     def test_returns_none_when_no_events(self):
         graph = _make_graph_with_session()
-        assert latest_session_pointer(graph, "ws_1") is None
+        assert latest_lane_pointer(graph, "ws_1") is None
 
     def test_returns_latest_event(self):
         graph = _make_graph_with_session()
-        ev1 = make_session_pointer_event(
+        ev1 = make_lane_pointer_event(
             event_id="we_1", run_id="run_1", lane_id="ws_1", user_id="user",
             current_node_ids=("n_a",), current_branch="main",
         )
-        ev2 = make_session_pointer_event(
+        ev2 = make_lane_pointer_event(
             event_id="we_2", run_id="run_1", lane_id="ws_1", user_id="user",
             current_node_ids=("n_b",), current_branch="main",
         )
         graph.add_work_event(ev1)
         graph.add_work_event(ev2)
 
-        result = latest_session_pointer(graph, "ws_1")
+        result = latest_lane_pointer(graph, "ws_1")
         assert result is not None
         assert result.event_id == "we_2"
         assert result.data["current_node_ids"] == ["n_b"]
@@ -132,27 +132,27 @@ class TestLatestSessionPointer:
         graph = RunGraph()
         root = Node(node_id="n_root")
         graph.add_node(root)
-        ws_a = Lane(work_session_id="ws_a", run_id="run_1", user_id="user")
-        ws_b = Lane(work_session_id="ws_b", run_id="run_1", user_id="user")
+        ws_a = Lane(lane_id="ws_a", run_id="run_1", created_by="user")
+        ws_b = Lane(lane_id="ws_b", run_id="run_1", created_by="user")
         graph.add_lane(ws_a)
         graph.add_lane(ws_b)
 
-        ev_a = make_session_pointer_event(
+        ev_a = make_lane_pointer_event(
             event_id="we_a", run_id="run_1", lane_id="ws_a", user_id="user",
             current_node_ids=("n_root",), current_branch="main",
         )
-        ev_b = make_session_pointer_event(
+        ev_b = make_lane_pointer_event(
             event_id="we_b", run_id="run_1", lane_id="ws_b", user_id="user",
             current_node_ids=("n_other",), current_branch="dev",
         )
         graph.add_work_event(ev_a)
         graph.add_work_event(ev_b)
 
-        result = latest_session_pointer(graph, "ws_a")
+        result = latest_lane_pointer(graph, "ws_a")
         assert result is not None
         assert result.event_id == "we_a"
 
-        result_b = latest_session_pointer(graph, "ws_b")
+        result_b = latest_lane_pointer(graph, "ws_b")
         assert result_b is not None
         assert result_b.event_id == "we_b"
 

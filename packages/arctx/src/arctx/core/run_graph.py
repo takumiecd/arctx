@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import PayloadBase
-from arctx.core.schema.work import Lane, WorkEvent, Lane
+from arctx.core.schema.work import Lane, WorkEvent
 from arctx.core.types import JSONValue, to_jsonable
 
 
@@ -34,10 +34,10 @@ class RunGraph:
     def add_lane(self, lane: Lane) -> None:
         if lane.lane_id in self.lanes:
             existing = self.lanes[lane.lane_id]
-            if existing.user_id != lane.user_id:
+            if existing.created_by != lane.created_by:
                 raise ValueError(
                     f"lane_id {lane.lane_id!r} belongs to "
-                    f"user {existing.user_id!r}, not {lane.user_id!r}"
+                    f"user {existing.created_by!r}, not {lane.created_by!r}"
                 )
             return
         self.lanes[lane.lane_id] = lane

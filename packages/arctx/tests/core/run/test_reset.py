@@ -9,8 +9,8 @@ from arctx.core.schema.payloads import CutPayload
 from arctx.core.schema.requirements import Requirement
 from arctx.core.schema.work_helpers import (
     RESET_EVENT,
-    SESSION_POINTER_EVENT,
-    latest_session_pointer,
+    LANE_POINTER_EVENT,
+    latest_lane_pointer,
 )
 import arctx as arctx
 from arctx.ext import attach_extensions
@@ -113,7 +113,7 @@ class TestResetImplDryRun:
         assert reset_event.data["to_node_id"] == nodes[0]
         assert reset_event.data["mode"] == "hard"
 
-    def test_session_pointer_updated(self):
+    def test_lane_pointer_updated(self):
         handle = _make_handle()
         steps, nodes = _make_chain(handle, length=3)
 
@@ -124,17 +124,17 @@ class TestResetImplDryRun:
             lane_id="ws_1",
             dry_run=True,
         )
-        sp = latest_session_pointer(handle.run_graph, "ws_1")
+        sp = latest_lane_pointer(handle.run_graph, "ws_1")
         assert sp is not None
         assert nodes[0] in sp.data["current_node_ids"]
 
-    def test_session_pointer_event_appended(self):
+    def test_lane_pointer_event_appended(self):
         handle = _make_handle()
         steps, nodes = _make_chain(handle, length=3)
 
         sp_events_before = [
             e for e in handle.run_graph.work_events
-            if e.event_type == SESSION_POINTER_EVENT
+            if e.event_type == LANE_POINTER_EVENT
         ]
 
         handle.git.reset(
@@ -146,7 +146,7 @@ class TestResetImplDryRun:
         )
         sp_events_after = [
             e for e in handle.run_graph.work_events
-            if e.event_type == SESSION_POINTER_EVENT
+            if e.event_type == LANE_POINTER_EVENT
         ]
         assert len(sp_events_after) == len(sp_events_before) + 1
 

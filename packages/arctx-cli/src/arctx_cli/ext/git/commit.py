@@ -1,7 +1,7 @@
 """arctx CLI commit command.
 
 Drives a git commit and records the corresponding arctx Step with
-BranchPayload, GitChangePayload, BranchTipEvent, and SessionPointerEvent.
+BranchPayload, GitChangePayload, BranchTipEvent, and LanePointerEvent.
 """
 
 from __future__ import annotations

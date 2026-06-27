@@ -44,12 +44,11 @@ export interface RunRepo {
   [key: string]: unknown;
 }
 
-export interface RunWorkSession {
-  work_session_id: string;
-  lane_id?: string;
+export interface RunLane {
+  lane_id: string;
   run_id: string;
-  user_id: string;
-  parent_work_session_id?: string | null;
+  created_by: string;
+  parent_lane_id?: string | null;
   started_at?: string | null;
   closed_at?: string | null;
   status?: string;
@@ -60,7 +59,7 @@ export interface RunWorkSession {
 export interface RunWorkEvent {
   event_id: string;
   run_id: string;
-  work_session_id: string;
+  lane_id: string;
   user_id: string;
   event_type: string;
   target_kind?: string | null;
@@ -118,8 +117,7 @@ export interface RunDocument {
   steps: RunStep[];
   payloads: RunPayload[];
   repos: RunRepo[];
-  lanes?: RunWorkSession[];
-  work_sessions?: RunWorkSession[];
+  lanes?: RunLane[];
   work_events?: RunWorkEvent[];
   record_provenance?: Record<string, RecordProvenance>;
   created_provenance?: Record<string, RecordProvenance>;
@@ -245,7 +243,7 @@ export interface CreateLaneRequest {
 }
 
 export interface CreateLaneResponse {
-  lane: RunWorkSession;
+  lane: RunLane;
 }
 
 export interface AdoptLaneRequest {

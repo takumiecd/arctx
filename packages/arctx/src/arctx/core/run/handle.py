@@ -10,7 +10,7 @@ from arctx.core.ids import opaque_id, slugify, timestamp_id
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node
 from arctx.core.schema.requirements import Requirement
-from arctx.core.schema.work import Lane, WorkEvent, Lane
+from arctx.core.schema.work import Lane, WorkEvent
 from arctx.core.types import JSONValue
 
 
@@ -70,10 +70,10 @@ class RunHandle:
         if existing is not None:
             return existing
         lane = Lane(
-            work_session_id=lid,
+            lane_id=lid,
             run_id=self.run_id,
-            user_id=user_id or created_by or "",
-            parent_work_session_id=parent_lane_id,
+            created_by=user_id or created_by or "",
+            parent_lane_id=parent_lane_id,
             started_at=datetime.now(timezone.utc).isoformat(),
             metadata=dict(metadata or {}),
             name=name,
@@ -100,7 +100,7 @@ class RunHandle:
         event = WorkEvent(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=lid,
+            lane_id=lid,
             user_id=user_id,
             event_type=event_type,
             target_kind=target_kind,

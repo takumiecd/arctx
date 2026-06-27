@@ -15,7 +15,7 @@ from arctx_cli.commands.init import run_init_command
 from arctx_cli.ext.git.reset import run_reset_command
 from arctx_cli.context import resolve_store
 from arctx.core.cuts import is_inactive_step
-from arctx.core.schema.work_helpers import RESET_EVENT, SESSION_POINTER_EVENT, latest_session_pointer
+from arctx.core.schema.work_helpers import RESET_EVENT, LANE_POINTER_EVENT, latest_lane_pointer
 
 
 def _store_dir(tmp_path: Path) -> str:
@@ -85,7 +85,7 @@ class TestResetCLIIntegration:
         assert is_inactive_step(handle2.run_graph, r2["step_id"])
         assert is_inactive_step(handle2.run_graph, r3["step_id"])
 
-    def test_hard_reset_updates_session_pointer(self, tmp_path):
+    def test_hard_reset_updates_lane_pointer(self, tmp_path):
         _init_arctx(tmp_path, run_id="run_sp")
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_sp")
@@ -108,7 +108,7 @@ class TestResetCLIIntegration:
         )
 
         handle2 = store.load_run("run_sp")
-        sp = latest_session_pointer(handle2.run_graph, "ws_sp")
+        sp = latest_lane_pointer(handle2.run_graph, "ws_sp")
         assert sp is not None
         assert r1["output_node_id"] in sp.data["current_node_ids"]
 

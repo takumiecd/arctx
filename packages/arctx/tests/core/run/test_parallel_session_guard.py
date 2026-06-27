@@ -20,7 +20,7 @@ from arctx.ext.git.verbs._forward_step import (
 from arctx.core.schema.requirements import Requirement
 from arctx.core.schema.work_helpers import (
     make_branch_tip_event,
-    make_session_pointer_event,
+    make_lane_pointer_event,
 )
 import arctx as arctx
 from arctx.ext import attach_extensions
@@ -54,9 +54,9 @@ def _advance_branch_tip(handle, *, branch: str, tip_node_id: str, ws_id: str = "
     handle.run_graph.add_work_event(tip_event)
 
 
-def _set_session_pointer(handle, *, ws_id: str, node_ids: tuple[str, ...], branch: str = "main") -> None:
-    """Inject a SessionPointerEvent to set a session's current position."""
-    sp_event = make_session_pointer_event(
+def _set_lane_pointer(handle, *, ws_id: str, node_ids: tuple[str, ...], branch: str = "main") -> None:
+    """Inject a LanePointerEvent to set a session's current position."""
+    sp_event = make_lane_pointer_event(
         event_id=handle._next_id("we"),
         run_id=handle.run_id,
         lane_id=ws_id,
@@ -185,7 +185,7 @@ class TestCommitGuard:
         )
         # Session B is still at root — tip has advanced to t_a.output_node_id.
         # Session B tries to commit from root.
-        _set_session_pointer(handle, ws_id="ws_b", node_ids=(handle.root_node_id,))
+        _set_lane_pointer(handle, ws_id="ws_b", node_ids=(handle.root_node_id,))
 
         with pytest.raises(ParallelSessionConflict):
             handle.git.commit(
@@ -215,7 +215,7 @@ class TestCommitGuard:
         tip_node = t_a.output_node_id
 
         # Session B updates its pointer to the new tip (arctx use <tip>).
-        _set_session_pointer(handle, ws_id="ws_b", node_ids=(tip_node,))
+        _set_lane_pointer(handle, ws_id="ws_b", node_ids=(tip_node,))
 
         # Session B commits successfully.
         t_b = handle.git.commit(
@@ -271,7 +271,7 @@ class TestRevertGuard:
 
         # session A advances again from its own tip.
         tip_a = handle.run_graph.steps[tid].output_node_id
-        _set_session_pointer(handle, ws_id="ws_a", node_ids=(tip_a,))
+        _set_lane_pointer(handle, ws_id="ws_a", node_ids=(tip_a,))
 
         t_a2 = handle.git.commit(
             message="session A second commit",
@@ -283,7 +283,7 @@ class TestRevertGuard:
         )
 
         # session B is still at root.
-        _set_session_pointer(handle, ws_id="ws_b", node_ids=(handle.root_node_id,))
+        _set_lane_pointer(handle, ws_id="ws_b", node_ids=(handle.root_node_id,))
 
         with pytest.raises(ParallelSessionConflict):
             handle.git.revert(
@@ -317,7 +317,7 @@ class TestCherryPickGuard:
         )
 
         # Session B is at root.
-        _set_session_pointer(handle, ws_id="ws_b", node_ids=(handle.root_node_id,))
+        _set_lane_pointer(handle, ws_id="ws_b", node_ids=(handle.root_node_id,))
 
         with pytest.raises(ParallelSessionConflict):
             handle.git.cherry_pick(
@@ -353,7 +353,7 @@ class TestMergeGuard:
         feat_node = t_feat.output_node_id
 
         # Session A advances main.
-        _set_session_pointer(handle, ws_id="ws_a", node_ids=(handle.root_node_id,))
+        _set_lane_pointer(handle, ws_id="ws_a", node_ids=(handle.root_node_id,))
         t_a = handle.git.commit(
             message="session A on main",
             branch="main",
@@ -364,7 +364,7 @@ class TestMergeGuard:
         )
 
         # Session B is still at root — branch tip has advanced.
-        _set_session_pointer(handle, ws_id="ws_b", node_ids=(handle.root_node_id,))
+        _set_lane_pointer(handle, ws_id="ws_b", node_ids=(handle.root_node_id,))
 
         with pytest.raises(ParallelSessionConflict):
             handle.git.merge(

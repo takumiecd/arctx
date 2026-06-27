@@ -202,7 +202,13 @@ class SummaryPayload(PayloadBase):
 # ---------------------------------------------------------------------------
 
 Payload = (
-    NodePayload | StepPayload | CutPayload | UncutPayload | AssetPayload | SummaryPayload
+    NodePayload
+    | StepPayload
+    | CutPayload
+    | UncutPayload
+    | AssetPayload
+    | JoinPayload
+    | SummaryPayload
 )
 
 

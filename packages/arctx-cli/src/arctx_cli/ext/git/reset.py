@@ -1,6 +1,6 @@
 """arctx CLI reset command.
 
-Resets the session pointer to a past node WITHOUT creating a new Step.
+Resets the lane pointer to a past node WITHOUT creating a new Step.
 Analogous to ``git reset``: moves HEAD back but does not produce a new commit.
 
 For mode="hard", discarded steps receive a CutPayload. For "mixed" and
@@ -70,7 +70,7 @@ def run_reset_command(
     mode:
         "hard" | "mixed" | "soft".
     branch:
-        Branch name override for the SessionPointerEvent.
+        Branch name override for the LanePointerEvent.
     run_id:
         Explicit run id.
     store_dir:

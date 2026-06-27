@@ -2,7 +2,7 @@
 
 Drives a ``git cherry-pick`` and records the corresponding arctx Step with
 BranchPayload, GitChangePayload, CherryPickPayload, BranchTipEvent, and
-SessionPointerEvent.
+LanePointerEvent.
 """
 
 from __future__ import annotations
