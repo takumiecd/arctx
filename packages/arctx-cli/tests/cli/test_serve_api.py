@@ -14,7 +14,7 @@ from arctx.core.schema.graph import Node
 from arctx.session import resolve_store
 
 from arctx_cli.commands.init import run_init_command
-from arctx_cli.serve.api import dispatch
+from arctx.serve.api import dispatch
 
 
 def _store_dir(td: str) -> str:

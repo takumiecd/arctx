@@ -3,7 +3,7 @@
 This is the live-mode backend for GUI surfaces. ``GET /run`` returns the same
 JSON document as ``arctx export --format json``; the ``POST`` routes write
 through the same verbs as ``arctx add`` / ``arctx cut``. See
-:mod:`arctx_cli.serve` for the route table.
+:mod:`arctx.serve` for the route table.
 """
 
 from __future__ import annotations
