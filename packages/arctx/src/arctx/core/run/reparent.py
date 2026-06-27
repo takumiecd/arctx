@@ -22,7 +22,7 @@ def reparent_impl(
     *,
     reason: str | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> Step:
     """Re-parent *node_id* onto *new_input_node_ids* (append-only).
 
@@ -70,7 +70,7 @@ def reparent_impl(
     self.run_graph.attach_payload(cloned)
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="step_created",
         target_kind="step",
         target_id=step_id,
@@ -84,7 +84,7 @@ def reparent_impl(
             target_kind="step",
             reason=reason or f"reparented {node_id}",
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
         )
 
     return step

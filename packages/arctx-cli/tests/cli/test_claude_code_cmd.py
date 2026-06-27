@@ -68,7 +68,7 @@ def test_hook_command_records_prompt_and_tool_use():
             for p in handle.run_graph.payloads_for_step(tool["step_id"])
         ]
         assert types == ["agent.tool_use"]
-        assert "ws_cc_s1" in handle.run_graph.work_sessions
+        assert "ws_cc_s1" in handle.run_graph.lanes
 
 
 def test_hook_command_persists_session_start_metadata():
@@ -85,10 +85,10 @@ def test_hook_command_persists_session_start_metadata():
             store_dir=_store_dir(td),
             user_id="claude-code",
         )
-        assert result == {"event": "SessionStart", "work_session_id": "ws_cc_s1"}
+        assert result == {"event": "SessionStart", "lane_id": "ws_cc_s1"}
 
         handle = resolve_store(_store_dir(td)).load_run("run_cc")
-        session = handle.run_graph.work_sessions["ws_cc_s1"]
+        session = handle.run_graph.lanes["ws_cc_s1"]
         assert session.metadata["agent"]["harness"] == "claude-code"
         assert session.metadata["agent"]["model"] == "claude-fable-5"
         assert session.metadata["agent"]["source"] == "startup"

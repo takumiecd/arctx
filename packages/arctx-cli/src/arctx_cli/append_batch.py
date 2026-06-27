@@ -20,18 +20,18 @@ def maybe_append_or_save(
     store,
     handle,
     user_id: str | None,
-    work_session_id: str | None,
+    lane_id: str | None,
     before: dict[str, set[str]],
 ) -> None:
     """Use append_batch for capable stores, otherwise fall back to save_run."""
-    if user_id is None or work_session_id is None or not hasattr(store, "append_batch"):
+    if user_id is None or lane_id is None or not hasattr(store, "append_batch"):
         store.save_run(handle)
         return
     store.append_batch(
         build_append_batch(
             handle,
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             before=before,
         )
     )
@@ -41,7 +41,7 @@ def build_append_batch(
     handle,
     *,
     user_id: str,
-    work_session_id: str,
+    lane_id: str,
     before: dict[str, set[str]],
 ) -> AppendBatch:
     """Build an append batch from records added since *before*."""
@@ -67,12 +67,12 @@ def build_append_batch(
     if not new_events:
         raise RuntimeError("append batch requires at least one work event")
 
-    session = handle.run_graph.work_sessions[work_session_id]
+    session = handle.run_graph.lanes[lane_id]
     return AppendBatch(
         run_id=handle.run_id,
         user_id=user_id,
-        work_session_id=work_session_id,
-        work_session=session,
+        lane_id=lane_id,
+        lane=session,
         events=tuple(new_events),
         records=tuple(records),
     )

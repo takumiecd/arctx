@@ -14,7 +14,7 @@ from arctx.core.schema.payloads import (
 )
 from arctx.core.schema.requirements import Requirement
 from arctx.core.schema.snapshots import TraceContext
-from arctx.core.schema.work import Lane, WorkEvent, WorkSession
+from arctx.core.schema.work import Lane, WorkEvent, Lane
 
 __all__ = [
     "CutPayload",
@@ -30,7 +30,7 @@ __all__ = [
     "SummaryPayload",
     "UncutPayload",
     "WorkEvent",
-    "WorkSession",
+    "Lane",
     "payload_from_dict",
     "register_payload_class",
 ]

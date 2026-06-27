@@ -48,7 +48,11 @@ class Lane:
         return self.parent_work_session_id
 
     def to_dict(self) -> dict[str, JSONValue]:
-        return to_jsonable(self)  # type: ignore[return-value]
+        d = to_jsonable(self)  # type: ignore[return-value]
+        d["lane_id"] = d.get("work_session_id")
+        d["created_by"] = d.get("user_id")
+        d["parent_lane_id"] = d.get("parent_work_session_id")
+        return d
 
 
 #: Back-compat alias. New code should import/use :class:`Lane`.
@@ -73,7 +77,13 @@ class WorkEvent:
     seq: int | None = None
 
     def to_dict(self) -> dict[str, JSONValue]:
-        return to_jsonable(self)  # type: ignore[return-value]
+        d = to_jsonable(self)  # type: ignore[return-value]
+        d["lane_id"] = d.get("work_session_id")
+        return d
+
+    @property
+    def lane_id(self) -> str:
+        return self.work_session_id
 
 
 def lane_from_dict(data: dict[str, JSONValue]) -> Lane:
@@ -108,7 +118,7 @@ def work_event_from_dict(data: dict[str, JSONValue]) -> WorkEvent:
     return WorkEvent(
         event_id=str(data["event_id"]),
         run_id=str(data["run_id"]),
-        work_session_id=str(data["work_session_id"]),
+        work_session_id=str(data.get("work_session_id") or data.get("lane_id")),
         user_id=str(data["user_id"]),
         event_type=str(data["event_type"]),
         target_kind=str(data["target_kind"]) if data.get("target_kind") is not None else None,

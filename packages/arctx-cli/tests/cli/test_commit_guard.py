@@ -44,7 +44,7 @@ class TestCommitGuardCLI:
             run_id="run_guard_cli",
             store_dir=sd,
             user_id="alice",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             dry_run=True,
             head_commit="sha_a1",
         )
@@ -60,7 +60,7 @@ class TestCommitGuardCLI:
                 run_id="run_guard_cli",
                 store_dir=sd,
                 user_id="bob",
-                work_session_id="ws_b",
+                lane_id="ws_b",
                 dry_run=True,
                 head_commit="sha_b1",
             )
@@ -79,7 +79,7 @@ class TestCommitGuardCLI:
             run_id="run_adopt_tip",
             store_dir=sd,
             user_id="alice",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             dry_run=True,
             head_commit="sha_a",
         )
@@ -89,11 +89,11 @@ class TestCommitGuardCLI:
         # inject a SessionPointerEvent pointing to the new tip.
         store = resolve_store(sd)
         handle = store.load_run("run_adopt_tip")
-        handle.ensure_work_session(user_id="bob", work_session_id="ws_b")
+        handle.ensure_lane(user_id="bob", lane_id="ws_b")
         sp_event = make_session_pointer_event(
             event_id=handle._next_id("we"),
             run_id=handle.run_id,
-            work_session_id="ws_b",
+            lane_id="ws_b",
             user_id="bob",
             current_node_ids=(tip_node,),
             current_branch="main",
@@ -108,7 +108,7 @@ class TestCommitGuardCLI:
             run_id="run_adopt_tip",
             store_dir=sd,
             user_id="bob",
-            work_session_id="ws_b",
+            lane_id="ws_b",
             dry_run=True,
             head_commit="sha_b",
         )
@@ -126,7 +126,7 @@ class TestCommitGuardCLI:
             run_id="run_first_branch",
             store_dir=sd,
             user_id="alice",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             dry_run=True,
             head_commit="sha_first",
         )

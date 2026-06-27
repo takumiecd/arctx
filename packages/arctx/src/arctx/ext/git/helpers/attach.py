@@ -18,7 +18,7 @@ def attach_commits_to_step(
     commits: tuple[str, ...],
     *,
     user_id: str = "user",
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     """Attach explicit Git commits as a GitChangePayload."""
     if not commits:
@@ -65,7 +65,7 @@ def attach_commits_to_step(
     handle.run_graph.attach_payload(gcp)
     handle.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="git_change_attached",
         target_kind="step",
         target_id=step_id,

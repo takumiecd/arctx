@@ -446,7 +446,7 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
         "payloads": payloads_out,
         "repos": repos_out,
         "lanes": lanes["lanes"],
-        "work_sessions": lanes["work_sessions"],
+        "lanes": lanes["lanes"],
         "work_events": lanes["work_events"],
         "record_provenance": lanes["record_provenance"],
         "created_provenance": lanes["created_provenance"],

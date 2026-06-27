@@ -69,7 +69,7 @@ def test_hook_command_records_prompt_and_tool_use():
         assert prompt["step_id"] in handle.run_graph.steps
         tool_step = handle.run_graph.steps[tool["step_id"]]
         assert tool_step.input_node_ids == (prompt["output_node_id"],)
-        assert "ws_codex_s1" in handle.run_graph.work_sessions
+        assert "ws_codex_s1" in handle.run_graph.lanes
 
 
 def test_hook_command_persists_session_start_metadata():
@@ -86,10 +86,10 @@ def test_hook_command_persists_session_start_metadata():
             store_dir=_store_dir(td),
             user_id="codex",
         )
-        assert result == {"event": "SessionStart", "work_session_id": "ws_codex_s1"}
+        assert result == {"event": "SessionStart", "lane_id": "ws_codex_s1"}
 
         handle = resolve_store(_store_dir(td)).load_run("run_codex")
-        session = handle.run_graph.work_sessions["ws_codex_s1"]
+        session = handle.run_graph.lanes["ws_codex_s1"]
         assert session.metadata["agent"]["harness"] == "codex"
         assert session.metadata["agent"]["model"] == "gpt-5.5"
 

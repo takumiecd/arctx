@@ -10,7 +10,7 @@ from arctx import init
 from arctx.core.append import AppendBatch
 from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
 from arctx.core.schema.requirements import Requirement
-from arctx.core.schema.work import WorkEvent, WorkSession
+from arctx.core.schema.work import WorkEvent, Lane
 from arctx.storage.sqlite import SqliteRunStore
 
 
@@ -107,10 +107,10 @@ def test_append_batch_allows_shared_lane_multi_actor():
             AppendBatch(
                 run_id=run.run_id,
                 user_id="user_a",
-                work_session_id="ws_shared",
-                work_session=WorkSession("ws_shared", run.run_id, "user_a"),
+                lane_id="ws_shared",
+                lane=Lane("ws_shared", run.run_id, "user_a"),
                 records=(),
-                events=(WorkEvent("we_a", run.run_id, "ws_shared", "user_a", "note"),),
+                events=(WorkEvent(event_id="we_a", run_id=run.run_id, work_session_id="ws_shared", user_id="user_a", event_type="note"),),
             )
         )
 
@@ -120,19 +120,19 @@ def test_append_batch_allows_shared_lane_multi_actor():
             AppendBatch(
                 run_id=run.run_id,
                 user_id="user_b",
-                work_session_id="ws_shared",
-                work_session=WorkSession("ws_shared", run.run_id, "user_b"),
+                lane_id="ws_shared",
+                lane=Lane("ws_shared", run.run_id, "user_b"),
                 records=(),
-                events=(WorkEvent("we_b", run.run_id, "ws_shared", "user_b", "note"),),
+                events=(WorkEvent(event_id="we_b", run_id=run.run_id, work_session_id="ws_shared", user_id="user_b", event_type="note"),),
             )
         )
 
         loaded = store.load_run("sq_ws_conflict")
-        assert "ws_shared" in loaded.run_graph.work_sessions
+        assert "ws_shared" in loaded.run_graph.lanes
         actors = {
             e.user_id
             for e in loaded.run_graph.work_events
-            if e.work_session_id == "ws_shared"
+            if e.lane_id == "ws_shared"
         }
         assert actors == {"user_a", "user_b"}
 

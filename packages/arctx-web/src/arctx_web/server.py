@@ -41,7 +41,7 @@ def build_handler(
     *,
     static_dir: Path,
     user_id: str,
-    work_session_id: str,
+    lane_id: str,
     extension_scripts: list[str] | tuple[str, ...] = (),
     extension_routes: list[WebRoute] | tuple[WebRoute, ...] = (),
     cors_origin: str = "*",
@@ -104,11 +104,11 @@ def build_handler(
                     pass
             return run_id
 
-        def _effective_work_session_id(self) -> str:
+        def _effective_lane_id(self) -> str:
             return (
                 self.headers.get("X-Arctx-Work-Session-Id")
                 or self.headers.get("X-Arctx-Lane-Id")
-                or work_session_id
+                or lane_id
             )
 
         def _is_api(self) -> bool:
@@ -148,7 +148,7 @@ def build_handler(
             status, payload = dispatch(
                 store, self._effective_run_id(), method, self._path(), body,
                 user_id=user_id,
-                work_session_id=self._effective_work_session_id(),
+                lane_id=self._effective_lane_id(),
                 query=query,
             )
             self._send_json(status, payload)
@@ -166,7 +166,7 @@ def build_handler(
                             run_dir=store.run_path(effective_run_id),
                             body=self._read_body() or {},
                             user_id=user_id,
-                            work_session_id=self._effective_work_session_id(),
+                            lane_id=self._effective_lane_id(),
                         )
                     )
                     self._send_json(status, payload)
@@ -257,7 +257,7 @@ def serve_gui(
     host: str = "127.0.0.1",
     port: int = 8788,
     user_id: str = "user",
-    work_session_id: str = "default",
+    lane_id: str = "default",
     extension_scripts: list[str] | tuple[str, ...] = (),
     extension_routes: list[WebRoute] | tuple[WebRoute, ...] = (),
     cors_origin: str = "*",
@@ -270,7 +270,7 @@ def serve_gui(
     """
     handler = build_handler(
         store, run_id, static_dir=static_dir,
-        user_id=user_id, work_session_id=work_session_id, cors_origin=cors_origin,
+        user_id=user_id, lane_id=lane_id, cors_origin=cors_origin,
         extension_scripts=extension_scripts,
         extension_routes=extension_routes,
     )

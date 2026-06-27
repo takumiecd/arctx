@@ -14,7 +14,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 
 from arctx_web.assets import find_static_dir
@@ -36,7 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
-    parser.add_argument("--work-session", default=None)
+    parser.add_argument("--lane", default=None)
     return parser
 
 
@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         host=args.host,
         port=args.port,
         user_id=resolve_user_id_from_args(args),
-        work_session_id=resolve_work_session_id_from_args(args),
+        lane_id=resolve_lane_id_from_args(args),
         extension_scripts=extension_scripts,
         extension_routes=extension_routes,
         cors_origin=args.cors_origin,

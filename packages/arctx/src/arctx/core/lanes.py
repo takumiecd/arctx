@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.payloads import SummaryPayload
-from arctx.core.schema.work import WorkEvent, WorkSession
+from arctx.core.schema.work import WorkEvent, Lane
 
 
 @dataclass(frozen=True)
@@ -148,14 +148,14 @@ def ensure_valid_lanes(
         raise ValueError(format_lane_validation_errors(errors))
 
 
-def lane_label(session: WorkSession | None, lane_id: str) -> str:
+def lane_label(session: Lane | None, lane_id: str) -> str:
     """Return the human label for a lane id."""
     if session is None:
         return lane_id
-    return str(session.name or session.work_session_id)
+    return str(session.name or session.lane_id)
 
 
-def lane_root_node_id(session: WorkSession) -> str | None:
+def lane_root_node_id(session: Lane) -> str | None:
     """Return the configured lane root/anchor node, if any.
 
     ``root_node_id`` is the preferred key. ``anchor_node_id`` is accepted as a
@@ -191,7 +191,7 @@ def lane_root_candidates(
     """
     run_root = _membership_root_node_id(graph, root_node_id)
     membership = membership or lane_membership(graph, root_node_id=run_root)
-    session = graph.work_sessions.get(lane_id)
+    session = graph.lanes.get(lane_id)
     explicit = lane_root_node_id(session) if session is not None else None
     if explicit == run_root:
         return ()
@@ -262,11 +262,11 @@ def lane_membership(
         record_id: str,
         membership_kind: str,
     ) -> LaneRecordProvenance:
-        session = graph.work_sessions.get(event.work_session_id)
+        session = graph.lanes.get(event.lane_id)
         lane_name = session.name if session is not None else None
         return LaneRecordProvenance(
             record_id=record_id,
-            lane_id=event.work_session_id,
+            lane_id=event.lane_id,
             lane_name=lane_name,
             user_id=event.user_id,
             event_id=event.event_id,
@@ -329,7 +329,7 @@ def lane_membership(
     groups = tuple(
         LaneGroup(
             lane_id=lane_id,
-            label=lane_label(graph.work_sessions.get(lane_id), lane_id),
+            label=lane_label(graph.lanes.get(lane_id), lane_id),
             node_ids=tuple(sorted(lane_nodes.get(lane_id, set()))),
             step_ids=tuple(sorted(lane_steps.get(lane_id, set()))),
         )
@@ -482,7 +482,7 @@ def validate_lanes(
     for step_id, lane_id in membership.step_to_lane.items():
         lane_step_ids.setdefault(lane_id, set()).add(step_id)
 
-    for lane_id, session in graph.work_sessions.items():
+    for lane_id, session in graph.lanes.items():
         lane_root = lane_root_node_id(session)
         if lane_root == run_root:
             issues.append(
@@ -625,7 +625,7 @@ def validate_lanes(
 
     lane_roots = {
         root
-        for lane_id in graph.work_sessions
+        for lane_id in graph.lanes
         for root in lane_root_candidates(
             graph,
             lane_id,
@@ -747,8 +747,8 @@ def lane_export_view(
     sessions = [
         session.to_dict()
         for session in sorted(
-            graph.work_sessions.values(),
-            key=lambda s: (s.started_at or "", s.work_session_id),
+            graph.lanes.values(),
+            key=lambda s: (s.started_at or "", s.lane_id),
         )
     ]
     events = [
@@ -758,7 +758,7 @@ def lane_export_view(
     ]
     return {
         "lanes": sessions,
-        "work_sessions": sessions,
+        "lanes": sessions,
         "work_events": events,
         "record_provenance": {
             record_id: provenance.to_dict()

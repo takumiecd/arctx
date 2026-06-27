@@ -125,7 +125,7 @@ class TestJsonExport:
         assert doc["root_node_id"] == h.root_node_id
         for key in ("nodes", "steps", "payloads", "repos"):
             assert isinstance(doc[key], list)
-        for key in ("lanes", "work_sessions", "work_events", "groups", "lane_boundaries"):
+        for key in ("lanes", "lanes", "work_events", "groups", "lane_boundaries"):
             assert isinstance(doc[key], list)
         assert isinstance(doc["record_provenance"], dict)
         assert doc["counts"]["nodes"] == len(doc["nodes"])
@@ -187,7 +187,7 @@ class TestJsonExport:
             [h.root_node_id],
             _step_payload(h, 7),
             user_id="alice",
-            work_session_id="lane_math",
+            lane_id="lane_math",
         )
 
         doc = json.loads(export(h, "json", ExportOptions()))
@@ -203,7 +203,7 @@ class TestJsonExport:
         assert node_prov["lane_name"] == "math-analysis"
         assert node_prov["user_id"] == "alice"
 
-        assert any(s["work_session_id"] == "lane_math" for s in doc["work_sessions"])
+        assert any(s["lane_id"] == "lane_math" for s in doc["lanes"])
         assert any(e["target_id"] == t.step_id for e in doc["work_events"])
 
     def test_lane_adoption_export_keeps_created_provenance(self):
@@ -214,7 +214,7 @@ class TestJsonExport:
             [h.root_node_id],
             _step_payload(h, 7),
             user_id="alice",
-            work_session_id="lane_seed",
+            lane_id="lane_seed",
         )
         h.adopt_lane_records(
             "lane_math",

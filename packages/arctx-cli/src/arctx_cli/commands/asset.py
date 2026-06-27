@@ -11,7 +11,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 
 
@@ -26,7 +26,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_attach.add_argument("--run", default=None)
     sp_attach.add_argument("--store-dir", default=None)
     sp_attach.add_argument("--user", default=None)
-    sp_attach.add_argument("--work-session", default=None)
+    sp_attach.add_argument("--lane", default=None)
 
     sp_list = asset_sub.add_parser("list", help="List assets for a Node or Step")
     sp_list.add_argument("--target", required=True, dest="target_id", help="Node or Step ID")
@@ -57,7 +57,7 @@ def _cli_asset_attach(args) -> int:
     store = resolve_store(args.store_dir)
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)
-    work_session_id = resolve_work_session_id_from_args(args)
+    lane_id = resolve_lane_id_from_args(args)
 
     if not store.run_path(run_id).exists():
         print(f"error: unknown run_id: {run_id}", file=sys.stderr)
@@ -77,7 +77,7 @@ def _cli_asset_attach(args) -> int:
             args.target_id,
             args.file_path,
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
         )
     except (KeyError, ValueError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -87,7 +87,7 @@ def _cli_asset_attach(args) -> int:
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         before=before,
     )
     print(json.dumps(payload.to_dict(), ensure_ascii=False, indent=2))

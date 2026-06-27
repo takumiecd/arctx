@@ -8,7 +8,7 @@ from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node
 from arctx.ext.git.payloads import BranchPayload, GitChangePayload
 from arctx.core.schema.requirements import Requirement
-from arctx.core.schema.work import WorkSession
+from arctx.core.schema.work import Lane
 from arctx.core.schema.work_helpers import (
     SESSION_POINTER_EVENT,
     BRANCH_TIP_EVENT,
@@ -27,7 +27,7 @@ def _make_handle(run_id: str = "run_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 class TestCommitImplDryRun:
@@ -38,7 +38,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc123",
             dry_run=True,
         )
@@ -52,7 +52,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc123",
             dry_run=True,
         )
@@ -66,7 +66,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="feature/x",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc123",
             dry_run=True,
         )
@@ -84,7 +84,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="deadbeef",
             dry_run=True,
         )
@@ -103,7 +103,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc",
             dry_run=True,
         )
@@ -118,7 +118,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc",
             dry_run=True,
         )
@@ -136,7 +136,7 @@ class TestCommitImplDryRun:
             message="first",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha1",
             dry_run=True,
         )
@@ -146,7 +146,7 @@ class TestCommitImplDryRun:
             message="second",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha2",
             dry_run=True,
         )
@@ -162,7 +162,7 @@ class TestCommitImplDryRun:
             message="first commit from root",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_root",
             dry_run=True,
         )
@@ -193,7 +193,7 @@ class TestCommitImplDryRun:
                 message=f"commit {i}",
                 branch="main",
                 user_id="user",
-                work_session_id="ws_1",
+                lane_id="ws_1",
                 head_commit=f"sha_{i}",
                 dry_run=True,
             )

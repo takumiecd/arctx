@@ -14,7 +14,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 from arctx_cli.serve import serve
 
@@ -33,7 +33,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
-    parser.add_argument("--work-session", default=None)
+    parser.add_argument("--lane", default=None)
     return parser
 
 
@@ -48,7 +48,7 @@ def cli_serve(args) -> int:
         host=args.host,
         port=args.port,
         user_id=resolve_user_id_from_args(args),
-        work_session_id=resolve_work_session_id_from_args(args),
+        lane_id=resolve_lane_id_from_args(args),
         cors_origin=args.cors_origin,
     )
     return 0

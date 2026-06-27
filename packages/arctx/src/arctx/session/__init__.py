@@ -102,24 +102,24 @@ def resolve_user_id(user_id: str | None) -> str:
     return "user"
 
 
-def resolve_work_session_id(
-    work_session_id: str | None,
+def resolve_lane_id(
+    lane_id: str | None,
     *,
     run_id: str | None = None,
 ) -> str:
     """Resolve the active lane for mutating commands.
 
     Chain (mirrors :func:`resolve_run_id`):
-    1. Explicit *work_session_id*.
-    2. ``ARCTX_LANE_ID`` env var, then legacy ``ARCTX_WORK_SESSION_ID``.
+    1. Explicit *lane_id*.
+    2. ``ARCTX_LANE_ID`` env var, then legacy ``ARCTX_LANE_ID``.
     3. Active-lane pointer for *run_id* at ``<gitdir>/arctx-lanes.json`` when a
        run is known, falling back to the legacy ``<gitdir>/arctx-lane`` pointer.
-    4. ``<ARCTX_HOME>/config.json`` ``work_session.id``.
+    4. ``<ARCTX_HOME>/config.json`` ``lane.id``.
     5. ``"default"``.
     """
-    if work_session_id:
-        return work_session_id
-    env = os.environ.get("ARCTX_LANE_ID") or os.environ.get("ARCTX_WORK_SESSION_ID")
+    if lane_id:
+        return lane_id
+    env = os.environ.get("ARCTX_LANE_ID")
     if env:
         return env
     try:
@@ -132,15 +132,12 @@ def resolve_work_session_id(
     config_path = _config_path()
     if config_path.exists():
         data = json.loads(config_path.read_text(encoding="utf-8"))
-        configured = data.get("work_session", {}).get("id")
+        configured = data.get("lane", {}).get("id")
         if configured:
             return str(configured)
     return "default"
 
 
-def resolve_lane_id(lane_id: str | None, *, run_id: str | None = None) -> str:
-    """Resolve the active lane id. Preferred alias for new code."""
-    return resolve_work_session_id(lane_id, run_id=run_id)
 
 
 def resolve_store(store_dir: str | None):
@@ -180,14 +177,14 @@ def resolve_store(store_dir: str | None):
 
 
 # Keep RunHandleProxy here for completeness — it wraps a RunHandle with lazy
-# session-level context (user_id, work_session_id) resolved at call time.
+# session-level context (user_id, lane_id) resolved at call time.
 class RunHandleProxy:
-    """Thin proxy that binds user/work-session defaults to a RunHandle."""
+    """Thin proxy that binds user/lane defaults to a RunHandle."""
 
-    def __init__(self, handle, *, user_id: str, work_session_id: str) -> None:
+    def __init__(self, handle, *, user_id: str, lane_id: str) -> None:
         self._handle = handle
         self._user_id = user_id
-        self._work_session_id = work_session_id
+        self._lane_id = lane_id
 
     def __getattr__(self, name: str):
         return getattr(self._handle, name)

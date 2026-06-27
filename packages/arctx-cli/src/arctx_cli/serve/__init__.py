@@ -3,7 +3,7 @@
 Two layers, mirroring the rest of the CLI:
 
 - :mod:`arctx_cli.serve.api` — a pure, socket-free dispatcher
-  ``dispatch(store, run_id, method, path, body, *, user_id, work_session_id)``
+  ``dispatch(store, run_id, method, path, body, *, user_id, lane_id)``
   returning ``(status, body_dict)``. All routing and verb logic lives here so
   it is unit-testable without opening a socket.
 - :mod:`arctx_cli.serve.server` — a thin ``http.server`` shell that feeds

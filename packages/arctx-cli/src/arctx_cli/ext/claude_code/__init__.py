@@ -114,18 +114,18 @@ def run_claude_code_hook_command(
     result = record_hook_event(handle, event, user_id=user_id, tools=tools)
     if result is None:
         return None
-    ws_id = result["work_session_id"]
+    ws_id = result["lane_id"]
     if result["event"] == "SessionStart":
-        # SessionStart creates only a WorkSession — no graph records, no work
+        # SessionStart creates only a Lane — no graph records, no work
         # events — so it can't go through build_append_batch. Same path as
-        # `work-session start`.
+        # `lane start`.
         if hasattr(store, "append_batch"):
             store.append_batch(
                 AppendBatch(
                     run_id=run_id,
                     user_id=user_id,
-                    work_session_id=ws_id,
-                    work_session=handle.run_graph.work_sessions[ws_id],
+                    lane_id=ws_id,
+                    lane=handle.run_graph.lanes[ws_id],
                     records=(),
                     events=(),
                 )
@@ -137,7 +137,7 @@ def run_claude_code_hook_command(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=ws_id,
+        lane_id=ws_id,
         before=before,
     )
     return result

@@ -27,14 +27,14 @@ def cherry_pick_impl(
     branch: str | None = None,
     repo_path: Path | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     head_commit: str | None = None,
     dry_run: bool = False,
 ) -> Step:
     """Drive ``git cherry-pick <sha>`` and record the corresponding arctx Step."""
     resolved_repo_path: Path = resolve_worktree_path(repo_path)
 
-    current_node_ids = resolve_current_node_ids(self, work_session_id)
+    current_node_ids = resolve_current_node_ids(self, lane_id)
 
     if len(current_node_ids) != 1:
         raise NotImplementedError(
@@ -52,7 +52,7 @@ def cherry_pick_impl(
 
     repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
 
-    if work_session_id is not None:
+    if lane_id is not None:
         check_branch_tip_consistency(
             self.run_graph, current_branch, current_node_ids, repo_id
         )
@@ -88,8 +88,8 @@ def cherry_pick_impl(
         repo_path=resolved_repo_path,
     )
 
-    if user_id is not None and work_session_id is not None:
-        self.ensure_work_session(user_id=user_id, work_session_id=work_session_id)
+    if user_id is not None and lane_id is not None:
+        self.ensure_lane(user_id=user_id, lane_id=lane_id)
 
     output_node = Node(node_id=self._next_id("n"))
     self.run_graph.add_node(output_node)
@@ -129,11 +129,11 @@ def cherry_pick_impl(
     )
     self.run_graph.attach_payload(cp_payload)
 
-    if user_id is not None and work_session_id is not None:
+    if user_id is not None and lane_id is not None:
         tip_event = make_branch_tip_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             user_id=user_id,
             branch=current_branch,
             tip_node_id=output_node.node_id,
@@ -144,7 +144,7 @@ def cherry_pick_impl(
         sp_event = make_session_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             user_id=user_id,
             current_node_ids=(output_node.node_id,),
             current_branch=current_branch,
@@ -153,7 +153,7 @@ def cherry_pick_impl(
 
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="cherry_pick_created",
         target_kind="step",
         target_id=step_id,

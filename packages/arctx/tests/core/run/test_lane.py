@@ -12,8 +12,8 @@ from __future__ import annotations
 import tempfile
 
 import arctx
-from arctx import Lane, Requirement, WorkSession
-from arctx.core.schema.work import work_session_from_dict
+from arctx import Lane, Requirement, Lane
+from arctx.core.schema.work import lane_from_dict
 from arctx.storage.jsonl import JsonlRunStore
 
 
@@ -25,7 +25,7 @@ def _handle(run_id="run_lane"):
 
 
 def test_worksession_is_lane_alias():
-    assert WorkSession is Lane
+    assert Lane is Lane
 
 
 def test_ensure_lane_sets_name_and_aliases():
@@ -38,7 +38,7 @@ def test_ensure_lane_sets_name_and_aliases():
     again = h.ensure_lane(name="ignored", lane_id="lane_1", created_by="bob")
     assert again.lane_id == "lane_1"
     assert again.name == "mips-scd"
-    assert len(h.run_graph.work_sessions) == 1
+    assert len(h.run_graph.lanes) == 1
     assert h.run_graph.lanes["lane_1"] is lane
 
 
@@ -46,15 +46,15 @@ def test_shared_lane_accepts_multiple_actors():
     """No owner lock: alice and bob both append to one lane; attribution per event."""
     h = _handle("run_lane_shared")
     h.ensure_lane(name="shared", lane_id="lane_s", created_by="alice")
-    h.record_work_event(user_id="alice", work_session_id="lane_s", event_type="note")
+    h.record_work_event(user_id="alice", lane_id="lane_s", event_type="note")
     # different actor, same lane — must NOT raise.
-    h.record_work_event(user_id="bob", work_session_id="lane_s", event_type="note")
+    h.record_work_event(user_id="bob", lane_id="lane_s", event_type="note")
 
     actors = {
-        e.user_id for e in h.run_graph.work_events if e.work_session_id == "lane_s"
+        e.user_id for e in h.run_graph.work_events if e.lane_id == "lane_s"
     }
     assert actors == {"alice", "bob"}
-    assert len(h.run_graph.work_sessions) == 1  # still one lane
+    assert len(h.run_graph.lanes) == 1  # still one lane
 
 
 def test_name_survives_round_trip():
@@ -64,18 +64,18 @@ def test_name_survives_round_trip():
         store = JsonlRunStore(td)
         store.save_run(h)
         loaded = store.load_run("run_lane_rt")
-    assert loaded.run_graph.work_sessions["lane_rt"].name == "geometry-probe"
+    assert loaded.run_graph.lanes["lane_rt"].name == "geometry-probe"
 
 
 def test_from_dict_back_compat():
     # Old row (no name) still loads with name=None.
-    old = work_session_from_dict(
-        {"work_session_id": "w1", "run_id": "r", "user_id": "alice"}
+    old = lane_from_dict(
+        {"lane_id": "w1", "run_id": "r", "user_id": "alice"}
     )
     assert old.name is None and old.lane_id == "w1"
 
     # New row may use the lane_* aliases.
-    new = work_session_from_dict(
+    new = lane_from_dict(
         {"lane_id": "w2", "run_id": "r", "created_by": "bob", "name": "x"}
     )
     assert new.lane_id == "w2" and new.created_by == "bob" and new.name == "x"

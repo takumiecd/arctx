@@ -68,7 +68,7 @@ BASE="$(ARCTX git commit -m "baseline: naive python loop" | node_id)"
 echo "[1/4] baseline committed"
 
 # --- Agent 1 (Claude): memoization cache — a dead end -----------------------
-eval "$(ARCTX work-session env --run quickstart --new --user claude 2>/dev/null)"
+eval "$(ARCTX lane env --run quickstart --new --user claude 2>/dev/null)"
 git checkout -q -b claude/cache
 cat > work.py <<'PY'
 _cache = {}
@@ -88,7 +88,7 @@ ARCTX attach "$CACHE_NODE" \
 echo "[2/4] Claude's attempt recorded (benchmark attached)"
 
 # --- Agent 2 (Codex): builtin sum() — the winner ----------------------------
-eval "$(ARCTX work-session env --run quickstart --new --user codex 2>/dev/null)"
+eval "$(ARCTX lane env --run quickstart --new --user codex 2>/dev/null)"
 git checkout -q main
 git checkout -q -b codex/builtin
 cat > work.py <<'PY'

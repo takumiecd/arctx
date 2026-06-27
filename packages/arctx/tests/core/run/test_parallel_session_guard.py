@@ -36,17 +36,17 @@ def _make_handle(run_id: str = "run_psg_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 def _advance_branch_tip(handle, *, branch: str, tip_node_id: str, ws_id: str = "ws_other") -> None:
     """Inject a BranchTipEvent directly, simulating another session advancing the tip."""
     # Ensure the session exists before adding a work event that references it.
-    handle.ensure_work_session(user_id="other_user", work_session_id=ws_id)
+    handle.ensure_lane(user_id="other_user", lane_id=ws_id)
     tip_event = make_branch_tip_event(
         event_id=handle._next_id("we"),
         run_id=handle.run_id,
-        work_session_id=ws_id,
+        lane_id=ws_id,
         user_id="other_user",
         branch=branch,
         tip_node_id=tip_node_id,
@@ -59,7 +59,7 @@ def _set_session_pointer(handle, *, ws_id: str, node_ids: tuple[str, ...], branc
     sp_event = make_session_pointer_event(
         event_id=handle._next_id("we"),
         run_id=handle.run_id,
-        work_session_id=ws_id,
+        lane_id=ws_id,
         user_id="user",
         current_node_ids=node_ids,
         current_branch=branch,
@@ -90,7 +90,7 @@ class TestCheckBranchTipConsistency:
             message="first",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha1",
             dry_run=True,
         )
@@ -109,7 +109,7 @@ class TestCheckBranchTipConsistency:
             message="session A commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_a",
             dry_run=True,
         )
@@ -135,7 +135,7 @@ class TestCheckBranchTipConsistency:
             message="commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha1",
             dry_run=True,
         )
@@ -179,7 +179,7 @@ class TestCommitGuard:
             message="session A",
             branch="main",
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             head_commit="sha_a",
             dry_run=True,
         )
@@ -192,7 +192,7 @@ class TestCommitGuard:
                 message="session B conflict",
                 branch="main",
                 user_id="user",
-                work_session_id="ws_b",
+                lane_id="ws_b",
                 head_commit="sha_b",
                 dry_run=True,
             )
@@ -208,7 +208,7 @@ class TestCommitGuard:
             message="session A",
             branch="main",
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             head_commit="sha_a",
             dry_run=True,
         )
@@ -222,7 +222,7 @@ class TestCommitGuard:
             message="session B after update",
             branch="main",
             user_id="user",
-            work_session_id="ws_b",
+            lane_id="ws_b",
             head_commit="sha_b",
             dry_run=True,
         )
@@ -238,7 +238,7 @@ class TestCommitGuard:
             message="first ever",
             branch="new-branch",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_new",
             dry_run=True,
         )
@@ -259,7 +259,7 @@ class TestRevertGuard:
             message="initial",
             branch="main",
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             head_commit="sha1",
             dry_run=True,
         )
@@ -277,7 +277,7 @@ class TestRevertGuard:
             message="session A second commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             head_commit="sha2",
             dry_run=True,
         )
@@ -290,7 +290,7 @@ class TestRevertGuard:
                 target_step=tid,
                 branch="main",
                 user_id="user",
-                work_session_id="ws_b",
+                lane_id="ws_b",
                 head_commit="sha_revert",
                 dry_run=True,
             )
@@ -311,7 +311,7 @@ class TestCherryPickGuard:
             message="session A",
             branch="main",
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             head_commit="sha_a",
             dry_run=True,
         )
@@ -324,7 +324,7 @@ class TestCherryPickGuard:
                 source_sha="deadbeef1234",
                 branch="main",
                 user_id="user",
-                work_session_id="ws_b",
+                lane_id="ws_b",
                 head_commit="sha_cp",
                 dry_run=True,
             )
@@ -346,7 +346,7 @@ class TestMergeGuard:
             message="feature commit",
             branch="feature",
             user_id="user",
-            work_session_id="ws_feature",
+            lane_id="ws_feature",
             head_commit="sha_feat",
             dry_run=True,
         )
@@ -358,7 +358,7 @@ class TestMergeGuard:
             message="session A on main",
             branch="main",
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             head_commit="sha_a",
             dry_run=True,
         )
@@ -371,7 +371,7 @@ class TestMergeGuard:
                 other_node_id=feat_node,
                 branch="main",
                 user_id="user",
-                work_session_id="ws_b",
+                lane_id="ws_b",
                 head_commit="sha_merge",
                 dry_run=True,
             )

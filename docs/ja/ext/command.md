@@ -51,5 +51,5 @@ result = handle.command.run(
 print(result)  # exit code・記録した step_id などを含む dict
 ```
 
-> 主な引数: `command`（必須・リスト）、`cwd`、`user_id`、`work_session_id`、`max_output_chars`。
+> 主な引数: `command`（必須・リスト）、`cwd`、`user_id`、`lane_id`、`max_output_chars`。
 > 新しい Step はワークセッションの tip に追加されます（任意のノードへ後付けで attach するのではありません）。

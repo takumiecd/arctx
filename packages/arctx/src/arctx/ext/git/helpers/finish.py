@@ -101,7 +101,7 @@ def git_finish_form_a(
     status: str = "completed",
     summary: str | None = None,
     user_id: str = "user",
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     """Create a result step and attach GitChangePayload.
 
@@ -174,7 +174,7 @@ def git_finish_form_a(
     handle.run_graph.attach_payload(gcp)
     handle.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="git_change_attached",
         target_kind="step",
         target_id=step_id,
@@ -231,7 +231,7 @@ def git_finish_form_b(
     *,
     step_id: str,
     user_id: str = "user",
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     """Attach GitChangePayload to an existing Step."""
     session = load_session(session_id, run_dir)
@@ -304,7 +304,7 @@ def git_finish_form_b(
     handle.run_graph.attach_payload(gcp)
     handle.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="git_change_attached",
         target_kind="step",
         target_id=step_id,

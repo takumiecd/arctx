@@ -6,7 +6,7 @@ from arctx.ext.base import CliCommand, ExtensionBase
 from arctx.ext.codex.adapter import (
     record_hook_event,
     session_tip,
-    work_session_id_for,
+    lane_id_for,
 )
 
 
@@ -22,4 +22,4 @@ class CodexExtension(ExtensionBase):
         return [CliCommand(name=self.name, add_parser=add_parser, handler=cli_codex)]
 
 
-__all__ = ["CodexExtension", "record_hook_event", "session_tip", "work_session_id_for"]
+__all__ = ["CodexExtension", "record_hook_event", "session_tip", "lane_id_for"]

@@ -28,7 +28,7 @@ def _resolve_other_node_id(
     *,
     other_node_id: str | None,
     other_branch: str | None,
-    work_session_id: str | None,
+    lane_id: str | None,
     repo_id: str = "",
 ) -> str:
     if other_node_id is not None:
@@ -60,7 +60,7 @@ def merge_impl(
     branch: str | None = None,
     repo_path: Path | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     head_commit: str | None = None,
     dry_run: bool = False,
 ) -> Step:
@@ -69,7 +69,7 @@ def merge_impl(
 
     repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
 
-    current_node_ids = resolve_current_node_ids(self, work_session_id)
+    current_node_ids = resolve_current_node_ids(self, lane_id)
 
     for nid in current_node_ids:
         self._ensure_active_node(nid)
@@ -78,7 +78,7 @@ def merge_impl(
         self,
         other_node_id=other_node_id,
         other_branch=other_branch,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         repo_id=repo_id,
     )
     self._ensure_active_node(resolved_other_node_id)
@@ -97,7 +97,7 @@ def merge_impl(
         repo_path=resolved_repo_path,
     )
 
-    if work_session_id is not None:
+    if lane_id is not None:
         check_branch_tip_consistency(
             self.run_graph, current_branch, current_node_ids, repo_id
         )
@@ -155,7 +155,7 @@ def merge_impl(
             "head_commit": head_commit,
         },
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         repo_id=repo_id,
     )
 

@@ -11,8 +11,8 @@ from arctx_cli.commands.cut import run_cut_command
 from arctx_cli.commands.dump import run_dump_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.list import run_list_command
-from arctx_cli.commands.payload import run_payload_add_command, run_payload_list_command
-from arctx_cli.commands.step import run_step_command
+from arctx_cli.commands.attach import run_attach_command
+from arctx_cli.commands.add import run_add_step_command
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -78,11 +78,11 @@ def test_step_creates_step():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        tr_result = run_step_command(
+        tr_result = run_add_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
-            payload_type="suggestion",
-            content={"proposal": "try lr=0.01"},
+            title=None, payload_kind="suggestion", payload_type="step_payload", field_data={}, json_data={},
+            
             store_dir=_store_dir(td),
         )
         t = tr_result["step"]
@@ -94,11 +94,11 @@ def test_step_always_creates_one_output_node():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        tr_result = run_step_command(
+        tr_result = run_add_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
-            payload_type="suggestion",
-            content={},
+            title=None, payload_kind="suggestion", payload_type="step_payload", field_data={}, json_data={},
+            
             store_dir=_store_dir(td),
         )
         assert tr_result["step"]["output_node_id"].startswith("n_")
@@ -107,11 +107,11 @@ def test_step_always_creates_one_output_node():
 def test_step_unknown_run_raises():
     with tempfile.TemporaryDirectory() as td:
         with pytest.raises(KeyError, match="unknown run_id"):
-            run_step_command(
+            run_add_step_command(
                 run_id="no_such_run",
                 input_node_ids=["n_x"],
-                payload_type="experiment",
-                content={},
+                title=None, payload_kind="experiment", payload_type="step_payload", field_data={}, json_data={},
+                
                 store_dir=_store_dir(td),
             )
 
@@ -125,11 +125,11 @@ def test_cut_node():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        tr_result = run_step_command(
+        tr_result = run_add_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
-            payload_type="suggestion",
-            content={},
+            title=None, payload_kind="suggestion", payload_type="step_payload", field_data={}, json_data={},
+            
             store_dir=_store_dir(td),
         )
         output_node_id = tr_result["step"]["output_node_id"]
@@ -148,23 +148,20 @@ def test_payload_add_and_list_node_payload():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        add_result = run_payload_add_command(
+        add_result = run_attach_command(
             run_id="test_run",
-            target_kind="node",
             target_id=root_id,
-            payload_type="node_payload",
+            payload_kind="note", payload_type="node_payload",
             field_data={"type": "note", "text": "hello"},
             json_data={},
             store_dir=_store_dir(td),
         )
         assert add_result["payload"]["payload_type"] == "node_payload"
-        listed = run_payload_list_command(
-            run_id="test_run",
-            target_kind="node",
-            target_id=root_id,
-            store_dir=_store_dir(td),
-        )
-        assert listed["payloads"][0]["content"]["text"] == "hello"
+        from arctx_cli.context import resolve_store
+        store = resolve_store(_store_dir(td))
+        handle = store.load_run("test_run")
+        payloads = [p for p in handle.run_graph.payloads.values() if p.target_id == root_id]
+        assert payloads[0].content["text"] == "hello"
 
 
 def test_payload_add_and_list_diagram_payload():
@@ -179,11 +176,10 @@ def test_payload_add_and_list_diagram_payload():
             extension_options={},
         )
         root_id = result["root_node_id"]
-        add_result = run_payload_add_command(
+        add_result = run_attach_command(
             run_id="test_run",
-            target_kind="node",
             target_id=root_id,
-            payload_type="diagram",
+            payload_kind="diagram", payload_type="diagram",
             field_data={},
             json_data={
                 "title": "retry loop",
@@ -199,13 +195,11 @@ def test_payload_add_and_list_diagram_payload():
 
         assert add_result["payload"]["payload_type"] == "diagram"
         assert add_result["payload"]["edges"][1]["to"] == "fetch"
-        listed = run_payload_list_command(
-            run_id="test_run",
-            target_kind="node",
-            target_id=root_id,
-            store_dir=_store_dir(td),
-        )
-        assert listed["payloads"][0]["title"] == "retry loop"
+        from arctx_cli.context import resolve_store
+        store = resolve_store(_store_dir(td))
+        handle = store.load_run("test_run")
+        payloads = [p for p in handle.run_graph.payloads.values() if p.target_id == root_id]
+        assert payloads[0].title == "retry loop"
 
 
 # ---------------------------------------------------------------------------
@@ -217,11 +211,11 @@ def test_dump_outline():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        run_step_command(
+        run_add_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
-            payload_type="experiment",
-            content={},
+            title=None, payload_kind="experiment", payload_type="step_payload", field_data={}, json_data={},
+            
             store_dir=_store_dir(td),
         )
         out = run_dump_command(
@@ -237,11 +231,11 @@ def test_dump_mermaid():
     with tempfile.TemporaryDirectory() as td:
         result = _init(td)
         root_id = result["root_node_id"]
-        run_step_command(
+        run_add_step_command(
             run_id="test_run",
             input_node_ids=[root_id],
-            payload_type="experiment",
-            content={},
+            title=None, payload_kind="experiment", payload_type="step_payload", field_data={}, json_data={},
+            
             store_dir=_store_dir(td),
         )
         out = run_dump_command(

@@ -43,7 +43,7 @@ It is the graph layer underneath them.
 
 ![ARCTX CLI Demo](examples/demo_cli.gif)
 
-*Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `work-session`; both branches land as sibling steps in the same `RunGraph` — no race, no overwrite.*
+*Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `lane`; both branches land as sibling steps in the same `RunGraph` — no race, no overwrite.*
 
 > 0.3 beta — the DAG core (Node / Step / Payload) is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
 
@@ -60,7 +60,7 @@ Real work is not a straight line. You form a hypothesis, try it, observe what ha
 
 ARCTX records all of it as one append-only DAG:
 
-- **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked work-session and their attempts become sibling steps.
+- **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked lane and their attempts become sibling steps.
 - **Reverts stay in the graph.** A failed rewrite isn't deleted, it's marked inactive via `CutPayload`. You can still see what was tried, and why.
 - **Domain payloads, not just commits.** Attach benchmark results, predictions, intent — anything. The DAG knows what each step was *for*.
 - **Read-time activity.** Killed branches are filtered automatically; the graph stays clean without rewriting history.
@@ -135,27 +135,27 @@ Claude and Codex drive the same run without stepping on each other.
 BASE=$(arctx git commit -m "baseline" --run demo | jq -r .output_node_id)
 
 # Terminal 1 — Claude
-eval $(arctx work-session env --run demo --new --user claude)
+eval $(arctx lane env --run demo --new --user claude)
 git checkout -b claude/vec
 # ...edits...
 git add . && arctx git commit -m "Claude: vectorize inner loop" --from "$BASE"
 
 # Terminal 2 — Codex (running at the same time)
-eval $(arctx work-session env --run demo --new --user codex)
+eval $(arctx lane env --run demo --new --user codex)
 git checkout main && git checkout -b codex/map
 # ...edits...
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
 ```
 
 Both land in the same `RunGraph` as sibling steps off the baseline. Each
-agent has its own work-session, and `--from "$BASE"` keeps them independent —
+agent has its own lane, and `--from "$BASE"` keeps them independent —
 no fast-forward conflict, no overwrite:
 
 ```text
 n_root
 └─ baseline ── n_baseline
-   ├─ Claude: vectorize inner loop ── n_2   (work-session: claude / ws_xxx)
-   └─ Codex: parallel map           ── n_3   (work-session: codex / ws_yyy)
+   ├─ Claude: vectorize inner loop ── n_2   (lane: claude / ws_xxx)
+   └─ Codex: parallel map           ── n_3   (lane: codex / ws_yyy)
 ```
 
 No merge conflicts in the graph. Both attempts stay reviewable forever.
@@ -219,17 +219,17 @@ arctx dump --format mermaid            # or a visual mermaid flowchart
 
 `arctx dump` is the canonical whole-run renderer; `arctx graph dump` is the same thing under the `graph` namespace.
 
-Two agents on the same repo? Each gets an isolated work-session that doesn't touch the others' attribution:
+Two agents on the same repo? Each gets an isolated lane that doesn't touch the others' attribution:
 
 ```bash
 # Claude's terminal
-eval $(arctx work-session env --run demo --new --user claude)
+eval $(arctx lane env --run demo --new --user claude)
 git checkout -b claude/vec
 # ...edits...
 git add . && arctx git commit -m "Claude: vectorization" --from "$BASE"
 
 # Codex's terminal (running in parallel)
-eval $(arctx work-session env --run demo --new --user codex)
+eval $(arctx lane env --run demo --new --user codex)
 git checkout main && git checkout -b codex/map
 # ...edits...
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
@@ -239,9 +239,9 @@ Both branches land in the same `RunGraph` as sibling steps off `$BASE`. See `exa
 
 ![ARCTX CLI Demo](examples/demo_cli.gif)
 
-*Two agents, one run: each commit is attributed to its own `work-session` and both land as sibling steps off the shared baseline — no race, no overwrite.*
+*Two agents, one run: each commit is attributed to its own `lane` and both land as sibling steps off the shared baseline — no race, no overwrite.*
 
-> **Note on isolation.** A ARCTX `work-session` isolates ARCTX run/session attribution (who did what, in which session). It does **not** isolate the Git working tree by itself — both terminals above share the same checkout unless you attach each session to its own `git worktree`. See the next section for the worktree-aware variant.
+> **Note on isolation.** A ARCTX `lane` isolates ARCTX run/session attribution (who did what, in which session). It does **not** isolate the Git working tree by itself — both terminals above share the same checkout unless you attach each session to its own `git worktree`. See the next section for the worktree-aware variant.
 
 ### Parallel agents in separate worktrees
 
@@ -253,13 +253,13 @@ can edit, stage, and commit without trampling each other:
 arctx git worktree add ../wt-claude claude/vec
 arctx git worktree add ../wt-codex  codex/map
 
-# Each agent attaches its work-session to one worktree.
-# This exports ARCTX_RUN_ID / ARCTX_WORK_SESSION_ID / ARCTX_USER_ID *and*
+# Each agent attaches its lane to one worktree.
+# This exports ARCTX_RUN_ID / ARCTX_LANE_ID / ARCTX_USER_ID *and*
 # ARCTX_GIT_WORKTREE, so subsequent `arctx git commit` runs inside that
 # worktree only.
-eval $(arctx work-session env --run demo --new --user claude \
+eval $(arctx lane env --run demo --new --user claude \
         --worktree ../wt-claude)
-eval $(arctx work-session env --run demo --new --user codex \
+eval $(arctx lane env --run demo --new --user codex \
         --worktree ../wt-codex)
 ```
 
@@ -301,8 +301,8 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx show [id]` | Show the current run or a single node/step/payload. |
 | `arctx log` | Show the DAG as an ordered event stream. |
 | `arctx git commit -m ...` | Drive a real `git commit` and record a `Step` with `GitChangePayload`. |
-| `arctx work-session env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
-| `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `work-session env` to give each agent an isolated checkout. |
+| `arctx lane env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
+| `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `lane env` to give each agent an isolated checkout. |
 | `arctx dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
 | `arctx dump --format mermaid` | Mermaid flowchart for humans / docs. |
 
@@ -383,8 +383,8 @@ PYTHONPATH=src python3 -m arctx_cli.main ...
   nodes.jsonl
   steps.jsonl
   payloads.jsonl
-  work_sessions.jsonl
-  work_events.jsonl
+  lanes.jsonl
+  lane_events.jsonl
 ```
 
 `SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<ARCTX_HOME>/runs`.

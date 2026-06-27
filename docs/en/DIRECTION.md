@@ -18,15 +18,15 @@ the focused node or step.
 
 ## Git worktree-aware workflows
 
-The Git extension is worktree-aware. A `WorkSession` can be attached to
+The Git extension is worktree-aware. A `Lane` can be attached to
 a specific `git worktree`, and ARCTX commands inside that session run
 their git subprocesses inside the linked working tree:
 
 - `ARCTX_GIT_WORKTREE` overrides the cwd for every git verb
   (`arctx git commit / revert / cherry-pick / merge / reset / verify`).
-- `arctx work-session start / env / spawn --worktree PATH` records the
+- `arctx lane start / env / spawn --worktree PATH` records the
   resolved path (plus current branch and `git --git-common-dir`) on
-  `WorkSession.metadata["worktree"]` and exports `ARCTX_GIT_WORKTREE`
+  `Lane.metadata["worktree"]` and exports `ARCTX_GIT_WORKTREE`
   for downstream processes.
 - `arctx git worktree {add,list,remove}` is a thin wrapper around the
   upstream `git worktree` plumbing. Lifecycle stays in git so that
@@ -34,8 +34,8 @@ their git subprocesses inside the linked working tree:
 
 Possible follow-ups:
 
-- Surface the worktree path in `arctx work-session list` / TUI views.
+- Surface the worktree path in `arctx lane list` / TUI views.
 - Record a per-step workspace path when an agent moves between
   worktrees during a single session.
-- Auto-create a worktree when `work-session env --new --worktree PATH`
+- Auto-create a worktree when `lane env --new --worktree PATH`
   points at a missing directory.

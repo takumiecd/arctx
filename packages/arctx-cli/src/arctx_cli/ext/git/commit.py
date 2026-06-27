@@ -15,7 +15,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 
 
@@ -56,7 +56,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     p.add_argument("--run", default=None, help="Explicit run id")
     p.add_argument("--store-dir", default=None, help="Store directory")
     p.add_argument("--user", default=None, help="User id for attribution")
-    p.add_argument("--work-session", default=None, help="Work session id")
+    p.add_argument("--lane", default=None, help="Work session id")
     return p
 
 
@@ -83,7 +83,7 @@ def run_commit_command(
     run_id: str | None,
     store_dir: str | None,
     user_id: str | None,
-    work_session_id: str | None,
+    lane_id: str | None,
     merge: str | None = None,
     from_node_ids: tuple[str, ...] | None = None,
     # Test-only parameters; not exposed in the CLI parser.
@@ -104,7 +104,7 @@ def run_commit_command(
         Store directory. If None, resolved from ARCTX_HOME.
     user_id:
         User id for work event attribution.
-    work_session_id:
+    lane_id:
         Work session id.
     merge:
         If set, drive a merge instead of a plain commit. Format:
@@ -127,7 +127,7 @@ def run_commit_command(
             message=message,
             branch=branch,
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             dry_run=dry_run,
             head_commit=head_commit,
         )
@@ -136,7 +136,7 @@ def run_commit_command(
             message=message,
             branch=branch,
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             from_node_ids=from_node_ids,
             dry_run=dry_run,
             head_commit=head_commit,
@@ -146,7 +146,7 @@ def run_commit_command(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         before=before,
     )
 
@@ -177,7 +177,7 @@ def cli_commit(args) -> int:
 
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)
-    work_session_id = resolve_work_session_id_from_args(args)
+    lane_id = resolve_lane_id_from_args(args)
 
     from_nodes = getattr(args, "from_nodes", None)
     merge = getattr(args, "merge", None)
@@ -192,7 +192,7 @@ def cli_commit(args) -> int:
             run_id=run_id,
             store_dir=args.store_dir,
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             merge=merge,
             from_node_ids=tuple(from_nodes) if from_nodes else None,
         )

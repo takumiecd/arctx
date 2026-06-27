@@ -84,7 +84,7 @@ class TestRunHookPostMerge:
             run_id="run_pm_known",
             store_dir=sd,
             user_id="u",
-            work_session_id="ws",
+            lane_id="ws",
             dry_run=True,
             head_commit="sha_known_001",
         )
@@ -100,7 +100,7 @@ class TestRunHookPostMerge:
 
     def test_adopt_merge_when_other_node_known(self, tmp_path):
         """When ^2 parent sha is already in arctx, adopt creates multi-input step."""
-        from arctx.core.schema.work import WorkSession
+        from arctx.core.schema.work import Lane
         from arctx.core.schema.work_helpers import make_session_pointer_event
         from arctx_cli.ext.git.commit import run_commit_command
 
@@ -114,7 +114,7 @@ class TestRunHookPostMerge:
             run_id="run_pm_adopt",
             store_dir=sd,
             user_id="u",
-            work_session_id="ws_m",
+            lane_id="ws_m",
             dry_run=True,
             head_commit="sha_main_adopt",
         )
@@ -122,13 +122,13 @@ class TestRunHookPostMerge:
         store = resolve_store(sd)
         handle = store.load_run("run_pm_adopt")
         root_id = handle.root_node_id
-        handle.run_graph.add_work_session(
-            WorkSession(work_session_id="ws_f", run_id=handle.run_id, user_id="u")
+        handle.run_graph.add_lane(
+            Lane(work_session_id="ws_f", run_id=handle.run_id, user_id="u")
         )
         sp = make_session_pointer_event(
             event_id=handle._next_id("we"),
             run_id=handle.run_id,
-            work_session_id="ws_f",
+            lane_id="ws_f",
             user_id="u",
             current_node_ids=(root_id,),
             current_branch="feature",
@@ -142,7 +142,7 @@ class TestRunHookPostMerge:
             run_id="run_pm_adopt",
             store_dir=sd,
             user_id="u",
-            work_session_id="ws_f",
+            lane_id="ws_f",
             dry_run=True,
             head_commit="sha_feat_adopt",
         )
@@ -170,7 +170,7 @@ class TestRunHookPostMerge:
                 squash=False,
                 head_sha="sha_new_merge",
                 user_id="u",
-                work_session_id="ws_m",
+                lane_id="ws_m",
             )
 
         assert result["action"] == "adopted"

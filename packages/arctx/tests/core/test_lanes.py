@@ -31,19 +31,19 @@ def _payload(handle, label: str = "step") -> StepPayload:
     return StepPayload(payload_id=handle._next_id("pl"), target_id="pending", type=label)
 
 
-def _seed_node(handle, *, work_session_id: str | None = None, user_id: str = "alice") -> Node:
+def _seed_node(handle, *, lane_id: str | None = None, user_id: str = "alice") -> Node:
     """Mint a producer-less Node low-level for lane-validation fixtures.
 
     Standalone nodes have no public verb anymore; they only arise from imported
-    subgraphs. When *work_session_id* is given, record the matching ``node_added``
+    subgraphs. When *lane_id* is given, record the matching ``node_added``
     work event so the node joins that lane (mirrors the old ``add_node`` verb).
     """
     node = Node(node_id=handle._next_id("n"))
     handle.run_graph.add_node(node)
-    if work_session_id is not None:
+    if lane_id is not None:
         handle.record_work_event(
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             event_type="node_added",
             target_kind="node",
             target_id=node.node_id,
@@ -60,7 +60,7 @@ def test_lane_membership_groups_step_and_output_node():
         [h.root_node_id],
         _payload(h, "derive"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
 
     membership = lane_membership(h.run_graph)
@@ -79,7 +79,7 @@ def test_lane_adoption_sets_current_membership_without_rewriting_creation():
         [h.root_node_id],
         _payload(h, "seed"),
         user_id="alice",
-        work_session_id="lane_seed",
+        lane_id="lane_seed",
     )
 
     h.adopt_lane_records(
@@ -109,13 +109,13 @@ def test_lane_boundaries_are_derived_from_cross_lane_inputs():
         [h.root_node_id],
         _payload(h, "math"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     exp_step = h.add_step(
         [math_step.output_node_id],
         _payload(h, "experiment"),
         user_id="alice",
-        work_session_id="lane_exp",
+        lane_id="lane_exp",
     )
 
     boundaries = lane_boundaries(h.run_graph)
@@ -133,7 +133,7 @@ def test_lane_subgraph_returns_one_lane_records():
         [h.root_node_id],
         _payload(h, "math"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
 
     subgraph = lane_subgraph(h.run_graph, "lane_math")
@@ -149,44 +149,44 @@ def test_lane_edge_summaries_returns_summaries_on_terminal_lane_nodes():
         [h.root_node_id],
         _payload(h, "root"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     left = h.add_step(
         [root.output_node_id],
         _payload(h, "left"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     right = h.add_step(
         [root.output_node_id],
         _payload(h, "right"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     left_child = h.add_step(
         [left.output_node_id],
         _payload(h, "left-child"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
 
     h.attach(
         left.output_node_id,
         SummaryPayload(payload_id="_", target_id="_", text="not terminal"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     left_summary = h.attach(
         left_child.output_node_id,
         SummaryPayload(payload_id="_", target_id="_", text="left conclusion"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     right_summary = h.attach(
         right.output_node_id,
         SummaryPayload(payload_id="_", target_id="_", text="right conclusion"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
 
     summaries = lane_edge_summaries(h.run_graph, "lane_math")
@@ -211,7 +211,7 @@ def test_reparent_within_lane_stays_lane_valid():
             [parent],
             _payload(h, label),
             user_id="alice",
-            work_session_id="lane_math",
+            lane_id="lane_math",
         ).output_node_id
 
     r0 = step(h.root_node_id, "root")     # single lane root (from run root)
@@ -225,7 +225,7 @@ def test_reparent_within_lane_stays_lane_valid():
         [b],
         _payload(h, "rederive"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
 
     errors = [
@@ -240,14 +240,14 @@ def test_validate_lanes_reports_output_lane_mismatch():
     h = _handle()
     h.ensure_lane(name="seed", lane_id="lane_seed", created_by="alice")
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
-    seed = _seed_node(h, work_session_id="lane_seed")
+    seed = _seed_node(h, lane_id="lane_seed")
 
     step = h.add_step(
         [h.root_node_id],
         _payload(h, "math"),
         output_node_id=seed.node_id,
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
@@ -261,8 +261,8 @@ def test_validate_lanes_reports_output_lane_mismatch():
 def test_validate_lanes_reports_multiple_lane_roots():
     h = _handle()
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
-    first = _seed_node(h, work_session_id="lane_math")
-    second = _seed_node(h, work_session_id="lane_math")
+    first = _seed_node(h, lane_id="lane_math")
+    second = _seed_node(h, lane_id="lane_math")
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
@@ -290,7 +290,7 @@ def test_validate_lanes_reports_records_unreachable_from_explicit_root():
     )
     h.record_work_event(
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
         event_type="lane_adopted",
         target_kind="subgraph",
         target_id=root.node_id,
@@ -316,13 +316,13 @@ def test_lane_root_candidates_treat_entry_step_output_as_root():
         [h.root_node_id],
         _payload(h, "math"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     exp = h.add_step(
         [math.output_node_id],
         _payload(h, "experiment"),
         user_id="alice",
-        work_session_id="lane_exp",
+        lane_id="lane_exp",
     )
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
@@ -334,7 +334,7 @@ def test_lane_root_candidates_treat_entry_step_output_as_root():
 
 def test_validate_lanes_warns_about_default_lane_membership():
     h = _handle()
-    _seed_node(h, work_session_id="default")
+    _seed_node(h, lane_id="default")
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
@@ -349,7 +349,7 @@ def test_run_root_is_not_a_lane_member_even_if_adopted():
     h.ensure_lane(name="default", lane_id="default", created_by="alice")
     h.record_work_event(
         user_id="alice",
-        work_session_id="default",
+        lane_id="default",
         event_type="lane_adopted",
         target_kind="subgraph",
         target_id=h.root_node_id,
@@ -388,19 +388,19 @@ def test_adopt_lane_records_rejects_invalid_lane_roots():
         [h.root_node_id],
         _payload(h, "math"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     h.add_step(
         [math_root.output_node_id],
         _payload(h, "experiment"),
         user_id="alice",
-        work_session_id="lane_exp",
+        lane_id="lane_exp",
     )
     other = h.add_step(
         [math_root.output_node_id],
         _payload(h, "other"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
 
     before = tuple(event.event_id for event in h.run_graph.work_events)
@@ -439,7 +439,7 @@ def test_validate_lanes_errors_when_step_has_no_lane():
         [h.root_node_id],
         _payload(h, "unowned"),
         user_id="alice",
-        work_session_id=None,
+        lane_id=None,
     )
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
@@ -491,7 +491,7 @@ def test_validate_lanes_errors_when_lane_root_is_producerless():
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
     # A producer-less node treated as the lane's root (the degenerate shape the
     # removed add_node verb produced). A lane root must be a step output.
-    seed = _seed_node(h, work_session_id="lane_math")
+    seed = _seed_node(h, lane_id="lane_math")
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
@@ -512,7 +512,7 @@ def test_validate_lanes_accepts_entry_step_output_as_lane_root():
         [h.root_node_id],
         _payload(h, "derive"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
@@ -529,13 +529,13 @@ def test_lane_export_view_is_json_ready():
         [h.root_node_id],
         _payload(h, "math"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     summary = h.attach(
         step.output_node_id,
         SummaryPayload(payload_id="_", target_id="_", text="math conclusion"),
         user_id="alice",
-        work_session_id="lane_math",
+        lane_id="lane_math",
     )
     payload_ids = set(h.run_graph.payloads)
 
@@ -551,8 +551,8 @@ def test_lane_export_view_is_json_ready():
     assert view["record_provenance"][step.step_id]["lane_id"] == "lane_math"
     assert view["record_provenance"][step.step_id]["membership_kind"] == "created"
     assert view["created_provenance"][step.step_id]["lane_id"] == "lane_math"
-    assert view["lanes"][0]["work_session_id"] == "lane_math"
-    assert view["work_sessions"][0]["work_session_id"] == "lane_math"
+    assert view["lanes"][0]["lane_id"] == "lane_math"
+    assert view["lanes"][0]["lane_id"] == "lane_math"
     assert view["lane_edge_summaries"] == [
         {
             "lane_id": "lane_math",

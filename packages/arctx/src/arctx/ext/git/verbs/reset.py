@@ -55,7 +55,7 @@ def reset_impl(
     branch: str | None = None,
     repo_path: Path | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     dry_run: bool = False,
 ) -> dict:
     """Reset to a past node. Does NOT create a new Step."""
@@ -78,8 +78,8 @@ def reset_impl(
         raise KeyError(f"unknown node_id: {to_node_id!r}")
 
     from_node_id: str
-    if work_session_id is not None:
-        sp = latest_session_pointer(graph, work_session_id)
+    if lane_id is not None:
+        sp = latest_session_pointer(graph, lane_id)
         if sp is not None:
             raw = sp.data.get("current_node_ids") or []
             ids = [str(n) for n in raw]
@@ -117,19 +117,19 @@ def reset_impl(
             )
 
     current_branch: str | None = branch
-    if current_branch is None and work_session_id is not None:
-        sp = latest_session_pointer(graph, work_session_id)
+    if current_branch is None and lane_id is not None:
+        sp = latest_session_pointer(graph, lane_id)
         if sp is not None:
             current_branch = sp.data.get("current_branch")
 
     event_id: str | None = None
-    if user_id is not None and work_session_id is not None:
-        self.ensure_work_session(user_id=user_id, work_session_id=work_session_id)
+    if user_id is not None and lane_id is not None:
+        self.ensure_lane(user_id=user_id, lane_id=lane_id)
 
         reset_event = make_reset_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             user_id=user_id,
             from_node_id=from_node_id,
             to_node_id=to_node_id,
@@ -142,7 +142,7 @@ def reset_impl(
         sp_event = make_session_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             user_id=user_id,
             current_node_ids=(to_node_id,),
             current_branch=current_branch,

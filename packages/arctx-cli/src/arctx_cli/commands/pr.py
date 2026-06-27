@@ -29,7 +29,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 from arctx_cli.payload_builder import build_payload
 
@@ -74,7 +74,7 @@ def _status(graph, node_id, inactive):
 
 
 def run_propose_command(*, run_id, source_node, target_node, title, store_dir,
-                        user_id=None, work_session_id=None):
+                        user_id=None, lane_id=None):
     """Open a pending proposal: SOURCE proposed to merge into TARGET."""
     store, handle = _load(run_id, store_dir)
     g = handle.run_graph
@@ -91,14 +91,14 @@ def run_propose_command(*, run_id, source_node, target_node, title, store_dir,
         "status": "open",
         "title": title or f"propose {source_node} -> {target_node}",
     })
-    handle.attach(source_node, payload, user_id=user_id, work_session_id=work_session_id)
+    handle.attach(source_node, payload, user_id=user_id, lane_id=lane_id)
     maybe_append_or_save(store=store, handle=handle, user_id=user_id,
-                         work_session_id=work_session_id, before=before)
+                         lane_id=lane_id, before=before)
     return {"proposal": source_node, "target": target_node, "status": "open"}
 
 
 def run_accept_command(*, run_id, source_node, title, store_dir,
-                       user_id=None, work_session_id=None):
+                       user_id=None, lane_id=None):
     """Accept a proposal by a GUARDED merge into its target (or refuse)."""
     store, handle = _load(run_id, store_dir)
     g = handle.run_graph
@@ -121,7 +121,7 @@ def run_accept_command(*, run_id, source_node, title, store_dir,
     )
     try:
         step = handle.add_step([source_node, target_node], merge,
-                               user_id=user_id, work_session_id=work_session_id)
+                               user_id=user_id, lane_id=lane_id)
     except (ValueError, KeyError) as exc:
         # arctx's own invariant (cut base / cycle / missing dep) refused the merge.
         raise ValueError(
@@ -132,23 +132,23 @@ def run_accept_command(*, run_id, source_node, title, store_dir,
     handle.attach(source_node, _node_payload(handle, source_node, {
         "type": "proposal_resolution", "status": "accepted",
         "merged": step.output_node_id,
-    }), user_id=user_id, work_session_id=work_session_id)
+    }), user_id=user_id, lane_id=lane_id)
     maybe_append_or_save(store=store, handle=handle, user_id=user_id,
-                         work_session_id=work_session_id, before=before)
+                         lane_id=lane_id, before=before)
     return {"accepted": source_node, "merged_node": step.output_node_id,
             "step": step.step_id}
 
 
 def run_reject_command(*, run_id, source_node, reason, store_dir,
-                       user_id=None, work_session_id=None):
+                       user_id=None, lane_id=None):
     """Reject a proposal = cut SOURCE with a reason (kept in the DAG)."""
     store, handle = _load(run_id, store_dir)
     _find_proposal(handle.run_graph, source_node)
     before = graph_counts(handle)
     handle.cut(source_node, target_kind="node", reason=reason,
-               user_id=user_id, work_session_id=work_session_id)
+               user_id=user_id, lane_id=lane_id)
     maybe_append_or_save(store=store, handle=handle, user_id=user_id,
-                         work_session_id=work_session_id, before=before)
+                         lane_id=lane_id, before=before)
     return {"rejected": source_node, "reason": reason}
 
 
@@ -187,7 +187,7 @@ def add_propose_parser(subparsers) -> argparse.ArgumentParser:
     p.add_argument("--run", default=None)
     p.add_argument("--store-dir", default=None)
     p.add_argument("--user", default=None)
-    p.add_argument("--work-session", default=None)
+    p.add_argument("--lane", default=None)
     return p
 
 
@@ -200,7 +200,7 @@ def add_accept_parser(subparsers) -> argparse.ArgumentParser:
     p.add_argument("--run", default=None)
     p.add_argument("--store-dir", default=None)
     p.add_argument("--user", default=None)
-    p.add_argument("--work-session", default=None)
+    p.add_argument("--lane", default=None)
     return p
 
 
@@ -213,7 +213,7 @@ def add_reject_parser(subparsers) -> argparse.ArgumentParser:
     p.add_argument("--run", default=None)
     p.add_argument("--store-dir", default=None)
     p.add_argument("--user", default=None)
-    p.add_argument("--work-session", default=None)
+    p.add_argument("--lane", default=None)
     return p
 
 
@@ -231,7 +231,7 @@ def cli_propose(args) -> int:
             run_id=resolve_run_id_from_args(args),
             source_node=args.source, target_node=args.target, title=args.title,
             store_dir=args.store_dir, user_id=resolve_user_id_from_args(args),
-            work_session_id=resolve_work_session_id_from_args(args),
+            lane_id=resolve_lane_id_from_args(args),
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -247,7 +247,7 @@ def cli_accept(args) -> int:
             run_id=resolve_run_id_from_args(args), source_node=args.source,
             title=args.title, store_dir=args.store_dir,
             user_id=resolve_user_id_from_args(args),
-            work_session_id=resolve_work_session_id_from_args(args),
+            lane_id=resolve_lane_id_from_args(args),
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -263,7 +263,7 @@ def cli_reject(args) -> int:
             run_id=resolve_run_id_from_args(args), source_node=args.source,
             reason=args.reason, store_dir=args.store_dir,
             user_id=resolve_user_id_from_args(args),
-            work_session_id=resolve_work_session_id_from_args(args),
+            lane_id=resolve_lane_id_from_args(args),
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0

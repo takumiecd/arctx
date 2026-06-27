@@ -113,8 +113,8 @@ def _append_or_save_lane(store, handle, run_id: str, user_id: str, lane) -> None
             AppendBatch(
                 run_id=run_id,
                 user_id=user_id or "",
-                work_session_id=lane.work_session_id,
-                work_session=lane,
+                lane_id=lane.lane_id,
+                lane=lane,
                 records=(),
                 events=(),
             )
@@ -137,7 +137,7 @@ def run_lane_create_command(
 
     lane = handle.ensure_lane(name=name, created_by=user_id)
     _append_or_save_lane(store, handle, run_id, user_id, lane)
-    return {"lane_id": lane.work_session_id, "name": name, "created": True}
+    return {"lane_id": lane.lane_id, "name": name, "created": True}
 
 
 def run_lane_switch_command(
@@ -158,18 +158,18 @@ def run_lane_switch_command(
         raise KeyError(f"unknown lane: {name!r}; create it with `arctx lane create {name}`")
 
     result = {
-        "lane_id": lane.work_session_id,
+        "lane_id": lane.lane_id,
         "name": lane.name,
         "created": False,
     }
     if shell:
         result["export"] = (
-            f"export ARCTX_LANE_ID={lane.work_session_id}; "
-            f"export ARCTX_WORK_SESSION_ID={lane.work_session_id}"
+            f"export ARCTX_LANE_ID={lane.lane_id}; "
+            f"export ARCTX_LANE_ID={lane.lane_id}"
         )
     else:
         repo_root = find_repo_root()
-        write_arctx_lane(repo_root, lane.work_session_id, run_id=run_id)
+        write_arctx_lane(repo_root, lane.lane_id, run_id=run_id)
         result["arctx_lane_path"] = str(arctx_lane_path(repo_root))
     return result
 
@@ -207,7 +207,7 @@ def run_lane_adopt_command(
     )
     before = graph_counts(handle)
     event = handle.adopt_lane_records(
-        lane.work_session_id,
+        lane.lane_id,
         ids,
         user_id=user_id,
         mode=mode,
@@ -218,11 +218,11 @@ def run_lane_adopt_command(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=lane.work_session_id,
+        lane_id=lane.lane_id,
         before=before,
     )
     return {
-        "lane_id": lane.work_session_id,
+        "lane_id": lane.lane_id,
         "name": lane.name,
         "adopted_record_ids": list(ids),
         "count": len(ids),
@@ -287,7 +287,7 @@ def _without_run_root(handle, ids) -> tuple[str, ...]:
 
 def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:
     """Resolve the active lane (env > file pointer) and return its id/name."""
-    lane_id = os.environ.get("ARCTX_LANE_ID") or os.environ.get("ARCTX_WORK_SESSION_ID")
+    lane_id = os.environ.get("ARCTX_LANE_ID") or os.environ.get("ARCTX_LANE_ID")
     source = "env"
     if not lane_id:
         try:
@@ -301,7 +301,7 @@ def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:
     store = resolve_store(store_dir)
     if store.run_path(run_id).exists():
         handle = store.load_run(run_id)
-        lane = handle.run_graph.work_sessions.get(lane_id)
+        lane = handle.run_graph.lanes.get(lane_id)
         name = lane.name if lane is not None else None
     return {"lane_id": lane_id, "name": name, "source": source}
 
@@ -314,14 +314,14 @@ def list_lanes(*, run_id: str, store_dir: str | None) -> list[dict]:
     handle = store.load_run(run_id)
     sessions = sorted(
         handle.run_graph.lanes.values(),
-        key=lambda s: (s.started_at or "", s.work_session_id),
+        key=lambda s: (s.started_at or "", s.lane_id),
     )
     return [
         {
-            "lane_id": s.work_session_id,
+            "lane_id": s.lane_id,
             "name": s.name,
             "created_by": s.user_id,
-            "parent_lane_id": s.parent_work_session_id,
+            "parent_lane_id": s.parent_lane_id,
             "status": s.status,
         }
         for s in sessions
@@ -350,12 +350,12 @@ def lane_summaries(*, run_id: str, store_dir: str | None, name_or_id: str) -> di
         raise KeyError(f"unknown lane: {name_or_id}")
     edge_node_ids = lane_edge_node_ids(
         handle.run_graph,
-        lane.work_session_id,
+        lane.lane_id,
         root_node_id=handle.root_node_id,
     )
     summaries = lane_edge_summaries(
         handle.run_graph,
-        lane.work_session_id,
+        lane.lane_id,
         root_node_id=handle.root_node_id,
     )
     return {

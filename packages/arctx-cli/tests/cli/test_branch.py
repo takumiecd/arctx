@@ -78,7 +78,7 @@ class TestBranchListCommand:
             run_id="run_bl2",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
         )
 
         result = run_branch_list_command(run_id="run_bl2", store_dir=_store_dir(tmp_path))
@@ -107,7 +107,7 @@ class TestBranchListCommand:
             run_id="run_multi",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_m",
+            lane_id="ws_m",
         )
 
         (repo / "d.txt").write_text("d\n")
@@ -118,7 +118,7 @@ class TestBranchListCommand:
             run_id="run_multi",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_d",
+            lane_id="ws_d",
         )
 
         result = run_branch_list_command(run_id="run_multi", store_dir=_store_dir(tmp_path))
@@ -171,7 +171,7 @@ class TestBranchShowCommand:
             run_id="run_bs2",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
         )
 
         result = run_branch_show_command(
@@ -203,7 +203,7 @@ class TestBranchShowCommand:
             run_id="run_bs3",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
         )
 
         result = run_branch_show_command(

@@ -24,7 +24,7 @@ def adopt_rewrite_impl(
     mode: Literal["amend", "rebase"],
     branch: str | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     diff_summaries: dict[str, DiffSummary] | None = None,
     commit_logs: dict[str, tuple[CommitEntry, ...]] | None = None,
 ) -> dict:
@@ -64,8 +64,8 @@ def adopt_rewrite_impl(
         affected_steps.append(t_id)
 
     event_id: str | None = None
-    if user_id is not None and work_session_id is not None:
-        self.ensure_work_session(user_id=user_id, work_session_id=work_session_id)
+    if user_id is not None and lane_id is not None:
+        self.ensure_lane(user_id=user_id, lane_id=lane_id)
         eid = self._next_id("we")
 
         if mode == AMEND_EVENT or mode == "amend":
@@ -78,7 +78,7 @@ def adopt_rewrite_impl(
             event = make_amend_event(
                 event_id=eid,
                 run_id=self.run_id,
-                work_session_id=work_session_id,
+                lane_id=lane_id,
                 user_id=user_id,
                 step_id=t_for_amend,
                 old_sha=old_sha_single,
@@ -88,7 +88,7 @@ def adopt_rewrite_impl(
             event = make_rebase_event(
                 event_id=eid,
                 run_id=self.run_id,
-                work_session_id=work_session_id,
+                lane_id=lane_id,
                 user_id=user_id,
                 sha_map=sha_map,
                 affected_steps=tuple(affected_steps),

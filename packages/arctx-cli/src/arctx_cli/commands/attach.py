@@ -7,14 +7,14 @@ import json
 import sys
 
 from arctx_cli.commands._targets import resolve_target_kind
-from arctx_cli.commands.payload import run_payload_add_command
+from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
-from arctx_cli.payload_builder import parse_field_args, parse_json_object
+from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -27,7 +27,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
-    parser.add_argument("--work-session", default=None)
+    parser.add_argument("--lane", default=None)
     return parser
 
 
@@ -41,7 +41,7 @@ def run_attach_command(
     json_data: dict,
     store_dir: str,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -57,18 +57,42 @@ def run_attach_command(
     internal_payload_type = payload_type or (
         "node_payload" if target_kind == "node" else "step_payload"
     )
-    result = run_payload_add_command(
-        run_id=run_id,
-        target_kind=target_kind,
-        target_id=target_id,
+    before = graph_counts(handle)
+    payload = build_payload(
         payload_type=internal_payload_type,
-        field_data=data,
+        target_kind=target_kind,  # type: ignore[arg-type]
+        target_id=target_id,
+        payload_id=handle._next_id("pl"),
         json_data={},
-        store_dir=store_dir,
-        user_id=user_id,
-        work_session_id=work_session_id,
+        field_data=data,
     )
-    return result
+    if payload.target_kind == "node":
+        attached = handle.attach(
+            payload.target_id,
+            payload,
+            user_id=user_id,
+            lane_id=lane_id,
+        )
+    else:
+        handle.run_graph.attach_payload(payload)
+        handle.record_work_event(
+            user_id=user_id,
+            lane_id=lane_id,
+            event_type="payload_attached",
+            target_kind="step",
+            target_id=payload.target_id,
+            created_records=(payload.payload_id,),
+        )
+        attached = payload
+
+    maybe_append_or_save(
+        store=store,
+        handle=handle,
+        user_id=user_id,
+        lane_id=lane_id,
+        before=before,
+    )
+    return {"payload": attached.to_dict()}
 
 
 def cli_attach(args) -> int:
@@ -82,7 +106,7 @@ def cli_attach(args) -> int:
             json_data=parse_json_object(args.json),
             store_dir=args.store_dir,
             user_id=resolve_user_id_from_args(args),
-            work_session_id=resolve_work_session_id_from_args(args),
+            lane_id=resolve_lane_id_from_args(args),
         )
         print(json.dumps(result["payload"], ensure_ascii=False, indent=2))
         return 0

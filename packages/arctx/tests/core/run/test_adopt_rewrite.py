@@ -18,12 +18,12 @@ def _make_handle(run_id: str = "run_rewrite"):
 
 def _commit(handle, sha: str, branch: str = "main", ws: str = "ws") -> str:
     """Helper: do a dry_run commit and return the step_id."""
-    handle.ensure_work_session(user_id="user", work_session_id=ws)
+    handle.ensure_lane(user_id="user", lane_id=ws)
     t = handle.git.commit(
         message=f"commit {sha}",
         branch=branch,
         user_id="user",
-        work_session_id=ws,
+        lane_id=ws,
         head_commit=sha,
         dry_run=True,
     )
@@ -40,7 +40,7 @@ class TestAdoptRewriteAmend:
             onto="sha_after",
             mode="amend",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert t_id in result["affected_steps"]
@@ -55,7 +55,7 @@ class TestAdoptRewriteAmend:
             onto="sha_v2",
             mode="amend",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert handle.git.current_sha(t_id) == "sha_v2"
@@ -70,7 +70,7 @@ class TestAdoptRewriteAmend:
             onto="sha_new",
             mode="amend",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         git_payloads = handle.run_graph.payloads_for_step(
@@ -90,7 +90,7 @@ class TestAdoptRewriteAmend:
             onto="sha_b",
             mode="amend",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         event_ids = [e.event_id for e in handle.run_graph.work_events]
@@ -112,7 +112,7 @@ class TestAdoptRewriteAmend:
             onto="sha_xyz",
             mode="amend",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert "sha_unknown" in result["skipped_shas"]
@@ -140,7 +140,7 @@ class TestAdoptRewriteAmend:
 class TestAdoptRewriteRebase:
     def test_rebase_updates_all_affected_steps(self):
         handle = _make_handle()
-        handle.ensure_work_session(user_id="user", work_session_id="ws")
+        handle.ensure_lane(user_id="user", lane_id="ws")
 
         t1 = _commit(handle, "old_sha_1")
         t2 = _commit(handle, "old_sha_2")
@@ -150,7 +150,7 @@ class TestAdoptRewriteRebase:
             onto="new_sha_2",
             mode="rebase",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert t1 in result["affected_steps"]
@@ -167,7 +167,7 @@ class TestAdoptRewriteRebase:
             onto="r_new_2",
             mode="rebase",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert handle.git.current_sha(t1) == "r_new_1"
@@ -183,7 +183,7 @@ class TestAdoptRewriteRebase:
             onto="sha_y2",
             mode="rebase",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         rebase_events = [
@@ -206,7 +206,7 @@ class TestAdoptRewriteRebase:
             onto="known_new",
             mode="rebase",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert t1 in result["affected_steps"]
@@ -222,7 +222,7 @@ class TestAdoptRewriteRebase:
             onto="inherit_sha_new",
             mode="rebase",
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         git_payloads = handle.run_graph.payloads_for_step(

@@ -24,7 +24,7 @@ def commit_impl(
     branch: str | None = None,
     repo_path: Path | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     head_commit: str | None = None,
     from_node_ids: tuple[str, ...] | None = None,
     dry_run: bool = False,
@@ -41,7 +41,7 @@ def commit_impl(
     current_node_ids = (
         tuple(from_node_ids)
         if explicit_from
-        else resolve_current_node_ids(self, work_session_id)
+        else resolve_current_node_ids(self, lane_id)
     )
 
     for nid in current_node_ids:
@@ -57,7 +57,7 @@ def commit_impl(
 
     # When the caller explicitly branches from a chosen node, that intent
     # overrides the branch-tip fast-forward guard.
-    if work_session_id is not None and not explicit_from:
+    if lane_id is not None and not explicit_from:
         check_branch_tip_consistency(
             self.run_graph, current_branch, current_node_ids, repo_id
         )
@@ -106,6 +106,6 @@ def commit_impl(
             "head_commit": head_commit,
         },
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         repo_id=repo_id,
     )

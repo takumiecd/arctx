@@ -6,8 +6,8 @@ The `agents` extension (and its associated adapter `codex`) automatically record
 
 ## Features
 
-1. **WorkSession Tracking**:
-   Logs agent executions as distinct `WorkSession` lanes, showing temporal agent branches.
+1. **Lane Tracking**:
+   Logs agent executions as distinct `Lane` lanes, showing temporal agent branches.
 2. **Automated Step Generation**:
    Converts agent tool calls and prompts into Steps on the DAG.
 3. **Session Completion Detection**:

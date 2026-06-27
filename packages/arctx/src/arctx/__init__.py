@@ -19,7 +19,7 @@ from arctx.core.schema import (
     UncutPayload,
     TraceContext,
     WorkEvent,
-    WorkSession,
+    Lane,
     register_payload_class,
 )
 from arctx.core.types import (
@@ -50,7 +50,7 @@ __all__ = [
     "SummaryPayload",
     "UncutPayload",
     "WorkEvent",
-    "WorkSession",
+    "Lane",
     "init",
     "register_payload_class",
 ]

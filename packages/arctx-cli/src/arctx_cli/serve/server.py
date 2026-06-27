@@ -17,7 +17,7 @@ from arctx_cli.serve.api import dispatch
 
 
 def _make_handler(store: Any, run_id: str, *, user_id: str,
-                  work_session_id: str, cors_origin: str):
+                  lane_id: str, cors_origin: str):
     class _Handler(BaseHTTPRequestHandler):
         # Quiet by default; the CLI prints its own startup line.
         def log_message(self, *_: Any) -> None:  # noqa: D401
@@ -64,7 +64,7 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
             ws_id = (
                 self.headers.get("X-Arctx-Work-Session-Id")
                 or self.headers.get("X-Arctx-Lane-Id")
-                or work_session_id
+                or lane_id
             )
             # The GUI can target a different run per request (its run picker)
             # via ?run= or the X-Arctx-Run-Id header; fall back to the bound run.
@@ -75,7 +75,7 @@ def _make_handler(store: Any, run_id: str, *, user_id: str,
             )
             status, payload = dispatch(
                 store, req_run_id, method, path, body,
-                user_id=user_id, work_session_id=ws_id, query=query,
+                user_id=user_id, lane_id=ws_id, query=query,
             )
             self._send(status, payload)
 
@@ -95,7 +95,7 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8787,
     user_id: str = "user",
-    work_session_id: str = "default",
+    lane_id: str = "default",
     cors_origin: str = "*",
 ) -> None:
     """Run a blocking HTTP server exposing one run for read/write.
@@ -105,7 +105,7 @@ def serve(
     """
     handler = _make_handler(
         store, run_id,
-        user_id=user_id, work_session_id=work_session_id, cors_origin=cors_origin,
+        user_id=user_id, lane_id=lane_id, cors_origin=cors_origin,
     )
     httpd = ThreadingHTTPServer((host, port), handler)
     print(f"arctx serve: http://{host}:{port}  (run {run_id})")

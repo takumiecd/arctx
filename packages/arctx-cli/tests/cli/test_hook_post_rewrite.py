@@ -73,7 +73,7 @@ class TestHookPostRewriteAmend:
             run_id="run_pr",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
         old_sha = commit_result["head_commit"]
         t_id = commit_result["step_id"]
@@ -87,7 +87,7 @@ class TestHookPostRewriteAmend:
             store_dir=_store_dir(tmp_path),
             stdin_lines=[f"{old_sha} {new_sha}"],
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert t_id in result["affected_steps"]
@@ -112,7 +112,7 @@ class TestHookPostRewriteAmend:
             run_id="run_amend_evt",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
         old_sha = commit_result["head_commit"]
 
@@ -122,7 +122,7 @@ class TestHookPostRewriteAmend:
             store_dir=_store_dir(tmp_path),
             stdin_lines=[f"{old_sha} amended_sha"],
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         store = resolve_store(_store_dir(tmp_path))
@@ -143,7 +143,7 @@ class TestHookPostRewriteAmend:
             store_dir=_store_dir(tmp_path),
             stdin_lines=["deadbeef1234 newsha5678"],
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert "deadbeef1234" in result["skipped_shas"]
@@ -160,7 +160,7 @@ class TestHookPostRewriteAmend:
             store_dir=_store_dir(tmp_path),
             stdin_lines=[],
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert result["affected_steps"] == []
@@ -183,7 +183,7 @@ class TestHookPostRewriteRebase:
             run_id="run_rebase",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         # Commit 2.
@@ -195,7 +195,7 @@ class TestHookPostRewriteRebase:
             run_id="run_rebase",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         old1, old2 = r1["head_commit"], r2["head_commit"]
@@ -207,7 +207,7 @@ class TestHookPostRewriteRebase:
             store_dir=_store_dir(tmp_path),
             stdin_lines=[f"{old1} {new1}", f"{old2} {new2}"],
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         assert r1["step_id"] in result["affected_steps"]
@@ -232,7 +232,7 @@ class TestHookPostRewriteRebase:
             run_id="run_rebase_evt",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         run_hook_post_rewrite(
@@ -241,7 +241,7 @@ class TestHookPostRewriteRebase:
             store_dir=_store_dir(tmp_path),
             stdin_lines=[f"{r['head_commit']} rebased_sha"],
             user_id="user",
-            work_session_id="ws",
+            lane_id="ws",
         )
 
         store = resolve_store(_store_dir(tmp_path))

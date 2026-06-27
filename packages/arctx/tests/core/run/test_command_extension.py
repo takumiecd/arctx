@@ -24,7 +24,7 @@ def test_command_run_records_step_payload_and_session_pointer(tmp_path):
         command=[sys.executable, "-c", "print('ok')"],
         cwd=tmp_path,
         user_id="u1",
-        work_session_id="s1",
+        lane_id="s1",
     )
 
     step = result["step"]

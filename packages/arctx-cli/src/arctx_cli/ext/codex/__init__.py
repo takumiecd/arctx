@@ -112,15 +112,15 @@ def run_codex_hook_command(
     result = record_hook_event(handle, event, user_id=user_id, tools=tools)
     if result is None:
         return None
-    ws_id = result["work_session_id"]
+    ws_id = result["lane_id"]
     if result["event"] == "SessionStart":
         if hasattr(store, "append_batch"):
             store.append_batch(
                 AppendBatch(
                     run_id=run_id,
                     user_id=user_id,
-                    work_session_id=ws_id,
-                    work_session=handle.run_graph.work_sessions[ws_id],
+                    lane_id=ws_id,
+                    lane=handle.run_graph.lanes[ws_id],
                     records=(),
                     events=(),
                 )
@@ -132,7 +132,7 @@ def run_codex_hook_command(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=ws_id,
+        lane_id=ws_id,
         before=before,
     )
     return result

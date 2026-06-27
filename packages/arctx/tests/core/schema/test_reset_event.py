@@ -12,7 +12,7 @@ def _build_event(**overrides) -> WorkEvent:
     defaults = dict(
         event_id="we_reset_1",
         run_id="run_test",
-        work_session_id="ws_1",
+        lane_id="ws_1",
         user_id="user",
         from_node_id="n_from",
         to_node_id="n_to",
@@ -45,12 +45,12 @@ class TestMakeResetEvent:
         event = _build_event(
             event_id="we_x",
             run_id="run_42",
-            work_session_id="ws_abc",
+            lane_id="ws_abc",
             user_id="alice",
         )
         assert event.event_id == "we_x"
         assert event.run_id == "run_42"
-        assert event.work_session_id == "ws_abc"
+        assert event.lane_id == "ws_abc"
         assert event.user_id == "alice"
 
     def test_empty_discarded(self):

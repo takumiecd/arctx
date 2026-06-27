@@ -34,7 +34,7 @@ def test_remote_push_pull_roundtrip():
                              field_data={}, json_data={}, store_dir=psd)
         run_remote_add_command(run_id="proj", name="origin", remote_dir=remote,
                                shared_run_id=None, store_dir=psd, user_id="alice",
-                               work_session_id="ws")
+                               lane_id="ws")
         pushed = run_push_command(run_id="proj", store_dir=psd)
         assert pushed["pushed_records"] >= 3
 
@@ -42,7 +42,7 @@ def test_remote_push_pull_roundtrip():
         _init(csd)
         run_remote_add_command(run_id="proj", name="origin", remote_dir=remote,
                                shared_run_id=None, store_dir=csd, user_id="bob",
-                               work_session_id="ws")
+                               lane_id="ws")
         res = run_pull_command(run_id="proj", store_dir=csd)
         assert res["pulled_records"] >= 3
 

@@ -57,7 +57,7 @@ class TestRepoAdd:
             run_id="run_a",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws",
+            lane_id="ws",
             install_hooks=False,
         )
         assert result["repo_id"].startswith("repo_")
@@ -88,7 +88,7 @@ class TestRepoAdd:
             run_id="run_b",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws",
+            lane_id="ws",
             install_hooks=False,
         )
         assert result["slug"] == "custom/name"
@@ -102,12 +102,12 @@ class TestRepoAdd:
         first = run_repo_add(
             repo_path=str(repo), slug=None, run_id="run_c",
             store_dir=_store_dir(tmp_path), user_id="alice",
-            work_session_id="ws", install_hooks=False,
+            lane_id="ws", install_hooks=False,
         )
         second = run_repo_add(
             repo_path=str(repo), slug=None, run_id="run_c",
             store_dir=_store_dir(tmp_path), user_id="alice",
-            work_session_id="ws", install_hooks=False,
+            lane_id="ws", install_hooks=False,
         )
         assert first["repo_id"] == second["repo_id"]
 

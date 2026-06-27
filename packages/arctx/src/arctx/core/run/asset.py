@@ -24,7 +24,7 @@ def attach_asset_impl(
     file_path: str | Path,
     *,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> AssetPayload:
     """Copy *file_path* into the run and attach an AssetPayload to *target_id*."""
     if target_id in self.run_graph.nodes:
@@ -63,13 +63,13 @@ def attach_asset_impl(
 
     if target_kind == "node":
         return self.attach(
-            target_id, payload, user_id=user_id, work_session_id=work_session_id
+            target_id, payload, user_id=user_id, lane_id=lane_id
         )
 
     self.run_graph.attach_payload(payload)
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="payload_attached",
         target_kind="step",
         target_id=target_id,

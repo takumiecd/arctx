@@ -15,7 +15,7 @@ def cut_impl(
     target_kind: Literal["node", "step"],
     reason: str | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> CutPayload:
     """Append a CutPayload to mark a Node or Step inactive."""
     if target_kind == "node":
@@ -40,7 +40,7 @@ def cut_impl(
     self.run_graph.attach_payload(cut)
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="cut_added",
         target_kind=target_kind,
         target_id=target_id,

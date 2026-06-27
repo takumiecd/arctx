@@ -36,14 +36,14 @@ def _init_arctx(tmp_path: Path, run_id: str = "run_test") -> dict:
 
 def _build_chain(handle, length: int, user_id: str = "alice", ws_id: str = "ws") -> list[dict]:
     """Build a commit chain in handle and return list of {step_id, output_node_id}."""
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
     results = []
     for i in range(length):
         t = handle.git.commit(
             message=f"commit {i + 1}",
             branch="main",
             user_id=user_id,
-            work_session_id=ws_id,
+            lane_id=ws_id,
             head_commit=f"sha_{i + 1}",
             dry_run=True,
         )
@@ -72,7 +72,7 @@ class TestResetCLIIntegration:
             run_id="run_rs",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_rs",
+            lane_id="ws_rs",
             dry_run=True,
         )
 
@@ -103,7 +103,7 @@ class TestResetCLIIntegration:
             run_id="run_sp",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_sp",
+            lane_id="ws_sp",
             dry_run=True,
         )
 
@@ -131,7 +131,7 @@ class TestResetCLIIntegration:
             run_id="run_mx",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_mx",
+            lane_id="ws_mx",
             dry_run=True,
         )
 
@@ -157,7 +157,7 @@ class TestResetCLIIntegration:
             run_id="run_sf",
             store_dir=_store_dir(tmp_path),
             user_id="bob",
-            work_session_id="ws_sf",
+            lane_id="ws_sf",
             dry_run=True,
         )
 
@@ -182,7 +182,7 @@ class TestResetCLIIntegration:
             run_id="run_ev",
             store_dir=_store_dir(tmp_path),
             user_id="carol",
-            work_session_id="ws_ev",
+            lane_id="ws_ev",
             dry_run=True,
         )
 

@@ -60,7 +60,7 @@ def dispatch(
     body: dict | None,
     *,
     user_id: str,
-    work_session_id: str,
+    lane_id: str,
     query: dict | None = None,
 ) -> tuple[int, dict]:
     """Route one request to a handler and return ``(status, body_dict)``.
@@ -81,19 +81,19 @@ def dispatch(
         if route == ("POST", "/runs"):
             return 201, _post_runs(store, body or {})
         if route == ("GET", "/run"):
-            return 200, _get_run(store, run_id, work_session_id)
+            return 200, _get_run(store, run_id, lane_id)
         if route == ("GET", "/assets/visible"):
             return 200, _get_visible_assets(store, run_id, query or {})
         if route == ("POST", "/step"):
-            return 201, _post_step(store, run_id, body or {}, user_id, work_session_id)
+            return 201, _post_step(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/attach"):
-            return 201, _post_attach(store, run_id, body or {}, user_id, work_session_id)
+            return 201, _post_attach(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/cut"):
-            return 201, _post_cut(store, run_id, body or {}, user_id, work_session_id)
+            return 201, _post_cut(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/uncut"):
-            return 201, _post_uncut(store, run_id, body or {}, user_id, work_session_id)
+            return 201, _post_uncut(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/reparent"):
-            return 201, _post_reparent(store, run_id, body or {}, user_id, work_session_id)
+            return 201, _post_reparent(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/lane"):
             return 201, _post_lane(store, run_id, body or {}, user_id)
         if route == ("POST", "/lane/adopt"):
@@ -175,12 +175,12 @@ def _post_runs(store: Any, body: dict) -> dict:
     }
 
 
-def _get_run(store: Any, run_id: str, work_session_id: str) -> dict:
+def _get_run(store: Any, run_id: str, lane_id: str) -> dict:
     handle = _load(store, run_id)
     doc = json_document(handle, ExportOptions())
-    lane = handle.run_graph.work_sessions.get(work_session_id)
-    doc["current_lane_id"] = work_session_id
-    doc["current_lane_name"] = lane.name if lane is not None else work_session_id
+    lane = handle.run_graph.lanes.get(lane_id)
+    doc["current_lane_id"] = lane_id
+    doc["current_lane_name"] = lane.name if lane is not None else lane_id
     return doc
 
 
@@ -233,7 +233,7 @@ def _payload_fields(body: dict) -> dict:
     return {k: v for k, v in body.items() if k not in exclude}
 
 
-def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
+def _post_step(store, run_id, body, user_id, lane_id) -> dict:
     inputs = body.get("input_node_ids")
     if not isinstance(inputs, list) or not inputs:
         raise ApiError(400, "input_node_ids must be a non-empty list")
@@ -254,17 +254,17 @@ def _post_step(store, run_id, body, user_id, work_session_id) -> dict:
         payload,
         output_node_id=str(output_node_id) if output_node_id else None,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
     _ensure_lane_integrity(handle, baseline=baseline)
     maybe_append_or_save(
         store=store, handle=handle,
-        user_id=user_id, work_session_id=work_session_id, before=before,
+        user_id=user_id, lane_id=lane_id, before=before,
     )
     return {"step": step_view(step)}
 
 
-def _post_attach(store, run_id, body, user_id, work_session_id) -> dict:
+def _post_attach(store, run_id, body, user_id, lane_id) -> dict:
     """Attach a payload to a Node or Step.
 
     Accepts ``target_id`` (preferred) or the legacy ``node_id``. The target
@@ -298,14 +298,14 @@ def _post_attach(store, run_id, body, user_id, work_session_id) -> dict:
     if target_kind == "node":
         attached = handle.attach(
             target_id, payload,
-            user_id=user_id, work_session_id=work_session_id,
+            user_id=user_id, lane_id=lane_id,
         )
     else:
         if target_id not in handle.run_graph.steps:
             raise ApiError(404, f"unknown step_id: {target_id}")
         handle.run_graph.attach_payload(payload)
         handle.record_work_event(
-            user_id=user_id, work_session_id=work_session_id,
+            user_id=user_id, lane_id=lane_id,
             event_type="payload_attached", target_kind="step",
             target_id=target_id, created_records=(payload.payload_id,),
             summary=payload.payload_type,
@@ -314,12 +314,12 @@ def _post_attach(store, run_id, body, user_id, work_session_id) -> dict:
 
     maybe_append_or_save(
         store=store, handle=handle,
-        user_id=user_id, work_session_id=work_session_id, before=before,
+        user_id=user_id, lane_id=lane_id, before=before,
     )
     return {"payload": attached.to_dict()}
 
 
-def _post_cut(store, run_id, body, user_id, work_session_id) -> dict:
+def _post_cut(store, run_id, body, user_id, lane_id) -> dict:
     target_id = body.get("target_id")
     target_kind = body.get("target_kind")
     if not target_id:
@@ -334,16 +334,16 @@ def _post_cut(store, run_id, body, user_id, work_session_id) -> dict:
         target_kind=target_kind,
         reason=body.get("reason"),
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
     maybe_append_or_save(
         store=store, handle=handle,
-        user_id=user_id, work_session_id=work_session_id, before=before,
+        user_id=user_id, lane_id=lane_id, before=before,
     )
     return {"payload": cut.to_dict()}
 
 
-def _post_uncut(store, run_id, body, user_id, work_session_id) -> dict:
+def _post_uncut(store, run_id, body, user_id, lane_id) -> dict:
     target_id = body.get("target_id")
     target_kind = body.get("target_kind")
     if not target_id:
@@ -358,16 +358,16 @@ def _post_uncut(store, run_id, body, user_id, work_session_id) -> dict:
         target_kind=target_kind,
         reason=body.get("reason"),
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
     maybe_append_or_save(
         store=store, handle=handle,
-        user_id=user_id, work_session_id=work_session_id, before=before,
+        user_id=user_id, lane_id=lane_id, before=before,
     )
     return {"payload": uncut.to_dict()}
 
 
-def _post_reparent(store, run_id, body, user_id, work_session_id) -> dict:
+def _post_reparent(store, run_id, body, user_id, lane_id) -> dict:
     node_id = body.get("node_id") or body.get("target_id")
     if not node_id:
         raise ApiError(400, "node_id is required")
@@ -391,12 +391,12 @@ def _post_reparent(store, run_id, body, user_id, work_session_id) -> dict:
         payload,
         reason=body.get("reason"),
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
     _ensure_lane_integrity(handle, baseline=baseline)
     maybe_append_or_save(
         store=store, handle=handle,
-        user_id=user_id, work_session_id=work_session_id, before=before,
+        user_id=user_id, lane_id=lane_id, before=before,
     )
     return {"step": step_view(step)}
 
@@ -439,7 +439,7 @@ def _post_lane_adopt(store, run_id, body, user_id) -> dict:
     ids, mode, target_id = _adoption_record_ids(handle, body)
     before = graph_counts(handle)
     event = handle.adopt_lane_records(
-        lane.work_session_id,
+        lane.lane_id,
         ids,
         user_id=user_id,
         mode=mode,
@@ -450,11 +450,11 @@ def _post_lane_adopt(store, run_id, body, user_id) -> dict:
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=lane.work_session_id,
+        lane_id=lane.lane_id,
         before=before,
     )
     return {
-        "lane_id": lane.work_session_id,
+        "lane_id": lane.lane_id,
         "name": lane.name,
         "adopted_record_ids": list(ids),
         "count": len(ids),

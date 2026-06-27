@@ -26,7 +26,7 @@ def _make_handle(run_id: str = "run_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 def _make_chain(handle, shas: list[str]):
@@ -41,7 +41,7 @@ def _make_chain(handle, shas: list[str]):
             message=f"commit {i + 1}",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit=sha,
             dry_run=True,
         )
@@ -278,7 +278,7 @@ class TestVerifyRootNodeSkipped:
             message="first",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_A",
             dry_run=True,
         )

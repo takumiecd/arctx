@@ -9,7 +9,7 @@ from arctx.ext.agents import SessionRecorder
 
 def _recorder(handle, ws_id="ws_x", harness="my-harness"):
     return SessionRecorder(
-        handle, work_session_id=ws_id, user_id="agent", harness=harness
+        handle, lane_id=ws_id, user_id="agent", harness=harness
     )
 
 
@@ -29,7 +29,7 @@ def test_recorder_is_usable_without_any_harness_event_format():
     a = rec.action("run_benchmark", {"variant": "A"}, {"elapsed_ms": 1200})
     end = rec.turn_end(kind="session_end", content={"reason": "done"})
 
-    session = handle.run_graph.work_sessions["ws_x"]
+    session = handle.run_graph.lanes["ws_x"]
     assert session.metadata["agent"] == {"harness": "my-harness", "model": "some-model"}
 
     prompt_payloads = handle.run_graph.payloads_for_step(p["step_id"])

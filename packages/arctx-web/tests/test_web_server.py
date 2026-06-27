@@ -52,7 +52,7 @@ class _Server:
     def __init__(self, store, run_id, static_dir, extension_scripts=(), extension_routes=()):
         handler = build_handler(
             store, run_id, static_dir=static_dir,
-            user_id="tester", work_session_id="ws_test",
+            user_id="tester", lane_id="ws_test",
             extension_scripts=extension_scripts,
             extension_routes=extension_routes,
         )
@@ -220,15 +220,15 @@ class TestApiDelegation:
 
                 _, run_body, _ = s.get("/run")
                 doc = json.loads(run_body)
-                lane_ids = {lane["work_session_id"] for lane in doc["lanes"]}
-                assert body["lane"]["work_session_id"] in lane_ids
+                lane_ids = {lane["lane_id"] for lane in doc["lanes"]}
+                assert body["lane"]["lane_id"] in lane_ids
 
-    def test_work_session_header_selects_current_lane_and_write_lane(self):
+    def test_lane_header_selects_current_lane_and_write_lane(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _make_run(td)
             with _Server(store, run_id, _fake_static(td)) as s:
                 _, lane_body = s.post("/lane", {"name": "web-lane"})
-                lane_id = lane_body["lane"]["work_session_id"]
+                lane_id = lane_body["lane"]["lane_id"]
                 headers = {"X-Arctx-Work-Session-Id": lane_id}
 
                 status, body, _ = s.get("/run", headers=headers)

@@ -30,7 +30,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 from arctx_cli.paths import resolve_store_dir
 
@@ -48,14 +48,14 @@ def _store_and_handle(run_id, store_dir):
 
 
 def run_remote_add_command(*, run_id, name, remote_dir, shared_run_id, store_dir,
-                           user_id=None, work_session_id=None):
+                           user_id=None, lane_id=None):
     """Register a remote for this run (file-backed shared append-log)."""
     store, handle, run_path = _store_and_handle(run_id, store_dir)
     rd = remote_dir or str(default_remote_dir(store_dir or resolve_store_dir()))
     return sync_init(
         handle=handle, run_path=run_path, remote=name,
         shared_run_id=shared_run_id or run_id, remote_dir=rd,
-        workspace_id=work_session_id or "default", actor_id=user_id or "anon",
+        workspace_id=lane_id or "default", actor_id=user_id or "anon",
     )
 
 
@@ -111,7 +111,7 @@ def add_remote_parser(subparsers) -> argparse.ArgumentParser:
     p.add_argument("--run", default=None)
     p.add_argument("--store-dir", default=None)
     p.add_argument("--user", default=None)
-    p.add_argument("--work-session", default=None)
+    p.add_argument("--lane", default=None)
     return p
 
 
@@ -143,7 +143,7 @@ def cli_remote(args) -> int:
                 run_id=resolve_run_id_from_args(args), name=args.name,
                 remote_dir=args.dir, shared_run_id=args.shared_run,
                 store_dir=args.store_dir, user_id=resolve_user_id_from_args(args),
-                work_session_id=resolve_work_session_id_from_args(args),
+                lane_id=resolve_lane_id_from_args(args),
             )
         else:
             result = run_remote_show_command(

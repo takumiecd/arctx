@@ -69,7 +69,7 @@ class TestRevertCLIIntegration:
             run_id="run_rv",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_rv",
+            lane_id="ws_rv",
         )
 
         orig_sha = r1["head_commit"]
@@ -84,7 +84,7 @@ class TestRevertCLIIntegration:
             run_id="run_rv",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_rv",
+            lane_id="ws_rv",
         )
 
         assert "step_id" in r2
@@ -119,7 +119,7 @@ class TestRevertCLIIntegration:
             run_id="run_rv2",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_rv2",
+            lane_id="ws_rv2",
         )
 
         store = resolve_store(_store_dir(tmp_path))
@@ -136,7 +136,7 @@ class TestRevertCLIIntegration:
             run_id="run_rv2",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_rv2",
+            lane_id="ws_rv2",
         )
 
         handle_after = store.load_run("run_rv2")
@@ -164,7 +164,7 @@ class TestRevertCLIIntegration:
             run_id="run_rv3",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_rv3",
+            lane_id="ws_rv3",
         )
 
         r2 = run_revert_command(
@@ -175,7 +175,7 @@ class TestRevertCLIIntegration:
             run_id="run_rv3",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_rv3",
+            lane_id="ws_rv3",
         )
 
         store = resolve_store(_store_dir(tmp_path))

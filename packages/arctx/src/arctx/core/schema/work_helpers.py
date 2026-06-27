@@ -20,7 +20,7 @@ def make_session_pointer_event(
     *,
     event_id: str,
     run_id: str,
-    work_session_id: str,
+    lane_id: str,
     user_id: str,
     current_node_ids: tuple[str, ...],
     current_branch: str | None,
@@ -36,7 +36,7 @@ def make_session_pointer_event(
         Unique event identifier.
     run_id:
         Run this event belongs to.
-    work_session_id:
+    lane_id:
         Session whose pointer is being updated.
     user_id:
         User performing the update.
@@ -48,7 +48,7 @@ def make_session_pointer_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=work_session_id,
+        work_session_id=lane_id,
         user_id=user_id,
         event_type=SESSION_POINTER_EVENT,
         data={
@@ -62,7 +62,7 @@ def make_branch_tip_event(
     *,
     event_id: str,
     run_id: str,
-    work_session_id: str,
+    lane_id: str,
     user_id: str,
     branch: str,
     tip_node_id: str,
@@ -79,7 +79,7 @@ def make_branch_tip_event(
         Unique event identifier.
     run_id:
         Run this event belongs to.
-    work_session_id:
+    lane_id:
         Session that advanced the tip.
     user_id:
         User performing the update.
@@ -91,7 +91,7 @@ def make_branch_tip_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=work_session_id,
+        work_session_id=lane_id,
         user_id=user_id,
         event_type=BRANCH_TIP_EVENT,
         data={
@@ -105,7 +105,7 @@ def make_amend_event(
     *,
     event_id: str,
     run_id: str,
-    work_session_id: str,
+    lane_id: str,
     user_id: str,
     step_id: str,
     old_sha: str,
@@ -122,7 +122,7 @@ def make_amend_event(
         Unique event identifier.
     run_id:
         Run this event belongs to.
-    work_session_id:
+    lane_id:
         Session in which the amend occurred.
     user_id:
         User performing the amend.
@@ -136,7 +136,7 @@ def make_amend_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=work_session_id,
+        work_session_id=lane_id,
         user_id=user_id,
         event_type=AMEND_EVENT,
         data={
@@ -151,7 +151,7 @@ def make_rebase_event(
     *,
     event_id: str,
     run_id: str,
-    work_session_id: str,
+    lane_id: str,
     user_id: str,
     sha_map: dict[str, str],
     affected_steps: tuple[str, ...],
@@ -169,7 +169,7 @@ def make_rebase_event(
         Unique event identifier.
     run_id:
         Run this event belongs to.
-    work_session_id:
+    lane_id:
         Session in which the rebase occurred.
     user_id:
         User performing the rebase.
@@ -183,7 +183,7 @@ def make_rebase_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=work_session_id,
+        work_session_id=lane_id,
         user_id=user_id,
         event_type=REBASE_EVENT,
         data={
@@ -198,7 +198,7 @@ def make_reset_event(
     *,
     event_id: str,
     run_id: str,
-    work_session_id: str,
+    lane_id: str,
     user_id: str,
     from_node_id: str,
     to_node_id: str,
@@ -217,7 +217,7 @@ def make_reset_event(
         Unique event identifier.
     run_id:
         Run this event belongs to.
-    work_session_id:
+    lane_id:
         Session in which the reset occurred.
     user_id:
         User performing the reset.
@@ -235,7 +235,7 @@ def make_reset_event(
     return WorkEvent(
         event_id=event_id,
         run_id=run_id,
-        work_session_id=work_session_id,
+        work_session_id=lane_id,
         user_id=user_id,
         event_type=RESET_EVENT,
         data={
@@ -247,14 +247,14 @@ def make_reset_event(
     )
 
 
-def latest_session_pointer(graph, work_session_id: str) -> WorkEvent | None:
+def latest_session_pointer(graph, lane_id: str) -> WorkEvent | None:
     """Return the latest SessionPointerEvent for the given session.
 
     Parameters
     ----------
     graph:
         A ``RunGraph`` instance.
-    work_session_id:
+    lane_id:
         Session to query.
 
     Returns
@@ -266,7 +266,7 @@ def latest_session_pointer(graph, work_session_id: str) -> WorkEvent | None:
     for event in graph.work_events:
         if (
             event.event_type == SESSION_POINTER_EVENT
-            and event.work_session_id == work_session_id
+            and event.lane_id == lane_id
         ):
             result = event
     return result

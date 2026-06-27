@@ -12,7 +12,7 @@ __all__ = [
     "clip",
     "record_hook_event",
     "session_tip",
-    "work_session_id_for",
+    "lane_id_for",
 ]
 
 HARNESS = "codex"
@@ -37,8 +37,8 @@ _TYPE_TO_HOOK_EVENT = {
 }
 
 
-def work_session_id_for(session_id: str) -> str:
-    """Deterministic WorkSession id for one Codex session/thread."""
+def lane_id_for(session_id: str) -> str:
+    """Deterministic Lane id for one Codex session/thread."""
     return f"ws_codex_{session_id}"
 
 
@@ -58,7 +58,7 @@ def record_hook_event(
 
     recorder = SessionRecorder(
         handle,
-        work_session_id=work_session_id_for(str(session_id)),
+        lane_id=lane_id_for(str(session_id)),
         user_id=user_id,
         harness=HARNESS,
         clip_chars=clip_chars,

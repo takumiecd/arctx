@@ -24,7 +24,7 @@ arctx git commit --run "$RUN_ID" -m "Baseline: Simple loop" > /dev/null
 
 # 3. Branch A (Fails)
 git checkout -q -b exp/multithreading
-eval "$(arctx work-session env --run $RUN_ID --new --user exp_a)"
+eval "$(arctx lane env --run $RUN_ID --new --user exp_a)"
 write_change optimize.py "# attempt: threading"
 arctx git commit --run "$RUN_ID" -m "Exp A: Multithreading" > /dev/null
 write_change optimize.py "# attempt: mutex locks"
@@ -34,7 +34,7 @@ arctx git revert --run "$RUN_ID" --sha "$(git rev-parse HEAD)" -m "Revert Exp A 
 # 4. Branch B (Fails)
 git checkout -q main
 git checkout -q -b exp/rust
-eval "$(arctx work-session env --run $RUN_ID --new --user exp_b)"
+eval "$(arctx lane env --run $RUN_ID --new --user exp_b)"
 write_change optimize.py "# attempt: rewrite in rust"
 arctx git commit --run "$RUN_ID" -m "Exp B: Rewrite in Rust" > /dev/null
 arctx git revert --run "$RUN_ID" --sha "$(git rev-parse HEAD)" -m "Revert Exp B (Too complex)" > /dev/null
@@ -42,7 +42,7 @@ arctx git revert --run "$RUN_ID" --sha "$(git rev-parse HEAD)" -m "Revert Exp B 
 # 5. Branch C (Succeeds)
 git checkout -q main
 git checkout -q -b exp/vectorization
-eval "$(arctx work-session env --run $RUN_ID --new --user exp_c)"
+eval "$(arctx lane env --run $RUN_ID --new --user exp_c)"
 write_change optimize.py "# attempt: vectorization"
 arctx git commit --run "$RUN_ID" -m "Exp C: Vectorization" > /dev/null
 write_change optimize.py "# attempt: cache hits"

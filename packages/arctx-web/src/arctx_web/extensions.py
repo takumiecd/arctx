@@ -27,7 +27,7 @@ class WebRequest:
     run_dir: Path
     body: dict[str, Any]
     user_id: str
-    work_session_id: str
+    lane_id: str
 
 
 WebRouteHandler = Callable[[WebRequest], tuple[int, dict[str, Any]]]

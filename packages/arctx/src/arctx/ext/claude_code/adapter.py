@@ -22,7 +22,7 @@ __all__ = [
     "clip",
     "record_hook_event",
     "session_tip",
-    "work_session_id_for",
+    "lane_id_for",
 ]
 
 HARNESS = "claude-code"
@@ -30,8 +30,8 @@ HARNESS = "claude-code"
 _SESSION_METADATA_KEYS = ("session_id", "transcript_path", "cwd", "source", "model")
 
 
-def work_session_id_for(session_id: str) -> str:
-    """Deterministic WorkSession id for one Claude Code session."""
+def lane_id_for(session_id: str) -> str:
+    """Deterministic Lane id for one Claude Code session."""
     return f"ws_cc_{session_id}"
 
 
@@ -59,7 +59,7 @@ def record_hook_event(
         return None
     recorder = SessionRecorder(
         handle,
-        work_session_id=work_session_id_for(str(session_id)),
+        lane_id=lane_id_for(str(session_id)),
         user_id=user_id,
         harness=HARNESS,
         clip_chars=clip_chars,

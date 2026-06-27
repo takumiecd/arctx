@@ -17,7 +17,7 @@ def _make_handle(run_id: str = "run_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 def _first_commit(handle, sha: str = "sha_orig") -> object:
@@ -27,7 +27,7 @@ def _first_commit(handle, sha: str = "sha_orig") -> object:
         message="original commit",
         branch="main",
         user_id="user",
-        work_session_id="ws_1",
+        lane_id="ws_1",
         head_commit=sha,
         dry_run=True,
     )
@@ -42,7 +42,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_revert",
             dry_run=True,
         )
@@ -57,7 +57,7 @@ class TestRevertImplDryRun:
             target_sha="sha_a",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -72,7 +72,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_revert",
             dry_run=True,
         )
@@ -93,7 +93,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -112,7 +112,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="feature/x",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -136,7 +136,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -154,7 +154,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -170,7 +170,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -186,7 +186,7 @@ class TestRevertImplDryRun:
             target_step=orig.step_id,
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev2",
             dry_run=True,
         )
@@ -261,7 +261,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig3",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_revert3",
             dry_run=True,
         )

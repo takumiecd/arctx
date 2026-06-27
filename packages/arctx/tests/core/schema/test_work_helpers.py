@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from arctx.core.schema.work import WorkSession
+from arctx.core.schema.work import Lane
 from arctx.core.schema.work_helpers import (
     BRANCH_TIP_EVENT,
     SESSION_POINTER_EVENT,
@@ -21,12 +21,12 @@ def _make_graph_with_session(session_id: str = "ws_1", user_id: str = "user") ->
     graph = RunGraph()
     root = Node(node_id="n_root")
     graph.add_node(root)
-    session = WorkSession(
-        work_session_id=session_id,
+    session = Lane(
+        lane_id=session_id,
         run_id="run_1",
         user_id=user_id,
     )
-    graph.add_work_session(session)
+    graph.add_lane(session)
     return graph
 
 
@@ -35,7 +35,7 @@ class TestMakeSessionPointerEvent:
         ev = make_session_pointer_event(
             event_id="we_1",
             run_id="run_1",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             user_id="user",
             current_node_ids=("n_abc",),
             current_branch="main",
@@ -46,7 +46,7 @@ class TestMakeSessionPointerEvent:
         ev = make_session_pointer_event(
             event_id="we_1",
             run_id="run_1",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             user_id="user",
             current_node_ids=("n_1", "n_2"),
             current_branch="feature",
@@ -58,7 +58,7 @@ class TestMakeSessionPointerEvent:
         ev = make_session_pointer_event(
             event_id="we_1",
             run_id="run_1",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             user_id="user",
             current_node_ids=("n_1",),
             current_branch=None,
@@ -69,14 +69,14 @@ class TestMakeSessionPointerEvent:
         ev = make_session_pointer_event(
             event_id="we_x",
             run_id="run_1",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             user_id="alice",
             current_node_ids=("n_1",),
             current_branch=None,
         )
         assert ev.event_id == "we_x"
         assert ev.run_id == "run_1"
-        assert ev.work_session_id == "ws_1"
+        assert ev.lane_id == "ws_1"
         assert ev.user_id == "alice"
 
 
@@ -85,7 +85,7 @@ class TestMakeBranchTipEvent:
         ev = make_branch_tip_event(
             event_id="we_2",
             run_id="run_1",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             user_id="user",
             branch="main",
             tip_node_id="n_tip",
@@ -96,7 +96,7 @@ class TestMakeBranchTipEvent:
         ev = make_branch_tip_event(
             event_id="we_2",
             run_id="run_1",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             user_id="user",
             branch="feature/x",
             tip_node_id="n_tip",
@@ -113,11 +113,11 @@ class TestLatestSessionPointer:
     def test_returns_latest_event(self):
         graph = _make_graph_with_session()
         ev1 = make_session_pointer_event(
-            event_id="we_1", run_id="run_1", work_session_id="ws_1", user_id="user",
+            event_id="we_1", run_id="run_1", lane_id="ws_1", user_id="user",
             current_node_ids=("n_a",), current_branch="main",
         )
         ev2 = make_session_pointer_event(
-            event_id="we_2", run_id="run_1", work_session_id="ws_1", user_id="user",
+            event_id="we_2", run_id="run_1", lane_id="ws_1", user_id="user",
             current_node_ids=("n_b",), current_branch="main",
         )
         graph.add_work_event(ev1)
@@ -132,17 +132,17 @@ class TestLatestSessionPointer:
         graph = RunGraph()
         root = Node(node_id="n_root")
         graph.add_node(root)
-        ws_a = WorkSession(work_session_id="ws_a", run_id="run_1", user_id="user")
-        ws_b = WorkSession(work_session_id="ws_b", run_id="run_1", user_id="user")
-        graph.add_work_session(ws_a)
-        graph.add_work_session(ws_b)
+        ws_a = Lane(work_session_id="ws_a", run_id="run_1", user_id="user")
+        ws_b = Lane(work_session_id="ws_b", run_id="run_1", user_id="user")
+        graph.add_lane(ws_a)
+        graph.add_lane(ws_b)
 
         ev_a = make_session_pointer_event(
-            event_id="we_a", run_id="run_1", work_session_id="ws_a", user_id="user",
+            event_id="we_a", run_id="run_1", lane_id="ws_a", user_id="user",
             current_node_ids=("n_root",), current_branch="main",
         )
         ev_b = make_session_pointer_event(
-            event_id="we_b", run_id="run_1", work_session_id="ws_b", user_id="user",
+            event_id="we_b", run_id="run_1", lane_id="ws_b", user_id="user",
             current_node_ids=("n_other",), current_branch="dev",
         )
         graph.add_work_event(ev_a)
@@ -165,11 +165,11 @@ class TestLatestBranchTip:
     def test_returns_latest_tip_for_branch(self):
         graph = _make_graph_with_session()
         ev1 = make_branch_tip_event(
-            event_id="we_1", run_id="run_1", work_session_id="ws_1", user_id="user",
+            event_id="we_1", run_id="run_1", lane_id="ws_1", user_id="user",
             branch="main", tip_node_id="n_old_tip",
         )
         ev2 = make_branch_tip_event(
-            event_id="we_2", run_id="run_1", work_session_id="ws_1", user_id="user",
+            event_id="we_2", run_id="run_1", lane_id="ws_1", user_id="user",
             branch="main", tip_node_id="n_new_tip",
         )
         graph.add_work_event(ev1)
@@ -182,11 +182,11 @@ class TestLatestBranchTip:
     def test_filters_by_branch(self):
         graph = _make_graph_with_session()
         ev_main = make_branch_tip_event(
-            event_id="we_m", run_id="run_1", work_session_id="ws_1", user_id="user",
+            event_id="we_m", run_id="run_1", lane_id="ws_1", user_id="user",
             branch="main", tip_node_id="n_main_tip",
         )
         ev_dev = make_branch_tip_event(
-            event_id="we_d", run_id="run_1", work_session_id="ws_1", user_id="user",
+            event_id="we_d", run_id="run_1", lane_id="ws_1", user_id="user",
             branch="dev", tip_node_id="n_dev_tip",
         )
         graph.add_work_event(ev_main)

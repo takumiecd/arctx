@@ -11,7 +11,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 from arctx.ext.command import CommandNamespace
 
@@ -27,7 +27,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_run.add_argument("--run", default=None)
     sp_run.add_argument("--store-dir", default=None)
     sp_run.add_argument("--user", default=None)
-    sp_run.add_argument("--work-session", default=None)
+    sp_run.add_argument("--lane", default=None)
     sp_run.add_argument("--cwd", default=None)
     sp_run.add_argument("--max-output-chars", type=int, default=20000)
     sp_run.add_argument(
@@ -45,7 +45,7 @@ def run_command_run_command(
     argv: list[str],
     cwd: str | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     max_output_chars: int = 20000,
 ) -> dict[str, object]:
     store = resolve_store(store_dir)
@@ -61,14 +61,14 @@ def run_command_run_command(
         command=argv,
         cwd=cwd,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         max_output_chars=max_output_chars,
     )
     maybe_append_or_save(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         before=before,
     )
     return {
@@ -92,7 +92,7 @@ def cli_command(args) -> int:
                 argv=argv,
                 cwd=args.cwd,
                 user_id=resolve_user_id_from_args(args),
-                work_session_id=resolve_work_session_id_from_args(args),
+                lane_id=resolve_lane_id_from_args(args),
                 max_output_chars=args.max_output_chars,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))

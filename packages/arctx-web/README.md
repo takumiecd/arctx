@@ -29,7 +29,7 @@ ARCTX_WEB_STATIC=/path/to/dist arctx-web   # point at any prebuilt dist
 
 ## Options
 
-- `--run` / `--store-dir` / `--user` / `--work-session` — same resolution as the CLI
+- `--run` / `--store-dir` / `--user` / `--lane` — same resolution as the CLI
 - `--host` (default `127.0.0.1`) / `--port` (default `8788`)
 - `--no-browser` — don't open a browser
 - `--cors-origin` — `Access-Control-Allow-Origin` value (default `*`)

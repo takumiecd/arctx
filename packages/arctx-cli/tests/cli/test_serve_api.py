@@ -21,8 +21,8 @@ def _store_dir(td: str) -> str:
     return str(Path(td) / "runs")
 
 
-def _seed_orphan(store, run_id, *, work_session_id: str = "ws_test") -> str:
-    """Mint a producer-less node low-level, joined to *work_session_id*'s lane.
+def _seed_orphan(store, run_id, *, lane_id: str = "ws_test") -> str:
+    """Mint a producer-less node low-level, joined to *lane_id*'s lane.
 
     No serve route mints standalone nodes anymore (POST /node is gone); a
     producer-less node only arises from the run root or an imported subgraph.
@@ -34,7 +34,7 @@ def _seed_orphan(store, run_id, *, work_session_id: str = "ws_test") -> str:
     handle.run_graph.add_node(node)
     handle.record_work_event(
         user_id="tester",
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="node_added",
         target_kind="node",
         target_id=node.node_id,
@@ -57,13 +57,13 @@ def _setup(td: str, run_id: str = "srv_run"):
 
 
 def _call(store, run_id, method, path, body=None):
-    return _call_as(store, run_id, method, path, body, work_session_id="ws_test")
+    return _call_as(store, run_id, method, path, body, lane_id="ws_test")
 
 
-def _call_as(store, run_id, method, path, body=None, *, work_session_id: str):
+def _call_as(store, run_id, method, path, body=None, *, lane_id: str):
     return dispatch(
         store, run_id, method, path, body,
-        user_id="tester", work_session_id=work_session_id,
+        user_id="tester", lane_id=lane_id,
     )
 
 
@@ -292,12 +292,12 @@ class TestWriteRoutes:
             # the pre-existing legacy violations.
             status, body = _call(store, run_id, "POST", "/lane", {"name": "L1"})
             assert status == 201
-            lane_id = body["lane"]["work_session_id"]
+            lane_id = body["lane"]["lane_id"]
 
             status, _ = _call_as(
                 store, run_id, "POST", "/step",
                 {"input_node_ids": [root], "type": "y"},
-                work_session_id=lane_id,
+                lane_id=lane_id,
             )
             assert status == 201
 
@@ -397,10 +397,10 @@ class TestWriteRoutes:
             status, body = _call(store, run_id, "POST", "/lane", {"name": "math"})
             assert status == 201
             assert body["lane"]["name"] == "math"
-            lane_id = body["lane"]["work_session_id"]
+            lane_id = body["lane"]["lane_id"]
 
             _, run = _call(store, run_id, "GET", "/run")
-            assert any(lane["work_session_id"] == lane_id for lane in run["lanes"])
+            assert any(lane["lane_id"] == lane_id for lane in run["lanes"])
 
     def test_post_lane_create_rejects_duplicate_name(self):
         with tempfile.TemporaryDirectory() as td:
@@ -416,7 +416,7 @@ class TestWriteRoutes:
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
             _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
-            lane_id = lane_body["lane"]["work_session_id"]
+            lane_id = lane_body["lane"]["lane_id"]
             _, made = _call(store, run_id, "POST", "/step", {
                 "input_node_ids": [root],
                 "type": "derive",
@@ -463,21 +463,21 @@ class TestWriteRoutes:
             store, run_id, root = _setup(td)
             _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
             _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
-            math_id = math_body["lane"]["work_session_id"]
-            exp_id = exp_body["lane"]["work_session_id"]
+            math_id = math_body["lane"]["lane_id"]
+            exp_id = exp_body["lane"]["lane_id"]
 
             _, a = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [root], "type": "a",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
             a_node = a["step"]["output_node_id"]
             _, b = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [a_node], "type": "b",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
             b_step = b["step"]["step_id"]
             b_node = b["step"]["output_node_id"]
             _, c = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [b_node], "type": "c",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
 
             status, body = _call(store, run_id, "POST", "/lane/adopt", {
                 "lane_id": exp_id,
@@ -498,20 +498,20 @@ class TestWriteRoutes:
             store, run_id, root = _setup(td)
             _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
             _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
-            math_id = math_body["lane"]["work_session_id"]
-            exp_id = exp_body["lane"]["work_session_id"]
+            math_id = math_body["lane"]["lane_id"]
+            exp_id = exp_body["lane"]["lane_id"]
 
             _, a = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [root], "type": "a",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
             a_node = a["step"]["output_node_id"]
             _, b = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [a_node], "type": "b",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
             b_node = b["step"]["output_node_id"]
             _, c = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [b_node], "type": "c",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
 
             status, body = _call(store, run_id, "POST", "/lane/adopt", {
                 "lane_id": exp_id,
@@ -536,20 +536,20 @@ class TestWriteRoutes:
             store, run_id, root = _setup(td)
             _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
             _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
-            math_id = math_body["lane"]["work_session_id"]
-            exp_id = exp_body["lane"]["work_session_id"]
+            math_id = math_body["lane"]["lane_id"]
+            exp_id = exp_body["lane"]["lane_id"]
 
             _, a = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [root], "type": "a",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
             a_node = a["step"]["output_node_id"]
             _, b = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [a_node], "type": "b",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
             b_node = b["step"]["output_node_id"]
             _, c = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [b_node], "type": "c",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
 
             status, body = _call(store, run_id, "POST", "/lane/adopt", {
                 "lane_id": exp_id,
@@ -584,7 +584,7 @@ class TestWriteRoutes:
             store, run_id, root = _setup(td)
             _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
             status, body = _call(store, run_id, "POST", "/lane/adopt", {
-                "lane_id": lane_body["lane"]["work_session_id"],
+                "lane_id": lane_body["lane"]["lane_id"],
                 "record_ids": [root],
                 "history_node_id": root,
             })
@@ -596,19 +596,19 @@ class TestWriteRoutes:
             store, run_id, root = _setup(td)
             _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
             _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
-            math_id = math_body["lane"]["work_session_id"]
-            exp_id = exp_body["lane"]["work_session_id"]
+            math_id = math_body["lane"]["lane_id"]
+            exp_id = exp_body["lane"]["lane_id"]
 
             _, math_root = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [root], "type": "math",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
             math_node = math_root["step"]["output_node_id"]
             _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [math_node], "type": "experiment",
-            }, work_session_id=exp_id)
+            }, lane_id=exp_id)
             _, other = _call_as(store, run_id, "POST", "/step", {
                 "input_node_ids": [math_node], "type": "other",
-            }, work_session_id=math_id)
+            }, lane_id=math_id)
 
             status, body = _call(store, run_id, "POST", "/lane/adopt", {
                 "lane_id": exp_id,
@@ -755,7 +755,7 @@ class TestVisibleAssets:
     def _visible(self, store, run_id, from_id):
         return dispatch(
             store, run_id, "GET", "/assets/visible", None,
-            user_id="t", work_session_id="ws", query={"from": from_id},
+            user_id="t", lane_id="ws", query={"from": from_id},
         )
 
     def test_returns_ancestors_and_self_only(self):
@@ -779,7 +779,7 @@ class TestVisibleAssets:
             store, run_id, *_ = self._setup_assets(td)
             status, _ = dispatch(
                 store, run_id, "GET", "/assets/visible", None,
-                user_id="t", work_session_id="ws", query={},
+                user_id="t", lane_id="ws", query={},
             )
             assert status == 400
 

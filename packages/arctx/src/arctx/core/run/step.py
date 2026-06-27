@@ -15,7 +15,7 @@ def add_step_impl(
     *,
     output_node_id: str | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> Step:
     """Create one Step from the given input nodes.
 
@@ -80,7 +80,7 @@ def add_step_impl(
 
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="step_created",
         target_kind="step",
         target_id=step.step_id,

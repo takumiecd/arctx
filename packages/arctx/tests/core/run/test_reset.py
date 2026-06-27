@@ -22,7 +22,7 @@ def _make_handle(run_id: str = "run_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 def _make_chain(handle, length: int = 3):
@@ -38,7 +38,7 @@ def _make_chain(handle, length: int = 3):
             message=f"commit {i+1}",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit=f"sha_{i+1}",
             dry_run=True,
         )
@@ -58,7 +58,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],  # n1
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert len(handle.run_graph.steps) == count_before
@@ -73,7 +73,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert len(handle.run_graph.nodes) == count_before
@@ -88,7 +88,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         reset_events = [e for e in handle.run_graph.work_events if e.event_type == RESET_EVENT]
@@ -103,7 +103,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         reset_event = next(
@@ -121,7 +121,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         sp = latest_session_pointer(handle.run_graph, "ws_1")
@@ -141,7 +141,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         sp_events_after = [
@@ -160,7 +160,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],  # n1 — so t2 and t3 are discarded
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert is_inactive_step(handle.run_graph, t2.step_id)
@@ -176,7 +176,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert not is_inactive_step(handle.run_graph, t1.step_id)
@@ -190,7 +190,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="mixed",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert not is_inactive_step(handle.run_graph, t2.step_id)
@@ -205,7 +205,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="soft",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert not is_inactive_step(handle.run_graph, t2.step_id)
@@ -220,7 +220,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         cut_payloads = [
@@ -239,7 +239,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert "to_node_id" in result
@@ -259,7 +259,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         discarded = set(result["discarded_step_ids"])
@@ -275,12 +275,12 @@ class TestResetImplDryRun:
         # Create a second branch from the root to get a non-ancestor node.
         req = Requirement(requirement_id="req2", target_type="task", target_id="t2")
         other = attach_extensions(arctx.init(req, run_id="run_other"), ["git"])
-        other.ensure_work_session(user_id="u", work_session_id="ws_o")
+        other.ensure_lane(user_id="u", lane_id="ws_o")
         other_t = other.git.commit(
             message="other",
             branch="main",
             user_id="u",
-            work_session_id="ws_o",
+            lane_id="ws_o",
             head_commit="sha_o",
             dry_run=True,
         )
@@ -301,7 +301,7 @@ class TestResetImplDryRun:
                 to_node_id="n_alien",
                 mode="hard",
                 user_id="user",
-                work_session_id="ws_1",
+                lane_id="ws_1",
                 dry_run=True,
             )
 
@@ -314,7 +314,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[1],  # same as current
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert result["discarded_step_ids"] == []
@@ -325,12 +325,12 @@ class TestResetImplDryRun:
         steps, nodes = _make_chain(handle, length=2)
         event_count_before = len(handle.run_graph.work_events)
 
-        # Pass work_session_id so from_node is resolved correctly,
+        # Pass lane_id so from_node is resolved correctly,
         # but omit user_id so no work events should be written.
         result = handle.git.reset(
             to_node_id=nodes[0],
             mode="hard",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert len(handle.run_graph.work_events) == event_count_before
@@ -350,7 +350,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[0],
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         # t3 must be cut by reset (t2 was already cut before).
@@ -365,7 +365,7 @@ class TestResetImplDryRun:
             to_sha="sha_1",
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         assert result["to_node_id"] == nodes[0]
@@ -410,7 +410,7 @@ class TestResetImplDryRun:
             to_node_id=nodes[1],  # n2
             mode="hard",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             dry_run=True,
         )
         discarded = set(result["discarded_step_ids"])

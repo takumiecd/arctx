@@ -10,7 +10,7 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 export PYTHONPATH="$REPO_ROOT/packages/arctx/src:$REPO_ROOT/packages/arctx-cli/src"
 export ARCTX_HOME="$WORKDIR/.arctx-home"
-unset ARCTX_RUN_ID ARCTX_USER_ID ARCTX_WORK_SESSION_ID 2>/dev/null || true
+unset ARCTX_RUN_ID ARCTX_USER_ID ARCTX_LANE_ID 2>/dev/null || true
 
 cd "$WORKDIR"
 git init -q .
@@ -36,4 +36,4 @@ hook '{"hook_event_name":"UserPromptSubmit","session_id":"sess-codex","prompt":"
 echo '--- dump:'
 A dump --run demo --format outline --full-payloads
 echo '--- work sessions:'
-A work-session list --run demo | python3 -c "import json,sys;[print(s['work_session_id'],s['user_id'],s['metadata'].get('agent',{}).get('model','')) for s in json.load(sys.stdin)['work_sessions']]"
+A lane list --run demo | python3 -c "import json,sys;[print(s['lane_id'],s['user_id'],s['metadata'].get('agent',{}).get('model','')) for s in json.load(sys.stdin)['lanes']]"

@@ -12,7 +12,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 
 # ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_add.add_argument("--run", default=None)
     sp_add.add_argument("--store-dir", default=None)
     sp_add.add_argument("--user", default=None)
-    sp_add.add_argument("--work-session", default=None)
+    sp_add.add_argument("--lane", default=None)
 
     sp_show = git_sub.add_parser("show", help="Show git_change payloads for a Step")
     sp_show.add_argument("--step", required=True, dest="step_id")
@@ -191,7 +191,7 @@ def _cli_git_attach(args) -> int:
     store = resolve_store(args.store_dir)
     run_id = resolve_run_id_from_args(args)
     user_id = resolve_user_id_from_args(args)
-    work_session_id = resolve_work_session_id_from_args(args)
+    lane_id = resolve_lane_id_from_args(args)
 
     if not store.run_path(run_id).exists():
         print(f"error: unknown run_id: {run_id}", file=sys.stderr)
@@ -210,7 +210,7 @@ def _cli_git_attach(args) -> int:
             args.step_id,
             tuple(args.commits),
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
         )
     except (KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -220,7 +220,7 @@ def _cli_git_attach(args) -> int:
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         before=before,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))

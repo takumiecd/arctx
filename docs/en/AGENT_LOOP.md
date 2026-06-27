@@ -24,7 +24,7 @@ ARCTX has three separate pieces of state:
 - **Repo pointer:** `<gitdir>/arctx-id`, written by `arctx init`, `arctx use`,
   `arctx git init`, and `arctx git repo add`.
 - **Shell pointer:** `ARCTX_RUN_ID`, usually set with
-  `eval "$(arctx use <run_id> --shell)"` or `arctx work-session env`.
+  `eval "$(arctx use <run_id> --shell)"` or `arctx lane env`.
 
 Resolution order is:
 
@@ -81,27 +81,27 @@ Parallel agents should not rely only on shared repo pointers. Pin the run and
 work session in each process environment instead.
 
 ```bash
-eval "$(arctx work-session env --run run_x --new --user codex)"
+eval "$(arctx lane env --run run_x --new --user codex)"
 arctx add step --from NODE_ID --type suggestion
 ```
 
 Use `spawn` for child processes. The child receives a unique
-`ARCTX_WORK_SESSION_ID`; sibling terminals and sibling child processes do not
+`ARCTX_LANE_ID`; sibling terminals and sibling child processes do not
 share the fixed session.
 
 ```bash
-arctx work-session spawn --run run_x --user codex -- codex
-arctx work-session spawn --run run_x --user claude-code -- claude
+arctx lane spawn --run run_x --user codex -- codex
+arctx lane spawn --run run_x --user claude-code -- claude
 ```
 
-For explicit mode, pass both `--run` and `--work-session` on every mutating
+For explicit mode, pass both `--run` and `--lane` on every mutating
 command.
 
 ```bash
-arctx add step --run run_x --work-session ws_xxx --from NODE_ID --type implementation
+arctx add step --run run_x --lane ws_xxx --from NODE_ID --type implementation
 ```
 
-The default attribution is `user=user` and `work_session=default`. Set `--user`
+The default attribution is `user=user` and `lane=default`. Set `--user`
 or `ARCTX_USER_ID` for each agent when you need to distinguish who wrote which
 records.
 
@@ -116,7 +116,7 @@ For parallel coding agents, pair work sessions with git worktrees:
 
 ```bash
 arctx git worktree add ../my-repo-codex codex/run-x --base main
-arctx work-session spawn --run run_x --user codex --worktree ../my-repo-codex -- codex
+arctx lane spawn --run run_x --user codex --worktree ../my-repo-codex -- codex
 ```
 
 The work session records the worktree path and exports
