@@ -45,13 +45,12 @@ jobs:
       - name: Run tests
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src:packages/arctx-web/src
+          PYTHONPATH: packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src
         run: |
           python -m pytest \
             packages/arctx/tests \
             packages/arctx-cli/tests \
             packages/arctx-tui/tests \
-            packages/arctx-web/tests \
             --import-mode=importlib -q
 
   build:
@@ -66,15 +65,13 @@ jobs:
         with:
           node-version: "20"
       - run: python -m pip install --upgrade pip build twine
-      - name: Bundle the arctx-web frontend
-        # arctx-web ships the built React app (web/dist) inside its wheel.
-        # Build + copy it into the package before packaging.
+      - name: Bundle the frontend assets
         env:
-          PYTHONPATH: packages/arctx-web/src
-        run: python -m arctx_web.bundle
+          PYTHONPATH: packages/arctx/src
+        run: python -m arctx.web.bundle
       - name: Build all packages
         run: |
-          for pkg in arctx arctx-cli arctx-tui arctx-web; do
+          for pkg in arctx arctx-cli arctx-tui; do
             python -m build "packages/$pkg"
           done
       - name: twine check
