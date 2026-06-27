@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.work import WorkEvent, WorkSession
+from arctx.core.schema.payloads import SummaryPayload
+from arctx.core.schema.work import WorkEvent, Lane
 
 
 @dataclass(frozen=True)
@@ -146,14 +148,14 @@ def ensure_valid_lanes(
         raise ValueError(format_lane_validation_errors(errors))
 
 
-def lane_label(session: WorkSession | None, lane_id: str) -> str:
+def lane_label(session: Lane | None, lane_id: str) -> str:
     """Return the human label for a lane id."""
     if session is None:
         return lane_id
-    return str(session.name or session.work_session_id)
+    return str(session.name or session.lane_id)
 
 
-def lane_root_node_id(session: WorkSession) -> str | None:
+def lane_root_node_id(session: Lane) -> str | None:
     """Return the configured lane root/anchor node, if any.
 
     ``root_node_id`` is the preferred key. ``anchor_node_id`` is accepted as a
@@ -189,7 +191,7 @@ def lane_root_candidates(
     """
     run_root = _membership_root_node_id(graph, root_node_id)
     membership = membership or lane_membership(graph, root_node_id=run_root)
-    session = graph.work_sessions.get(lane_id)
+    session = graph.lanes.get(lane_id)
     explicit = lane_root_node_id(session) if session is not None else None
     if explicit == run_root:
         return ()
@@ -260,11 +262,11 @@ def lane_membership(
         record_id: str,
         membership_kind: str,
     ) -> LaneRecordProvenance:
-        session = graph.work_sessions.get(event.work_session_id)
+        session = graph.lanes.get(event.lane_id)
         lane_name = session.name if session is not None else None
         return LaneRecordProvenance(
             record_id=record_id,
-            lane_id=event.work_session_id,
+            lane_id=event.lane_id,
             lane_name=lane_name,
             user_id=event.user_id,
             event_id=event.event_id,
@@ -327,7 +329,7 @@ def lane_membership(
     groups = tuple(
         LaneGroup(
             lane_id=lane_id,
-            label=lane_label(graph.work_sessions.get(lane_id), lane_id),
+            label=lane_label(graph.lanes.get(lane_id), lane_id),
             node_ids=tuple(sorted(lane_nodes.get(lane_id, set()))),
             step_ids=tuple(sorted(lane_steps.get(lane_id, set()))),
         )
@@ -395,6 +397,69 @@ def lane_subgraph(graph: RunGraph, lane_id: str) -> dict[str, tuple[str, ...]]:
     }
 
 
+def lane_edge_node_ids(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
+    active_only: bool = True,
+) -> tuple[str, ...]:
+    """Return terminal nodes for one lane.
+
+    A lane edge is a lane-owned node that has no outgoing active step in the
+    same lane. Cross-lane outgoing steps do not make the source non-terminal for
+    this lane; they represent another lane continuing from this state.
+    """
+    membership = membership or lane_membership(graph, root_node_id=root_node_id)
+    lane_nodes = {
+        node_id
+        for node_id, owner in membership.node_to_lane.items()
+        if owner == lane_id
+    }
+    lane_steps = {
+        step_id
+        for step_id, owner in membership.step_to_lane.items()
+        if owner == lane_id
+    }
+    if active_only:
+        lane_nodes -= inactive_node_ids(graph)
+        lane_steps -= inactive_step_ids(graph)
+
+    out: list[str] = []
+    for node_id in sorted(lane_nodes):
+        if not any(step_id in lane_steps for step_id in graph.steps_from_node(node_id)):
+            out.append(node_id)
+    return tuple(out)
+
+
+def lane_edge_summaries(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
+    active_only: bool = True,
+) -> tuple[SummaryPayload, ...]:
+    """Return summaries attached to terminal nodes in one lane."""
+    edge_nodes = set(
+        lane_edge_node_ids(
+            graph,
+            lane_id,
+            membership,
+            root_node_id=root_node_id,
+            active_only=active_only,
+        )
+    )
+    if not edge_nodes:
+        return ()
+    return tuple(
+        payload
+        for payload in graph.payloads.values()
+        if isinstance(payload, SummaryPayload) and payload.target_id in edge_nodes
+    )
+
+
 def validate_lanes(
     graph: RunGraph,
     *,
@@ -417,7 +482,7 @@ def validate_lanes(
     for step_id, lane_id in membership.step_to_lane.items():
         lane_step_ids.setdefault(lane_id, set()).add(step_id)
 
-    for lane_id, session in graph.work_sessions.items():
+    for lane_id, session in graph.lanes.items():
         lane_root = lane_root_node_id(session)
         if lane_root == run_root:
             issues.append(
@@ -560,7 +625,7 @@ def validate_lanes(
 
     lane_roots = {
         root
-        for lane_id in graph.work_sessions
+        for lane_id in graph.lanes
         for root in lane_root_candidates(
             graph,
             lane_id,
@@ -682,8 +747,8 @@ def lane_export_view(
     sessions = [
         session.to_dict()
         for session in sorted(
-            graph.work_sessions.values(),
-            key=lambda s: (s.started_at or "", s.work_session_id),
+            graph.lanes.values(),
+            key=lambda s: (s.started_at or "", s.lane_id),
         )
     ]
     events = [
@@ -693,7 +758,6 @@ def lane_export_view(
     ]
     return {
         "lanes": sessions,
-        "work_sessions": sessions,
         "work_events": events,
         "record_provenance": {
             record_id: provenance.to_dict()
@@ -708,6 +772,18 @@ def lane_export_view(
             boundary.to_dict()
             for boundary in lane_boundaries(graph, membership)
             if boundary.step_id in step_ids
+        ],
+        "lane_edge_summaries": [
+            {
+                "lane_id": group.lane_id,
+                "node_id": summary.target_id,
+                "payload_id": summary.payload_id,
+                "text": summary.text,
+                "metadata": summary.metadata,
+            }
+            for group in membership.groups
+            for summary in lane_edge_summaries(graph, group.lane_id, membership)
+            if summary.payload_id in payload_ids and summary.target_id in node_ids
         ],
     }
 

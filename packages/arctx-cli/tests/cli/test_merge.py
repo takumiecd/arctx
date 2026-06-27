@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from arctx.core.schema.work_helpers import make_session_pointer_event
+from arctx.core.schema.work_helpers import make_lane_pointer_event
 
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.context import resolve_store
@@ -29,22 +29,22 @@ def _init_arctx(tmp_path: Path, run_id: str = "run_merge_cli") -> dict:
 
 def _build_two_branch_run(handle, ws_main: str = "ws_main", ws_feat: str = "ws_feat"):
     """Commit on main and feature branches; return (n_main, n_feat)."""
-    handle.ensure_work_session(user_id="user", work_session_id=ws_main)
-    handle.ensure_work_session(user_id="user", work_session_id=ws_feat)
+    handle.ensure_lane(user_id="user", lane_id=ws_main)
+    handle.ensure_lane(user_id="user", lane_id=ws_feat)
     root_id = handle.root_node_id
 
     t_main = handle.git.commit(
         message="main commit", branch="main",
-        user_id="user", work_session_id=ws_main,
+        user_id="user", lane_id=ws_main,
         head_commit="sha_main", dry_run=True,
     )
     n_main = t_main.output_node_id
 
     # Reset feature session to root.
-    sp = make_session_pointer_event(
+    sp = make_lane_pointer_event(
         event_id=handle._next_id("we"),
         run_id=handle.run_id,
-        work_session_id=ws_feat,
+        lane_id=ws_feat,
         user_id="user",
         current_node_ids=(root_id,),
         current_branch="feature",
@@ -53,7 +53,7 @@ def _build_two_branch_run(handle, ws_main: str = "ws_main", ws_feat: str = "ws_f
 
     t_feat = handle.git.commit(
         message="feature commit", branch="feature",
-        user_id="user", work_session_id=ws_feat,
+        user_id="user", lane_id=ws_feat,
         head_commit="sha_feat", dry_run=True,
     )
     n_feat = t_feat.output_node_id
@@ -82,7 +82,7 @@ class TestMergeCLIIntegration:
             run_id="run_mg1",
             store_dir=sd,
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             dry_run=True,
             head_commit="sha_merged_1",
         )
@@ -119,7 +119,7 @@ class TestMergeCLIIntegration:
             run_id="run_cm1",
             store_dir=sd,
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             merge=f"node:{n_feat}",
             dry_run=True,
             head_commit="sha_cm_merge",
@@ -159,7 +159,7 @@ class TestMergeCLIIntegration:
             run_id="run_brname",
             store_dir=sd,
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             dry_run=True,
             head_commit="sha_br_merge",
         )
@@ -187,7 +187,7 @@ class TestMergeCLIIntegration:
             run_id="run_graph_out",
             store_dir=sd,
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             dry_run=True,
             head_commit="sha_out",
         )
@@ -211,7 +211,7 @@ class TestMergeCLIIntegration:
                 run_id="run_unk",
                 store_dir=sd,
                 user_id="user",
-                work_session_id="ws_main",
+                lane_id="ws_main",
                 dry_run=True,
                 head_commit="sha_unk",
             )
@@ -235,7 +235,7 @@ class TestMergeCLIIntegration:
             run_id="run_dump",
             store_dir=sd,
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             dry_run=True,
             head_commit="sha_dump",
         )

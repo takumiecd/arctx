@@ -8,16 +8,18 @@ from pathlib import Path
 
 from arctx.core.schema.payloads import StepPayload
 
+from arctx_cli.commands.attach import run_attach_command
 from arctx_cli.commands.add import run_add_step_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.lane import (
+    lane_summaries,
     list_lanes,
     run_lane_adopt_command,
     run_lane_create_command,
     run_lane_switch_command,
     validate_lane_run,
 )
-from arctx_cli.context import resolve_store, resolve_work_session_id_from_args
+from arctx_cli.context import resolve_store, resolve_lane_id_from_args
 
 
 def _store_dir(td: str) -> str:
@@ -49,7 +51,7 @@ def _seed_default_lane_node(sd: str) -> str:
         [handle.root_node_id],
         payload,
         user_id="alice",
-        work_session_id="default",
+        lane_id="default",
     )
     store.save_run(handle)
     return step.output_node_id
@@ -73,7 +75,7 @@ def test_create_then_switch_named_lane():
         assert switched["created"] is False
         assert switched["lane_id"] == created["lane_id"]
         assert switched["export"].startswith("export ARCTX_LANE_ID=")
-        assert "ARCTX_WORK_SESSION_ID=" in switched["export"]
+        assert "ARCTX_LANE_ID=" in switched["export"]
 
         lanes = list_lanes(run_id="run_lane", store_dir=sd)
         assert len(lanes) == 1
@@ -117,7 +119,7 @@ def test_adopt_existing_record_into_lane():
             json_data={},
             store_dir=sd,
             user_id=None,
-            work_session_id=None,
+            lane_id=None,
         )
         step_id = made["step"]["step_id"]
         output_id = made["step"]["output_node_id"]
@@ -136,6 +138,92 @@ def test_adopt_existing_record_into_lane():
         event = handle.run_graph.work_events[-1]
         assert event.event_type == "lane_adopted"
         assert event.data["record_ids"] == [step_id, output_id]
+
+
+def test_lane_summaries_returns_terminal_node_summaries():
+    with tempfile.TemporaryDirectory() as td:
+        init = _init(td)
+        sd = _store_dir(td)
+        lane = run_lane_create_command(
+            name="geometry",
+            run_id="run_lane",
+            user_id="alice",
+            store_dir=sd,
+        )
+        first = run_add_step_command(
+            run_id="run_lane",
+            input_node_ids=[init["root_node_id"]],
+            title="start",
+            payload_kind=None,
+            payload_type="step_payload",
+            field_data={},
+            json_data={},
+            store_dir=sd,
+            user_id="alice",
+            lane_id=lane["lane_id"],
+        )["step"]
+        left = run_add_step_command(
+            run_id="run_lane",
+            input_node_ids=[first["output_node_id"]],
+            title="left",
+            payload_kind=None,
+            payload_type="step_payload",
+            field_data={},
+            json_data={},
+            store_dir=sd,
+            user_id="alice",
+            lane_id=lane["lane_id"],
+        )["step"]
+        right = run_add_step_command(
+            run_id="run_lane",
+            input_node_ids=[first["output_node_id"]],
+            title="right",
+            payload_kind=None,
+            payload_type="step_payload",
+            field_data={},
+            json_data={},
+            store_dir=sd,
+            user_id="alice",
+            lane_id=lane["lane_id"],
+        )["step"]
+        run_attach_command(
+            run_id="run_lane",
+            target_id=left["output_node_id"],
+            payload_kind="summary",
+            payload_type="summary",
+            field_data={"text": "left conclusion"},
+            json_data={},
+            store_dir=sd,
+            user_id="alice",
+            lane_id=lane["lane_id"],
+        )
+        run_attach_command(
+            run_id="run_lane",
+            target_id=right["output_node_id"],
+            payload_kind="summary",
+            payload_type="summary",
+            field_data={"text": "right conclusion"},
+            json_data={},
+            store_dir=sd,
+            user_id="alice",
+            lane_id=lane["lane_id"],
+        )
+
+        result = lane_summaries(
+            run_id="run_lane",
+            store_dir=sd,
+            name_or_id="geometry",
+        )
+
+        assert result["lane"]["lane_id"] == lane["lane_id"]
+        assert set(result["edge_node_ids"]) == {
+            left["output_node_id"],
+            right["output_node_id"],
+        }
+        assert {s["text"] for s in result["summaries"]} == {
+            "left conclusion",
+            "right conclusion",
+        }
 
 
 def test_validate_lane_run_reports_issues():
@@ -160,7 +248,7 @@ def test_persistent_lane_pointer_is_scoped_by_run(monkeypatch):
         monkeypatch.chdir(root)
         monkeypatch.setenv("ARCTX_HOME", str(root / "home"))
         monkeypatch.delenv("ARCTX_LANE_ID", raising=False)
-        monkeypatch.delenv("ARCTX_WORK_SESSION_ID", raising=False)
+        monkeypatch.delenv("ARCTX_LANE_ID", raising=False)
 
         sd = _store_dir(td)
         run_init_command(
@@ -206,10 +294,10 @@ def test_persistent_lane_pointer_is_scoped_by_run(monkeypatch):
         )
 
         assert (
-            resolve_work_session_id_from_args(Namespace(run="run_a", work_session=None))
+            resolve_lane_id_from_args(Namespace(run="run_a", lane=None))
             == lane_a["lane_id"]
         )
         assert (
-            resolve_work_session_id_from_args(Namespace(run="run_b", work_session=None))
+            resolve_lane_id_from_args(Namespace(run="run_b", lane=None))
             == lane_b["lane_id"]
         )

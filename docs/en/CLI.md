@@ -47,8 +47,8 @@ Use the modes deliberately:
 - **Move across several repos in one terminal:** run
   `eval "$(arctx use <run_id> --shell)"`; the environment variable wins over
   each repo's pointer.
-- **Parallel agents:** prefer `arctx work-session env` or
-  `arctx work-session spawn`, which pins both the run and the work-session in
+- **Parallel agents:** prefer `arctx lane env` or
+  `arctx lane spawn`, which pins both the run and the lane in
   process-local environment variables.
 
 `arctx current` reads the repo pointer (`<gitdir>/arctx-id`) and prints that
@@ -79,6 +79,8 @@ Core commands:
 - `arctx lane adopt <name-or-id> --record ID`: register existing records as
   current members of a lane without rewriting creation provenance. Use
   `--history NODE` or `--reachable NODE` for subgraph adoption.
+- `arctx lane summaries <name-or-id>`: list `SummaryPayload`s on active terminal
+  nodes in the lane. Branched lanes can return multiple summaries.
 - `arctx export [--format md|tex|html]`: render a run as a shareable document.
 
 ## DAG Records
@@ -126,7 +128,7 @@ Setup commands:
 Daily git verbs:
 
 - `arctx git commit -m "message"` / `arctx commit -m "message"`
-  - The input node is normally resolved from the work-session / branch tip.
+  - The input node is normally resolved from the lane / branch tip.
     Pass `--from NODE` to branch off a chosen node instead (repeat for a
     fan-in) — this is how experiments fan out as siblings from a shared
     baseline.
@@ -194,43 +196,43 @@ A work session is the attribution unit for parallel agents or terminals working
 in the same run. Mutating CLI commands append under a lock, so concurrent
 writers serialize their new records instead of overwriting existing history.
 
-- `arctx work-session start [--user U] [--work-session WS]`: create a work
+- `arctx lane start [--user U] [--lane WS]`: create a work
   session and print its id.
-- `arctx work-session env [--new] [--run R] [--user U]`: print shell exports
-  for `ARCTX_RUN_ID`, `ARCTX_WORK_SESSION_ID`, and `ARCTX_USER_ID`.
-- `arctx work-session spawn [--user U] -- <cmd>`: run a child command with a
+- `arctx lane env [--new] [--run R] [--user U]`: print shell exports
+  for `ARCTX_RUN_ID`, `ARCTX_LANE_ID`, and `ARCTX_USER_ID`.
+- `arctx lane spawn [--user U] -- <cmd>`: run a child command with a
   child-only work session.
-- `arctx work-session list` / `arctx work-session show <ws_id>`: inspect work
+- `arctx lane list` / `arctx lane show <ws_id>`: inspect work
   sessions.
 
 Fixed-mode example:
 
 ```bash
-eval "$(arctx work-session env --run run_x --new --user codex)"
+eval "$(arctx lane env --run run_x --new --user codex)"
 arctx add step --from NODE_ID --type suggestion
 ```
 
 Spawn example:
 
 ```bash
-arctx work-session spawn --run run_x --user codex -- codex
-arctx work-session spawn --run run_x --user claude-code -- claude
+arctx lane spawn --run run_x --user codex -- codex
+arctx lane spawn --run run_x --user claude-code -- claude
 ```
 
 Attribution resolution:
 
 - user: `--user` -> `ARCTX_USER_ID` -> `<ARCTX_HOME>/config.json` `user.id` -> `user`
-- work session: `--work-session` -> `ARCTX_WORK_SESSION_ID` ->
-  `<ARCTX_HOME>/config.json` `work_session.id` -> `default`
+- work session: `--lane` -> `ARCTX_LANE_ID` ->
+  `<ARCTX_HOME>/config.json` `lane.id` -> `default`
 
 ## Worktree Attachment
 
-- `arctx work-session start --worktree PATH`
-- `arctx work-session env --new --worktree PATH`
-- `arctx work-session spawn --worktree PATH -- <cmd>`
+- `arctx lane start --worktree PATH`
+- `arctx lane env --new --worktree PATH`
+- `arctx lane spawn --worktree PATH -- <cmd>`
 
 These commands record the resolved worktree path on
-`WorkSession.metadata["worktree"]` and export `ARCTX_GIT_WORKTREE=PATH`.
+`Lane.metadata["worktree"]` and export `ARCTX_GIT_WORKTREE=PATH`.
 
 When `ARCTX_GIT_WORKTREE` is set, git verbs (`arctx git commit`, `revert`,
 `cherry-pick`, `merge`, `reset`, `verify`, and the post-rewrite hook) run their

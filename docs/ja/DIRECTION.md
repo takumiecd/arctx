@@ -17,16 +17,16 @@ Node -> Step -> Node -> Step -> Node
 
 ## Git worktree 対応ワークフロー
 
-Git extension は worktree 対応です。`WorkSession` を特定の `git worktree` に
+Git extension は worktree 対応です。`Lane` を特定の `git worktree` に
 attach でき、そのセッション内の ARCTX コマンドは git サブプロセスを紐づいた
 working tree の中で実行します:
 
 - `ARCTX_GIT_WORKTREE` はすべての git verb
   (`arctx git commit / revert / cherry-pick / merge / reset / verify`) の cwd を
   上書きします。
-- `arctx work-session start / env / spawn --worktree PATH` は解決済みのパス
+- `arctx lane start / env / spawn --worktree PATH` は解決済みのパス
   （加えて現在のブランチと `git --git-common-dir`）を
-  `WorkSession.metadata["worktree"]` に記録し、下流プロセス向けに
+  `Lane.metadata["worktree"]` に記録し、下流プロセス向けに
   `ARCTX_GIT_WORKTREE` を export します。
 - `arctx git worktree {add,list,remove}` は上流の `git worktree` plumbing の
   薄いラッパーです。ライフサイクルは git 側に残るため、ARCTX の外で作成された
@@ -34,8 +34,8 @@ working tree の中で実行します:
 
 考えられるフォローアップ:
 
-- worktree パスを `arctx work-session list` / TUI ビューで表示する。
+- worktree パスを `arctx lane list` / TUI ビューで表示する。
 - agent が単一セッション中に worktree を移動した際、step ごとの workspace
   パスを記録する。
-- `work-session env --new --worktree PATH` が存在しないディレクトリを指す場合に
+- `lane env --new --worktree PATH` が存在しないディレクトリを指す場合に
   worktree を自動生成する。

@@ -585,6 +585,23 @@ main {
 .panel-view {
   min-width: 0;
 }
+.record-id-list {
+  display: grid;
+  gap: 6px;
+  max-height: 210px;
+  overflow: auto;
+}
+.record-id-chip {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-bg);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .record-context {
   margin: 8px 0 14px;
 }
@@ -746,6 +763,32 @@ main {
 }
 .unit-card-summary.node-note {
   color: var(--color-text-faint);
+}
+.lane-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.lane-summary-card {
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-subtle);
+}
+.summary-node-link {
+  border: 1px solid var(--color-border-strong);
+  border-radius: 5px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.summary-node-link:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 .muted {
   color: var(--color-text-placeholder);

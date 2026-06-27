@@ -238,8 +238,8 @@ class ArctxApp(App):
             "nodes.jsonl",
             "steps.jsonl",
             "payloads.jsonl",
-            "work_sessions.jsonl",
-            "work_events.jsonl",
+            "lanes.jsonl",
+            "lane_events.jsonl",
             "run.db",
         )
         signature: list[tuple[str, int, int]] = []

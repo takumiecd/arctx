@@ -92,6 +92,7 @@ class GitExtension(ExtensionBase):
 
     name = "git"
     version = "0.1"
+    description = "Integration with git to record commits and branches into the arctx graph."
 
     def register_schema(self) -> None:
         # Import-time side effects register payload decoders/classes.
@@ -171,6 +172,10 @@ class GitExtension(ExtensionBase):
             )
             for v in violations
         ]
-
+    def guide_text(self) -> str:
+        return """* `arctx git commit` : Record a git commit as a step in the arctx graph.
+* `arctx git verify` : Run verification scripts and attach results to the graph.
+* `arctx git branch` : Record a branch switch or creation.
+"""
 
 __all__ = ["GitExtension", "GitNamespace"]

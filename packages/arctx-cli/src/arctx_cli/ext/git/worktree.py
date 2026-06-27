@@ -1,15 +1,15 @@
 """arctx git worktree — thin wrappers around ``git worktree``.
 
 This is a lifecycle helper. The actual graph state lives on the
-WorkSession that is later attached to the worktree via
-``arctx work-session env --worktree`` (or via spawn/start). These
+Lane that is later attached to the worktree via
+``arctx lane env --worktree`` (or via spawn/start). These
 commands only manage the git side: ``add`` creates a new
 ``git worktree`` on a fresh branch, ``list`` shows the registered
 worktrees, and ``remove`` invokes ``git worktree remove``.
 
 Recording per-worktree session metadata is intentionally left to
-``arctx work-session start --worktree``; that keeps a single canonical
-path for writing WorkSession state and lets users attach a worktree
+``arctx lane start --worktree``; that keeps a single canonical
+path for writing Lane state and lets users attach a worktree
 that was created outside arctx (``git worktree add`` directly).
 """
 
@@ -32,7 +32,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         description=(
             "Thin wrapper around `git worktree`. Use these to create / list "
             "/ remove worktrees; attach them to a ARCTX work session with "
-            "`arctx work-session start --worktree PATH`."
+            "`arctx lane start --worktree PATH`."
         ),
     )
     sub = parser.add_subparsers(dest="worktree_command", required=True)

@@ -44,11 +44,11 @@ export interface RunRepo {
   [key: string]: unknown;
 }
 
-export interface RunWorkSession {
-  work_session_id: string;
+export interface RunLane {
+  lane_id: string;
   run_id: string;
-  user_id: string;
-  parent_work_session_id?: string | null;
+  created_by: string;
+  parent_lane_id?: string | null;
   started_at?: string | null;
   closed_at?: string | null;
   status?: string;
@@ -59,7 +59,7 @@ export interface RunWorkSession {
 export interface RunWorkEvent {
   event_id: string;
   run_id: string;
-  work_session_id: string;
+  lane_id: string;
   user_id: string;
   event_type: string;
   target_kind?: string | null;
@@ -100,6 +100,14 @@ export interface LaneBoundary {
   output_node_id: string;
 }
 
+export interface LaneEdgeSummary {
+  lane_id: string;
+  node_id: string;
+  payload_id: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface RunDocument {
   arctx_export_version: number;
   run_id: string;
@@ -109,13 +117,13 @@ export interface RunDocument {
   steps: RunStep[];
   payloads: RunPayload[];
   repos: RunRepo[];
-  lanes?: RunWorkSession[];
-  work_sessions?: RunWorkSession[];
+  lanes?: RunLane[];
   work_events?: RunWorkEvent[];
   record_provenance?: Record<string, RecordProvenance>;
   created_provenance?: Record<string, RecordProvenance>;
   groups?: RunGroup[];
   lane_boundaries?: LaneBoundary[];
+  lane_edge_summaries?: LaneEdgeSummary[];
   current_lane_id?: string;
   current_lane_name?: string | null;
 }
@@ -235,7 +243,7 @@ export interface CreateLaneRequest {
 }
 
 export interface CreateLaneResponse {
-  lane: RunWorkSession;
+  lane: RunLane;
 }
 
 export interface AdoptLaneRequest {
@@ -244,6 +252,8 @@ export interface AdoptLaneRequest {
   record_ids?: string[];
   history_node_id?: string;
   reachable_node_id?: string;
+  lane_head_node_id?: string;
+  lane_tail_node_id?: string;
   reason?: string;
 }
 

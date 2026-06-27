@@ -24,7 +24,7 @@ import os
 import sys
 
 from arctx.core.append import AppendBatch
-from arctx.core.lanes import validate_lanes
+from arctx.core.lanes import lane_edge_node_ids, lane_edge_summaries, validate_lanes
 
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 from arctx_cli.context import (
@@ -57,7 +57,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         metavar="COMMAND|NAME",
         help=(
             "No args = current lane. Commands: create NAME, switch NAME, "
-            "adopt NAME, validate, list, show LANE."
+            "adopt NAME, validate, list, show LANE, summaries LANE."
         ),
     )
     parser.add_argument("--list", action="store_true", dest="list_lanes",
@@ -88,6 +88,17 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         default=None,
         help="Reason recorded on a lane adoption event",
     )
+    parser.add_argument(
+        "--summary",
+        default=None,
+        help="Summary text to attach when joining a lane",
+    )
+    parser.add_argument(
+        "--node",
+        action="append",
+        default=None,
+        help="Specific node id to join (repeatable; if omitted, joins all leaf nodes of the lane)",
+    )
     parser.add_argument("--user", default=None, help="Actor (created_by) when creating")
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
@@ -113,8 +124,8 @@ def _append_or_save_lane(store, handle, run_id: str, user_id: str, lane) -> None
             AppendBatch(
                 run_id=run_id,
                 user_id=user_id or "",
-                work_session_id=lane.work_session_id,
-                work_session=lane,
+                lane_id=lane.lane_id,
+                lane=lane,
                 records=(),
                 events=(),
             )
@@ -137,7 +148,7 @@ def run_lane_create_command(
 
     lane = handle.ensure_lane(name=name, created_by=user_id)
     _append_or_save_lane(store, handle, run_id, user_id, lane)
-    return {"lane_id": lane.work_session_id, "name": name, "created": True}
+    return {"lane_id": lane.lane_id, "name": name, "created": True}
 
 
 def run_lane_switch_command(
@@ -158,18 +169,18 @@ def run_lane_switch_command(
         raise KeyError(f"unknown lane: {name!r}; create it with `arctx lane create {name}`")
 
     result = {
-        "lane_id": lane.work_session_id,
+        "lane_id": lane.lane_id,
         "name": lane.name,
         "created": False,
     }
     if shell:
         result["export"] = (
-            f"export ARCTX_LANE_ID={lane.work_session_id}; "
-            f"export ARCTX_WORK_SESSION_ID={lane.work_session_id}"
+            f"export ARCTX_LANE_ID={lane.lane_id}; "
+            f"export ARCTX_LANE_ID={lane.lane_id}"
         )
     else:
         repo_root = find_repo_root()
-        write_arctx_lane(repo_root, lane.work_session_id, run_id=run_id)
+        write_arctx_lane(repo_root, lane.lane_id, run_id=run_id)
         result["arctx_lane_path"] = str(arctx_lane_path(repo_root))
     return result
 
@@ -207,7 +218,7 @@ def run_lane_adopt_command(
     )
     before = graph_counts(handle)
     event = handle.adopt_lane_records(
-        lane.work_session_id,
+        lane.lane_id,
         ids,
         user_id=user_id,
         mode=mode,
@@ -218,11 +229,11 @@ def run_lane_adopt_command(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=lane.work_session_id,
+        lane_id=lane.lane_id,
         before=before,
     )
     return {
-        "lane_id": lane.work_session_id,
+        "lane_id": lane.lane_id,
         "name": lane.name,
         "adopted_record_ids": list(ids),
         "count": len(ids),
@@ -287,7 +298,7 @@ def _without_run_root(handle, ids) -> tuple[str, ...]:
 
 def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:
     """Resolve the active lane (env > file pointer) and return its id/name."""
-    lane_id = os.environ.get("ARCTX_LANE_ID") or os.environ.get("ARCTX_WORK_SESSION_ID")
+    lane_id = os.environ.get("ARCTX_LANE_ID") or os.environ.get("ARCTX_LANE_ID")
     source = "env"
     if not lane_id:
         try:
@@ -301,7 +312,7 @@ def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:
     store = resolve_store(store_dir)
     if store.run_path(run_id).exists():
         handle = store.load_run(run_id)
-        lane = handle.run_graph.work_sessions.get(lane_id)
+        lane = handle.run_graph.lanes.get(lane_id)
         name = lane.name if lane is not None else None
     return {"lane_id": lane_id, "name": name, "source": source}
 
@@ -314,14 +325,14 @@ def list_lanes(*, run_id: str, store_dir: str | None) -> list[dict]:
     handle = store.load_run(run_id)
     sessions = sorted(
         handle.run_graph.lanes.values(),
-        key=lambda s: (s.started_at or "", s.work_session_id),
+        key=lambda s: (s.started_at or "", s.lane_id),
     )
     return [
         {
-            "lane_id": s.work_session_id,
+            "lane_id": s.lane_id,
             "name": s.name,
             "created_by": s.user_id,
-            "parent_lane_id": s.parent_work_session_id,
+            "parent_lane_id": s.parent_lane_id,
             "status": s.status,
         }
         for s in sessions
@@ -339,6 +350,34 @@ def show_lane(*, run_id: str, store_dir: str | None, name_or_id: str) -> dict:
     return {"run_id": run_id, "lane": lane.to_dict()}
 
 
+def lane_summaries(*, run_id: str, store_dir: str | None, name_or_id: str) -> dict:
+    """Return summaries attached to the active terminal nodes for one lane."""
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id}")
+    edge_node_ids = lane_edge_node_ids(
+        handle.run_graph,
+        lane.lane_id,
+        root_node_id=handle.root_node_id,
+    )
+    summaries = lane_edge_summaries(
+        handle.run_graph,
+        lane.lane_id,
+        root_node_id=handle.root_node_id,
+    )
+    return {
+        "run_id": run_id,
+        "lane": lane.to_dict(),
+        "edge_node_ids": list(edge_node_ids),
+        "summaries": [summary.to_dict() for summary in summaries],
+        "count": len(summaries),
+    }
+
+
 def validate_lane_run(*, run_id: str, store_dir: str | None) -> dict:
     """Return lane validation issues for a run."""
     store = resolve_store(store_dir)
@@ -350,6 +389,93 @@ def validate_lane_run(*, run_id: str, store_dir: str | None) -> dict:
         "run_id": run_id,
         "ok": not any(issue.severity == "error" for issue in issues),
         "issues": [issue.to_dict() for issue in issues],
+    }
+
+
+def run_lane_join_command(
+    *,
+    name_or_id: str,
+    summary: str,
+    node_ids: list[str] | None,
+    run_id: str,
+    user_id: str,
+    store_dir: str | None,
+) -> dict:
+    """Join multiple leaf nodes in a lane into a single output node with a summary.
+    
+    If node_ids is not provided, this automatically finds all active leaf nodes 
+    currently belonging to the lane.
+    """
+    from arctx.core.cuts import is_active_node
+    from arctx.core.lanes import lane_membership
+    from arctx.core.schema.payloads import JoinPayload, SummaryPayload
+
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id!r}")
+
+    # Determine nodes to join
+    if not node_ids:
+        # Collect all leaf nodes currently assigned to this lane
+        membership = lane_membership(handle.run_graph)
+        group = next((g for g in membership.groups if g.lane_id == lane.lane_id), None)
+        if not group:
+            raise ValueError(f"lane has no nodes: {name_or_id!r}")
+        
+        candidates = []
+        for nid in group.node_ids:
+            if not is_active_node(handle.run_graph, nid):
+                continue
+            # Check if this node has no steps extending from it
+            if not handle.run_graph.steps_from_node(nid):
+                candidates.append(nid)
+        
+        node_ids = candidates
+    
+    if not node_ids:
+        raise ValueError(f"no active leaf nodes found in lane {name_or_id!r}")
+    
+    # Deduplicate while preserving order
+    node_ids = list(dict.fromkeys(node_ids))
+    
+    if len(node_ids) < 1:
+        raise ValueError("join requires at least one node")
+
+    # 1. Create Step with JoinPayload
+    join_payload = JoinPayload(
+        payload_id=handle._next_id("pl"),
+        target_id="",
+    )
+    step = handle.add_step(
+        input_node_ids=node_ids,
+        payload=join_payload,
+        user_id=user_id,
+        lane_id=lane.lane_id,
+    )
+    
+    # 2. Attach SummaryPayload to the new output node
+    summary_payload = SummaryPayload(
+        payload_id=handle._next_id("pl"),
+        target_id=step.output_node_id,
+        text=summary,
+    )
+    handle.attach(
+        step.output_node_id,
+        summary_payload,
+        user_id=user_id,
+        lane_id=lane.lane_id,
+    )
+
+    store.save_run(handle)
+    return {
+        "step_id": step.step_id,
+        "output_node_id": step.output_node_id,
+        "joined_nodes": node_ids,
     }
 
 
@@ -407,6 +533,22 @@ def cli_lane(args) -> int:
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
 
+        if command == "join":
+            if len(argv) != 2:
+                raise ValueError("usage: arctx lane join NAME_OR_ID --summary TEXT [--node ID...]")
+            if not args.summary:
+                raise ValueError("--summary is required to join a lane")
+            result = run_lane_join_command(
+                name_or_id=argv[1],
+                summary=args.summary,
+                node_ids=args.node,
+                run_id=resolve_run_id_from_args(args),
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
         if command in ("switch", "use"):
             if len(argv) != 2:
                 raise ValueError(f"usage: arctx lane {command} NAME_OR_ID")
@@ -434,6 +576,26 @@ def cli_lane(args) -> int:
                 name_or_id=argv[1],
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if command in ("summary", "summaries"):
+            if len(argv) != 2:
+                raise ValueError(f"usage: arctx lane {command} NAME_OR_ID")
+            result = lane_summaries(
+                run_id=resolve_run_id_from_args(args),
+                store_dir=args.store_dir,
+                name_or_id=argv[1],
+            )
+            if args.as_json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            elif not result["summaries"]:
+                print("(none)")
+            else:
+                for summary in result["summaries"]:
+                    print(
+                        f"{summary['target_id']} {summary['payload_id']} "
+                        f"{summary['text']}"
+                    )
             return 0
 
         if command is not None:

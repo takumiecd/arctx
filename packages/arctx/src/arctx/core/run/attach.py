@@ -12,7 +12,7 @@ def attach_impl(
     payload: PayloadBase,
     *,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> PayloadBase:
     """Attach a node-targeting payload to a node.
 
@@ -31,7 +31,7 @@ def attach_impl(
     self.run_graph.attach_payload(cloned)
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="payload_attached",
         target_kind="node",
         target_id=node_id,

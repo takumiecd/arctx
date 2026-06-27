@@ -7,7 +7,7 @@ from typing import Literal, Union
 
 from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import PayloadBase
-from arctx.core.schema.work import WorkEvent, WorkSession
+from arctx.core.schema.work import WorkEvent, Lane
 
 GraphRecordKind = Literal["node", "step", "payload"]
 GraphRecord = Union[Node, Step, PayloadBase]
@@ -28,9 +28,9 @@ class AppendBatch:
 
     run_id: str
     user_id: str
-    work_session_id: str
+    lane_id: str
     records: tuple[GraphRecordEnvelope, ...]
-    work_session: WorkSession
+    lane: Lane
     events: tuple[WorkEvent, ...]
 
 

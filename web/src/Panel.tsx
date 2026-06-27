@@ -22,11 +22,12 @@ import "katex/dist/katex.min.css";
 
 import { artifactSrc } from "./api";
 import type { RunClient } from "./api";
-import type { RunDocument, RunPayload } from "./types";
+import type { LaneEdgeSummary, RunDocument, RunPayload } from "./types";
 import type { Selection } from "./Graph";
 import {
   isDirectlyCut,
   laneColors,
+  laneGroups,
   laneLabel,
   laneOptions,
   nodeLabel,
@@ -34,6 +35,7 @@ import {
   payloadsForStep,
   provenanceFor,
   stepType,
+  type LaneOption,
   type LaneColorOverrides,
 } from "./model";
 import {
@@ -56,16 +58,19 @@ interface Props {
 interface AttachTarget {
   key: string;
   label: string;
-  selection: Exclude<Selection, null>;
+  selection: RecordSelection;
 }
 
 interface DetailUnit {
   stepId: string | null;
   outputNodeId: string;
-  selected: Exclude<Selection, null>;
+  selected: RecordSelection;
 }
 
-type AdoptMode = "explicit" | "history" | "reachable";
+type RecordSelection = Extract<Exclude<Selection, null>, { kind: "node" | "step" }>;
+type BulkSelection = Extract<Exclude<Selection, null>, { kind: "records" }>;
+
+type AdoptMode = "explicit" | "history" | "reachable" | "lane_head" | "lane_tail";
 
 type Tab = "content" | "flow" | "edit";
 type AttachPreset = "note" | "asset" | "git_change" | "diagram" | "command_run" | "custom";
@@ -262,7 +267,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   });
 
   const cut = useMutation({
-    mutationFn: (sel: Exclude<Selection, null>) =>
+    mutationFn: (sel: RecordSelection) =>
       client.cut({ target_id: sel.id, target_kind: sel.kind }),
     onSuccess: () => {
       setError(null);
@@ -272,7 +277,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   });
 
   const uncut = useMutation({
-    mutationFn: (sel: Exclude<Selection, null>) =>
+    mutationFn: (sel: RecordSelection) =>
       client.uncut({ target_id: sel.id, target_kind: sel.kind }),
     onSuccess: () => {
       setError(null);
@@ -306,19 +311,37 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
     onError: fail,
   });
 
+  const adoptBulkLane = useMutation({
+    mutationFn: (sel: BulkSelection) =>
+      client.adoptLane({
+        lane_id: adoptLaneId,
+        record_ids: laneAdoptionRecordIds(sel, doc),
+        reason: "web bulk lane adoption",
+      }),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: fail,
+  });
+
   // Automatically switch tab depending on whether selection has payloads
   useEffect(() => {
     setAttachTargetKey("step");
     setAdoptMode("explicit");
 
-    if (selection) {
+    if (selection?.kind === "lane") {
+      setActiveTab("content");
+    } else if (selection?.kind === "records") {
+      setActiveTab("edit");
+    } else if (selection) {
       const unit = detailUnitFor(doc, selection);
       const stepPayloads = unit.stepId ? payloadsForStep(doc, unit.stepId) : [];
       const nodePayloads = payloadsForNode(doc, unit.outputNodeId);
       const hasPayloads = stepPayloads.length > 0 || nodePayloads.length > 0;
       setActiveTab(hasPayloads ? "content" : "flow");
     }
-  }, [selection?.kind, selection?.id]);
+  }, [selection]);
 
   const handleCopyToEdit = (text: string) => {
     setAttachPreset("note");
@@ -417,6 +440,41 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
           </div>
         </div>
       </aside>
+    );
+  }
+
+  if (selection.kind === "lane") {
+    return (
+      <LaneSummaryPanel
+        doc={doc}
+        laneId={selection.id}
+        isFocused={isFocused}
+        panelWidth={panelWidth}
+        onFocusToggle={() => setIsFocused(!isFocused)}
+        onResizeStart={startPanelResize}
+        onSelect={onSelect}
+        laneColorOverrides={laneColorOverrides}
+        dark={dark}
+      />
+    );
+  }
+
+  if (selection.kind === "records") {
+    return (
+      <BulkRecordsPanel
+        doc={doc}
+        selection={selection}
+        lanes={lanes}
+        adoptLaneId={adoptLaneId}
+        setAdoptLaneId={setAdoptLaneId}
+        adoptBulkLane={() => adoptBulkLane.mutate(selection)}
+        isPending={adoptBulkLane.isPending}
+        error={error}
+        isFocused={isFocused}
+        panelWidth={panelWidth}
+        onFocusToggle={() => setIsFocused(!isFocused)}
+        onResizeStart={startPanelResize}
+      />
     );
   }
 
@@ -675,6 +733,12 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
                       onChange={(e) => setAdoptMode(e.target.value as AdoptMode)}
                     >
                       <option value="explicit">{explicitAdoptLabel(unit)}</option>
+                      <option value="lane_tail" disabled={!unit.outputNodeId}>
+                        selected unit to lane tail
+                      </option>
+                      <option value="lane_head" disabled={!unit.outputNodeId}>
+                        lane head to selected unit
+                      </option>
                       <option value="history" disabled={!unit.outputNodeId}>
                         history ending at output node
                       </option>
@@ -845,6 +909,177 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   );
 }
 
+function LaneSummaryPanel({
+  doc,
+  laneId,
+  isFocused,
+  panelWidth,
+  onFocusToggle,
+  onResizeStart,
+  onSelect,
+  laneColorOverrides,
+  dark,
+}: {
+  doc: RunDocument;
+  laneId: string;
+  isFocused: boolean;
+  panelWidth: number;
+  onFocusToggle: () => void;
+  onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onSelect: (sel: Selection) => void;
+  laneColorOverrides: LaneColorOverrides;
+  dark: boolean;
+}) {
+  const label = laneLabel(doc, laneId);
+  const group = laneGroups(doc).find((lane) => lane.lane_id === laneId);
+  const summaries = laneEdgeSummariesFor(doc, laneId);
+  const edgeNodeIds = new Set(summaries.map((summary) => summary.node_id));
+  return (
+    <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
+      <PanelResizeHandle onPointerDown={onResizeStart} />
+      <div className="panel-content">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+          <h2 style={{ margin: 0 }}>
+            lane <code>{label}</code>
+          </h2>
+          <FocusButton focused={isFocused} onClick={onFocusToggle} />
+        </div>
+
+        <section
+          className="provenance-card"
+          style={laneVars(doc, laneId, laneColorOverrides, dark)}
+        >
+          <h3>lane summary</h3>
+          <div className="provenance-row">
+            <span>lane</span>
+            <strong className="lane-pill">{label}</strong>
+          </div>
+          <div className="provenance-row">
+            <span>records</span>
+            <strong>
+              {group ? `${group.node_ids.length} nodes · ${group.step_ids.length} steps` : "none"}
+            </strong>
+          </div>
+          <div className="provenance-row">
+            <span>summaries</span>
+            <strong>{summaries.length}</strong>
+          </div>
+        </section>
+
+        <section className="panel-view">
+          <h3>terminal summaries ({summaries.length})</h3>
+          {summaries.length === 0 ? (
+            <p className="muted">
+              No summaries on active terminal nodes in this lane.
+            </p>
+          ) : (
+            <div className="lane-summary-list">
+              {summaries.map((summary) => (
+                <LaneSummaryCard
+                  key={summary.payload_id}
+                  summary={summary}
+                  onSelect={onSelect}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="record-context">
+          <h3>terminal nodes</h3>
+          {edgeNodeIds.size === 0 ? (
+            <p className="muted">No summarized terminal nodes.</p>
+          ) : (
+            <div className="flow-list">
+              {[...edgeNodeIds].map((nodeId) => (
+                <button
+                  key={nodeId}
+                  type="button"
+                  className="unit-card"
+                  onClick={() => onSelect({ kind: "node", id: nodeId })}
+                >
+                  <span className="unit-card-title">{nodeLabel(doc, nodeId)}</span>
+                  <span className="unit-card-ids">
+                    <code>n:{nodeId.slice(0, 8)}</code>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+function LaneSummaryCard({
+  summary,
+  onSelect,
+}: {
+  summary: LaneEdgeSummary;
+  onSelect: (sel: Selection) => void;
+}) {
+  return (
+    <article className="lane-summary-card">
+      <div className="payload-card-head">
+        <strong>node summary</strong>
+        <button
+          type="button"
+          className="summary-node-link"
+          onClick={() => onSelect({ kind: "node", id: summary.node_id })}
+        >
+          {summary.node_id.slice(0, 12)}
+        </button>
+      </div>
+      <div className="payload-markdown">
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+          {summary.text || "(summary)"}
+        </ReactMarkdown>
+      </div>
+      <div className="unit-card-ids">
+        <code>payload:{summary.payload_id.slice(0, 8)}</code>
+      </div>
+    </article>
+  );
+}
+
+function laneEdgeSummariesFor(doc: RunDocument, laneId: string): LaneEdgeSummary[] {
+  return (doc.lane_edge_summaries ?? []).filter((summary) => summary.lane_id === laneId);
+}
+
+function FocusButton({
+  focused,
+  onClick,
+}: {
+  focused: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="panel-focus-btn"
+      title={focused ? "Exit Focus Mode" : "Focus Mode"}
+      onClick={onClick}
+    >
+      {focused ? (
+        <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <polyline points="4 14 10 14 10 20" />
+          <polyline points="20 10 14 10 14 4" />
+          <line x1="14" y1="10" x2="21" y2="3" />
+          <line x1="3" y1="21" x2="10" y2="14" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <polyline points="15 3 21 3 21 9" />
+          <polyline points="9 21 3 21 3 15" />
+          <line x1="21" y1="3" x2="14" y2="10" />
+          <line x1="3" y1="21" x2="10" y2="14" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function ProvenanceCard({
   doc,
   unit,
@@ -872,7 +1107,7 @@ function ProvenanceCard({
         </div>
         <p className="muted">
           This record has no lane provenance. It may have been created before lane
-          attribution was recorded, or without a work session.
+          attribution was recorded, or without a lane.
         </p>
       </section>
     );
@@ -943,6 +1178,12 @@ function adoptLaneRequest(unit: DetailUnit, laneId: string, mode: AdoptMode) {
   if (mode === "reachable") {
     return { ...base, reachable_node_id: unit.outputNodeId };
   }
+  if (mode === "lane_head") {
+    return { ...base, lane_head_node_id: unit.outputNodeId };
+  }
+  if (mode === "lane_tail") {
+    return { ...base, lane_tail_node_id: unit.outputNodeId };
+  }
   return { ...base, record_ids: explicitAdoptRecordIds(unit) };
 }
 
@@ -955,6 +1196,175 @@ function explicitAdoptRecordIds(unit: DetailUnit): string[] {
 
 function explicitAdoptLabel(unit: DetailUnit): string {
   return unit.stepId ? "selected unit (step + output)" : "selected node only";
+}
+
+function selectedRecordIds(selection: BulkSelection): string[] {
+  return [...new Set(selection.records.map((record) => record.id))];
+}
+
+function laneAdoptionRecordIds(selection: BulkSelection, doc: RunDocument): string[] {
+  const ids: string[] = [];
+  for (const record of selection.records) {
+    if (record.kind === "node") {
+      const producer = doc.steps.find((step) => step.output_node_id === record.id);
+      if (producer) ids.push(producer.step_id);
+      ids.push(record.id);
+    } else {
+      ids.push(record.id);
+      const step = doc.steps.find((entry) => entry.step_id === record.id);
+      if (step?.output_node_id) ids.push(step.output_node_id);
+    }
+  }
+  return [...new Set(ids)];
+}
+
+function visibleRecordIds(ids: string[]): string[] {
+  return ids.slice(0, 24);
+}
+
+function BulkRecordsPanel({
+  doc,
+  selection,
+  lanes,
+  adoptLaneId,
+  setAdoptLaneId,
+  adoptBulkLane,
+  isPending,
+  error,
+  isFocused,
+  panelWidth,
+  onFocusToggle,
+  onResizeStart,
+}: {
+  doc: RunDocument;
+  selection: BulkSelection;
+  lanes: LaneOption[];
+  adoptLaneId: string;
+  setAdoptLaneId: (id: string) => void;
+  adoptBulkLane: () => void;
+  isPending: boolean;
+  error: string | null;
+  isFocused: boolean;
+  panelWidth: number;
+  onFocusToggle: () => void;
+  onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<"selection" | "edit">("selection");
+  const recordIds = selectedRecordIds(selection);
+  const adoptionRecordIds = laneAdoptionRecordIds(selection, doc);
+  const previewRecordIds = visibleRecordIds(recordIds);
+  const hiddenRecordCount = recordIds.length - previewRecordIds.length;
+  const nodeCount = selection.records.filter((record) => record.kind === "node").length;
+  const stepCount = selection.records.filter((record) => record.kind === "step").length;
+
+  return (
+    <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
+      <PanelResizeHandle onPointerDown={onResizeStart} />
+      <div className="panel-content">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+          <h2 style={{ margin: 0 }}>
+            multiple records <code>{recordIds.length}</code>
+          </h2>
+          <button
+            type="button"
+            className="panel-focus-btn"
+            title={isFocused ? "Exit Focus Mode" : "Focus Mode"}
+            onClick={onFocusToggle}
+          >
+            {isFocused ? (
+              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <polyline points="4 14 10 14 10 20" />
+                <polyline points="20 10 14 10 14 4" />
+                <line x1="14" y1="10" x2="21" y2="3" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            )}
+          </button>
+        </div>
+        {error && <div className="error">{error}</div>}
+
+        <div className="panel-tabs">
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "selection" ? " active" : ""}`}
+            onClick={() => setActiveTab("selection")}
+          >
+            Selection
+          </button>
+          <button
+            type="button"
+            className={`panel-tab-btn${activeTab === "edit" ? " active" : ""}`}
+            onClick={() => setActiveTab("edit")}
+          >
+            Edit
+          </button>
+        </div>
+
+        {activeTab === "selection" && (
+          <section className="panel-view">
+            <div className="edit-section">
+              <h3>overview</h3>
+              <p className="muted" style={{ marginTop: 0 }}>
+                {nodeCount} nodes · {stepCount} steps
+              </p>
+            </div>
+            <div className="edit-section">
+              <h3>record ids ({recordIds.length})</h3>
+              <div className="record-id-list">
+                {previewRecordIds.map((id) => (
+                  <code key={id} className="record-id-chip">
+                    {id}
+                  </code>
+                ))}
+              </div>
+              {hiddenRecordCount > 0 && (
+                <p className="muted" style={{ marginBottom: 0 }}>
+                  and {hiddenRecordCount} more selected records
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "edit" && (
+          <section className="actions panel-edit-tabs">
+            <div className="edit-section">
+              <h3>move selection into lane</h3>
+              <p className="muted">
+                Moves the selected records. Related producer/output records are included when needed for lane consistency.
+              </p>
+              {lanes.length === 0 ? (
+                <p className="muted">create a lane first</p>
+              ) : (
+                <>
+                  <label>
+                    lane
+                    <select value={adoptLaneId} onChange={(e) => setAdoptLaneId(e.target.value)}>
+                      {lanes.map((lane) => (
+                        <option key={lane.group_id} value={lane.lane_id}>
+                          {lane.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button disabled={isPending || !adoptLaneId || adoptionRecordIds.length === 0} onClick={adoptBulkLane}>
+                    move {adoptionRecordIds.length} records
+                  </button>
+                </>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
+    </aside>
+  );
 }
 
 function useResizablePanelWidth(): [
@@ -1016,7 +1426,7 @@ function PanelResizeHandle({
   );
 }
 
-function detailUnitFor(doc: RunDocument, selection: Exclude<Selection, null>): DetailUnit {
+function detailUnitFor(doc: RunDocument, selection: RecordSelection): DetailUnit {
   if (selection.kind === "step") {
     const step = doc.steps.find((entry) => entry.step_id === selection.id);
     return {
@@ -1169,7 +1579,7 @@ function UnitCard({
   const stepSummary = firstPayloadSummary(doc, stepPayloads);
   const nodeSummary = firstPayloadSummary(doc, nodePayloads);
   const title = unitStepId ? stepType(doc, unitStepId) : nodeLabel(doc, nodeId);
-  const target: Exclude<Selection, null> = unitStepId
+  const target: RecordSelection = unitStepId
     ? { kind: "step", id: unitStepId }
     : { kind: "node", id: nodeId };
   return (

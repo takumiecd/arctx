@@ -49,5 +49,5 @@ result = handle.command.run(
 print(result)  # dict including exit code and the recorded step_id
 ```
 
-> Key arguments: `command` (required list), `cwd`, `user_id`, `work_session_id`, `max_output_chars`.
-> The new Step is appended at the work-session tip (it is not attached to an arbitrary node after the fact).
+> Key arguments: `command` (required list), `cwd`, `user_id`, `lane_id`, `max_output_chars`.
+> The new Step is appended at the lane tip (it is not attached to an arbitrary node after the fact).

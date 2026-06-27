@@ -14,7 +14,7 @@ from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import payload_from_dict
 from arctx.core.schema.requirements import requirement_from_dict
-from arctx.core.schema.work import WorkEvent, work_event_from_dict, work_session_from_dict
+from arctx.core.schema.work import WorkEvent, work_event_from_dict, lane_from_dict
 from arctx.storage._cache import load_cache, save_cache
 
 
@@ -79,7 +79,7 @@ class SqliteRunStore:
             )
             _merge_records(con, "payloads", "payload_id", run.run_graph.payloads.values())
             _merge_records(
-                con, "work_sessions", "work_session_id", run.run_graph.work_sessions.values()
+                con, "lanes", "lane_id", run.run_graph.lanes.values()
             )
             _merge_work_events(con, run.run_graph.work_events)
             con.commit()
@@ -96,7 +96,7 @@ class SqliteRunStore:
             len(run.run_graph.nodes),
             len(run.run_graph.steps),
             len(run.run_graph.payloads),
-            len(run.run_graph.work_sessions),
+            len(run.run_graph.lanes),
             len(run.run_graph.work_events),
         )
         disk_counts = self._row_counts(run_path)
@@ -105,7 +105,7 @@ class SqliteRunStore:
         return run_path
 
     def append_batch(self, batch: AppendBatch) -> AppendResult:
-        """Atomically append one work-session batch to an existing run."""
+        """Atomically append one lane batch to an existing run."""
         run_path = self.run_path(batch.run_id)
         if not (run_path / "run.json").exists():
             raise KeyError(f"unknown run_id: {batch.run_id}")
@@ -118,12 +118,12 @@ class SqliteRunStore:
             # appending to a shared lane is expected; the insert is idempotent.
             con.execute(
                 """
-                INSERT OR IGNORE INTO work_sessions(work_session_id, data_json)
+                INSERT OR IGNORE INTO lanes(lane_id, data_json)
                 VALUES (?, ?)
                 """,
                 (
-                    batch.work_session.work_session_id,
-                    _dumps(batch.work_session.to_dict()),
+                    batch.lane.lane_id,
+                    _dumps(batch.lane.to_dict()),
                 ),
             )
 
@@ -216,7 +216,7 @@ class SqliteRunStore:
                     "nodes",
                     "steps",
                     "payloads",
-                    "work_sessions",
+                    "lanes",
                     "work_events",
                 )
             )
@@ -245,9 +245,9 @@ def _setup_db(con: sqlite3.Connection) -> None:
             payload_id TEXT UNIQUE NOT NULL,
             data_json TEXT NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS work_sessions (
+        CREATE TABLE IF NOT EXISTS lanes (
             seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            work_session_id TEXT UNIQUE NOT NULL,
+            lane_id TEXT UNIQUE NOT NULL,
             data_json TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS work_events (
@@ -281,9 +281,9 @@ def _load_graph(con: sqlite3.Connection) -> RunGraph:
             graph.payloads_by_node.setdefault(payload.target_id, []).append(payload.payload_id)
         elif payload.target_kind == "step":
             graph.payloads_by_step.setdefault(payload.target_id, []).append(payload.payload_id)
-    for data in _rows(con, "work_sessions"):
-        session = work_session_from_dict(data)
-        graph.work_sessions[session.work_session_id] = session
+    for data in _rows(con, "lanes"):
+        session = lane_from_dict(data)
+        graph.lanes[session.lane_id] = session
     for data in _rows(con, "work_events"):
         graph.work_events.append(work_event_from_dict(data))
     return graph

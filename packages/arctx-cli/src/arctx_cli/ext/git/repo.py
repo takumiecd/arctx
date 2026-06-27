@@ -21,7 +21,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 
 
@@ -42,7 +42,7 @@ def add_repo_parser(git_sub) -> argparse.ArgumentParser:
     add.add_argument("--slug", default=None, help="Override display slug (USER/REPO)")
     add.add_argument("--no-hooks", action="store_true", help="Skip installing git hooks")
     add.add_argument("--user", default=None)
-    add.add_argument("--work-session", default=None)
+    add.add_argument("--lane", default=None)
 
     lst = sub.add_parser("list", help="List repos registered in the run")
     _add_common(lst)
@@ -66,7 +66,7 @@ def add_init_parser(git_sub) -> argparse.ArgumentParser:
     p.add_argument("--slug", default=None, help="Override display slug (USER/REPO)")
     p.add_argument("--no-hooks", action="store_true", help="Skip installing git hooks")
     p.add_argument("--user", default=None)
-    p.add_argument("--work-session", default=None)
+    p.add_argument("--lane", default=None)
     return p
 
 
@@ -87,7 +87,7 @@ def run_repo_add(
     run_id: str | None,
     store_dir: str | None,
     user_id: str | None,
-    work_session_id: str | None,
+    lane_id: str | None,
     install_hooks: bool,
 ) -> dict:
     from arctx.ext.git.helpers.repo import resolve_worktree_path
@@ -105,7 +105,7 @@ def run_repo_add(
     if repo_id not in existing_ids and entry is not None:
         handle.record_work_event(
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             event_type="repo_added",
             target_kind="node",
             target_id=handle.root_node_id,
@@ -165,7 +165,7 @@ def cli_git_init(args) -> int:
             run_id=resolve_run_id_from_args(args),
             store_dir=args.store_dir,
             user_id=resolve_user_id_from_args(args),
-            work_session_id=resolve_work_session_id_from_args(args),
+            lane_id=resolve_lane_id_from_args(args),
             install_hooks=not args.no_hooks,
         )
     except Exception as exc:  # noqa: BLE001
@@ -183,7 +183,7 @@ def _cli_repo_add(args) -> int:
             run_id=resolve_run_id_from_args(args),
             store_dir=args.store_dir,
             user_id=resolve_user_id_from_args(args),
-            work_session_id=resolve_work_session_id_from_args(args),
+            lane_id=resolve_lane_id_from_args(args),
             install_hooks=not args.no_hooks,
         )
     except Exception as exc:  # noqa: BLE001

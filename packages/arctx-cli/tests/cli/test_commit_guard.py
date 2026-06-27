@@ -13,7 +13,7 @@ import pytest
 from arctx_cli.ext.git.commit import run_commit_command
 from arctx_cli.commands.init import run_init_command
 from arctx.ext.git.verbs._forward_step import ParallelSessionConflict
-from arctx.core.schema.work_helpers import make_session_pointer_event
+from arctx.core.schema.work_helpers import make_lane_pointer_event
 
 
 def _store_dir(tmp_path) -> str:
@@ -44,7 +44,7 @@ class TestCommitGuardCLI:
             run_id="run_guard_cli",
             store_dir=sd,
             user_id="alice",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             dry_run=True,
             head_commit="sha_a1",
         )
@@ -52,7 +52,7 @@ class TestCommitGuardCLI:
 
         # Session B tries to commit — its pointer was never updated, so it's
         # still at root while the branch tip is at t_a.output_node_id.
-        # Importantly, ws_b has no SessionPointerEvent → current = (root,).
+        # Importantly, ws_b has no LanePointerEvent → current = (root,).
         with pytest.raises(ParallelSessionConflict):
             run_commit_command(
                 message="session B conflict commit",
@@ -60,7 +60,7 @@ class TestCommitGuardCLI:
                 run_id="run_guard_cli",
                 store_dir=sd,
                 user_id="bob",
-                work_session_id="ws_b",
+                lane_id="ws_b",
                 dry_run=True,
                 head_commit="sha_b1",
             )
@@ -79,21 +79,21 @@ class TestCommitGuardCLI:
             run_id="run_adopt_tip",
             store_dir=sd,
             user_id="alice",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             dry_run=True,
             head_commit="sha_a",
         )
         tip_node = result_a["output_node_id"]
 
         # Simulate session B adopting the tip via arctx use <tip_node>:
-        # inject a SessionPointerEvent pointing to the new tip.
+        # inject a LanePointerEvent pointing to the new tip.
         store = resolve_store(sd)
         handle = store.load_run("run_adopt_tip")
-        handle.ensure_work_session(user_id="bob", work_session_id="ws_b")
-        sp_event = make_session_pointer_event(
+        handle.ensure_lane(user_id="bob", lane_id="ws_b")
+        sp_event = make_lane_pointer_event(
             event_id=handle._next_id("we"),
             run_id=handle.run_id,
-            work_session_id="ws_b",
+            lane_id="ws_b",
             user_id="bob",
             current_node_ids=(tip_node,),
             current_branch="main",
@@ -108,7 +108,7 @@ class TestCommitGuardCLI:
             run_id="run_adopt_tip",
             store_dir=sd,
             user_id="bob",
-            work_session_id="ws_b",
+            lane_id="ws_b",
             dry_run=True,
             head_commit="sha_b",
         )
@@ -126,7 +126,7 @@ class TestCommitGuardCLI:
             run_id="run_first_branch",
             store_dir=sd,
             user_id="alice",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             dry_run=True,
             head_commit="sha_first",
         )

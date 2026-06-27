@@ -56,7 +56,7 @@ class TestCommitCLIIntegration:
     def test_arctx_commit_records_step(self, tmp_path, monkeypatch):
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
-        monkeypatch.setenv("ARCTX_WORK_SESSION_ID", "ws_test")
+        monkeypatch.setenv("ARCTX_LANE_ID", "ws_test")
         monkeypatch.setenv("ARCTX_USER_ID", "alice")
         monkeypatch.chdir(repo)
 
@@ -74,7 +74,7 @@ class TestCommitCLIIntegration:
             run_id="run_ci",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_test",
+            lane_id="ws_test",
         )
 
         assert "step_id" in result
@@ -100,7 +100,7 @@ class TestCommitCLIIntegration:
             run_id="run_bt",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
         )
 
         store = resolve_store(_store_dir(tmp_path))
@@ -127,7 +127,7 @@ class TestCommitCLIIntegration:
             run_id="run_chain",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_x",
+            lane_id="ws_x",
         )
 
         (repo / "c2.txt").write_text("c2\n")
@@ -138,7 +138,7 @@ class TestCommitCLIIntegration:
             run_id="run_chain",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_x",
+            lane_id="ws_x",
         )
 
         store = resolve_store(_store_dir(tmp_path))
@@ -166,7 +166,7 @@ class TestCommitCLIIntegration:
             run_id="run_from",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
         )
         base_node = base["output_node_id"]
 
@@ -179,7 +179,7 @@ class TestCommitCLIIntegration:
             run_id="run_from",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             from_node_ids=(base_node,),
         )
 
@@ -191,7 +191,7 @@ class TestCommitCLIIntegration:
             run_id="run_from",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             from_node_ids=(base_node,),
         )
 

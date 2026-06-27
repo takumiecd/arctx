@@ -20,7 +20,7 @@ def uncut_impl(
     target_kind: Literal["node", "step"],
     reason: str | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> UncutPayload:
     """Reverse a cut on a Node or Step by appending an UncutPayload."""
     if target_kind == "node":
@@ -57,7 +57,7 @@ def uncut_impl(
     self.run_graph.attach_payload(uncut)
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="uncut_added",
         target_kind=target_kind,
         target_id=target_id,

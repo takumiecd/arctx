@@ -157,6 +157,22 @@ class AssetPayload(PayloadBase):
 
 
 @dataclass(frozen=True)
+class JoinPayload(PayloadBase):
+    """Step-targeting marker for a multi-input step that joins independent histories."""
+
+    payload_id: str
+    target_id: str
+    joined_views: tuple[str, ...] = ()
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: Literal["step"] = field(default="step", init=False)
+    payload_type: str = field(default="join", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return to_jsonable(self)  # type: ignore[return-value]
+
+
+@dataclass(frozen=True)
 class SummaryPayload(PayloadBase):
     """A context snapshot attached to a Node for history truncation / hand-off.
 
@@ -186,7 +202,13 @@ class SummaryPayload(PayloadBase):
 # ---------------------------------------------------------------------------
 
 Payload = (
-    NodePayload | StepPayload | CutPayload | UncutPayload | AssetPayload | SummaryPayload
+    NodePayload
+    | StepPayload
+    | CutPayload
+    | UncutPayload
+    | AssetPayload
+    | JoinPayload
+    | SummaryPayload
 )
 
 
@@ -286,6 +308,15 @@ def _summary_from_dict(data: dict[str, JSONValue]) -> SummaryPayload:
     )
 
 
+def _join_from_dict(data: dict[str, JSONValue]) -> JoinPayload:
+    return JoinPayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        joined_views=tuple(str(x) for x in data.get("joined_views", ())),
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
 def _generic_custom_from_dict(cls: type[PayloadBase], data: dict[str, JSONValue]) -> PayloadBase:
     """Best-effort reconstruction for user-registered subclasses."""
     import dataclasses
@@ -307,6 +338,7 @@ register_payload_class(CutPayload)
 register_payload_class(UncutPayload)
 register_payload_class(AssetPayload)
 register_payload_class(SummaryPayload)
+register_payload_class(JoinPayload)
 
 register_payload_decoder("node_payload", _node_payload_from_dict)
 register_payload_decoder("step_payload", _step_payload_from_dict)
@@ -314,6 +346,7 @@ register_payload_decoder("cut", _cut_from_dict)
 register_payload_decoder("uncut", _uncut_from_dict)
 register_payload_decoder("asset", _asset_from_dict)
 register_payload_decoder("summary", _summary_from_dict)
+register_payload_decoder("join", _join_from_dict)
 
 
 # ---------------------------------------------------------------------------

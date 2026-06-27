@@ -7,6 +7,7 @@ import pytest
 from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import (
     CutPayload,
+    JoinPayload,
     NodePayload,
     PayloadBase,
     StepPayload,
@@ -180,7 +181,7 @@ def test_payload_from_dict_cut():
     assert p.reason == "old"
 
 
-def test_payload_from_dict_old_join_payload_falls_back_to_generic():
+def test_payload_from_dict_join_payload():
     data = {
         "payload_type": "join",
         "payload_id": "pl_j",
@@ -190,9 +191,8 @@ def test_payload_from_dict_old_join_payload_falls_back_to_generic():
         "metadata": {},
     }
     p = payload_from_dict(data)
-    assert isinstance(p, StepPayload)
-    assert p.type == "join"
-    assert p.content["joined_views"] == ["main", "experiment"]
+    assert isinstance(p, JoinPayload)
+    assert p.joined_views == ("main", "experiment")
 
 
 def test_payload_from_dict_unknown_type_fallback_to_generic():

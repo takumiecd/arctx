@@ -8,13 +8,13 @@ from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node
 from arctx.ext.git.payloads import BranchPayload, GitChangePayload
 from arctx.core.schema.requirements import Requirement
-from arctx.core.schema.work import WorkSession
+from arctx.core.schema.work import Lane
 from arctx.core.schema.work_helpers import (
-    SESSION_POINTER_EVENT,
+    LANE_POINTER_EVENT,
     BRANCH_TIP_EVENT,
     latest_branch_tip,
-    latest_session_pointer,
-    make_session_pointer_event,
+    latest_lane_pointer,
+    make_lane_pointer_event,
 )
 import arctx as arctx
 from arctx.ext import attach_extensions
@@ -27,7 +27,7 @@ def _make_handle(run_id: str = "run_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 class TestCommitImplDryRun:
@@ -38,7 +38,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc123",
             dry_run=True,
         )
@@ -52,7 +52,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc123",
             dry_run=True,
         )
@@ -66,7 +66,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="feature/x",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc123",
             dry_run=True,
         )
@@ -84,7 +84,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="deadbeef",
             dry_run=True,
         )
@@ -103,7 +103,7 @@ class TestCommitImplDryRun:
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc",
             dry_run=True,
         )
@@ -111,23 +111,23 @@ class TestCommitImplDryRun:
         assert tip_event is not None
         assert tip_event.data["tip_node_id"] == t.output_node_id
 
-    def test_session_pointer_event_appended(self):
+    def test_lane_pointer_event_appended(self):
         handle = _make_handle()
         _ensure_session(handle)
         t = handle.git.commit(
             message="test commit",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="abc",
             dry_run=True,
         )
-        sp = latest_session_pointer(handle.run_graph, "ws_1")
+        sp = latest_lane_pointer(handle.run_graph, "ws_1")
         assert sp is not None
         assert t.output_node_id in sp.data["current_node_ids"]
 
-    def test_session_pointer_advances_current(self):
-        """After commit, the session pointer should point to the new output node."""
+    def test_lane_pointer_advances_current(self):
+        """After commit, the lane pointer should point to the new output node."""
         handle = _make_handle()
         _ensure_session(handle)
 
@@ -136,7 +136,7 @@ class TestCommitImplDryRun:
             message="first",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha1",
             dry_run=True,
         )
@@ -146,14 +146,14 @@ class TestCommitImplDryRun:
             message="second",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha2",
             dry_run=True,
         )
         assert t1.output_node_id in t2.input_node_ids
 
-    def test_uses_root_node_when_no_session_pointer(self):
-        """Without a prior session pointer, commit starts from root."""
+    def test_uses_root_node_when_no_lane_pointer(self):
+        """Without a prior lane pointer, commit starts from root."""
         handle = _make_handle()
         _ensure_session(handle)
         root_id = handle.root_node_id
@@ -162,7 +162,7 @@ class TestCommitImplDryRun:
             message="first commit from root",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_root",
             dry_run=True,
         )
@@ -193,7 +193,7 @@ class TestCommitImplDryRun:
                 message=f"commit {i}",
                 branch="main",
                 user_id="user",
-                work_session_id="ws_1",
+                lane_id="ws_1",
                 head_commit=f"sha_{i}",
                 dry_run=True,
             )

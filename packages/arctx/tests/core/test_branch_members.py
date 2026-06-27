@@ -6,7 +6,7 @@ import pytest
 
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node, Step
-from arctx.core.schema.work import WorkSession
+from arctx.core.schema.work import Lane
 from arctx.core.schema.work_helpers import make_branch_tip_event
 from arctx.ext.git.queries import branch_members
 
@@ -28,19 +28,19 @@ def _step(graph: RunGraph, t_id: str, inputs: list[str], output: str) -> Step:
 
 
 def _add_session(graph: RunGraph, session_id: str = "ws_1") -> None:
-    session = WorkSession(
-        work_session_id=session_id,
+    session = Lane(
+        lane_id=session_id,
         run_id="run_1",
-        user_id="user",
+        created_by="user",
     )
-    graph.add_work_session(session)
+    graph.add_lane(session)
 
 
 def _add_branch_tip(graph: RunGraph, branch: str, tip_node_id: str, event_id: str) -> None:
     ev = make_branch_tip_event(
         event_id=event_id,
         run_id="run_1",
-        work_session_id="ws_1",
+        lane_id="ws_1",
         user_id="user",
         branch=branch,
         tip_node_id=tip_node_id,

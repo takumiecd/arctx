@@ -12,17 +12,14 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("add", help="Add DAG steps")
-    add_sub = parser.add_subparsers(dest="add_command", required=True)
-
-    sp_step = add_sub.add_parser("step", help="Add a Step from input Nodes")
-    sp_step.add_argument(
+    parser = subparsers.add_parser("add", help="Add a Step from input Nodes")
+    parser.add_argument(
         "--from",
         action="append",
         required=True,
@@ -30,15 +27,15 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         metavar="NODE_ID",
         help="Input node (repeatable for multi-input steps)",
     )
-    sp_step.add_argument("--title", default=None)
-    sp_step.add_argument("--type", dest="payload_kind", default=None)
-    sp_step.add_argument("--payload-type", default="step_payload")
-    sp_step.add_argument("--field", action="append", default=None, help="Payload field as key=value")
-    sp_step.add_argument("--json", default=None, help="Payload fields as a JSON object")
-    sp_step.add_argument("--run", default=None)
-    sp_step.add_argument("--store-dir", default=None)
-    sp_step.add_argument("--user", default=None)
-    sp_step.add_argument("--work-session", default=None)
+    parser.add_argument("--title", default=None)
+    parser.add_argument("--type", dest="payload_kind", default=None)
+    parser.add_argument("--payload-type", default="step_payload")
+    parser.add_argument("--field", action="append", default=None, help="Payload field as key=value")
+    parser.add_argument("--json", default=None, help="Payload fields as a JSON object")
+    parser.add_argument("--run", default=None)
+    parser.add_argument("--store-dir", default=None)
+    parser.add_argument("--user", default=None)
+    parser.add_argument("--lane", default=None)
 
     return parser
 
@@ -54,7 +51,7 @@ def run_add_step_command(
     json_data: dict,
     store_dir: str,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -83,13 +80,13 @@ def run_add_step_command(
         input_node_ids,
         payload,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
     maybe_append_or_save(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         before=before,
     )
     return {"step": step_view(step)}
@@ -97,22 +94,20 @@ def run_add_step_command(
 
 def cli_add(args) -> int:
     try:
-        if args.add_command == "step":
-            result = run_add_step_command(
-                run_id=resolve_run_id_from_args(args),
-                input_node_ids=args.input_nodes,
-                title=args.title,
-                payload_kind=args.payload_kind,
-                payload_type=args.payload_type,
-                field_data=parse_field_args(args.field),
-                json_data=parse_json_object(args.json),
-                store_dir=args.store_dir,
-                user_id=resolve_user_id_from_args(args),
-                work_session_id=resolve_work_session_id_from_args(args),
-            )
-            print(json.dumps(result["step"], ensure_ascii=False, indent=2))
-            return 0
+        result = run_add_step_command(
+            run_id=resolve_run_id_from_args(args),
+            input_node_ids=args.input_nodes,
+            title=args.title,
+            payload_kind=args.payload_kind,
+            payload_type=args.payload_type,
+            field_data=parse_field_args(args.field),
+            json_data=parse_json_object(args.json),
+            store_dir=args.store_dir,
+            user_id=resolve_user_id_from_args(args),
+            lane_id=resolve_lane_id_from_args(args),
+        )
+        print(json.dumps(result["step"], ensure_ascii=False, indent=2))
+        return 0
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    return 1

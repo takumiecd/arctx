@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from arctx.core.schema.graph import Node, Step
-from arctx.core.schema.work_helpers import latest_session_pointer, make_session_pointer_event
+from arctx.core.schema.work_helpers import latest_lane_pointer, make_lane_pointer_event
 from arctx.ext.command.payloads import CommandRunPayload
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ def run_impl(
     command: list[str] | tuple[str, ...],
     cwd: str | Path | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     max_output_chars: int = 20000,
 ) -> dict[str, object]:
     """Execute an external command and record the result as a step."""
@@ -32,7 +32,7 @@ def run_impl(
     if max_output_chars < 0:
         raise ValueError("max_output_chars must be >= 0")
 
-    current_node_ids = _resolve_current_node_ids(self, work_session_id)
+    current_node_ids = _resolve_current_node_ids(self, lane_id)
     for node_id in current_node_ids:
         self._ensure_active_node(node_id)
 
@@ -53,8 +53,8 @@ def run_impl(
     stdout, truncated_stdout = _truncate(stdout_raw, max_output_chars)
     stderr, truncated_stderr = _truncate(stderr_raw, max_output_chars)
 
-    if user_id is not None and work_session_id is not None:
-        self.ensure_work_session(user_id=user_id, work_session_id=work_session_id)
+    if user_id is not None and lane_id is not None:
+        self.ensure_lane(user_id=user_id, lane_id=lane_id)
 
     output_node = Node(node_id=self._next_id("n"))
     self.run_graph.add_node(output_node)
@@ -82,11 +82,11 @@ def run_impl(
     )
     self.run_graph.attach_payload(payload)
 
-    if user_id is not None and work_session_id is not None:
-        pointer = make_session_pointer_event(
+    if user_id is not None and lane_id is not None:
+        pointer = make_lane_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             user_id=user_id,
             current_node_ids=(output_node.node_id,),
             current_branch=None,
@@ -95,7 +95,7 @@ def run_impl(
 
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type="command_run",
         target_kind="step",
         target_id=step.step_id,
@@ -119,10 +119,10 @@ def run_impl(
 
 def _resolve_current_node_ids(
     handle: "RunHandle",
-    work_session_id: str | None,
+    lane_id: str | None,
 ) -> tuple[str, ...]:
-    if work_session_id is not None:
-        pointer = latest_session_pointer(handle.run_graph, work_session_id)
+    if lane_id is not None:
+        pointer = latest_lane_pointer(handle.run_graph, lane_id)
         if pointer is not None:
             raw_node_ids = pointer.data.get("current_node_ids") or []
             return tuple(str(node_id) for node_id in raw_node_ids)

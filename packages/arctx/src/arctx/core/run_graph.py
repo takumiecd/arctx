@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import PayloadBase
-from arctx.core.schema.work import Lane, WorkEvent, WorkSession
+from arctx.core.schema.work import Lane, WorkEvent
 from arctx.core.types import JSONValue, to_jsonable
 
 
@@ -18,7 +18,7 @@ class RunGraph:
     nodes: dict[str, Node] = field(default_factory=dict)
     steps: dict[str, Step] = field(default_factory=dict)
     payloads: dict[str, PayloadBase] = field(default_factory=dict)
-    work_sessions: dict[str, Lane] = field(default_factory=dict)
+    lanes: dict[str, Lane] = field(default_factory=dict)
     work_events: list[WorkEvent] = field(default_factory=list)
 
     # Reverse-lookup indices (not persisted; rebuilt on load).
@@ -31,33 +31,20 @@ class RunGraph:
 
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
-    @property
-    def lanes(self) -> dict[str, Lane]:
-        """Lane records keyed by lane id.
-
-        ``work_sessions`` is the storage/back-compat field name; ``lanes`` is
-        the canonical vocabulary for new code.
-        """
-        return self.work_sessions
-
     def add_lane(self, lane: Lane) -> None:
-        """Add a Lane record. Backed by the legacy work_sessions map."""
-        self.add_work_session(lane)
-
-    def add_work_session(self, session: WorkSession) -> None:
-        if session.work_session_id in self.work_sessions:
-            existing = self.work_sessions[session.work_session_id]
-            if existing.user_id != session.user_id:
+        if lane.lane_id in self.lanes:
+            existing = self.lanes[lane.lane_id]
+            if existing.created_by != lane.created_by:
                 raise ValueError(
-                    f"work_session_id {session.work_session_id!r} belongs to "
-                    f"user {existing.user_id!r}, not {session.user_id!r}"
+                    f"lane_id {lane.lane_id!r} belongs to "
+                    f"user {existing.created_by!r}, not {lane.created_by!r}"
                 )
             return
-        self.work_sessions[session.work_session_id] = session
+        self.lanes[lane.lane_id] = lane
 
     def add_work_event(self, event: WorkEvent) -> None:
-        if event.work_session_id not in self.work_sessions:
-            raise KeyError(f"unknown work_session_id: {event.work_session_id}")
+        if event.lane_id not in self.lanes:
+            raise KeyError(f"unknown lane_id: {event.lane_id}")
         if any(existing.event_id == event.event_id for existing in self.work_events):
             raise ValueError(f"duplicate work_event_id: {event.event_id}")
         self.work_events.append(event)

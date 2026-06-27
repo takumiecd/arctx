@@ -81,9 +81,9 @@ Old payload types `PlanPayload`, `PredictionPayload`, `ResultPayload`, `NotePayl
 
 Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`):
 
-- `add_step(input_node_ids, payload, *, user_id=None, work_session_id=None) -> Step` — create one Step and one output Node from input nodes; `payload` must be step-targeting
-- `attach(node_id, payload, *, user_id=None, work_session_id=None) -> PayloadBase` — attach a node-targeting payload to a node
-- `cut(target_id, *, target_kind, reason=None, user_id=None, work_session_id=None) -> CutPayload` — mark a Node or Step inactive
+- `add_step(input_node_ids, payload, *, user_id=None, lane_id=None) -> Step` — create one Step and one output Node from input nodes; `payload` must be step-targeting
+- `attach(node_id, payload, *, user_id=None, lane_id=None) -> PayloadBase` — attach a node-targeting payload to a node
+- `cut(target_id, *, target_kind, reason=None, user_id=None, lane_id=None) -> CutPayload` — mark a Node or Step inactive
 - `trace(node_id, ...)` (alias: `history`) — walk history backwards
 - `outcomes(step_id)` — return output node info for a step
 
@@ -111,7 +111,7 @@ Current commands:
 - `log` — user-facing DAG history command; wraps outline dump / trace behavior
 - Internal compatibility helpers remain in `commands.step`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add step`, `show`, and `attach`.
 - `cut` — cut a Node or Step (`cut node NODE_ID` or `cut step T_ID`)
-- `Codex` — Codex hooks adapter. `Codex install` merges hook entries into `.Codex/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `Codex hook` consumes one hook event JSON from stdin and records it (session → WorkSession `ws_cc_<session_id>`, prompt/tool use → Step, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/Codex/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
+- `Codex` — Codex hooks adapter. `Codex install` merges hook entries into `.Codex/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `Codex hook` consumes one hook event JSON from stdin and records it (session → Lane `ws_cc_<session_id>`, prompt/tool use → Step, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/Codex/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
 - `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Step.
 - `show` — inspect a node / step / payload as JSON
 - `graph` — dump / trace / reachable graph queries
@@ -187,8 +187,8 @@ Writers that extend observed history must reject cut nodes via `_ensure_active_n
 - `nodes.jsonl`
 - `steps.jsonl` — each row has `step_id`, `input_node_ids`, `output_node_id`, `metadata`
 - `payloads.jsonl` — dispatched by `payload_type` on load
-- `work_sessions.jsonl`
-- `work_events.jsonl`
+- `lanes.jsonl`
+- `lane_events.jsonl`
 
 Old files `edges.jsonl`, `input_transitions.jsonl`, `output_transitions.jsonl`, `dags.jsonl`, `states.jsonl` do not exist in the current schema.
 

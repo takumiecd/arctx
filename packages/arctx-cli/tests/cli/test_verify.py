@@ -93,21 +93,21 @@ class TestVerifyCLIRealGit:
         """Linear chain of two real commits → verify passes with 0 violations."""
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
-        monkeypatch.setenv("ARCTX_WORK_SESSION_ID", "ws_v")
+        monkeypatch.setenv("ARCTX_LANE_ID", "ws_v")
         monkeypatch.setenv("ARCTX_USER_ID", "alice")
         monkeypatch.chdir(repo)
 
         _init_arctx(tmp_path, run_id="run_v")
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_v")
-        handle.ensure_work_session(user_id="alice", work_session_id="ws_v")
+        handle.ensure_lane(user_id="alice", lane_id="ws_v")
 
         sha1 = _git_commit_file(repo, "f1.txt", "first")
         t1 = handle.git.commit(
             message="first",
             branch="main",
             user_id="alice",
-            work_session_id="ws_v",
+            lane_id="ws_v",
             head_commit=sha1,
             dry_run=True,  # git commit already done above
         )
@@ -117,7 +117,7 @@ class TestVerifyCLIRealGit:
             message="second",
             branch="main",
             user_id="alice",
-            work_session_id="ws_v",
+            lane_id="ws_v",
             head_commit=sha2,
             dry_run=True,
         )
@@ -137,21 +137,21 @@ class TestVerifyCLIRealGit:
         """After amend + sha update via adopt_rewrite, verify still passes."""
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
-        monkeypatch.setenv("ARCTX_WORK_SESSION_ID", "ws_a")
+        monkeypatch.setenv("ARCTX_LANE_ID", "ws_a")
         monkeypatch.setenv("ARCTX_USER_ID", "alice")
         monkeypatch.chdir(repo)
 
         _init_arctx(tmp_path, run_id="run_a")
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_a")
-        handle.ensure_work_session(user_id="alice", work_session_id="ws_a")
+        handle.ensure_lane(user_id="alice", lane_id="ws_a")
 
         sha1 = _git_commit_file(repo, "f1.txt", "first")
         t1 = handle.git.commit(
             message="first",
             branch="main",
             user_id="alice",
-            work_session_id="ws_a",
+            lane_id="ws_a",
             head_commit=sha1,
             dry_run=True,
         )
@@ -170,7 +170,7 @@ class TestVerifyCLIRealGit:
             onto=new_sha,
             mode="amend",
             user_id="alice",
-            work_session_id="ws_a",
+            lane_id="ws_a",
         )
         store.save_run(handle)
 
@@ -186,14 +186,14 @@ class TestVerifyCLIRealGit:
         """Simulate a non-descendant situation using two independent git commits."""
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
-        monkeypatch.setenv("ARCTX_WORK_SESSION_ID", "ws_nd")
+        monkeypatch.setenv("ARCTX_LANE_ID", "ws_nd")
         monkeypatch.setenv("ARCTX_USER_ID", "alice")
         monkeypatch.chdir(repo)
 
         _init_arctx(tmp_path, run_id="run_nd")
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_nd")
-        handle.ensure_work_session(user_id="alice", work_session_id="ws_nd")
+        handle.ensure_lane(user_id="alice", lane_id="ws_nd")
 
         # sha_A = first commit on main.
         sha_A = _git_commit_file(repo, "f1.txt", "commit A")
@@ -223,7 +223,7 @@ class TestVerifyCLIRealGit:
             message="commit A",
             branch="main",
             user_id="alice",
-            work_session_id="ws_nd",
+            lane_id="ws_nd",
             head_commit=sha_A,
             dry_run=True,
         )
@@ -231,7 +231,7 @@ class TestVerifyCLIRealGit:
             message="commit B (wrong sha)",
             branch="main",
             user_id="alice",
-            work_session_id="ws_nd",
+            lane_id="ws_nd",
             head_commit=sha_B,
             dry_run=True,
         )
@@ -259,13 +259,13 @@ class TestVerifyCLIMocked:
         _init_arctx(tmp_path, run_id=run_id)
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run(run_id)
-        handle.ensure_work_session(user_id="alice", work_session_id="ws_m")
+        handle.ensure_lane(user_id="alice", lane_id="ws_m")
         for i, sha in enumerate(["sha_A", "sha_B"]):
             handle.git.commit(
                 message=f"commit {i + 1}",
                 branch="main",
                 user_id="alice",
-                work_session_id="ws_m",
+                lane_id="ws_m",
                 head_commit=sha,
                 dry_run=True,
             )

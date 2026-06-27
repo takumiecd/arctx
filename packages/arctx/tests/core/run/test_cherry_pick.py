@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from arctx.ext.git.payloads import BranchPayload, CherryPickPayload, GitChangePayload
-from arctx.core.schema.work_helpers import latest_branch_tip, latest_session_pointer
+from arctx.core.schema.work_helpers import latest_branch_tip, latest_lane_pointer
 import arctx as arctx
 from arctx.ext import attach_extensions
 from arctx.core.schema.requirements import Requirement
@@ -17,7 +17,7 @@ def _make_handle(run_id: str = "run_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 def _first_commit(handle, sha: str = "sha_src") -> object:
@@ -27,7 +27,7 @@ def _first_commit(handle, sha: str = "sha_src") -> object:
         message="source commit",
         branch="feature",
         user_id="user",
-        work_session_id="ws_1",
+        lane_id="ws_1",
         head_commit=sha,
         dry_run=True,
     )
@@ -42,7 +42,7 @@ class TestCherryPickImplDryRun:
             source_sha="sha_src1",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp1",
             dry_run=True,
         )
@@ -57,7 +57,7 @@ class TestCherryPickImplDryRun:
             source_sha="sha_src2",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp2",
             dry_run=True,
         )
@@ -72,7 +72,7 @@ class TestCherryPickImplDryRun:
             source_sha="sha_src3",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp3",
             dry_run=True,
         )
@@ -94,7 +94,7 @@ class TestCherryPickImplDryRun:
             source_sha="sha_foreign",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp_foreign",
             dry_run=True,
         )
@@ -112,7 +112,7 @@ class TestCherryPickImplDryRun:
             source_sha="sha_src4",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp4",
             dry_run=True,
         )
@@ -130,7 +130,7 @@ class TestCherryPickImplDryRun:
             source_sha="sha_src5",
             branch="hotfix",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp5",
             dry_run=True,
         )
@@ -139,7 +139,7 @@ class TestCherryPickImplDryRun:
         )
         assert branch_payloads[0].branch == "hotfix"
 
-    def test_session_pointer_advances(self):
+    def test_lane_pointer_advances(self):
         handle = _make_handle()
         _first_commit(handle, sha="sha_src6")
 
@@ -147,11 +147,11 @@ class TestCherryPickImplDryRun:
             source_sha="sha_src6",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp6",
             dry_run=True,
         )
-        sp = latest_session_pointer(handle.run_graph, "ws_1")
+        sp = latest_lane_pointer(handle.run_graph, "ws_1")
         assert sp is not None
         assert t.output_node_id in sp.data["current_node_ids"]
 
@@ -163,7 +163,7 @@ class TestCherryPickImplDryRun:
             source_sha="sha_src7",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp7",
             dry_run=True,
         )
@@ -179,7 +179,7 @@ class TestCherryPickImplDryRun:
             source_sha="sha_src8",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_cp8",
             dry_run=True,
         )

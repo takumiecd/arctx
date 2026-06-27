@@ -1,7 +1,7 @@
 """CLI current-run context persistence.
 
 Session-level resolution logic (resolve_store, resolve_run_id, resolve_user_id,
-resolve_work_session_id, _config_path, RunHandleProxy, ExtensionAwareStore) now
+resolve_lane_id, _config_path, RunHandleProxy, ExtensionAwareStore) now
 lives in arctx.session.  This module re-exports those names so existing CLI
 code keeps working, and adds the argparse-Namespace helpers that belong here.
 """
@@ -16,7 +16,6 @@ from arctx.session import (  # noqa: F401
     resolve_store,
     resolve_user_id,
     resolve_lane_id,
-    resolve_work_session_id,
 )
 
 
@@ -43,11 +42,7 @@ def resolve_lane_id_from_args(args) -> str:
         except RuntimeError:
             run_id = None
     return resolve_lane_id(
-        getattr(args, "lane", None) or getattr(args, "work_session", None),
+        getattr(args, "lane", None) or getattr(args, "lane", None),
         run_id=run_id,
     )
 
-
-def resolve_work_session_id_from_args(args) -> str:
-    """Back-compat wrapper for lane attribution resolution."""
-    return resolve_lane_id_from_args(args)

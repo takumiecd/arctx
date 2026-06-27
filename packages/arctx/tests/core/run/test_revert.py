@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from arctx.ext.git.payloads import BranchPayload, CherryPickPayload, GitChangePayload, RevertPayload
-from arctx.core.schema.work_helpers import latest_branch_tip, latest_session_pointer
+from arctx.core.schema.work_helpers import latest_branch_tip, latest_lane_pointer
 import arctx as arctx
 from arctx.ext import attach_extensions
 from arctx.core.schema.requirements import Requirement
@@ -17,7 +17,7 @@ def _make_handle(run_id: str = "run_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 def _first_commit(handle, sha: str = "sha_orig") -> object:
@@ -27,7 +27,7 @@ def _first_commit(handle, sha: str = "sha_orig") -> object:
         message="original commit",
         branch="main",
         user_id="user",
-        work_session_id="ws_1",
+        lane_id="ws_1",
         head_commit=sha,
         dry_run=True,
     )
@@ -42,7 +42,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_revert",
             dry_run=True,
         )
@@ -57,7 +57,7 @@ class TestRevertImplDryRun:
             target_sha="sha_a",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -72,7 +72,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_revert",
             dry_run=True,
         )
@@ -93,7 +93,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -112,7 +112,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="feature/x",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -136,7 +136,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -146,7 +146,7 @@ class TestRevertImplDryRun:
         )
         assert payloads_before == payloads_after
 
-    def test_session_pointer_advances(self):
+    def test_lane_pointer_advances(self):
         handle = _make_handle()
         _first_commit(handle, sha="sha_orig")
 
@@ -154,11 +154,11 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
-        sp = latest_session_pointer(handle.run_graph, "ws_1")
+        sp = latest_lane_pointer(handle.run_graph, "ws_1")
         assert sp is not None
         assert t.output_node_id in sp.data["current_node_ids"]
 
@@ -170,7 +170,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev",
             dry_run=True,
         )
@@ -186,7 +186,7 @@ class TestRevertImplDryRun:
             target_step=orig.step_id,
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_rev2",
             dry_run=True,
         )
@@ -249,7 +249,7 @@ class TestRevertImplDryRun:
             head_commit="sha_rev_no_event",
             dry_run=True,
         )
-        # No extra branch_tip / session_pointer events.
+        # No extra branch_tip / lane_pointer events.
         assert len(handle.run_graph.work_events) == initial_events
 
     def test_current_sha_is_new_sha(self):
@@ -261,7 +261,7 @@ class TestRevertImplDryRun:
             target_sha="sha_orig3",
             branch="main",
             user_id="user",
-            work_session_id="ws_1",
+            lane_id="ws_1",
             head_commit="sha_revert3",
             dry_run=True,
         )

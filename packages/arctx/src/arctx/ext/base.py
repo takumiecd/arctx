@@ -66,6 +66,7 @@ class Extension(Protocol):
 
     name: str
     version: str
+    description: str
 
     def register_schema(self) -> None: ...
     def register_verbs(self, handle: "RunHandle") -> None: ...
@@ -74,6 +75,7 @@ class Extension(Protocol):
     def register_init_options(self, parser: "argparse.ArgumentParser") -> None: ...
     def on_init(self, ctx: InitContext) -> None: ...
     def validate(self, handle: "RunHandle") -> list[Violation]: ...
+    def guide_text(self) -> str: ...
 
 
 class ExtensionBase:
@@ -84,6 +86,7 @@ class ExtensionBase:
 
     name: str = ""
     version: str = "0.0"
+    description: str = ""
 
     def register_schema(self) -> None:
         return None
@@ -106,3 +109,6 @@ class ExtensionBase:
     def validate(self, handle: "RunHandle") -> list[Violation]:
         del handle
         return []
+        
+    def guide_text(self) -> str:
+        return ""

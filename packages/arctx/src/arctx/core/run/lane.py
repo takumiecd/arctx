@@ -43,7 +43,7 @@ def adopt_lane_records_impl(
 
     event = self.record_work_event(
         user_id=user_id,
-        work_session_id=lane_id,
+        lane_id=lane_id,
         event_type="lane_adopted",
         target_kind="subgraph",
         target_id=target_id or lane_id,

@@ -9,11 +9,11 @@ from arctx.core.schema.graph import Node
 from arctx.core.schema.requirements import Requirement
 from arctx.core.schema.work_helpers import (
     BRANCH_TIP_EVENT,
-    SESSION_POINTER_EVENT,
+    LANE_POINTER_EVENT,
     latest_branch_tip,
-    latest_session_pointer,
+    latest_lane_pointer,
     make_branch_tip_event,
-    make_session_pointer_event,
+    make_lane_pointer_event,
 )
 from arctx.ext import attach_extensions
 from arctx.ext.git.payloads import GitChangePayload, MergePayload
@@ -25,7 +25,7 @@ def _make_handle(run_id: str = "run_merge_test"):
 
 
 def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
 
 
 def _make_two_branch_run():
@@ -46,18 +46,18 @@ def _make_two_branch_run():
         message="main commit",
         branch="main",
         user_id="user",
-        work_session_id="ws_main",
+        lane_id="ws_main",
         head_commit="sha_main",
         dry_run=True,
     )
     n1 = t1.output_node_id
 
     # Advance feature branch from root (not from n1).
-    # We need to set session pointer to root for ws_feature first.
-    sp_event = make_session_pointer_event(
+    # We need to set lane pointer to root for ws_feature first.
+    sp_event = make_lane_pointer_event(
         event_id=handle._next_id("we"),
         run_id=handle.run_id,
-        work_session_id="ws_feature",
+        lane_id="ws_feature",
         user_id="user",
         current_node_ids=(n_root,),
         current_branch="feature",
@@ -68,7 +68,7 @@ def _make_two_branch_run():
         message="feature commit",
         branch="feature",
         user_id="user",
-        work_session_id="ws_feature",
+        lane_id="ws_feature",
         head_commit="sha_feature",
         dry_run=True,
     )
@@ -85,7 +85,7 @@ class TestMergeImplDryRun:
             other_node_id=n2,
             branch="main",
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             head_commit="sha_merge",
             dry_run=True,
         )
@@ -100,7 +100,7 @@ class TestMergeImplDryRun:
             other_node_id=n2,
             branch="main",
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             head_commit="sha_merge",
             dry_run=True,
         )
@@ -118,7 +118,7 @@ class TestMergeImplDryRun:
             other_node_id=n2,
             branch="main",
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             head_commit="sha_merge_commit",
             dry_run=True,
         )
@@ -136,7 +136,7 @@ class TestMergeImplDryRun:
             other_node_id=n2,
             branch="main",
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             head_commit="sha_merge",
             dry_run=True,
         )
@@ -144,18 +144,18 @@ class TestMergeImplDryRun:
         assert tip_event is not None
         assert tip_event.data["tip_node_id"] == merge_t.output_node_id
 
-    def test_session_pointer_advances(self):
+    def test_lane_pointer_advances(self):
         handle, n_root, n1, n2, t1, t2 = _make_two_branch_run()
 
         merge_t = handle.git.merge(
             other_node_id=n2,
             branch="main",
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             head_commit="sha_merge",
             dry_run=True,
         )
-        sp = latest_session_pointer(handle.run_graph, "ws_main")
+        sp = latest_lane_pointer(handle.run_graph, "ws_main")
         assert sp is not None
         assert merge_t.output_node_id in sp.data["current_node_ids"]
         # After merge, should be a single output node.
@@ -172,15 +172,15 @@ class TestMergeImplDryRun:
         # Advance main.
         t_main = handle.git.commit(
             message="main", branch="main",
-            user_id="user", work_session_id="ws_main",
+            user_id="user", lane_id="ws_main",
             head_commit="sha_m", dry_run=True,
         )
 
         # Advance feature from root.
-        sp = make_session_pointer_event(
+        sp = make_lane_pointer_event(
             event_id=handle._next_id("we"),
             run_id=handle.run_id,
-            work_session_id="ws_feat",
+            lane_id="ws_feat",
             user_id="user",
             current_node_ids=(n_root,),
             current_branch="feature",
@@ -189,7 +189,7 @@ class TestMergeImplDryRun:
 
         t_feat = handle.git.commit(
             message="feat", branch="feature",
-            user_id="user", work_session_id="ws_feat",
+            user_id="user", lane_id="ws_feat",
             head_commit="sha_f", dry_run=True,
         )
 
@@ -198,7 +198,7 @@ class TestMergeImplDryRun:
             other_branch="feature",
             branch="main",
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             head_commit="sha_merged",
             dry_run=True,
         )
@@ -225,14 +225,14 @@ class TestMergeImplDryRun:
             branch="main",
             head_commit="sha_no_user",
             dry_run=True,
-            # user_id and work_session_id are None
+            # user_id and lane_id are None
         )
-        # No BranchTipEvent or SessionPointerEvent should be added.
+        # No BranchTipEvent or LanePointerEvent should be added.
         new_events = handle.run_graph.work_events[initial_event_count:]
         new_typed = [
             e
             for e in new_events
-            if e.event_type in (SESSION_POINTER_EVENT, BRANCH_TIP_EVENT)
+            if e.event_type in (LANE_POINTER_EVENT, BRANCH_TIP_EVENT)
         ]
         assert len(new_typed) == 0
 
@@ -244,7 +244,7 @@ class TestMergeImplDryRun:
             other_node_id=n2,
             branch="main",
             user_id="user",
-            work_session_id="ws_main",
+            lane_id="ws_main",
             head_commit="sha_merge",
             dry_run=True,
         )
@@ -260,7 +260,7 @@ class TestMergeImplDryRun:
         # Commit once.
         t = handle.git.commit(
             message="first", branch="main",
-            user_id="user", work_session_id="ws_x",
+            user_id="user", lane_id="ws_x",
             head_commit="sha_1", dry_run=True,
         )
         n_out = t.output_node_id
@@ -270,7 +270,7 @@ class TestMergeImplDryRun:
             other_node_id=n_out,
             branch="main",
             user_id="user",
-            work_session_id="ws_x",
+            lane_id="ws_x",
             head_commit="sha_merge_self",
             dry_run=True,
         )

@@ -3,7 +3,7 @@
 The recorder mutates an in-memory ``RunHandle`` only; persisting is the
 caller's job. Payload types are harness-neutral (``agent.prompt``,
 ``agent.tool_use``, ``agent.stop``, ``agent.session_end``); the harness
-name is recorded on payload metadata and on the WorkSession, never in the
+name is recorded on payload metadata and on the Lane, never in the
 type string. This is the data contract that makes runs readable across
 harnesses.
 """
@@ -23,7 +23,7 @@ from arctx.core.schema.payloads import NodePayload, StepPayload
 DEFAULT_CLIP_CHARS = 2000
 
 
-def session_tip(handle, work_session_id: str) -> str:
+def session_tip(handle, lane_id: str) -> str:
     """Return the node id this session should extend next.
 
     Derived at read time from work events: the output node of the most
@@ -33,7 +33,7 @@ def session_tip(handle, work_session_id: str) -> str:
     """
     graph = handle.run_graph
     for event in reversed(graph.work_events):
-        if event.work_session_id != work_session_id:
+        if event.lane_id != lane_id:
             continue
         if event.event_type != "step_created":
             continue
@@ -70,20 +70,20 @@ class SessionRecorder:
     """
 
     handle: Any
-    work_session_id: str
+    lane_id: str
     user_id: str
     harness: str
     clip_chars: int = DEFAULT_CLIP_CHARS
 
     def start(self, metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        """Ensure the WorkSession exists, carrying harness metadata."""
+        """Ensure the Lane exists, carrying harness metadata."""
         session_meta = {"agent": {"harness": self.harness, **dict(metadata or {})}}
-        self.handle.ensure_work_session(
+        self.handle.ensure_lane(
             user_id=self.user_id,
-            work_session_id=self.work_session_id,
+            lane_id=self.lane_id,
             metadata=session_meta,
         )
-        return {"work_session_id": self.work_session_id}
+        return {"lane_id": self.lane_id}
 
     def prompt(self, text: str) -> dict[str, Any]:
         """Record a user prompt as a Step (``agent.prompt``)."""
@@ -113,7 +113,7 @@ class SessionRecorder:
         ``kind`` is "stop" or "session_end". Returns None when the session
         has no activity yet (nothing to mark).
         """
-        tip = session_tip(self.handle, self.work_session_id)
+        tip = session_tip(self.handle, self.lane_id)
         if tip == self.handle.root_node_id:
             return None
         attached = self.handle.attach(
@@ -126,22 +126,22 @@ class SessionRecorder:
                 metadata={"harness": self.harness},
             ),
             user_id=self.user_id,
-            work_session_id=self.work_session_id,
+            lane_id=self.lane_id,
         )
         return {
-            "work_session_id": self.work_session_id,
+            "lane_id": self.lane_id,
             "node_id": tip,
             "payload_id": attached.payload_id,
         }
 
     def tip(self) -> str:
         """Return the node this session would extend next."""
-        return session_tip(self.handle, self.work_session_id)
+        return session_tip(self.handle, self.lane_id)
 
     def _step(
         self, payload_type: str, content: dict[str, Any]
     ) -> dict[str, Any]:
-        tip = session_tip(self.handle, self.work_session_id)
+        tip = session_tip(self.handle, self.lane_id)
         step = self.handle.add_step(
             [tip],
             StepPayload(
@@ -152,10 +152,10 @@ class SessionRecorder:
                 metadata={"harness": self.harness},
             ),
             user_id=self.user_id,
-            work_session_id=self.work_session_id,
+            lane_id=self.lane_id,
         )
         return {
-            "work_session_id": self.work_session_id,
+            "lane_id": self.lane_id,
             "step_id": step.step_id,
             "output_node_id": step.output_node_id,
         }

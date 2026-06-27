@@ -6,12 +6,12 @@ import sys
 
 import arctx as arctx
 from arctx.core.schema.requirements import Requirement
-from arctx.core.schema.work_helpers import latest_session_pointer
+from arctx.core.schema.work_helpers import latest_lane_pointer
 from arctx.ext import attach_extensions
 from arctx.ext.command.payloads import CommandRunPayload
 
 
-def test_command_run_records_step_payload_and_session_pointer(tmp_path):
+def test_command_run_records_step_payload_and_lane_pointer(tmp_path):
     handle = attach_extensions(
         arctx.init(
             Requirement(requirement_id="req", target_type="task", target_id="target"),
@@ -24,7 +24,7 @@ def test_command_run_records_step_payload_and_session_pointer(tmp_path):
         command=[sys.executable, "-c", "print('ok')"],
         cwd=tmp_path,
         user_id="u1",
-        work_session_id="s1",
+        lane_id="s1",
     )
 
     step = result["step"]
@@ -37,6 +37,6 @@ def test_command_run_records_step_payload_and_session_pointer(tmp_path):
     assert payload.exit_code == 0
     assert payload.stdout == "ok\n"
 
-    pointer = latest_session_pointer(handle.run_graph, "s1")
+    pointer = latest_lane_pointer(handle.run_graph, "s1")
     assert pointer is not None
     assert pointer.data["current_node_ids"] == [step.output_node_id]

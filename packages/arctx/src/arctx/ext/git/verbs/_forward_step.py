@@ -22,8 +22,8 @@ from arctx.ext.git.events import (
     make_branch_tip_event,
 )
 from arctx.core.schema.work_helpers import (
-    latest_session_pointer,
-    make_session_pointer_event,
+    latest_lane_pointer,
+    make_lane_pointer_event,
 )
 
 if TYPE_CHECKING:
@@ -75,11 +75,11 @@ def check_branch_tip_consistency(
 
 def resolve_current_node_ids(
     self: "RunHandle",
-    work_session_id: str | None,
+    lane_id: str | None,
 ) -> tuple[str, ...]:
     """Return the current node IDs for a session, or (root,) if none."""
-    if work_session_id is not None:
-        sp_event = latest_session_pointer(self.run_graph, work_session_id)
+    if lane_id is not None:
+        sp_event = latest_lane_pointer(self.run_graph, lane_id)
         if sp_event is not None:
             raw = sp_event.data.get("current_node_ids") or []
             return tuple(str(n) for n in raw)
@@ -170,12 +170,12 @@ def record_forward_step(
     event_summary: str,
     event_data: dict,
     user_id: str | None,
-    work_session_id: str | None,
+    lane_id: str | None,
     repo_id: str = "",
 ) -> Step:
     """Append node, step, standard payloads + extra payloads, and work events."""
-    if user_id is not None and work_session_id is not None:
-        self.ensure_work_session(user_id=user_id, work_session_id=work_session_id)
+    if user_id is not None and lane_id is not None:
+        self.ensure_lane(user_id=user_id, lane_id=lane_id)
 
     output_node = Node(node_id=self._next_id("n"))
     self.run_graph.add_node(output_node)
@@ -210,11 +210,11 @@ def record_forward_step(
     for pl in extra_payloads:
         self.run_graph.attach_payload(pl)
 
-    if user_id is not None and work_session_id is not None:
+    if user_id is not None and lane_id is not None:
         tip_event = make_branch_tip_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             user_id=user_id,
             branch=current_branch,
             tip_node_id=output_node.node_id,
@@ -222,10 +222,10 @@ def record_forward_step(
         )
         self.run_graph.add_work_event(tip_event)
 
-        sp_event = make_session_pointer_event(
+        sp_event = make_lane_pointer_event(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             user_id=user_id,
             current_node_ids=(output_node.node_id,),
             current_branch=current_branch,
@@ -241,7 +241,7 @@ def record_forward_step(
     )
     self.record_work_event(
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         event_type=event_type,
         target_kind="step",
         target_id=step_id,

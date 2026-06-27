@@ -209,7 +209,7 @@ def run_hook_post_rewrite(
     store_dir: str | None,
     stdin_lines: list[str] | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     """Process a post-rewrite hook invocation.
 
@@ -228,7 +228,7 @@ def run_hook_post_rewrite(
         Override stdin lines (for testing). Each line: "<old_sha> <new_sha>".
     user_id:
         User ID for work events.
-    work_session_id:
+    lane_id:
         Work session ID for work events.
 
     Returns
@@ -266,8 +266,8 @@ def run_hook_post_rewrite(
     # Resolve user / session from env if not provided.
     if user_id is None:
         user_id = os.environ.get("ARCTX_USER_ID", "user")
-    if work_session_id is None:
-        work_session_id = os.environ.get("ARCTX_WORK_SESSION_ID", "session_hook")
+    if lane_id is None:
+        lane_id = os.environ.get("ARCTX_LANE_ID", "session_hook")
 
     store = resolve_store(store_dir)
     handle = store.load_run(run_id)
@@ -277,7 +277,7 @@ def run_hook_post_rewrite(
         onto=onto,
         mode=mode,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
 
     store.save_run(handle)
@@ -302,7 +302,7 @@ def run_hook_post_commit(
     store_dir: str | None,
     repo_path: Path | None = None,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     # Test injection: override HEAD info instead of running git.
     head_sha: str | None = None,
     head_subject: str | None = None,
@@ -348,8 +348,8 @@ def run_hook_post_commit(
     # Resolve user / session from env if not provided.
     if user_id is None:
         user_id = os.environ.get("ARCTX_USER_ID", "user")
-    if work_session_id is None:
-        work_session_id = os.environ.get("ARCTX_WORK_SESSION_ID", "session_hook")
+    if lane_id is None:
+        lane_id = os.environ.get("ARCTX_LANE_ID", "session_hook")
 
     # ------------------------------------------------------------------
     # 1. Read HEAD info (or use injected values for testing).
@@ -426,7 +426,7 @@ def run_hook_post_commit(
                 step = handle.git.revert(
                     target_step=reverted_t,
                     user_id=user_id,
-                    work_session_id=work_session_id,
+                    lane_id=lane_id,
                     head_commit=head_sha,
                     dry_run=True,  # git already ran; just record
                 )
@@ -456,7 +456,7 @@ def run_hook_post_commit(
             step = handle.git.cherry_pick(
                 source_sha=source_sha,
                 user_id=user_id,
-                work_session_id=work_session_id,
+                lane_id=lane_id,
                 head_commit=head_sha,
                 dry_run=True,  # git already ran; just record
             )
@@ -496,7 +496,7 @@ def run_hook_post_merge(
     repo_path: Path | None = None,
     squash: bool = False,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
     # Test injection: override HEAD info.
     head_sha: str | None = None,
 ) -> dict:
@@ -532,8 +532,8 @@ def run_hook_post_merge(
 
     if user_id is None:
         user_id = os.environ.get("ARCTX_USER_ID", "user")
-    if work_session_id is None:
-        work_session_id = os.environ.get("ARCTX_WORK_SESSION_ID", "session_hook")
+    if lane_id is None:
+        lane_id = os.environ.get("ARCTX_LANE_ID", "session_hook")
 
     # ------------------------------------------------------------------
     # 1. Squash merge: cannot adopt automatically (no merge commit).
@@ -633,7 +633,7 @@ def run_hook_post_merge(
             other_branch=None,  # branch unknown from hook context
             head_commit=head_sha,
             user_id=user_id,
-            work_session_id=work_session_id,
+            lane_id=lane_id,
             dry_run=True,  # git already merged
         )
         store.save_run(handle)
@@ -689,7 +689,7 @@ def cli_hook(args) -> int:
             run_id=run_id,
             store_dir=args.store_dir,
             user_id=os.environ.get("ARCTX_USER_ID"),
-            work_session_id=os.environ.get("ARCTX_WORK_SESSION_ID"),
+            lane_id=os.environ.get("ARCTX_LANE_ID"),
         )
         n_affected = len(result.get("affected_steps", []))
         n_skipped = len(result.get("skipped_shas", []))
@@ -717,7 +717,7 @@ def cli_hook(args) -> int:
             store_dir=args.store_dir,
             repo_path=repo_path,
             user_id=os.environ.get("ARCTX_USER_ID"),
-            work_session_id=os.environ.get("ARCTX_WORK_SESSION_ID"),
+            lane_id=os.environ.get("ARCTX_LANE_ID"),
         )
         print(
             f"arctx: post-commit: {result['action']}: {result['message']}",
@@ -747,7 +747,7 @@ def cli_hook(args) -> int:
             repo_path=repo_path,
             squash=squash,
             user_id=os.environ.get("ARCTX_USER_ID"),
-            work_session_id=os.environ.get("ARCTX_WORK_SESSION_ID"),
+            lane_id=os.environ.get("ARCTX_LANE_ID"),
         )
         print(
             f"arctx: post-merge: {result['action']}: {result['message']}",

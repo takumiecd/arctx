@@ -19,7 +19,7 @@ cat <<'INSTRUCTIONS'
 === Multi-Agent Parallel Work Demo ===
 
 This demo shows how Claude and Codex can drive the same ARCTX run
-in parallel. Each agent gets its own work-session; both attempts
+in parallel. Each agent gets its own lane; both attempts
 land as sibling steps in the same RunGraph.
 
 Prerequisites:
@@ -34,7 +34,7 @@ Prerequisites:
 
 --- Step 2: Start Claude's session (Terminal 1) ---
 
-  eval $(arctx work-session env --run multi-agent-demo --new --user claude)
+  eval $(arctx lane env --run multi-agent-demo --new --user claude)
   git checkout -b claude/vec
 
   # ... make some edits ...
@@ -43,7 +43,7 @@ Prerequisites:
 
 --- Step 3: Start Codex's session (Terminal 2) ---
 
-  eval $(arctx work-session env --run multi-agent-demo --new --user codex)
+  eval $(arctx lane env --run multi-agent-demo --new --user codex)
   git checkout main && git checkout -b codex/map
 
   # ... make some edits ...
@@ -63,10 +63,10 @@ If you want each agent to have its own checkout directory:
 
   # Terminal 1
   arctx git worktree add ../wt-claude claude/vec
-  eval $(arctx work-session env --run multi-agent-demo --new --user claude --worktree ../wt-claude)
+  eval $(arctx lane env --run multi-agent-demo --new --user claude --worktree ../wt-claude)
 
   # Terminal 2
   arctx git worktree add ../wt-codex codex/map
-  eval $(arctx work-session env --run multi-agent-demo --new --user codex --worktree ../wt-codex)
+  eval $(arctx lane env --run multi-agent-demo --new --user codex --worktree ../wt-codex)
 
 INSTRUCTIONS

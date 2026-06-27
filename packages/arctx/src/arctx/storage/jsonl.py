@@ -17,7 +17,7 @@ from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import payload_from_dict
 from arctx.core.schema.requirements import requirement_from_dict
-from arctx.core.schema.work import work_event_from_dict, work_session_from_dict
+from arctx.core.schema.work import work_event_from_dict, lane_from_dict
 from arctx.storage._cache import load_cache, save_cache
 
 
@@ -61,7 +61,7 @@ class JsonlRunStore:
             "nodes",
             "steps",
             "payloads",
-            "work_sessions",
+            "lanes",
             "work_events",
         ):
             p = run_path / f"{name}.jsonl"
@@ -103,9 +103,9 @@ class JsonlRunStore:
                 "payload_id",
             )
             self._merge_jsonl(
-                run_path / "work_sessions.jsonl",
-                run.run_graph.work_sessions.values(),
-                "work_session_id",
+                run_path / "lanes.jsonl",
+                run.run_graph.lanes.values(),
+                "lane_id",
             )
             self._merge_jsonl(
                 run_path / "work_events.jsonl",
@@ -121,7 +121,7 @@ class JsonlRunStore:
                 len(run.run_graph.nodes),
                 len(run.run_graph.steps),
                 len(run.run_graph.payloads),
-                len(run.run_graph.work_sessions),
+                len(run.run_graph.lanes),
                 len(run.run_graph.work_events),
             )
             disk_counts = self._row_counts(run_path)
@@ -131,7 +131,7 @@ class JsonlRunStore:
         return run_path
 
     def append_batch(self, batch: AppendBatch) -> AppendResult:
-        """Atomically append one work-session batch to an existing run."""
+        """Atomically append one lane batch to an existing run."""
         run_path = self.run_path(batch.run_id)
         if not (run_path / "run.json").exists():
             raise KeyError(f"unknown run_id: {batch.run_id}")
@@ -142,12 +142,12 @@ class JsonlRunStore:
             # Lanes have open membership — no owner lock. A different actor
             # appending to a shared lane is expected, not an error; the lane
             # record is idempotent (added only if its id is new).
-            if batch.work_session.work_session_id not in existing["work_sessions"]:
+            if batch.lane.lane_id not in existing["lanes"]:
                 _append_dicts(
-                    run_path / "work_sessions.jsonl",
-                    [batch.work_session.to_dict()],
+                    run_path / "lanes.jsonl",
+                    [batch.lane.to_dict()],
                 )
-                existing["work_sessions"].add(batch.work_session.work_session_id)
+                existing["lanes"].add(batch.lane.lane_id)
 
             appended_records: list[str] = []
             for record in batch.records:
@@ -231,12 +231,16 @@ class JsonlRunStore:
                     payload.payload_id
                 )
 
-        for row in self._read_jsonl(run_path / "work_sessions.jsonl"):
-            session = work_session_from_dict(row)
-            graph.work_sessions[session.work_session_id] = session
+        for lpath in [run_path / "work_sessions.jsonl", run_path / "lanes.jsonl"]:
+            if lpath.exists():
+                for row in self._read_jsonl(lpath):
+                    session = lane_from_dict(row)
+                    graph.lanes[session.lane_id] = session
 
-        for row in self._read_jsonl(run_path / "work_events.jsonl"):
-            graph.work_events.append(work_event_from_dict(row))
+        for epath in [run_path / "lane_events.jsonl", run_path / "work_events.jsonl"]:
+            if epath.exists():
+                for row in self._read_jsonl(epath):
+                    graph.work_events.append(work_event_from_dict(row))
 
         save_cache(run_path, row_counts, graph)
 
@@ -322,8 +326,8 @@ def _existing_ids(run_path: Path) -> dict[str, set[str]]:
         "node": _ids_from_jsonl(run_path / "nodes.jsonl", "node_id"),
         "step": _ids_from_jsonl(run_path / "steps.jsonl", "step_id"),
         "payload": _ids_from_jsonl(run_path / "payloads.jsonl", "payload_id"),
-        "work_sessions": _ids_from_jsonl(run_path / "work_sessions.jsonl", "work_session_id"),
-        "work_events": _ids_from_jsonl(run_path / "work_events.jsonl", "event_id"),
+        "lanes": _ids_from_jsonl(run_path / "lanes.jsonl", "lane_id"),
+        "work_events": _ids_from_jsonl(run_path / "lane_events.jsonl", "event_id"),
     }
 
 

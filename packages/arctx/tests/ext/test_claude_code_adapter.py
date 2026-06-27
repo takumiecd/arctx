@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import arctx
 from arctx.core.schema.requirements import Requirement
-from arctx.ext.claude_code import record_hook_event, session_tip, work_session_id_for
+from arctx.ext.claude_code import record_hook_event, session_tip, lane_id_for
 from arctx.ext.claude_code.adapter import clip
 
 
@@ -19,7 +19,7 @@ def _event(name: str, session_id: str = "s1", **extra) -> dict:
     return {"hook_event_name": name, "session_id": session_id, **extra}
 
 
-def test_session_start_creates_work_session_with_metadata():
+def test_session_start_creates_lane_with_metadata():
     handle = _handle()
     result = record_hook_event(
         handle,
@@ -33,9 +33,9 @@ def test_session_start_creates_work_session_with_metadata():
         user_id="claude-code",
     )
 
-    ws_id = work_session_id_for("s1")
-    assert result == {"event": "SessionStart", "work_session_id": ws_id}
-    session = handle.run_graph.work_sessions[ws_id]
+    ws_id = lane_id_for("s1")
+    assert result == {"event": "SessionStart", "lane_id": ws_id}
+    session = handle.run_graph.lanes[ws_id]
     assert session.user_id == "claude-code"
     assert session.metadata["agent"]["harness"] == "claude-code"
     assert session.metadata["agent"]["source"] == "startup"
@@ -134,7 +134,7 @@ def test_session_tip_skips_cut_branch():
     )
     handle.cut(first["output_node_id"], target_kind="node", reason="dead end")
 
-    ws_id = work_session_id_for("s1")
+    ws_id = lane_id_for("s1")
     assert session_tip(handle, ws_id) == handle.root_node_id
 
     second = record_hook_event(

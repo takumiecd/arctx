@@ -1,4 +1,4 @@
-"""Append-only work history records."""
+"""Append-only lane history records."""
 
 from __future__ import annotations
 
@@ -14,46 +14,28 @@ class Lane:
     A lane is NOT owned by one user — it may be SOLO (every event from one actor)
     or COLLABORATIVE (events from several). Membership is open: any actor may
     append to a shared lane. Per-action attribution lives on each
-    :class:`WorkEvent`'s ``user_id``; ``user_id`` here only records who *opened*
-    the lane (``created_by``). Lanes nest/branch via ``parent_work_session_id``
+    :class:`WorkEvent`'s ``user_id``; ``created_by`` records who *opened*
+    the lane. Lanes nest/branch via ``parent_lane_id``
     and are never deleted — closing is ``status``, rejection is a cut.
-
-    Field names keep the historical ``work_session`` spelling for storage
-    compatibility. Use the lane aliases (``lane_id`` / ``created_by`` /
-    ``parent_lane_id``) in new code where possible.
     """
 
-    work_session_id: str
+    lane_id: str
     run_id: str
-    user_id: str
-    parent_work_session_id: str | None = None
+    created_by: str
+    parent_lane_id: str | None = None
     started_at: str | None = None
     closed_at: str | None = None
     status: str = "open"
     metadata: dict[str, JSONValue] = field(default_factory=dict)
     name: str | None = None
 
-    # -- Lane aliases (read-only views over the back-compat field names) --------
     @property
-    def lane_id(self) -> str:
-        return self.work_session_id
-
-    @property
-    def created_by(self) -> str:
+    def user_id(self) -> str:
         """The actor who opened the lane. NOT an ownership lock."""
-        return self.user_id
-
-    @property
-    def parent_lane_id(self) -> str | None:
-        return self.parent_work_session_id
+        return self.created_by
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
-
-
-#: Back-compat alias. New code should import/use :class:`Lane`.
-WorkSession = Lane
-
 
 @dataclass(frozen=True)
 class WorkEvent:
@@ -61,7 +43,7 @@ class WorkEvent:
 
     event_id: str
     run_id: str
-    work_session_id: str
+    lane_id: str
     user_id: str
     event_type: str
     target_kind: str | None = None
@@ -85,12 +67,12 @@ def lane_from_dict(data: dict[str, JSONValue]) -> Lane:
                 return data[k]
         return None
 
-    parent = pick("parent_work_session_id", "parent_lane_id")
+    parent = pick("parent_lane_id", "parent_work_session_id")
     return Lane(
-        work_session_id=str(pick("work_session_id", "lane_id")),
+        lane_id=str(pick("lane_id", "work_session_id")),
         run_id=str(data["run_id"]),
-        user_id=str(pick("user_id", "created_by")),
-        parent_work_session_id=str(parent) if parent is not None else None,
+        created_by=str(pick("created_by", "user_id")),
+        parent_lane_id=str(parent) if parent is not None else None,
         started_at=str(data["started_at"]) if data.get("started_at") is not None else None,
         closed_at=str(data["closed_at"]) if data.get("closed_at") is not None else None,
         status=str(data.get("status") or "open"),
@@ -99,16 +81,11 @@ def lane_from_dict(data: dict[str, JSONValue]) -> Lane:
     )
 
 
-def work_session_from_dict(data: dict[str, JSONValue]) -> Lane:
-    """Back-compat deserializer name for older callers."""
-    return lane_from_dict(data)
-
-
 def work_event_from_dict(data: dict[str, JSONValue]) -> WorkEvent:
     return WorkEvent(
         event_id=str(data["event_id"]),
         run_id=str(data["run_id"]),
-        work_session_id=str(data["work_session_id"]),
+        lane_id=str(data.get("lane_id") or data.get("work_session_id")),
         user_id=str(data["user_id"]),
         event_type=str(data["event_type"]),
         target_kind=str(data["target_kind"]) if data.get("target_kind") is not None else None,

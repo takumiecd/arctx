@@ -11,7 +11,7 @@ from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_work_session_id_from_args,
+    resolve_lane_id_from_args,
 )
 
 
@@ -26,7 +26,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--reason", default=None)
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
-    parser.add_argument("--work-session", default=None)
+    parser.add_argument("--lane", default=None)
     return parser
 
 
@@ -38,7 +38,7 @@ def run_uncut_command(
     reason: str | None,
     store_dir: str,
     user_id: str | None = None,
-    work_session_id: str | None = None,
+    lane_id: str | None = None,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -50,13 +50,13 @@ def run_uncut_command(
         target_kind=target_kind,  # type: ignore[arg-type]
         reason=reason,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
     )
     maybe_append_or_save(
         store=store,
         handle=handle,
         user_id=user_id,
-        work_session_id=work_session_id,
+        lane_id=lane_id,
         before=before,
     )
     return {"uncut": uncut.to_dict()}
@@ -93,7 +93,7 @@ def cli_uncut(args) -> int:
         reason=args.reason,
         store_dir=args.store_dir,
         user_id=resolve_user_id_from_args(args),
-        work_session_id=resolve_work_session_id_from_args(args),
+        lane_id=resolve_lane_id_from_args(args),
     )
     print(json.dumps(result["uncut"], ensure_ascii=False, indent=2))
     return 0

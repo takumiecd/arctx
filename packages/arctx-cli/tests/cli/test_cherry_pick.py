@@ -83,12 +83,12 @@ class TestCherryPickCLIIntegration:
         # instead, inject head_commit directly to record the already-made commit).
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_cp")
-        handle.ensure_work_session(user_id="alice", work_session_id="ws_feat")
+        handle.ensure_lane(user_id="alice", lane_id="ws_feat")
         t_feat = handle.git.commit(
             message="add feat.txt",
             branch="feature",
             user_id="alice",
-            work_session_id="ws_feat",
+            lane_id="ws_feat",
             head_commit=feature_sha,
             dry_run=True,
         )
@@ -114,7 +114,7 @@ class TestCherryPickCLIIntegration:
             run_id="run_cp",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_main",
+            lane_id="ws_main",
         )
 
         assert "step_id" in r_cp
@@ -174,7 +174,7 @@ class TestCherryPickCLIIntegration:
             run_id="run_cp2",
             store_dir=_store_dir(tmp_path),
             user_id="user",
-            work_session_id="ws_cp2",
+            lane_id="ws_cp2",
         )
 
         assert r_cp["source_step"] is None

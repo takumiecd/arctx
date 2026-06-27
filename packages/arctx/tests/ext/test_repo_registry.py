@@ -168,13 +168,13 @@ class TestMultiRepoTipKeying:
         _init_repo(a, remote="git@github.com:takumiecd/alpha.git")
         _init_repo(b, remote="git@github.com:takumiecd/beta.git")
         handle = _make_handle()
-        handle.ensure_work_session(user_id="u", work_session_id="ws")
+        handle.ensure_lane(user_id="u", lane_id="ws")
 
         # Stage a real change, then commit on repo A 'main'.
         (a / "f.txt").write_text("a change\n")
         _git(["add", "."], a)
         t_a = handle.git.commit(
-            message="a1", repo_path=a, user_id="u", work_session_id="ws"
+            message="a1", repo_path=a, user_id="u", lane_id="ws"
         )
         # Committing on repo B 'main' from the run root must NOT raise a
         # ParallelSessionConflict despite the shared branch name, because the
@@ -182,7 +182,7 @@ class TestMultiRepoTipKeying:
         (b / "f.txt").write_text("b change\n")
         _git(["add", "."], b)
         t_b = handle.git.commit(
-            message="b1", repo_path=b, user_id="u", work_session_id="ws"
+            message="b1", repo_path=b, user_id="u", lane_id="ws"
         )
 
         a_git = handle.run_graph.payloads_for_step(

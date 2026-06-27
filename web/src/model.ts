@@ -92,8 +92,8 @@ export function laneGroups(doc: RunDocument): RunGroup[] {
 
 export function laneOptions(doc: RunDocument): LaneOption[] {
   const options = new Map<string, LaneOption>();
-  for (const lane of [...(doc.work_sessions ?? []), ...(doc.lanes ?? [])]) {
-    const laneId = lane.work_session_id;
+  for (const lane of doc.lanes ?? []) {
+    const laneId = lane.lane_id;
     options.set(laneId, {
       lane_id: laneId,
       group_id: `lane:${laneId}`,
@@ -123,10 +123,8 @@ export function laneIdForRecord(doc: RunDocument, recordId: string): string | nu
 export function laneLabel(doc: RunDocument, laneId: string): string {
   const group = laneGroups(doc).find((g) => g.lane_id === laneId);
   if (group?.label) return group.label;
-  const session = [...(doc.work_sessions ?? []), ...(doc.lanes ?? [])].find(
-    (s) => s.work_session_id === laneId,
-  );
-  return session?.name || laneId;
+  const lane = (doc.lanes ?? []).find((candidate) => candidate.lane_id === laneId);
+  return lane?.name || laneId;
 }
 
 export function laneColorIndex(doc: RunDocument, laneId: string): number {

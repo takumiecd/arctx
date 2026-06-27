@@ -15,7 +15,7 @@ from arctx_cli.commands.init import run_init_command
 from arctx_cli.ext.git.reset import run_reset_command
 from arctx_cli.context import resolve_store
 from arctx.core.cuts import is_inactive_step
-from arctx.core.schema.work_helpers import RESET_EVENT, SESSION_POINTER_EVENT, latest_session_pointer
+from arctx.core.schema.work_helpers import RESET_EVENT, LANE_POINTER_EVENT, latest_lane_pointer
 
 
 def _store_dir(tmp_path: Path) -> str:
@@ -36,14 +36,14 @@ def _init_arctx(tmp_path: Path, run_id: str = "run_test") -> dict:
 
 def _build_chain(handle, length: int, user_id: str = "alice", ws_id: str = "ws") -> list[dict]:
     """Build a commit chain in handle and return list of {step_id, output_node_id}."""
-    handle.ensure_work_session(user_id=user_id, work_session_id=ws_id)
+    handle.ensure_lane(user_id=user_id, lane_id=ws_id)
     results = []
     for i in range(length):
         t = handle.git.commit(
             message=f"commit {i + 1}",
             branch="main",
             user_id=user_id,
-            work_session_id=ws_id,
+            lane_id=ws_id,
             head_commit=f"sha_{i + 1}",
             dry_run=True,
         )
@@ -72,7 +72,7 @@ class TestResetCLIIntegration:
             run_id="run_rs",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_rs",
+            lane_id="ws_rs",
             dry_run=True,
         )
 
@@ -85,7 +85,7 @@ class TestResetCLIIntegration:
         assert is_inactive_step(handle2.run_graph, r2["step_id"])
         assert is_inactive_step(handle2.run_graph, r3["step_id"])
 
-    def test_hard_reset_updates_session_pointer(self, tmp_path):
+    def test_hard_reset_updates_lane_pointer(self, tmp_path):
         _init_arctx(tmp_path, run_id="run_sp")
         store = resolve_store(_store_dir(tmp_path))
         handle = store.load_run("run_sp")
@@ -103,12 +103,12 @@ class TestResetCLIIntegration:
             run_id="run_sp",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_sp",
+            lane_id="ws_sp",
             dry_run=True,
         )
 
         handle2 = store.load_run("run_sp")
-        sp = latest_session_pointer(handle2.run_graph, "ws_sp")
+        sp = latest_lane_pointer(handle2.run_graph, "ws_sp")
         assert sp is not None
         assert r1["output_node_id"] in sp.data["current_node_ids"]
 
@@ -131,7 +131,7 @@ class TestResetCLIIntegration:
             run_id="run_mx",
             store_dir=_store_dir(tmp_path),
             user_id="alice",
-            work_session_id="ws_mx",
+            lane_id="ws_mx",
             dry_run=True,
         )
 
@@ -157,7 +157,7 @@ class TestResetCLIIntegration:
             run_id="run_sf",
             store_dir=_store_dir(tmp_path),
             user_id="bob",
-            work_session_id="ws_sf",
+            lane_id="ws_sf",
             dry_run=True,
         )
 
@@ -182,7 +182,7 @@ class TestResetCLIIntegration:
             run_id="run_ev",
             store_dir=_store_dir(tmp_path),
             user_id="carol",
-            work_session_id="ws_ev",
+            lane_id="ws_ev",
             dry_run=True,
         )
 

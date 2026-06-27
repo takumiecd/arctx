@@ -10,7 +10,7 @@ from arctx.core.ids import opaque_id, slugify, timestamp_id
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node
 from arctx.core.schema.requirements import Requirement
-from arctx.core.schema.work import Lane, WorkEvent, WorkSession
+from arctx.core.schema.work import Lane, WorkEvent
 from arctx.core.types import JSONValue
 
 
@@ -49,36 +49,19 @@ class RunHandle:
     def save(self, store) -> object:
         return store.save_run(self)
 
-    def ensure_work_session(
-        self,
-        *,
-        user_id: str | None,
-        work_session_id: str | None,
-        metadata: dict[str, JSONValue] | None = None,
-        name: str | None = None,
-    ) -> Lane | None:
-        """Back-compat wrapper for :meth:`ensure_lane`."""
-        if user_id is None or work_session_id is None:
-            return None
-        return self.ensure_lane(
-            name=name,
-            lane_id=work_session_id,
-            created_by=user_id,
-            metadata=metadata,
-        )
-
     def ensure_lane(
         self,
         *,
         name: str | None = None,
         lane_id: str | None = None,
+        user_id: str | None = None,
         created_by: str | None = None,
         parent_lane_id: str | None = None,
         metadata: dict[str, JSONValue] | None = None,
     ) -> Lane:
         """Create or return a Lane — a solo-or-collaborative append-only unit.
 
-        A lane is not owned by one user: ``created_by`` only records who opened
+        A lane is not owned by one user: ``user_id`` only records who opened
         it, and any actor may later append events to the same lane (attribution
         is per :class:`WorkEvent`). ``lane_id`` defaults to a fresh opaque id.
         """
@@ -87,10 +70,10 @@ class RunHandle:
         if existing is not None:
             return existing
         lane = Lane(
-            work_session_id=lid,
+            lane_id=lid,
             run_id=self.run_id,
-            user_id=created_by or "",
-            parent_work_session_id=parent_lane_id,
+            created_by=user_id or created_by or "",
+            parent_lane_id=parent_lane_id,
             started_at=datetime.now(timezone.utc).isoformat(),
             metadata=dict(metadata or {}),
             name=name,
@@ -102,7 +85,6 @@ class RunHandle:
         self,
         *,
         user_id: str | None,
-        work_session_id: str | None,
         lane_id: str | None = None,
         event_type: str,
         target_kind: str | None = None,
@@ -111,14 +93,14 @@ class RunHandle:
         summary: str | None = None,
         data: dict[str, JSONValue] | None = None,
     ) -> WorkEvent | None:
-        lid = lane_id or work_session_id
+        lid = lane_id
         if user_id is None or lid is None:
             return None
-        self.ensure_lane(created_by=user_id, lane_id=lid)
+        self.ensure_lane(user_id=user_id, lane_id=lid)
         event = WorkEvent(
             event_id=self._next_id("we"),
             run_id=self.run_id,
-            work_session_id=lid,
+            lane_id=lid,
             user_id=user_id,
             event_type=event_type,
             target_kind=target_kind,
