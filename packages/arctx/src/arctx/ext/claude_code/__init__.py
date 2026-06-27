@@ -27,6 +27,7 @@ class ClaudeCodeExtension(ExtensionBase):
 
     name = "claude-code"
     version = "0.1"
+    description = "Integration with Claude Code AI agent."
 
     def cli_commands(self) -> list[CliCommand]:
         from arctx_cli.ext.claude_code import add_parser, cli_claude_code

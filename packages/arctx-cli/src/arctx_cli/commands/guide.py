@@ -44,18 +44,40 @@ def cli_guide(args) -> int:
 
         # Load Extensions Guide
         ext_guide_text = ""
+        available_exts_text = ""
         if run_dir:
             from arctx.ext.enabled import load_enabled
-            from arctx.ext import load_extension
+            from arctx.ext import load_extension, list_available
             enabled_exts = load_enabled(run_dir)
-            for ee in enabled_exts:
+            enabled_names = {ee.name for ee in enabled_exts}
+            all_available = list_available()
+
+            for name in enabled_names:
                 try:
-                    ext = load_extension(ee.name)
+                    ext = load_extension(name)
                     ext_text = ext.guide_text()
                     if ext_text:
                         ext_guide_text += f"\n### {ext.name.capitalize()} Extension\n{ext_text}\n"
                 except Exception:
                     pass
+
+            for name in all_available:
+                if name not in enabled_names:
+                    try:
+                        ext = load_extension(name)
+                        desc = ext.description or "(No description available)"
+                        available_exts_text += f"* `{name}` : {desc}\n"
+                    except Exception:
+                        pass
+
+        guide_text += "\n## Managing Extensions\n"
+        guide_text += "Extensions add domain-specific workflows (e.g. `git`, `codex`) to arctx.\n"
+        guide_text += "* List available extensions: `arctx ext list`\n"
+        guide_text += "* Enable an extension: `arctx ext enable <name>`\n"
+        guide_text += "* Disable an extension: `arctx ext disable <name>`\n"
+
+        if available_exts_text:
+            guide_text += f"\n### Available Extensions (Not Enabled)\n{available_exts_text}"
 
         if ext_guide_text:
             guide_text += f"\n## Enabled Extensions Commands\n{ext_guide_text}"

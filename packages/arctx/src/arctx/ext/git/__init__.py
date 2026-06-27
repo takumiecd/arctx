@@ -92,6 +92,7 @@ class GitExtension(ExtensionBase):
 
     name = "git"
     version = "0.1"
+    description = "Integration with git to record commits and branches into the arctx graph."
 
     def register_schema(self) -> None:
         # Import-time side effects register payload decoders/classes.

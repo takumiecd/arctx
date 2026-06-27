@@ -66,6 +66,7 @@ class Extension(Protocol):
 
     name: str
     version: str
+    description: str
 
     def register_schema(self) -> None: ...
     def register_verbs(self, handle: "RunHandle") -> None: ...
@@ -85,6 +86,7 @@ class ExtensionBase:
 
     name: str = ""
     version: str = "0.0"
+    description: str = ""
 
     def register_schema(self) -> None:
         return None

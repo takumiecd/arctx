@@ -28,6 +28,7 @@ class CommandExtension(ExtensionBase):
 
     name = "command"
     version = "0.1"
+    description = "Command execution recording extension."
 
     def register_schema(self) -> None:
         import arctx.ext.command.payloads  # noqa: F401

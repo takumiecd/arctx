@@ -15,6 +15,7 @@ class CodexExtension(ExtensionBase):
 
     name = "codex"
     version = "0.1"
+    description = "Integration with Codex AI agent."
 
     def cli_commands(self) -> list[CliCommand]:
         from arctx_cli.ext.codex import add_parser, cli_codex

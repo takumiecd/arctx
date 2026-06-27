@@ -23,6 +23,7 @@ class DiagramExtension(ExtensionBase):
 
     name = "diagram"
     version = "0.1"
+    description = "Diagram generation and attachment extension."
 
     def register_schema(self) -> None:
         import arctx.ext.diagram.payloads  # noqa: F401
