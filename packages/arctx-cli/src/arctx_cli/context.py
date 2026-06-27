@@ -8,6 +8,8 @@ code keeps working, and adds the argparse-Namespace helpers that belong here.
 
 from __future__ import annotations
 
+import os
+
 from arctx.session import (  # noqa: F401
     ExtensionAwareStore,
     RunHandleProxy,
@@ -26,6 +28,31 @@ def resolve_run_id_from_args(args) -> str:
     ``<gitdir>/arctx-id`` pointer.
     """
     return resolve_run_id(getattr(args, "run", None))
+
+
+def require_existing_run_from_args(args, store) -> str:
+    """Resolve a run_id and verify the run actually exists on disk.
+
+    Raises a friendly :class:`RuntimeError` (rendered by the CLI as a clean
+    ``arctx: ...`` line) when the resolved run is missing. The message
+    distinguishes a stale current-run pointer from an explicit bad ``--run`` so
+    the user knows how to recover.
+    """
+    run_id = resolve_run_id_from_args(args)
+    if store.run_path(run_id).exists():
+        return run_id
+
+    explicit = getattr(args, "run", None) or os.environ.get("ARCTX_RUN_ID")
+    if explicit:
+        raise RuntimeError(
+            f"unknown run: {run_id!r}. See 'arctx list' for available runs."
+        )
+    # No --run / env: the id came from the <gitdir>/arctx-id current-run pointer.
+    raise RuntimeError(
+        f"current run {run_id!r} no longer exists (set in <gitdir>/arctx-id). "
+        "Point it at an existing run with 'arctx use <run_id>', "
+        "or see 'arctx list'."
+    )
 
 
 def resolve_user_id_from_args(args) -> str:

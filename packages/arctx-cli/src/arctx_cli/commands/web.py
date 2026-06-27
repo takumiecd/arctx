@@ -11,8 +11,8 @@ from arctx.web.extensions import load_enabled_routes, load_enabled_scripts
 from arctx.web.server import serve_gui
 
 from arctx_cli.context import (
+    require_existing_run_from_args,
     resolve_lane_id_from_args,
-    resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
 )
@@ -43,9 +43,7 @@ def cli_web(args) -> int:
         return 1
 
     store = resolve_store(args.store_dir)
-    run_id = resolve_run_id_from_args(args)
-    if not store.run_path(run_id).exists():
-        raise KeyError(f"unknown run_id: {run_id}")
+    run_id = require_existing_run_from_args(args, store)
 
     extension_scripts = load_enabled_scripts(store.run_path(run_id))
     extension_routes = load_enabled_routes(store.run_path(run_id))

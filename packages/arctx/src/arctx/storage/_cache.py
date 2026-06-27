@@ -35,7 +35,10 @@ from arctx.core.run_graph import RunGraph
 
 # Bump this whenever RunGraph or any Payload dataclass changes its fields in a
 # backward-incompatible way.
-CACHE_SCHEMA_VERSION: int = 5
+#
+# v6: WorkEvent.work_session_id renamed to WorkEvent.lane_id. Pickles from v5
+#     restore the old attribute and lack ``lane_id``, crashing lane membership.
+CACHE_SCHEMA_VERSION: int = 6
 
 _CACHE_FILENAME = "run.cache.pkl"
 

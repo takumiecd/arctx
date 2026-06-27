@@ -13,7 +13,7 @@ import argparse
 from arctx.serve import serve
 
 from arctx_cli.context import (
-    resolve_run_id_from_args,
+    require_existing_run_from_args,
     resolve_store,
     resolve_user_id_from_args,
     resolve_lane_id_from_args,
@@ -40,9 +40,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 
 def cli_serve(args) -> int:
     store = resolve_store(args.store_dir)
-    run_id = resolve_run_id_from_args(args)
-    if not store.run_path(run_id).exists():
-        raise KeyError(f"unknown run_id: {run_id}")
+    run_id = require_existing_run_from_args(args, store)
     serve(
         store,
         run_id,
