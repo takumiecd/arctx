@@ -88,6 +88,17 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         default=None,
         help="Reason recorded on a lane adoption event",
     )
+    parser.add_argument(
+        "--summary",
+        default=None,
+        help="Summary text to attach when joining a lane",
+    )
+    parser.add_argument(
+        "--node",
+        action="append",
+        default=None,
+        help="Specific node id to join (repeatable; if omitted, joins all leaf nodes of the lane)",
+    )
     parser.add_argument("--user", default=None, help="Actor (created_by) when creating")
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
@@ -381,6 +392,93 @@ def validate_lane_run(*, run_id: str, store_dir: str | None) -> dict:
     }
 
 
+def run_lane_join_command(
+    *,
+    name_or_id: str,
+    summary: str,
+    node_ids: list[str] | None,
+    run_id: str,
+    user_id: str,
+    store_dir: str | None,
+) -> dict:
+    """Join multiple leaf nodes in a lane into a single output node with a summary.
+    
+    If node_ids is not provided, this automatically finds all active leaf nodes 
+    currently belonging to the lane.
+    """
+    from arctx.core.cuts import is_active_node
+    from arctx.core.lanes import lane_membership
+    from arctx.core.schema.payloads import JoinPayload, SummaryPayload
+
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id!r}")
+
+    # Determine nodes to join
+    if not node_ids:
+        # Collect all leaf nodes currently assigned to this lane
+        membership = lane_membership(handle.run_graph)
+        group = next((g for g in membership.groups if g.lane_id == lane.lane_id), None)
+        if not group:
+            raise ValueError(f"lane has no nodes: {name_or_id!r}")
+        
+        candidates = []
+        for nid in group.node_ids:
+            if not is_active_node(handle.run_graph, nid):
+                continue
+            # Check if this node has no steps extending from it
+            if not handle.run_graph.steps_from_node(nid):
+                candidates.append(nid)
+        
+        node_ids = candidates
+    
+    if not node_ids:
+        raise ValueError(f"no active leaf nodes found in lane {name_or_id!r}")
+    
+    # Deduplicate while preserving order
+    node_ids = list(dict.fromkeys(node_ids))
+    
+    if len(node_ids) < 1:
+        raise ValueError("join requires at least one node")
+
+    # 1. Create Step with JoinPayload
+    join_payload = JoinPayload(
+        payload_id=handle._next_id("pl"),
+        target_id="",
+    )
+    step = handle.add_step(
+        input_node_ids=node_ids,
+        payload=join_payload,
+        user_id=user_id,
+        lane_id=lane.lane_id,
+    )
+    
+    # 2. Attach SummaryPayload to the new output node
+    summary_payload = SummaryPayload(
+        payload_id=handle._next_id("pl"),
+        target_id=step.output_node_id,
+        text=summary,
+    )
+    handle.attach(
+        step.output_node_id,
+        summary_payload,
+        user_id=user_id,
+        lane_id=lane.lane_id,
+    )
+
+    store.save_run(handle)
+    return {
+        "step_id": step.step_id,
+        "output_node_id": step.output_node_id,
+        "joined_nodes": node_ids,
+    }
+
+
 def cli_lane(args) -> int:
     """Dispatch ``lane`` commands."""
     try:
@@ -431,6 +529,22 @@ def cli_lane(args) -> int:
                 history_node_id=args.history,
                 reachable_node_id=args.reachable,
                 reason=args.reason,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if command == "join":
+            if len(argv) != 2:
+                raise ValueError("usage: arctx lane join NAME_OR_ID --summary TEXT [--node ID...]")
+            if not args.summary:
+                raise ValueError("--summary is required to join a lane")
+            result = run_lane_join_command(
+                name_or_id=argv[1],
+                summary=args.summary,
+                node_ids=args.node,
+                run_id=resolve_run_id_from_args(args),
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
