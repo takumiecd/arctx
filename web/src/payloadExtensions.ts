@@ -374,6 +374,16 @@ function commitSubject(commits: unknown[]): string | null {
 
 
 
+function summaryDisplay(payload: RunPayload): PayloadDisplay {
+  const text = stringValue(payload.text);
+  return {
+    title: "summary",
+    summary: text ? (text.length > 100 ? text.slice(0, 100) + "..." : text) : "(empty summary)",
+    graphLabel: "summary",
+    sections: text ? [{ title: "markdown", kind: "markdown", value: text }] : [],
+  };
+}
+
 registerPayloadRenderer("node_payload", genericPayloadDisplay);
 registerPayloadRenderer("step_payload", genericPayloadDisplay);
 registerPayloadRenderer("cut", cutDisplay);
@@ -385,3 +395,4 @@ registerPayloadRenderer("revert", revertDisplay);
 registerPayloadRenderer("cherry_pick", cherryPickDisplay);
 registerPayloadRenderer("merge", mergeDisplay);
 registerPayloadRenderer("command_run", commandRunDisplay);
+registerPayloadRenderer("summary", summaryDisplay);
