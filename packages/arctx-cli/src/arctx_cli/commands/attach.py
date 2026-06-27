@@ -15,6 +15,7 @@ from arctx_cli.context import (
     resolve_lane_id_from_args,
 )
 from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
+from arctx_cli.lane_gate import ensure_lane_open
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -28,6 +29,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
     parser.add_argument("--lane", default=None)
+    parser.add_argument("--force", action="store_true",
+                        help="Write even if the target lane is closed")
     return parser
 
 
@@ -42,11 +45,13 @@ def run_attach_command(
     store_dir: str,
     user_id: str | None = None,
     lane_id: str | None = None,
+    force: bool = False,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
+    ensure_lane_open(handle, lane_id, force=force)
     target_kind = resolve_target_kind(handle, target_id)
     if target_kind == "payload":
         raise ValueError("cannot attach a payload to another payload")
@@ -107,6 +112,7 @@ def cli_attach(args) -> int:
             store_dir=args.store_dir,
             user_id=resolve_user_id_from_args(args),
             lane_id=resolve_lane_id_from_args(args),
+            force=args.force,
         )
         print(json.dumps(result["payload"], ensure_ascii=False, indent=2))
         return 0

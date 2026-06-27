@@ -14,6 +14,7 @@ from arctx_cli.context import (
     resolve_user_id_from_args,
     resolve_lane_id_from_args,
 )
+from arctx_cli.lane_gate import ensure_lane_open
 from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
 
 
@@ -36,6 +37,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
     parser.add_argument("--lane", default=None)
+    parser.add_argument("--force", action="store_true",
+                        help="Write even if the target lane is closed")
 
     return parser
 
@@ -52,11 +55,13 @@ def run_add_step_command(
     store_dir: str,
     user_id: str | None = None,
     lane_id: str | None = None,
+    force: bool = False,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
+    ensure_lane_open(handle, lane_id, force=force)
     data = dict(json_data or {})
     data.update(field_data or {})
     if title is not None:
@@ -105,6 +110,7 @@ def cli_add(args) -> int:
             store_dir=args.store_dir,
             user_id=resolve_user_id_from_args(args),
             lane_id=resolve_lane_id_from_args(args),
+            force=args.force,
         )
         print(json.dumps(result["step"], ensure_ascii=False, indent=2))
         return 0

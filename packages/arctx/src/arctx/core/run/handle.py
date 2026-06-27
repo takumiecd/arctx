@@ -139,6 +139,7 @@ from arctx.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from arctx.core.run.cut import cut_impl as _cut_impl  # noqa: E402
 from arctx.core.run.uncut import uncut_impl as _uncut_impl  # noqa: E402
 from arctx.core.run.lane import adopt_lane_records_impl as _adopt_lane_records_impl  # noqa: E402
+from arctx.core.run.lane import set_lane_status_impl as _set_lane_status_impl  # noqa: E402
 from arctx.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from arctx.core.run.trace import trace_impl as _trace_impl  # noqa: E402
 from arctx.core.run.step import add_step_impl as _add_step_impl  # noqa: E402
@@ -151,6 +152,7 @@ RunHandle.cut = _cut_impl
 RunHandle.uncut = _uncut_impl
 RunHandle.reparent = _reparent_impl
 RunHandle.adopt_lane_records = _adopt_lane_records_impl
+RunHandle.set_lane_status = _set_lane_status_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl
 RunHandle.outcomes = _outcomes_impl

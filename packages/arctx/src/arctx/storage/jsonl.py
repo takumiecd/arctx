@@ -18,6 +18,7 @@ from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import payload_from_dict
 from arctx.core.schema.requirements import requirement_from_dict
 from arctx.core.schema.work import work_event_from_dict, lane_from_dict
+from arctx.core.lanes import apply_lane_status_events
 from arctx.storage._cache import load_cache, save_cache
 
 
@@ -241,6 +242,10 @@ class JsonlRunStore:
             if epath.exists():
                 for row in self._read_jsonl(epath):
                     graph.work_events.append(work_event_from_dict(row))
+
+        # Fold lane open/close events into status before caching, so both the
+        # full-load and cache fast paths report the current lifecycle state.
+        apply_lane_status_events(graph)
 
         save_cache(run_path, row_counts, graph)
 
