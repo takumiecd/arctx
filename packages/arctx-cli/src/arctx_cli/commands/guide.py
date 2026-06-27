@@ -5,7 +5,7 @@ import argparse
 def add_parser(subparsers) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "guide",
-        help="Print the arctx usage guide and current context for AI agents",
+        help="Print the arctx usage guide and current context",
     )
     parser.add_argument("--run", default=None, help="Specific run ID")
     parser.add_argument("--store-dir", default=None, help="Specific store directory")
@@ -14,34 +14,54 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 
 def cli_guide(args) -> int:
     guide_text = """\
-# arctx System Guide for AI Agents
+# arctx Guide
 
 `arctx` is a tool for recording optimization and problem-solving processes.
-You are currently operating in a workspace that uses `arctx`.
 
 ## Core Concepts
 * **Node & Step**: The Directed Acyclic Graph (DAG) that records history. `Node` = state, `Step` = transition.
 * **Payload**: Domain-specific data attached to Nodes/Steps.
 * **Lane**: A workspace/branch that isolates problem-solving steps.
 
-## Essential Commands
-
-As an AI agent (Codex, Claude Code, agy, etc.), use these commands to understand the context and record your work:
+## Essential Core Commands
 
 * `arctx dump --format outline` : View the entire history graph.
 * `arctx dump --format outline --lane` : View the history of the current lane.
 * `arctx lane` : Show the currently active lane.
 * `arctx show <ID>` : Show details of a specific Node, Step, or Payload.
 * `arctx lane join <LANE> --summary "..."` : Merge frontier nodes in a lane and attach a summary.
-* `arctx git commit` : Record a git commit as a step in the arctx graph.
-* `arctx git verify` : Run verification scripts and attach results to the graph.
 """
     # Try to load execution context dynamically
     try:
         from arctx_cli.context import resolve_run_id_from_args, resolve_store
         run_id = resolve_run_id_from_args(args)
         store = resolve_store(args.store_dir)
-        if store.run_path(run_id).exists():
+        run_dir = None
+        if run_id:
+            candidate = store.run_path(run_id)
+            if candidate.exists():
+                run_dir = str(candidate)
+
+        # Load Extensions Guide
+        ext_guide_text = ""
+        if run_dir:
+            from arctx.ext.enabled import load_enabled
+            from arctx.ext import load_extension
+            enabled_exts = load_enabled(run_dir)
+            for ee in enabled_exts:
+                try:
+                    ext = load_extension(ee.name)
+                    ext_text = ext.guide_text()
+                    if ext_text:
+                        ext_guide_text += f"\n### {ext.name.capitalize()} Extension\n{ext_text}\n"
+                except Exception:
+                    pass
+
+        if ext_guide_text:
+            guide_text += f"\n## Enabled Extensions Commands\n{ext_guide_text}"
+
+        # Current Context
+        if run_dir:
             handle = store.load_run(run_id)
             guide_text += f"\n## Current Context\n\n* **Run ID**: `{run_id}`\n"
             

@@ -171,6 +171,10 @@ class GitExtension(ExtensionBase):
             )
             for v in violations
         ]
-
+    def guide_text(self) -> str:
+        return """* `arctx git commit` : Record a git commit as a step in the arctx graph.
+* `arctx git verify` : Run verification scripts and attach results to the graph.
+* `arctx git branch` : Record a branch switch or creation.
+"""
 
 __all__ = ["GitExtension", "GitNamespace"]

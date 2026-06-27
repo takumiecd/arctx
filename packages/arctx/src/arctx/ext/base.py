@@ -74,6 +74,7 @@ class Extension(Protocol):
     def register_init_options(self, parser: "argparse.ArgumentParser") -> None: ...
     def on_init(self, ctx: InitContext) -> None: ...
     def validate(self, handle: "RunHandle") -> list[Violation]: ...
+    def guide_text(self) -> str: ...
 
 
 class ExtensionBase:
@@ -106,3 +107,6 @@ class ExtensionBase:
     def validate(self, handle: "RunHandle") -> list[Violation]:
         del handle
         return []
+        
+    def guide_text(self) -> str:
+        return ""
