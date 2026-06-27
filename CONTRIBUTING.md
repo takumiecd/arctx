@@ -111,11 +111,18 @@ PyPI versions come from the package metadata, not from Git tags. Update the
 version first, commit that change, then tag the release commit. Do not reuse a
 version that has already been uploaded to PyPI.
 
-From the repository root:
+Release automation lives in `scripts/release.py` and uses `uv`. The default
+release surface is `arctx` plus `arctx-cli`; `arctx-tui` is secondary and is
+excluded unless `--include-tui` is passed.
+
+The standard release path builds the web GUI, copies `web/dist` into
+`packages/arctx/src/arctx/web/static`, builds the selected packages into root
+`dist/`, and runs `twine check`:
 
 ```bash
-# Bump all package versions, clear old dist files, build, and validate.
-.venv/bin/python scripts/release.py 0.2.0b4 --build --check
+# Bump package versions, clear old dist files, build web/package artifacts,
+# and validate the distributions.
+uv run scripts/release.py 0.3.1b1 --prepare
 
 # Review and commit the release bump.
 git diff
@@ -123,20 +130,23 @@ git add packages/arctx/pyproject.toml \
   packages/arctx-cli/pyproject.toml \
   packages/arctx-tui/pyproject.toml \
   packages/arctx/src/arctx/__init__.py
-git commit -m "release: prepare 0.2.0b4"
+git commit -m "release: prepare 0.3.1b1"
 
 # Tag the commit that contains the matching pyproject.toml versions.
-git tag -a v0.2.0b4 -m "Release v0.2.0b4"
+git tag -a v0.3.1b1 -m "Release v0.3.1b1"
 git push origin main --tags
 
-# Upload the validated distributions.
-.venv/bin/python -m twine upload packages/*/dist/*
+# Upload the validated distributions to TestPyPI first.
+uv run scripts/release.py 0.3.1b1 --no-clean --upload --repository testpypi
+
+# Then publish the same dist/ contents to PyPI.
+uv run scripts/release.py 0.3.1b1 --no-clean --upload
 ```
 
-To build and upload in one command after choosing the version:
+To include the TUI package in the same release:
 
 ```bash
-.venv/bin/python scripts/release.py 0.2.0b4 --build --check --upload
+uv run scripts/release.py 0.3.1b1 --prepare --include-tui
 ```
 
 ## Questions?
