@@ -3,9 +3,40 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import os
 import sys
 
 from arctx_cli.commands import core_cli_commands, register_cli_commands
+
+
+def _user_error(message: str) -> int:
+    """Print a clean ``arctx: <message>`` to stderr and return exit code 1."""
+    print(f"arctx: {message}", file=sys.stderr)
+    return 1
+
+
+def _format_user_error(exc: BaseException, args) -> str | None:
+    """Turn an expected, user-facing exception into a friendly message.
+
+    Returns ``None`` for exceptions that should keep their traceback (genuine
+    bugs), so they propagate unchanged.
+    """
+    if isinstance(exc, OSError) and exc.errno == errno.EADDRINUSE:
+        host = getattr(args, "host", "127.0.0.1")
+        port = getattr(args, "port", None)
+        where = f"{host}:{port}" if port is not None else "the requested address"
+        return (
+            f"address already in use ({where}). "
+            "Another server is probably already running there — "
+            "stop it, or pick a different port with --port <N>."
+        )
+    if isinstance(exc, KeyError):
+        # KeyError stringifies with quotes; unwrap to the bare message.
+        return str(exc.args[0]) if exc.args else str(exc)
+    if isinstance(exc, (RuntimeError, FileNotFoundError, ValueError)):
+        return str(exc) or exc.__class__.__name__
+    return None
 
 
 def _build_parser(*, run_dir: str | None = None) -> argparse.ArgumentParser:
@@ -128,10 +159,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser(run_dir=run_dir)
     args = parser.parse_args(tokens)
     handler = getattr(args, "_arctx_handler", None)
-    if handler is not None:
-        return handler(args)
+    if handler is None:
+        return 1
 
-    return 1
+    if os.environ.get("ARCTX_DEBUG"):
+        # Opt back into full tracebacks for debugging.
+        return handler(args)
+    try:
+        return handler(args)
+    except KeyboardInterrupt:
+        return 130
+    except BaseException as exc:  # noqa: BLE001 — re-raise anything unexpected
+        message = _format_user_error(exc, args)
+        if message is None:
+            raise
+        return _user_error(message)
 
 
 if __name__ == "__main__":
