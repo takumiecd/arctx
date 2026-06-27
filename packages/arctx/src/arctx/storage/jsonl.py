@@ -231,18 +231,16 @@ class JsonlRunStore:
                     payload.payload_id
                 )
 
-        lanes_path = run_path / "lanes.jsonl"
-        if not lanes_path.exists() and (run_path / "work_sessions.jsonl").exists():
-            lanes_path = run_path / "work_sessions.jsonl"
-        for row in self._read_jsonl(lanes_path):
-            session = lane_from_dict(row)
-            graph.lanes[session.lane_id] = session
+        for lpath in [run_path / "work_sessions.jsonl", run_path / "lanes.jsonl"]:
+            if lpath.exists():
+                for row in self._read_jsonl(lpath):
+                    session = lane_from_dict(row)
+                    graph.lanes[session.lane_id] = session
 
-        events_path = run_path / "work_events.jsonl"
-        if not events_path.exists() and (run_path / "lane_events.jsonl").exists():
-            events_path = run_path / "lane_events.jsonl"
-        for row in self._read_jsonl(events_path):
-            graph.work_events.append(work_event_from_dict(row))
+        for epath in [run_path / "lane_events.jsonl", run_path / "work_events.jsonl"]:
+            if epath.exists():
+                for row in self._read_jsonl(epath):
+                    graph.work_events.append(work_event_from_dict(row))
 
         save_cache(run_path, row_counts, graph)
 
