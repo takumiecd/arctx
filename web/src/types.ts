@@ -46,6 +46,7 @@ export interface RunRepo {
 
 export interface RunWorkSession {
   work_session_id: string;
+  lane_id?: string;
   run_id: string;
   user_id: string;
   parent_work_session_id?: string | null;
