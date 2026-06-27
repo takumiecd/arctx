@@ -28,18 +28,6 @@ def test_load_git_extension():
     assert "commit" in ext.default_aliases()
 
 
-def test_load_claude_code_extension():
-    ext = load_extension("claude-code")
-    assert ext.name == "claude-code"
-    assert ext.version == "0.1"
-
-
-def test_load_codex_extension():
-    ext = load_extension("codex")
-    assert ext.name == "codex"
-    assert ext.version == "0.1"
-
-
 def test_git_extension_registers_namespace():
     ext = load_extension("git")
     handle = init(Requirement(requirement_id="req", target_type="task", target_id="t"))

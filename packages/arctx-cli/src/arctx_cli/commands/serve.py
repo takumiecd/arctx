@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import argparse
 
+from arctx.serve import serve
+
 from arctx_cli.context import (
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
     resolve_lane_id_from_args,
 )
-from arctx_cli.serve import serve
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:

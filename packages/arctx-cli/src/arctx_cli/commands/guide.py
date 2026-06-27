@@ -77,7 +77,7 @@ def cli_guide(args) -> int:
                         pass
 
         guide_text += "\n## Managing Extensions\n"
-        guide_text += "Extensions add domain-specific workflows (e.g. `git`, `codex`) to arctx.\n"
+        guide_text += "Extensions add domain-specific workflows (e.g. `git`, `diagram`) to arctx.\n"
         guide_text += "* List available extensions: `arctx ext list`\n"
         guide_text += "* Enable an extension: `arctx ext enable <name>`\n"
         guide_text += "* Disable an extension: `arctx ext disable <name>`\n"

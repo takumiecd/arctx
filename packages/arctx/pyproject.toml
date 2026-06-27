@@ -46,6 +46,7 @@ Repository = "https://github.com/takumiecd/arctx"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/arctx"]
+artifacts = ["src/arctx/web/static/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

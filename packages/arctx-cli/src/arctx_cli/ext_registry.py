@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
-ALWAYS_ON_EXTENSIONS = ("claude-code", "codex")
+ALWAYS_ON_EXTENSIONS: tuple[str, ...] = ()
 
 
 def register_extension_cli(subparsers, names: Iterable[str]) -> None:
