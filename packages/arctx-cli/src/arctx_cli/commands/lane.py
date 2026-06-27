@@ -94,7 +94,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--summary",
         default=None,
-        help="Closing summary text, attached to the lane's terminal node (lane close)",
+        help="Closing summary (Markdown), attached to the lane's terminal node (lane close)",
     )
     parser.add_argument(
         "--node",
@@ -460,9 +460,11 @@ def run_lane_close_command(
 ) -> dict:
     """Close a lane: attach the closing ``summary`` to its terminal, then mark it closed.
 
-    The summary lands on the lane's single leaf when there is one (no redundant
-    node), or on a fresh convergence node when several leaves must be merged. Once
-    closed, writes to the lane are refused until it is reopened with ``lane open``.
+    ``summary`` is **Markdown** (rendered as such in the web GUI), so put the full
+    closing write-up here. It lands on the lane's single leaf when there is one (no
+    redundant node), or on a fresh convergence node when several leaves must be
+    merged. Once closed, writes to the lane are refused until it is reopened with
+    ``lane open``.
     """
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():

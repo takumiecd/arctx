@@ -77,11 +77,11 @@ arctx log --run demo
 - `arctx lane switch <name-or-id>`: 既存 lane に切り替え、repo スコープの
   current lane pointer を書き込む。存在しない名前はエラー。
 - `arctx lane <name-or-id>`: `switch` の省略形。typo 防止のため自動作成しない。
-- `arctx lane close <name-or-id> --summary "..."`: lane を閉じる。要約を lane の末端に
-  付ける（leaf が 1 つならその leaf に刻む。複数なら 1 つの収束 node にまとめる）ので、
-  結論は別 step を作らず `--summary` に入れる。`--reason` で理由を記録、`--node` で
-  対象 leaf を明示できる。閉じた lane への書き込みは拒否される。
-  （`arctx lane join` は本コマンドの deprecated エイリアス。）
+- `arctx lane close <name-or-id> --summary "..."`: lane を閉じる。要約（**Markdown**。
+  web GUI で markdown としてレンダリングされる）を lane の末端に付ける（leaf が 1 つなら
+  その leaf に刻む。複数なら 1 つの収束 node にまとめる）ので、結論は別 step を作らず
+  `--summary` に入れる。`--reason` で理由を記録、`--node` で対象 leaf を明示できる。
+  閉じた lane への書き込みは拒否される。（`arctx lane join` は本コマンドの deprecated エイリアス。）
 - `arctx lane open <name-or-id>`: 閉じた lane を開き直して作業を再開する。`close` と対称。
 - `arctx lane adopt <name-or-id> --record ID`: 既存 record を lane の現在所属として
   登録する。作成 provenance は書き換えず、append-only な adoption event を残す。

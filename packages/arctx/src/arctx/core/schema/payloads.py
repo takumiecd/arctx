@@ -183,6 +183,9 @@ class SummaryPayload(PayloadBase):
     "nearest summary + steps below it" instead of the full history.
 
     Node-targeting only: a summary describes the state reached at a node.
+
+    ``text`` is **Markdown** — rendered as such in the web GUI — so closing
+    summaries and hand-off notes may use headings, lists, code, and image links.
     """
 
     payload_id: str
