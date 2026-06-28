@@ -7,7 +7,7 @@ export interface PayloadField {
 
 export interface PayloadSection {
   title: string;
-  kind?: "json" | "list" | "text" | "table" | "markdown" | "diff" | "image";
+  kind?: "json" | "list" | "text" | "table" | "markdown" | "html" | "diff" | "image";
   value: unknown;
   collapsed?: boolean;
 }
@@ -376,12 +376,20 @@ function commitSubject(commits: unknown[]): string | null {
 
 function summaryDisplay(payload: RunPayload): PayloadDisplay {
   const text = stringValue(payload.text);
+  const format = summaryFormat(payload.metadata?.format);
+  const sectionTitle = format === "markdown" ? "markdown" : format;
   return {
     title: "summary",
     summary: text ? (text.length > 100 ? text.slice(0, 100) + "..." : text) : "(empty summary)",
     graphLabel: "summary",
-    sections: text ? [{ title: "markdown", kind: "markdown", value: text }] : [],
+    fields: [{ label: "format", value: format }],
+    sections: text ? [{ title: sectionTitle, kind: format, value: text }] : [],
   };
+}
+
+function summaryFormat(value: unknown): "markdown" | "html" | "text" {
+  if (value === "html" || value === "text") return value;
+  return "markdown";
 }
 
 registerPayloadRenderer("node_payload", genericPayloadDisplay);

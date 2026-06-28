@@ -27,7 +27,7 @@ def cli_guide(args) -> int:
 1. **Understand Context**: Use `arctx dump` to view the graph. Check your **Current Lane** and **Active Frontiers** at the bottom of this guide to know where to resume work.
 2. **Isolate Approaches**: Use lanes to explore different solutions independently.
 3. **Record Everything**: Record progress with `arctx add --from NODE ...` or `arctx git commit`. `arctx add` creates a Step and its output Node; nodes are not created standalone.
-4. **Close & Summarize**: When a lane's work is done, close it with `arctx lane close NAME --summary "..."`. This is the *close* action — use it even for a single linear chain, not only when several paths must be merged. The summary is **Markdown** (rendered as such in the web GUI) and becomes the closing node's payload, so **put your full synthesis there** (one leaf → it stamps that leaf; several leaves → it merges them into one node). Do **not** write a separate synthesis step and then close on top of it — the close *is* your synthesis-and-close. A closed lane refuses further writes; reopen it with `arctx lane open NAME` to resume.
+4. **Close & Summarize**: When a lane's work is done, close it with `arctx lane close NAME --summary "..."`. This is the *close* action — use it even for a single linear chain, not only when several paths must be merged. The summary is required and becomes the closing node's payload, so **put your full synthesis there** (one leaf → it stamps that leaf; several leaves → it merges them into one node). Use `--summary-format markdown|html|text` when Markdown is not the best fit. Do **not** write a separate synthesis step and then close on top of it — the close *is* your synthesis-and-close. A closed lane refuses further writes; reopen it with `arctx lane open NAME` to resume.
 
 ## Essential Core Commands
 
@@ -37,7 +37,7 @@ def cli_guide(args) -> int:
 * `arctx attach <NODE_OR_STEP> --type <TYPE> --field key=value` : Attach a generic payload. Use `--payload-type summary` for typed summary payloads.
 * `arctx lane` : Show the currently active lane.
 * `arctx show <ID>` : Show details of a specific Node, Step, or Payload.
-* `arctx lane close <LANE> --summary "<your synthesis>"` : Close a lane. Attaches the summary (**Markdown**) to its terminal (its one leaf, or a fresh node merging several leaves) and marks it closed; writes are then refused until reopened. Put your findings in `--summary` here — not in a separate preceding step. (`arctx lane join` is a deprecated alias.)
+* `arctx lane close <LANE> --summary "<your synthesis>" [--summary-format markdown|html|text]` : Close a lane. Attaches the required summary to its terminal (its one leaf, or a fresh node merging several leaves) and marks it closed; writes are then refused until reopened. Put your findings in `--summary` here — not in a separate preceding step. (`arctx lane join` is a deprecated alias.)
 * `arctx lane open <LANE>` : Reopen a closed lane to resume work.
 """
     # Try to load execution context dynamically

@@ -1049,11 +1049,7 @@ function LaneSummaryCard({
           {summary.node_id.slice(0, 12)}
         </button>
       </div>
-      <div className="payload-markdown">
-        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-          {summary.text || "(summary)"}
-        </ReactMarkdown>
-      </div>
+      <SummaryBody text={summary.text || "(summary)"} format={summaryFormat(summary.metadata?.format)} />
       <div className="unit-card-ids">
         <code>payload:{summary.payload_id.slice(0, 8)}</code>
       </div>
@@ -1742,6 +1738,9 @@ function PayloadSectionBody({ section }: { section: PayloadSection }) {
   if (section.kind === "markdown") {
     return <MarkdownView value={section.value} />;
   }
+  if (section.kind === "html") {
+    return <SanitizedHtmlView value={section.value} />;
+  }
   if (section.kind === "text" || section.kind === "diff") {
     return (
       <pre className={`payload payload-text${section.kind === "diff" ? " payload-diff" : ""}`}>
@@ -1815,6 +1814,123 @@ function MarkdownView({ value }: { value: unknown }) {
       </ReactMarkdown>
     </div>
   );
+}
+
+function SummaryBody({
+  text,
+  format,
+}: {
+  text: string;
+  format: "markdown" | "html" | "text";
+}) {
+  if (format === "html") return <SanitizedHtmlView value={text} />;
+  if (format === "text") {
+    return <pre className="payload payload-text">{text}</pre>;
+  }
+  return <MarkdownView value={text} />;
+}
+
+function SanitizedHtmlView({ value }: { value: unknown }) {
+  return (
+    <div
+      className="payload-markdown"
+      dangerouslySetInnerHTML={{ __html: sanitizeSummaryHtml(formatValue(value)) }}
+    />
+  );
+}
+
+function summaryFormat(value: unknown): "markdown" | "html" | "text" {
+  if (value === "html" || value === "text") return value;
+  return "markdown";
+}
+
+const SUMMARY_HTML_ALLOWED_TAGS = new Set([
+  "a",
+  "b",
+  "blockquote",
+  "br",
+  "code",
+  "div",
+  "em",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "i",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "span",
+  "strong",
+  "table",
+  "tbody",
+  "td",
+  "th",
+  "thead",
+  "tr",
+  "ul",
+]);
+const SUMMARY_HTML_URI_ATTRS = new Set(["href"]);
+const SUMMARY_HTML_TEXT_ATTRS = new Set(["title", "aria-label"]);
+
+function sanitizeSummaryHtml(html: string): string {
+  if (typeof window === "undefined") return escapeHtml(html);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const root = doc.body.firstElementChild;
+  if (!root) return "";
+  sanitizeHtmlNode(root);
+  return root.innerHTML;
+}
+
+function sanitizeHtmlNode(node: Node): void {
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const element = child as HTMLElement;
+      const tag = element.tagName.toLowerCase();
+      if (!SUMMARY_HTML_ALLOWED_TAGS.has(tag)) {
+        element.replaceWith(document.createTextNode(element.textContent ?? ""));
+        continue;
+      }
+      for (const attr of Array.from(element.attributes)) {
+        const name = attr.name.toLowerCase();
+        const value = attr.value;
+        if (name.startsWith("on") || name === "style") {
+          element.removeAttribute(attr.name);
+        } else if (SUMMARY_HTML_URI_ATTRS.has(name)) {
+          if (!isSafeSummaryUrl(value)) element.removeAttribute(attr.name);
+        } else if (!SUMMARY_HTML_TEXT_ATTRS.has(name)) {
+          element.removeAttribute(attr.name);
+        }
+      }
+      if (tag === "a" && element.getAttribute("href")) {
+        element.setAttribute("rel", "noreferrer noopener");
+      }
+    }
+    sanitizeHtmlNode(child);
+  }
+}
+
+function isSafeSummaryUrl(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("/") ||
+    /^https?:\/\//i.test(trimmed) ||
+    /^mailto:/i.test(trimmed)
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function ScopedMarkdownImg({ src, alt }: { src?: string; alt?: string }) {

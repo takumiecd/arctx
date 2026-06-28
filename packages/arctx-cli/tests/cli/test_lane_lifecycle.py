@@ -15,6 +15,7 @@ from arctx_cli.commands.lane import (
     run_lane_create_command,
     run_lane_open_command,
 )
+from arctx.core.schema.payloads import SummaryPayload
 from arctx_cli.context import resolve_store
 
 
@@ -94,6 +95,34 @@ def test_status_persists_across_reload():
         assert _status(sd, lane_id) == "closed"
 
 
+def test_close_summary_format_is_recorded_on_summary_payload():
+    with tempfile.TemporaryDirectory() as td:
+        sd = _store_dir(td)
+        _init(td)
+        lane_id = _create_lane(sd)
+        leaf = _add(sd, _root(sd), lane_id, title="s1")
+
+        run_lane_close_command(
+            name_or_id="work",
+            summary="<h2>Conclusion</h2><p>Ship it.</p>",
+            summary_format="html",
+            node_ids=None,
+            reason=None,
+            run_id="run_lc",
+            user_id="alice",
+            store_dir=sd,
+        )
+
+        handle = resolve_store(sd).load_run("run_lc")
+        summaries = [
+            payload
+            for payload in handle.run_graph.payloads_for_node(leaf)
+            if isinstance(payload, SummaryPayload)
+        ]
+        assert summaries
+        assert summaries[-1].metadata["format"] == "html"
+
+
 def test_write_to_closed_lane_is_blocked_then_force_overrides():
     with tempfile.TemporaryDirectory() as td:
         sd = _store_dir(td)
@@ -142,14 +171,24 @@ def test_open_when_open_and_close_when_closed_error():
                 name_or_id="work", reason=None, run_id="run_lc",
                 user_id="alice", store_dir=sd,
             )
-        # close with no summary is allowed (closing an empty/dead-end lane)
+        with pytest.raises(ValueError, match="requires --summary"):
+            run_lane_close_command(
+                name_or_id="work", summary=None, node_ids=None, reason=None,
+                run_id="run_lc", user_id="alice", store_dir=sd,
+            )
+        with pytest.raises(ValueError, match="terminal node"):
+            run_lane_close_command(
+                name_or_id="work", summary="done", node_ids=None, reason=None,
+                run_id="run_lc", user_id="alice", store_dir=sd,
+            )
+        _add(sd, _root(sd), next(l["lane_id"] for l in list_lanes(run_id="run_lc", store_dir=sd)), title="s1")
         run_lane_close_command(
-            name_or_id="work", summary=None, node_ids=None, reason=None,
+            name_or_id="work", summary="done", node_ids=None, reason=None,
             run_id="run_lc", user_id="alice", store_dir=sd,
         )
         # closing an already-closed lane errors
         with pytest.raises(ValueError, match="already closed"):
             run_lane_close_command(
-                name_or_id="work", summary=None, node_ids=None, reason=None,
+                name_or_id="work", summary="again", node_ids=None, reason=None,
                 run_id="run_lc", user_id="alice", store_dir=sd,
             )
