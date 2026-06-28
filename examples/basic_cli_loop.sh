@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Basic CLI loop example for arctx 0.3.1b2.
+# Basic CLI loop example for arctx 0.3.1b3.
 #
 # Demonstrates the pure DAG core surface:
 #   init -> add step -> attach -> show -> graph trace -> dump -> list

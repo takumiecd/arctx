@@ -122,7 +122,7 @@ The standard release path builds the web GUI, copies `web/dist` into
 ```bash
 # Bump package versions, clear old dist files, build web/package artifacts,
 # and validate the distributions.
-uv run scripts/release.py 0.3.1b2 --prepare
+uv run scripts/release.py 0.3.1b3 --prepare
 
 # Review and commit the release bump.
 git diff
@@ -130,23 +130,23 @@ git add packages/arctx/pyproject.toml \
   packages/arctx-cli/pyproject.toml \
   packages/arctx-tui/pyproject.toml \
   packages/arctx/src/arctx/__init__.py
-git commit -m "release: prepare 0.3.1b2"
+git commit -m "release: prepare 0.3.1b3"
 
 # Tag the commit that contains the matching pyproject.toml versions.
-git tag -a v0.3.1b2 -m "Release v0.3.1b2"
+git tag -a v0.3.1b3 -m "Release v0.3.1b3"
 git push origin main --tags
 
 # Upload the validated distributions to TestPyPI first.
-uv run scripts/release.py 0.3.1b2 --no-clean --upload --repository testpypi
+uv run scripts/release.py 0.3.1b3 --no-clean --upload --repository testpypi
 
 # Then publish the same dist/ contents to PyPI.
-uv run scripts/release.py 0.3.1b2 --no-clean --upload
+uv run scripts/release.py 0.3.1b3 --no-clean --upload
 ```
 
 To include the TUI package in the same release:
 
 ```bash
-uv run scripts/release.py 0.3.1b2 --prepare --include-tui
+uv run scripts/release.py 0.3.1b3 --prepare --include-tui
 ```
 
 ## Questions?
