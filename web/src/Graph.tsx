@@ -40,6 +40,7 @@ import {
   laneGroups,
   laneIdForRecord,
   laneLabel,
+  laneStatus,
   nodeLabel,
   nodeSummaryText,
   stepType,
@@ -129,6 +130,7 @@ function LaneCollapsedNode({ data }: NodeProps) {
     nodeCount: number;
     stepCount: number;
     summaryCount: number;
+    status?: "open" | "closed";
   };
   const sides = [
     ["top", Position.Top],
@@ -145,6 +147,7 @@ function LaneCollapsedNode({ data }: NodeProps) {
         <Handle key={`target-${id}`} type="target" position={p} id={id} isConnectable={false} />
       ))}
       <strong>{d.label}</strong>
+      {d.status === "closed" && <span className="lane-status-badge closed">closed</span>}
       <span>
         {d.nodeCount} nodes · {d.stepCount} steps
       </span>
@@ -383,6 +386,7 @@ function GraphCanvas({
             summaryCount: (doc.lane_edge_summaries ?? []).filter(
               (summary) => summary.lane_id === group.lane_id,
             ).length,
+            status: laneStatus(doc, group.lane_id),
             ...colors,
           },
           zIndex: 2,

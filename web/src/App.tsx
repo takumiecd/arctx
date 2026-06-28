@@ -25,6 +25,7 @@ function resolveTheme(pref: ThemePreference): "light" | "dark" {
 export function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [collapsedLaneIds, setCollapsedLaneIds] = useState<Set<string>>(() => new Set());
+  const [expandedClosedLaneIds, setExpandedClosedLaneIds] = useState<Set<string>>(() => new Set());
   const [laneColorOverrides, setLaneColorOverrides] = useState<LaneColorOverrides>({});
   const [laneColorRunId, setLaneColorRunId] = useState<string | null>(null);
   const [newLaneName, setNewLaneName] = useState("");
@@ -101,6 +102,7 @@ export function App() {
     setActiveLaneId(null);
     setSelection(null);
     setCollapsedLaneIds(new Set());
+    setExpandedClosedLaneIds(new Set());
     setNewLaneName("");
     qc.invalidateQueries();
   };
@@ -200,8 +202,17 @@ export function App() {
       : data.current_lane_name) || "none";
   const currentLaneStatus = currentLaneId ? laneStatus(data, currentLaneId) : null;
   const knownLaneIds = new Set(lanes.map((lane) => lane.lane_id).filter(Boolean) as string[]);
+  const closedLaneIds = new Set(
+    (data.lanes ?? [])
+      .filter((lane) => lane.status === "closed")
+      .map((lane) => lane.lane_id)
+      .filter((laneId) => knownLaneIds.has(laneId)),
+  );
   const visibleCollapsedLaneIds = new Set(
-    [...collapsedLaneIds].filter((laneId) => knownLaneIds.has(laneId)),
+    [
+      ...[...collapsedLaneIds].filter((laneId) => knownLaneIds.has(laneId)),
+      ...[...closedLaneIds].filter((laneId) => !expandedClosedLaneIds.has(laneId)),
+    ],
   );
   const sortedLanes = [...lanes].sort((a, b) => {
     const aCollapsed = visibleCollapsedLaneIds.has(a.lane_id);
@@ -212,16 +223,31 @@ export function App() {
     return aCollapsed ? 1 : -1;
   });
   const toggleLane = (laneId: string) => {
+    const isCollapsed = visibleCollapsedLaneIds.has(laneId);
+    if (isCollapsed) {
+      setCollapsedLaneIds((prev) => {
+        const next = new Set(prev);
+        next.delete(laneId);
+        return next;
+      });
+      setExpandedClosedLaneIds((prev) => {
+        const next = new Set(prev);
+        if (closedLaneIds.has(laneId)) next.add(laneId);
+        return next;
+      });
+      return;
+    }
     setCollapsedLaneIds((prev) => {
       const next = new Set(prev);
-      if (next.has(laneId)) {
-        next.delete(laneId);
-      } else {
-        next.add(laneId);
-        setSelection(null);
-      }
+      next.add(laneId);
       return next;
     });
+    setExpandedClosedLaneIds((prev) => {
+      const next = new Set(prev);
+      next.delete(laneId);
+      return next;
+    });
+    setSelection(null);
   };
   const setLaneColor = (laneId: string, color: string) => {
     setLaneColorOverrides((prev) => ({ ...prev, [laneId]: color }));

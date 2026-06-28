@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       // Anchor exact API paths so the prefix "/node" does NOT swallow Vite's
       // own "/node_modules/..." requests (which otherwise 404 via the proxy).
+      "^/runs$": apiTarget,
       "^/run$": apiTarget,
       "^/node$": apiTarget,
       "^/step$": apiTarget,

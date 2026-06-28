@@ -553,6 +553,10 @@ main {
   color: var(--color-text-muted);
   font-size: 11px;
 }
+.lane-collapsed-node .lane-status-badge {
+  color: var(--color-error);
+  font-size: 10px;
+}
 .panel {
   width: 340px;
   min-width: 300px;
