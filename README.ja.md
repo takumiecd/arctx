@@ -300,8 +300,7 @@ RunGraph
 | コマンド | 何をするか |
 | --- | --- |
 | `arctx init <req-id>` | 新しい run を開始する。git 連携には `--extension git` を付ける。 |
-| `arctx add node` | 独立した DAG node を追加する。 |
-| `arctx add step --from <node> --title ...` | DAG step とその出力 node を追加する。 |
+| `arctx add --from <node> --title ...` | DAG step とその出力 node を追加する。node は単独では作らない。 |
 | `arctx attach <node-or-step> --title ...` | 既存の node または step に payload を attach する。 |
 | `arctx cut <node-or-step>` | append-only payload で node または step を inactive にする。 |
 | `arctx show [id]` | 現在の run、または 1 件の node/step/payload を表示する。 |

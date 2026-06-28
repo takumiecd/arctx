@@ -3,10 +3,10 @@
 ## 推奨ループ
 
 1. `arctx log` でコンテキストを読む。
-2. `arctx add step --from NODE_ID --type suggestion --field proposal="..."` で
+2. `arctx add --from NODE_ID --type suggestion --field proposal="..."` で
    意図を append する。
 3. 外部作業を行う: 実装、実験、レビュー、デバッグ、リサーチなど。
-4. `arctx add step --from NODE_ID --type implementation --field result="..."` で
+4. `arctx add --from NODE_ID --type implementation --field result="..."` で
    結果を append する。
 5. 間違った枝は record を削除せず `arctx cut NODE_ID` で cut する。
 6. チェックポイントでは `arctx export --format md` で成果物を生成する。受け手に
@@ -83,7 +83,7 @@ run と work session を固定します。
 
 ```bash
 eval "$(arctx lane env --run run_x --new --user codex)"
-arctx add step --from NODE_ID --type suggestion
+arctx add --from NODE_ID --type suggestion
 ```
 
 子プロセスには `spawn` を使います。子は固有の `ARCTX_LANE_ID` を受け取り、
@@ -97,7 +97,7 @@ arctx lane spawn --run run_x --user claude-code -- claude
 明示モードでは、変更系コマンドごとに `--run` と `--lane` の両方を渡します。
 
 ```bash
-arctx add step --run run_x --lane ws_xxx --from NODE_ID --type implementation
+arctx add --run run_x --lane ws_xxx --from NODE_ID --type implementation
 ```
 
 デフォルトの attribution は `user=user`, `lane=default` です。誰がどの

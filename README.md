@@ -293,8 +293,7 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | Command | What it does |
 | --- | --- |
 | `arctx init <req-id>` | Start a new run. Add `--extension git` for git integration. |
-| `arctx add node` | Add an independent DAG node. |
-| `arctx add step --from <node> --title ...` | Add a DAG step and its output node. |
+| `arctx add --from <node> --title ...` | Add a DAG step and its output node. Nodes are not created standalone. |
 | `arctx attach <node-or-step> --title ...` | Attach a payload to an existing node or step. |
 | `arctx init <req-id> --extension diagram` | Enable the diagram extension for cyclic diagram/model payloads. |
 | `arctx cut <node-or-step>` | Mark a node or step inactive via append-only payload. |

@@ -3,9 +3,9 @@
 ## Recommended Loop
 
 1. Read context with `arctx log`.
-2. Append intent with `arctx add step --from NODE_ID --type suggestion --field proposal="..."`.
+2. Append intent with `arctx add --from NODE_ID --type suggestion --field proposal="..."`.
 3. Do external work: implementation, experiment, review, debugging, or research.
-4. Append the result with `arctx add step --from NODE_ID --type implementation --field result="..."`.
+4. Append the result with `arctx add --from NODE_ID --type implementation --field result="..."`.
 5. Cut wrong branches with `arctx cut NODE_ID` instead of deleting records.
 6. At checkpoints, produce an artifact with `arctx export --format md`; add
    `--exclude-cut` when the recipient should not see inactive branches.
@@ -82,7 +82,7 @@ work session in each process environment instead.
 
 ```bash
 eval "$(arctx lane env --run run_x --new --user codex)"
-arctx add step --from NODE_ID --type suggestion
+arctx add --from NODE_ID --type suggestion
 ```
 
 Use `spawn` for child processes. The child receives a unique
@@ -98,7 +98,7 @@ For explicit mode, pass both `--run` and `--lane` on every mutating
 command.
 
 ```bash
-arctx add step --run run_x --lane ws_xxx --from NODE_ID --type implementation
+arctx add --run run_x --lane ws_xxx --from NODE_ID --type implementation
 ```
 
 The default attribution is `user=user` and `lane=default`. Set `--user`

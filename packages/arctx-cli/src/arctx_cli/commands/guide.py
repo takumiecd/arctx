@@ -26,13 +26,15 @@ def cli_guide(args) -> int:
 ## Recommended Workflow
 1. **Understand Context**: Use `arctx dump` to view the graph. Check your **Current Lane** and **Active Frontiers** at the bottom of this guide to know where to resume work.
 2. **Isolate Approaches**: Use lanes to explore different solutions independently.
-3. **Record Everything**: Record your steps (e.g., via `arctx add` or `arctx git commit`). The graph should capture *how* you solved the problem, not just the final result.
+3. **Record Everything**: Record progress with `arctx add --from NODE ...` or `arctx git commit`. `arctx add` creates a Step and its output Node; nodes are not created standalone.
 4. **Close & Summarize**: When a lane's work is done, close it with `arctx lane close NAME --summary "..."`. This is the *close* action — use it even for a single linear chain, not only when several paths must be merged. The summary is **Markdown** (rendered as such in the web GUI) and becomes the closing node's payload, so **put your full synthesis there** (one leaf → it stamps that leaf; several leaves → it merges them into one node). Do **not** write a separate synthesis step and then close on top of it — the close *is* your synthesis-and-close. A closed lane refuses further writes; reopen it with `arctx lane open NAME` to resume.
 
 ## Essential Core Commands
 
 * `arctx dump --format outline` : View the entire history graph.
 * `arctx dump --format outline --lane` : View the history of the current lane.
+* `arctx add --from <NODE> --type <TYPE> --field key=value` : Add a Step from one or more input Nodes and create its output Node. Repeat `--from` for a multi-input join.
+* `arctx attach <NODE_OR_STEP> --type <TYPE> --field key=value` : Attach a generic payload. Use `--payload-type summary` for typed summary payloads.
 * `arctx lane` : Show the currently active lane.
 * `arctx show <ID>` : Show details of a specific Node, Step, or Payload.
 * `arctx lane close <LANE> --summary "<your synthesis>"` : Close a lane. Attaches the summary (**Markdown**) to its terminal (its one leaf, or a fresh node merging several leaves) and marks it closed; writes are then refused until reopened. Put your findings in `--summary` here — not in a separate preceding step. (`arctx lane join` is a deprecated alias.)

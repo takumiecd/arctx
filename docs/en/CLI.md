@@ -59,7 +59,7 @@ repo's persistent default. It does not report an `ARCTX_RUN_ID` override.
 ```bash
 arctx init req_demo --run-id demo
 ROOT=$(arctx show --run demo | jq -r .root_node_id)
-STEP=$(arctx add step --run demo --from "$ROOT" --type experiment --field lr=0.01 | jq -r .id)
+STEP=$(arctx add --run demo --from "$ROOT" --type experiment --field lr=0.01 | jq -r .id)
 NODE=$(arctx show "$STEP" --run demo | jq -r .step.output_node_id)
 arctx attach "$NODE" --run demo --type note --field text="observed result"
 arctx cut "$NODE" --run demo --reason "discarded"
@@ -85,12 +85,12 @@ Core commands:
 
 ## DAG Records
 
-- `arctx add step --from NODE --type TYPE --field key=value`: add a step and its output node. A node is born only as a step's output (or the run root).
+- `arctx add --from NODE --type TYPE --field key=value`: add a step and its output node. A node is born only as a step's output (or the run root).
 - `arctx attach <node-or-step-id> --type TYPE --field key=value`: attach a payload.
-- `arctx payload add --node NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: attach a cyclic-capable diagram/model artifact when the `diagram` extension is enabled.
+- `arctx attach NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: attach a cyclic-capable diagram/model artifact when the `diagram` extension is enabled.
 - `arctx show <node-or-step-or-payload-id>`: inspect one record with attached payloads.
 
-Each step has exactly one output node. Create fan-out by running `add step`
+Each step has exactly one output node. Create fan-out by running `add`
 multiple times from the same input node. Create a multi-input join by passing
 repeated `--from` flags.
 
@@ -209,7 +209,7 @@ Fixed-mode example:
 
 ```bash
 eval "$(arctx lane env --run run_x --new --user codex)"
-arctx add step --from NODE_ID --type suggestion
+arctx add --from NODE_ID --type suggestion
 ```
 
 Spawn example:

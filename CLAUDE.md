@@ -112,10 +112,11 @@ Current commands:
   `export ARCTX_RUN_ID=<run>` for `eval` (terminal-scoped) instead of writing the
   repo pointer.
 - `init` / `list` — create / list runs
-- `add step` — DAG core surface. Both the public CLI and internal storage use `Step` (the `Transition` rename is complete). Nodes are not created standalone; a Node is born only as a Step's output (or the run root). There is no `add node` command / `RunHandle.add_node` verb / `POST /node` endpoint.
+- `add` — DAG core surface. Adds one `Step` from one or more input nodes and creates its output node. Both the public CLI and internal storage use `Step` (the `Transition` rename is complete). Nodes are not created standalone; a Node is born only as a Step's output (or the run root). There is no `add node` / `add step` command, no `RunHandle.add_node` verb, and no `POST /node` endpoint.
 - `attach <id>` — attach a generic payload to a Node or Step by resolving the record id
+- `guide` — print the agent-facing usage guide and current run/lane context
 - `log` — user-facing DAG history command; wraps outline dump / trace behavior
-- Internal compatibility helpers remain in `commands.step`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add step`, `show`, and `attach`.
+- Internal compatibility helpers remain in `commands.step`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add`, `show`, and `attach`.
 - `cut` — cut a Node or Step (`cut node NODE_ID` or `cut step T_ID`)
 - `claude-code` — Claude Code hooks adapter. `claude-code install` merges hook entries into `.claude/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `claude-code hook` consumes one hook event JSON from stdin and records it (session → Lane `ws_cc_<session_id>`, prompt/tool use → Step, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/claude_code/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
 - `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Step.
@@ -123,10 +124,10 @@ Current commands:
 - `graph` — dump / trace / reachable graph queries
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html` / `json`. `md/tex/html` emit the human-facing spanning-tree outline; `json` emits the machine-readable data contract for GUI surfaces (all nodes/steps/payloads in full, with a precomputed `inactive` flag per node/step). `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
-- `serve` — local read/write HTTP API for one run (live-mode backend for GUIs). `GET /run` returns the same JSON document as `export --format json`; `POST /node` / `POST /step` / `POST /attach` (node or step) / `POST /cut` write through the same verbs as `add` / `attach` / `cut`; `GET /health` for liveness. Stdlib-only (`http.server`), CORS-enabled (`--cors-origin`), default bind `127.0.0.1:8787`. Two layers: harness-neutral pure dispatcher `arctx_cli/serve/api.py` (`dispatch(...)`, socket-free and unit-tested) + thin `http.server` shell `arctx_cli/serve/server.py`. The JSON shapes are the contract a future FastAPI port would expose unchanged.
+- `serve` — local read/write HTTP API for one run (live-mode backend for GUIs). `GET /run` returns the same JSON document as `export --format json`; `POST /step` / `POST /attach` (node or step) / `POST /cut` write through the same verbs as `add` / `attach` / `cut`; `GET /health` for liveness. Stdlib-only (`http.server`), CORS-enabled (`--cors-origin`), default bind `127.0.0.1:8787`. Two layers: harness-neutral pure dispatcher `arctx/serve/api.py` (`dispatch(...)`, socket-free and unit-tested) + thin `http.server` shell `arctx/serve/server.py`. The JSON shapes are the contract a future FastAPI port would expose unchanged.
 - `migrate` — convert a jsonl run dir to sqlite
 
-Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `guide`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
+Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
 
 Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
 `arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to

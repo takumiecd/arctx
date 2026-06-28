@@ -58,7 +58,7 @@ ARCTX_RUN_ID          current shell / process tree
 ```bash
 arctx init req_demo --run-id demo
 ROOT=$(arctx show --run demo | jq -r .root_node_id)
-STEP=$(arctx add step --run demo --from "$ROOT" --type experiment --field lr=0.01 | jq -r .id)
+STEP=$(arctx add --run demo --from "$ROOT" --type experiment --field lr=0.01 | jq -r .id)
 NODE=$(arctx show "$STEP" --run demo | jq -r .step.output_node_id)
 arctx attach "$NODE" --run demo --type note --field text="observed result"
 arctx cut "$NODE" --run demo --reason "discarded"
@@ -93,13 +93,13 @@ arctx log --run demo
 
 ## DAG Records
 
-- `arctx add step --from NODE --type TYPE --field key=value`: step とその出力 node を
+- `arctx add --from NODE --type TYPE --field key=value`: step とその出力 node を
   追加する。node は step の出力（または run root）としてのみ生まれる。
 - `arctx attach <node-or-step-id> --type TYPE --field key=value`: payload を attach する。
-- `arctx payload add --node NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: `diagram` extension が有効な run で、循環可能な図・モデル artifact を attach する。
+- `arctx attach NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: `diagram` extension が有効な run で、循環可能な図・モデル artifact を attach する。
 - `arctx show <node-or-step-or-payload-id>`: 1 件の record を付随 payload とともに見る。
 
-各 step はちょうど 1 つの出力 node を持ちます。同じ入力 node から `add step` を
+各 step はちょうど 1 つの出力 node を持ちます。同じ入力 node から `add` を
 複数回実行すると fan-out になります。`--from` を繰り返し渡すと multi-input join に
 なります。1 つの node は複数 step の出力になり得ますが、active なのは常に1つです
 （下記 reparent を参照）。
@@ -238,7 +238,7 @@ work session は、同じ run で並列に作業する agent やターミナル�
 
 ```bash
 eval "$(arctx lane env --run run_x --new --user codex)"
-arctx add step --from NODE_ID --type suggestion
+arctx add --from NODE_ID --type suggestion
 ```
 
 spawn の例:
