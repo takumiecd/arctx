@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { pickClient } from "./api";
 import { Graph, type Selection } from "./Graph";
 import { Panel } from "./Panel";
-import { laneColors, laneOptions, type LaneColorOverrides } from "./model";
+import { laneById, laneColors, laneOptions, laneStatus, type LaneColorOverrides } from "./model";
 import type { RunDocument } from "./types";
 
 const client = pickClient();
@@ -198,6 +198,7 @@ export function App() {
     (activeLaneId
       ? lanes.find((l) => l.lane_id === activeLaneId)?.label || activeLaneId
       : data.current_lane_name) || "none";
+  const currentLaneStatus = currentLaneId ? laneStatus(data, currentLaneId) : null;
   const knownLaneIds = new Set(lanes.map((lane) => lane.lane_id).filter(Boolean) as string[]);
   const visibleCollapsedLaneIds = new Set(
     [...collapsedLaneIds].filter((laneId) => knownLaneIds.has(laneId)),
@@ -310,6 +311,7 @@ export function App() {
               onClick={() => setShowLanesMenu(!showLanesMenu)}
             >
               current lane: <strong>{currentLaneName}</strong> ▾
+              {currentLaneStatus === "closed" && <span className="lane-status-badge closed">closed</span>}
             </button>
             {showLanesMenu && (
               <div className="lane-dropdown-menu">
@@ -322,10 +324,12 @@ export function App() {
                       if (!laneId) return null;
                       const collapsed = visibleCollapsedLaneIds.has(laneId);
                       const current = laneId === currentLaneId;
+                      const status = laneStatus(data, laneId);
+                      const closedAt = laneById(data, laneId)?.closed_at;
                       return (
                         <div
                           key={lane.group_id}
-                          className={`lane-menu-item${current ? " active" : ""}${collapsed ? " menu-collapsed" : ""}`}
+                          className={`lane-menu-item${current ? " active" : ""}${collapsed ? " menu-collapsed" : ""}${status === "closed" ? " lane-closed" : ""}`}
                           style={laneChipStyle(data, laneId, laneColorOverrides, dark)}
                         >
                           <button
@@ -346,6 +350,12 @@ export function App() {
                           >
                             <span className="lane-color-dot" style={{ backgroundColor: "var(--lane-color)" }} />
                             <span className="lane-name">{lane.label}</span>
+                            <span
+                              className={`lane-status-badge ${status}`}
+                              title={status === "closed" && closedAt ? `closed at ${closedAt}` : status}
+                            >
+                              {status}
+                            </span>
                             {current && <span className="active-badge">current</span>}
                           </button>
                           <label className="lane-color-picker" title={`change ${lane.label} color`}>

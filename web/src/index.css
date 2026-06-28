@@ -258,6 +258,9 @@ header {
   opacity: 0.45;
   filter: grayscale(0.4);
 }
+.lane-menu-item.lane-closed {
+  opacity: 0.72;
+}
 
 /* Collapse/Expand triangle button */
 .lane-collapse-toggle-btn {
@@ -326,6 +329,29 @@ header {
   border-radius: 999px;
   font-weight: normal;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+.lane-status-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.lane-status-badge.open {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+}
+.lane-status-badge.closed {
+  border-color: color-mix(in srgb, var(--color-error) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-error) 12%, var(--color-bg));
+  color: var(--color-error);
 }
 
 /* Divider line */

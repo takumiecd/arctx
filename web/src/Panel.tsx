@@ -30,6 +30,8 @@ import {
   laneGroups,
   laneLabel,
   laneOptions,
+  laneById,
+  laneStatus,
   nodeLabel,
   payloadsForNode,
   payloadsForStep,
@@ -931,6 +933,8 @@ function LaneSummaryPanel({
   dark: boolean;
 }) {
   const label = laneLabel(doc, laneId);
+  const lane = laneById(doc, laneId);
+  const status = laneStatus(doc, laneId);
   const group = laneGroups(doc).find((lane) => lane.lane_id === laneId);
   const summaries = laneEdgeSummariesFor(doc, laneId);
   const edgeNodeIds = new Set(summaries.map((summary) => summary.node_id));
@@ -953,6 +957,20 @@ function LaneSummaryPanel({
           <div className="provenance-row">
             <span>lane</span>
             <strong className="lane-pill">{label}</strong>
+          </div>
+          <div className="provenance-row">
+            <span>status</span>
+            <strong className={`lane-status-badge ${status}`}>{status}</strong>
+          </div>
+          {status === "closed" && lane?.closed_at && (
+            <div className="provenance-row">
+              <span>closed</span>
+              <time>{lane.closed_at}</time>
+            </div>
+          )}
+          <div className="provenance-row">
+            <span>opened by</span>
+            <strong>{lane?.created_by ?? "unknown"}</strong>
           </div>
           <div className="provenance-row">
             <span>records</span>
