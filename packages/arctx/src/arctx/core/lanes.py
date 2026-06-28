@@ -7,12 +7,51 @@ membership is derived from append-only ``WorkEvent.created_records``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.payloads import SummaryPayload
 from arctx.core.schema.work import WorkEvent, Lane
+
+
+# Lane status is a PROJECTION of the append-only work-event log, not a mutable
+# field on the lane record. A lane opens at create (status "open") and toggles via
+# ``lane_closed`` / ``lane_opened`` events; the lane row on disk stays as first
+# written, and the current status is folded from the events on load.
+LANE_STATUS_EVENTS = ("lane_closed", "lane_opened")
+
+
+def _event_order(event: WorkEvent) -> tuple[int, str]:
+    """Sort key putting later events last (seq if present, else timestamp)."""
+    return (event.seq if event.seq is not None else -1, event.created_at or "")
+
+
+def apply_lane_status_events(graph: RunGraph) -> None:
+    """Fold ``lane_closed`` / ``lane_opened`` events into each lane's status in place.
+
+    Call once after a run loads. The latest close/open event per lane wins:
+    ``lane_closed`` → status ``"closed"`` (+ ``closed_at``), ``lane_opened`` →
+    status ``"open"`` (clears ``closed_at``). Lanes with no such event keep the
+    status on their record ("open" by default).
+    """
+    latest: dict[str, WorkEvent] = {}
+    for event in graph.work_events:
+        if event.event_type not in LANE_STATUS_EVENTS:
+            continue
+        prev = latest.get(event.lane_id)
+        if prev is None or _event_order(event) >= _event_order(prev):
+            latest[event.lane_id] = event
+    for lane_id, event in latest.items():
+        lane = graph.lanes.get(lane_id)
+        if lane is None:
+            continue
+        if event.event_type == "lane_closed":
+            graph.lanes[lane_id] = replace(
+                lane, status="closed", closed_at=event.created_at or lane.closed_at
+            )
+        else:
+            graph.lanes[lane_id] = replace(lane, status="open", closed_at=None)
 
 
 @dataclass(frozen=True)

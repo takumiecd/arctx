@@ -15,6 +15,7 @@ from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import payload_from_dict
 from arctx.core.schema.requirements import requirement_from_dict
 from arctx.core.schema.work import WorkEvent, work_event_from_dict, lane_from_dict
+from arctx.core.lanes import apply_lane_status_events
 from arctx.storage._cache import load_cache, save_cache
 
 
@@ -195,6 +196,8 @@ class SqliteRunStore:
             graph = _load_graph(con)
         finally:
             con.close()
+        # Fold lane open/close events into status before caching (see jsonl store).
+        apply_lane_status_events(graph)
         save_cache(run_path, row_counts, graph)
         return RunHandle(
             run_id=manifest["run_id"],

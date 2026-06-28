@@ -13,6 +13,7 @@ from arctx_cli.context import (
     resolve_user_id_from_args,
     resolve_lane_id_from_args,
 )
+from arctx_cli.lane_gate import ensure_lane_open
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -27,6 +28,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_attach.add_argument("--store-dir", default=None)
     sp_attach.add_argument("--user", default=None)
     sp_attach.add_argument("--lane", default=None)
+    sp_attach.add_argument("--force", action="store_true",
+                           help="Write even if the target lane is closed")
 
     sp_list = asset_sub.add_parser("list", help="List assets for a Node or Step")
     sp_list.add_argument("--target", required=True, dest="target_id", help="Node or Step ID")
@@ -72,6 +75,7 @@ def _cli_asset_attach(args) -> int:
         return 1
 
     try:
+        ensure_lane_open(handle, lane_id, force=args.force)
         before = graph_counts(handle)
         payload = handle.attach_asset(
             args.target_id,

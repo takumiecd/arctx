@@ -46,9 +46,12 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         "lane",
         help="Switch/show the active lane (solo or collaborative unit of work)",
         description=(
-            "`arctx lane create NAME` creates a lane. `arctx lane switch NAME` "
-            "switches to an existing lane and pins it for this checkout. "
-            "`arctx lane NAME` is switch shorthand and errors when NAME is absent."
+            "`arctx lane create NAME` creates a lane (status open). `arctx lane switch "
+            "NAME` switches to an existing lane and pins it for this checkout. "
+            "`arctx lane NAME` is switch shorthand and errors when NAME is absent. "
+            "`arctx lane close NAME --summary TEXT` closes a lane (attaching the summary "
+            "to its terminal); `arctx lane open NAME` reopens it. Writes to a closed lane "
+            "are refused until it is reopened."
         ),
     )
     parser.add_argument(
@@ -57,7 +60,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         metavar="COMMAND|NAME",
         help=(
             "No args = current lane. Commands: create NAME, switch NAME, "
-            "adopt NAME, validate, list, show LANE, summaries LANE."
+            "close NAME, open NAME, adopt NAME, validate, list, show LANE, summaries LANE."
         ),
     )
     parser.add_argument("--list", action="store_true", dest="list_lanes",
@@ -86,18 +89,19 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--reason",
         default=None,
-        help="Reason recorded on a lane adoption event",
+        help="Reason recorded on a lane adoption / close / open event",
     )
     parser.add_argument(
         "--summary",
         default=None,
-        help="Summary text to attach when joining a lane",
+        help="Closing summary (Markdown), attached to the lane's terminal node (lane close)",
     )
     parser.add_argument(
         "--node",
         action="append",
         default=None,
-        help="Specific node id to join (repeatable; if omitted, joins all leaf nodes of the lane)",
+        help="Specific leaf node id to summarise on close "
+             "(repeatable; if omitted, uses all active leaf nodes of the lane)",
     )
     parser.add_argument("--user", default=None, help="Actor (created_by) when creating")
     parser.add_argument("--run", default=None)
@@ -392,24 +396,76 @@ def validate_lane_run(*, run_id: str, store_dir: str | None) -> dict:
     }
 
 
-def run_lane_join_command(
+def _lane_active_leaves(handle, lane) -> list[str]:
+    """Active leaf nodes of a lane (nodes in the lane with no step extending them)."""
+    from arctx.core.cuts import is_active_node
+    from arctx.core.lanes import lane_membership
+
+    membership = lane_membership(handle.run_graph)
+    group = next((g for g in membership.groups if g.lane_id == lane.lane_id), None)
+    if not group:
+        return []
+    leaves = [
+        nid
+        for nid in group.node_ids
+        if is_active_node(handle.run_graph, nid)
+        and not handle.run_graph.steps_from_node(nid)
+    ]
+    return list(dict.fromkeys(leaves))
+
+
+def _attach_lane_summary(handle, *, lane, summary: str, node_ids, user_id: str):
+    """Stamp a lane's terminal with ``summary``. Returns (summary_node, leaves).
+
+    - 1 leaf  → attach the summary to that existing leaf (no extra node).
+    - ≥2 leaves → create one convergence (join) node and summarise that.
+    - 0 leaves → nothing to summarise (returns (None, [])).
+    """
+    from arctx.core.schema.payloads import JoinPayload, SummaryPayload
+
+    leaves = list(dict.fromkeys(node_ids)) if node_ids else _lane_active_leaves(handle, lane)
+    if not leaves:
+        return None, []
+
+    if len(leaves) == 1:
+        target = leaves[0]
+    else:
+        join_payload = JoinPayload(payload_id=handle._next_id("pl"), target_id="")
+        step = handle.add_step(
+            input_node_ids=leaves,
+            payload=join_payload,
+            user_id=user_id,
+            lane_id=lane.lane_id,
+        )
+        target = step.output_node_id
+
+    handle.attach(
+        target,
+        SummaryPayload(payload_id=handle._next_id("pl"), target_id=target, text=summary),
+        user_id=user_id,
+        lane_id=lane.lane_id,
+    )
+    return target, leaves
+
+
+def run_lane_close_command(
     *,
     name_or_id: str,
-    summary: str,
+    summary: str | None,
     node_ids: list[str] | None,
+    reason: str | None,
     run_id: str,
     user_id: str,
     store_dir: str | None,
 ) -> dict:
-    """Join multiple leaf nodes in a lane into a single output node with a summary.
-    
-    If node_ids is not provided, this automatically finds all active leaf nodes 
-    currently belonging to the lane.
-    """
-    from arctx.core.cuts import is_active_node
-    from arctx.core.lanes import lane_membership
-    from arctx.core.schema.payloads import JoinPayload, SummaryPayload
+    """Close a lane: attach the closing ``summary`` to its terminal, then mark it closed.
 
+    ``summary`` is **Markdown** (rendered as such in the web GUI), so put the full
+    closing write-up here. It lands on the lane's single leaf when there is one (no
+    redundant node), or on a fresh convergence node when several leaves must be
+    merged. Once closed, writes to the lane are refused until it is reopened with
+    ``lane open``.
+    """
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
@@ -418,64 +474,60 @@ def run_lane_join_command(
     lane = _find_lane(handle, name_or_id)
     if lane is None:
         raise KeyError(f"unknown lane: {name_or_id!r}")
+    if lane.status == "closed":
+        raise ValueError(
+            f"lane already closed: {name_or_id!r}; "
+            f"reopen it with `arctx lane open {name_or_id}`"
+        )
 
-    # Determine nodes to join
-    if not node_ids:
-        # Collect all leaf nodes currently assigned to this lane
-        membership = lane_membership(handle.run_graph)
-        group = next((g for g in membership.groups if g.lane_id == lane.lane_id), None)
-        if not group:
-            raise ValueError(f"lane has no nodes: {name_or_id!r}")
-        
-        candidates = []
-        for nid in group.node_ids:
-            if not is_active_node(handle.run_graph, nid):
-                continue
-            # Check if this node has no steps extending from it
-            if not handle.run_graph.steps_from_node(nid):
-                candidates.append(nid)
-        
-        node_ids = candidates
-    
-    if not node_ids:
-        raise ValueError(f"no active leaf nodes found in lane {name_or_id!r}")
-    
-    # Deduplicate while preserving order
-    node_ids = list(dict.fromkeys(node_ids))
-    
-    if len(node_ids) < 1:
-        raise ValueError("join requires at least one node")
-
-    # 1. Create Step with JoinPayload
-    join_payload = JoinPayload(
-        payload_id=handle._next_id("pl"),
-        target_id="",
+    summary_node, leaves = (None, [])
+    if summary:
+        summary_node, leaves = _attach_lane_summary(
+            handle, lane=lane, summary=summary, node_ids=node_ids, user_id=user_id
+        )
+    event = handle.set_lane_status(
+        lane.lane_id, status="closed", user_id=user_id, reason=reason
     )
-    step = handle.add_step(
-        input_node_ids=node_ids,
-        payload=join_payload,
-        user_id=user_id,
-        lane_id=lane.lane_id,
-    )
-    
-    # 2. Attach SummaryPayload to the new output node
-    summary_payload = SummaryPayload(
-        payload_id=handle._next_id("pl"),
-        target_id=step.output_node_id,
-        text=summary,
-    )
-    handle.attach(
-        step.output_node_id,
-        summary_payload,
-        user_id=user_id,
-        lane_id=lane.lane_id,
-    )
-
     store.save_run(handle)
     return {
-        "step_id": step.step_id,
-        "output_node_id": step.output_node_id,
-        "joined_nodes": node_ids,
+        "lane_id": lane.lane_id,
+        "name": lane.name,
+        "status": "closed",
+        "summary_node": summary_node,
+        "joined_nodes": leaves,
+        "event_id": event.event_id,
+    }
+
+
+def run_lane_open_command(
+    *,
+    name_or_id: str,
+    reason: str | None,
+    run_id: str,
+    user_id: str,
+    store_dir: str | None,
+) -> dict:
+    """Reopen a closed lane so work can resume. Symmetric to ``lane close``."""
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id!r}")
+    if lane.status != "closed":
+        raise ValueError(f"lane is already open: {name_or_id!r}")
+
+    event = handle.set_lane_status(
+        lane.lane_id, status="open", user_id=user_id, reason=reason
+    )
+    store.save_run(handle)
+    return {
+        "lane_id": lane.lane_id,
+        "name": lane.name,
+        "status": "open",
+        "event_id": event.event_id,
     }
 
 
@@ -533,15 +585,35 @@ def cli_lane(args) -> int:
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
 
-        if command == "join":
+        if command in ("close", "join"):
+            if command == "join":
+                print(
+                    "warning: `arctx lane join` is deprecated; use `arctx lane close` "
+                    "(it closes the lane and attaches the summary to its terminal).",
+                    file=sys.stderr,
+                )
             if len(argv) != 2:
-                raise ValueError("usage: arctx lane join NAME_OR_ID --summary TEXT [--node ID...]")
-            if not args.summary:
-                raise ValueError("--summary is required to join a lane")
-            result = run_lane_join_command(
+                raise ValueError(
+                    "usage: arctx lane close NAME_OR_ID --summary TEXT [--node ID...] [--reason TEXT]"
+                )
+            result = run_lane_close_command(
                 name_or_id=argv[1],
                 summary=args.summary,
                 node_ids=args.node,
+                reason=args.reason,
+                run_id=resolve_run_id_from_args(args),
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if command == "open":
+            if len(argv) != 2:
+                raise ValueError("usage: arctx lane open NAME_OR_ID [--reason TEXT]")
+            result = run_lane_open_command(
+                name_or_id=argv[1],
+                reason=args.reason,
                 run_id=resolve_run_id_from_args(args),
                 user_id=resolve_user_id_from_args(args),
                 store_dir=args.store_dir,

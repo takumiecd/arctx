@@ -14,6 +14,7 @@ from arctx_cli.context import (
     resolve_user_id_from_args,
     resolve_lane_id_from_args,
 )
+from arctx_cli.lane_gate import ensure_lane_open
 
 # ---------------------------------------------------------------------------
 # Parser registration
@@ -60,6 +61,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     sp_add.add_argument("--store-dir", default=None)
     sp_add.add_argument("--user", default=None)
     sp_add.add_argument("--lane", default=None)
+    sp_add.add_argument("--force", action="store_true",
+                        help="Write even if the target lane is closed")
 
     sp_show = git_sub.add_parser("show", help="Show git_change payloads for a Step")
     sp_show.add_argument("--step", required=True, dest="step_id")
@@ -203,6 +206,7 @@ def _cli_git_attach(args) -> int:
     from arctx.ext.git.helpers.attach import attach_commits_to_step
 
     try:
+        ensure_lane_open(handle, lane_id, force=getattr(args, "force", False))
         before = graph_counts(handle)
         result = attach_commits_to_step(
             handle,
