@@ -310,8 +310,7 @@ function commandRunDisplay(payload: RunPayload): PayloadDisplay {
 function assetDisplay(payload: RunPayload): PayloadDisplay {
   const filename = stringValue(payload.filename) || "asset";
   const mime = stringValue(payload.mime_type);
-  const path = stringValue(payload.path);
-  const src = path ? `/${path.replace(/^\/+/, "")}` : "";
+  const src = artifactPathForPayload(payload);
   const media: PayloadMedia[] = [];
   const sections: PayloadSection[] = [];
   if (src && mime.startsWith("image/")) {
@@ -328,6 +327,13 @@ function assetDisplay(payload: RunPayload): PayloadDisplay {
     fields.push({ label: "size", value: formatBytes(payload.size_bytes) });
   }
   return { title: "asset", summary: filename, graphLabel: filename, media, fields, sections };
+}
+
+export function artifactPathForPayload(payload: RunPayload): string {
+  const rawPath = stringValue(payload.path).replace(/^\/+/, "");
+  if (!rawPath) return "";
+  const path = rawPath.startsWith("artifacts/") ? rawPath : `artifacts/${rawPath}`;
+  return `/${path}`;
 }
 
 function formatBytes(bytes: number): string {

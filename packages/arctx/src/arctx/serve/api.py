@@ -519,6 +519,7 @@ def _post_ext_disable(store, run_id: str, body: dict) -> dict:
 
 def _post_artifacts_upload(store, run_id: str, body: dict) -> dict:
     import base64
+    import mimetypes
     import uuid
     from pathlib import Path
 
@@ -540,12 +541,20 @@ def _post_artifacts_upload(store, run_id: str, body: dict) -> dict:
     if not store.run_path(run_id).exists():
         raise ApiError(404, f"unknown run_id: {run_id}")
 
-    stem = f"art_{uuid.uuid4().hex[:8]}_{safe_name}"
+    artifact_id = f"art_{uuid.uuid4().hex[:8]}"
+    stem = f"{artifact_id}_{safe_name}"
     artifacts_dir = store.run_path(run_id) / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     target = artifacts_dir / stem
     target.write_bytes(raw)
-    return {"filename": safe_name, "size_bytes": len(raw), "path": f"artifacts/{stem}"}
+    mime_type, _ = mimetypes.guess_type(safe_name)
+    return {
+        "artifact_id": artifact_id,
+        "filename": safe_name,
+        "mime_type": mime_type or "application/octet-stream",
+        "size_bytes": len(raw),
+        "path": f"artifacts/{stem}",
+    }
 
 
 def _resolve_target_kind(handle, record_id: str) -> str:

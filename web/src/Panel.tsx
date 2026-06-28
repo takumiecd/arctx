@@ -41,6 +41,7 @@ import {
   type LaneColorOverrides,
 } from "./model";
 import {
+  artifactPathForPayload,
   payloadDisplayFor,
   payloadElementFor,
   type PayloadDisplay,
@@ -1654,7 +1655,7 @@ function PayloadCard({
               className="payload-copy-btn"
               title="copy a markdown reference (paste into a note on this record or a descendant)"
               onClick={() => {
-                const url = `/${String(payload.path ?? "").replace(/^\/+/, "")}`;
+                const url = artifactPathForPayload(payload);
                 const name = String(payload.filename ?? "asset");
                 const md = String(payload.mime_type ?? "").startsWith("image/")
                   ? `![${name}](${url})`
@@ -1794,8 +1795,8 @@ function ScopedPayloads({
     if (!client.writable || !data) return null;
     const set = new Set<string>();
     for (const a of data) {
-      const path = String((a as { path?: unknown }).path ?? "").replace(/^\/+/, "");
-      if (path) set.add(artifactKey(`/${path}`));
+      const url = artifactPathForPayload(a);
+      if (url) set.add(artifactKey(url));
     }
     return set;
   }, [client.writable, data]);
