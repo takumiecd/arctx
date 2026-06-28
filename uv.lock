@@ -24,7 +24,7 @@ dev = [
 
 [[package]]
 name = "arctx"
-version = "0.3.1b2"
+version = "0.3.1b3"
 source = { editable = "packages/arctx" }
 dependencies = [
     { name = "typing-extensions" },
@@ -56,7 +56,7 @@ provides-extras = ["fast", "dev"]
 
 [[package]]
 name = "arctx-cli"
-version = "0.3.1b2"
+version = "0.3.1b3"
 source = { editable = "packages/arctx-cli" }
 dependencies = [
     { name = "arctx" },
@@ -84,7 +84,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "arctx-tui"
-version = "0.3.1b2"
+version = "0.3.1b3"
 source = { editable = "packages/arctx-tui" }
 dependencies = [
     { name = "arctx" },
