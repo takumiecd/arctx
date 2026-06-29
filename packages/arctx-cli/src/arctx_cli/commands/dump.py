@@ -30,6 +30,8 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
                         help="Hide observed (result) output steps")
     parser.add_argument("--full-payloads", action="store_true",
                         help="Include full payload metrics / rationale")
+    parser.add_argument("--expand-closed-lanes", action="store_true",
+                        help="Show closed lane internals instead of summary-only collapsed lanes")
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
     return parser
@@ -43,12 +45,18 @@ def run_dump_command(
     node_id: str | None = None,
     depth: int | None = None,
     full_payloads: bool = False,
+    expand_closed_lanes: bool = False,
 ) -> str:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
-    opts = DumpOptions(node_id=node_id, depth=depth, full_payloads=full_payloads)
+    opts = DumpOptions(
+        node_id=node_id,
+        depth=depth,
+        full_payloads=full_payloads,
+        expand_closed_lanes=expand_closed_lanes,
+    )
     return dump(handle, fmt, opts)
 
 
@@ -67,6 +75,7 @@ def cli_dump(args) -> int:
         observed_only=args.observed_only,
         predicted_only=args.predicted_only,
         full_payloads=args.full_payloads,
+        expand_closed_lanes=args.expand_closed_lanes,
     )
     print(dump(handle, args.fmt, opts))
     return 0

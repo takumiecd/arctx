@@ -82,6 +82,7 @@ arctx log --run demo
   1 つの収束 node にまとめる）ので、結論は別 step を作らず `--summary` に入れる。
   format は既定が markdown。必要なら sanitized HTML や plain text も指定できる。
   `--reason` で理由を記録、`--node` で対象 leaf を明示できる。
+  `arctx dump` では、closed lane は通常この closing summary を持つ 1 行に折りたたまれる。
   閉じた lane への書き込みは拒否される。（`arctx lane join` は本コマンドの deprecated エイリアス。）
 - `arctx lane open <name-or-id>`: 閉じた lane を開き直して作業を再開する。`close` と対称。
 - `arctx lane adopt <name-or-id> --record ID`: 既存 record を lane の現在所属として
@@ -220,6 +221,17 @@ registry エントリの field:
 
 `local_path` は環境固有です。`arctx export` はデフォルトでこれを除去します。
 `arctx git repo list` と `arctx git repo show` はローカル検査コマンドなので保持します。
+
+## Dump
+
+`arctx dump` は検査と LLM コンテキスト用に run 全体を軽量表示します。
+
+- `--format outline|mermaid`（デフォルト `outline`）。
+- `--node NODE` / `--depth N`: 表示する部分木を制限する。
+- `--full-payloads`: payload 内容を通常より多く表示する。
+- closed lane はデフォルトで `closed lane ...` の 1 行に折りたたまれ、`lane close`
+  時の summary が表示される。内部の node/step まで見たい場合は
+  `--expand-closed-lanes` を指定する。
 
 ## Work Sessions
 
