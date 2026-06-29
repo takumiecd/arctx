@@ -43,6 +43,8 @@ class JsonlRunStore:
                 continue
             try:
                 data = json.loads(run_json.read_text(encoding="utf-8"))
+                if data["run_id"] != entry.name:
+                    continue
                 runs.append(
                     {
                         "run_id": data["run_id"],
@@ -188,6 +190,7 @@ class JsonlRunStore:
     def load_run(self, run_id: str) -> RunHandle:
         run_path = self.run_path(run_id)
         manifest = self._read_json(run_path / "run.json")
+        _ensure_manifest_run_id(run_path, manifest, run_id)
         requirement = requirement_from_dict(manifest["requirement"])
 
         # --- Cache fast path ---
@@ -344,6 +347,15 @@ def _ids_from_jsonl(path: Path, key: str) -> set[str]:
         for row in JsonlRunStore._read_jsonl(path)
         if key in row
     }
+
+
+def _ensure_manifest_run_id(run_path: Path, manifest: dict[str, Any], expected_run_id: str) -> None:
+    actual = manifest.get("run_id")
+    if actual != expected_run_id:
+        raise ValueError(
+            f"run manifest mismatch at {run_path}: "
+            f"directory is {expected_run_id!r} but run.json has {actual!r}"
+        )
 
 
 def _record_file(record: GraphRecordEnvelope) -> str:
