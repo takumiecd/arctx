@@ -29,6 +29,12 @@ def cli_guide(args) -> int:
 3. **Record Everything**: Record progress with `arctx add --from NODE ...` or `arctx git commit`. `arctx add` creates a Step and its output Node; nodes are not created standalone.
 4. **Close & Summarize**: When a lane's work is done, close it with `arctx lane close NAME --summary "..."`. This is the *close* action — use it even for a single linear chain, not only when several paths must be merged. The summary is required and becomes the closing node's payload, so **put your full synthesis there** (one leaf → it stamps that leaf; several leaves → it merges them into one node). Use `--summary-format markdown|html|text` when Markdown is not the best fit. Do **not** write a separate synthesis step and then close on top of it — the close *is* your synthesis-and-close. A closed lane refuses further writes; reopen it with `arctx lane open NAME` to resume.
 
+## Parallel Experiment Strategy
+
+When approaches are independent, fan them out from the same baseline Node instead of serializing them in one lane. Give each approach its own lane, and for code changes prefer a separate git worktree as well. This is different from ordinary git branching: ARCTX is recording the experiment relationship in the RunGraph, not just moving code refs.
+
+Record each branch's hypothesis, result, and evaluation signal. Do not discard a branch only because it is weak by itself; sometimes the best answer is a later multi-input join of ideas that were mediocre in isolation. After independent runs finish, combine promising terminal Nodes with repeated `--from` arguments and record the synthesis as one Step. Use `cut` for branches that should remain in history but no longer participate in the active solution.
+
 ## Essential Core Commands
 
 * `arctx dump --format outline` : View the entire history graph.

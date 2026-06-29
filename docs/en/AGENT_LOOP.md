@@ -16,6 +16,24 @@ node. Multi-input joins use repeated `--from` flags.
 Parallel processes can work in the same run when each writer appends only new
 records. Merge is record-level append, not mutation of existing history.
 
+## Parallel Experiment Strategy
+
+When approaches are independent, fan them out from the same baseline node
+instead of serializing them in one lane. Give each approach its own lane, and
+for code changes prefer a separate git worktree as well. This is different from
+ordinary git branching: ARCTX records the experiment relationship in the
+RunGraph, not just code refs.
+
+Record each branch's hypothesis, result, and evaluation signal. Do not discard a
+branch only because it is weak by itself; sometimes the best answer is a later
+multi-input join of ideas that were mediocre in isolation. After independent
+runs finish, combine promising terminal nodes with repeated `--from` arguments
+and record the synthesis as one step.
+
+Use `cut` for branches that should remain in history but no longer participate
+in the active solution. Use `arctx lane close --summary "..."` to preserve the
+final finding for each lane.
+
 ## Setup Mental Model
 
 ARCTX has three separate pieces of state:
