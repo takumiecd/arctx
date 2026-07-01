@@ -1,14 +1,21 @@
 # ARCTX
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/arctx-mark-dark.svg">
+    <img src="assets/arctx-mark.svg" alt="ARCTX" width="120">
+  </picture>
+</p>
+
 [![CI](https://github.com/takumiecd/arctx/actions/workflows/ci.yml/badge.svg)](https://github.com/takumiecd/arctx/actions/workflows/ci.yml)
 
-> **Git tracks what changed. ARCTX tracks why you changed it — and what you decided not to.**
+> **ARCTX is an append-only experiment graph for hypotheses, trials, results, and abandoned branches.**
 >
-> An append-only DAG for reasoning history, parallel agent collaboration, and abandoned branches that stay in the graph.
+> Git tracks what changed. ARCTX tracks what was tried, why, what happened, and what survived.
 
-**See it in 30 seconds** — one command spins up a throwaway repo where two agents
-try the same task two ways, one dead end gets cut *with its reason*, and the whole
-story exports as a shareable document:
+**See it in 30 seconds** — one command spins up a throwaway repo where two
+optimization hypotheses branch from one baseline, the slower dead end gets cut
+*with its reason*, and the whole story exports as a shareable document:
 
 ```bash
 git clone https://github.com/takumiecd/arctx && cd arctx
@@ -39,7 +46,7 @@ handle = arctx.init(arctx.Requirement(requirement_id="r", target_type="code", ta
 ---
 
 ARCTX is **not** an agent framework, planner, or executor.  
-It is the graph layer underneath them.
+It is the graph layer for research, optimization, debugging, and agent work.
 
 ![ARCTX CLI Demo](examples/demo_cli.gif)
 
@@ -53,29 +60,33 @@ It is the graph layer underneath them.
 
 ## Why ARCTX?
 
-Real work is not a straight line. You form a hypothesis, try it, observe what happened, drop one branch, take another, and later need to reconstruct *why* you ended up where you did.
+Research and optimization rarely move in a straight line. You form a
+hypothesis, try it, observe what happened, drop one branch, take another, and
+later need to reconstruct *why* you ended up where you did.
 
 - Git is **file history** — what bytes changed in which commit.
-- ARCTX is **reasoning / action / decision history** — which hypothesis was tested, which result it produced, and which branches were cut.
+- ARCTX is **experiment / reasoning / decision history** — which hypothesis was tested, which result it produced, and which branches were cut.
 
 ARCTX records all of it as one append-only DAG:
 
-- **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked lane and their attempts become sibling steps.
-- **Reverts stay in the graph.** A failed rewrite isn't deleted, it's marked inactive via `CutPayload`. You can still see what was tried, and why.
+- **Hypotheses become branches.** Competing trials can fan out from the same baseline instead of being flattened into a log.
+- **Failed experiments stay useful.** A rejected branch is marked inactive via `CutPayload`, not deleted. You can still see what was tried, and why it was cut.
 - **Domain payloads, not just commits.** Attach benchmark results, predictions, intent — anything. The DAG knows what each step was *for*.
+- **Parallel agents, no conflict.** Several agents or humans can drive the same run; each gets its own tracked lane and their attempts become sibling steps.
 - **Read-time activity.** Killed branches are filtered automatically; the graph stays clean without rewriting history.
 
-ARCTX is *not* an executor, planner, or agent framework. It is the substrate for storing what they did and why.
+ARCTX is *not* an executor, planner, or agent framework. It is the substrate for storing what was tried and why.
 
 ---
 
 ## When does ARCTX fit?
 
-- **Multi-agent software work** — Claude Code, Codex, custom agents and humans working on the same codebase. ARCTX keeps each attempt distinct and reviewable.
-- **Research and design exploration** — branch hypotheses, capture results as payloads, keep the dropped branches around as evidence.
-- **Debugging and investigation** — record hypotheses and observations as payloads; walk the trace backwards when you finally find the bug.
+- **Research and design exploration** — branch hypotheses, capture results as payloads, keep dropped branches around as evidence.
+- **Optimization work** — compare variants, keep baselines explicit, and preserve why a slower path was abandoned.
 - **Benchmark-driven engineering** — every "try variant A, try variant B" lands as a step with its measurement attached.
 - **Kernel / numeric optimization** — one specific case of the above: tiled / vectorized / fused experiments as sibling steps, with reverts and merges first-class.
+- **Debugging and investigation** — record hypotheses and observations as payloads; walk the trace backwards when you finally find the bug.
+- **Multi-agent software work** — Claude Code, Codex, custom agents and humans working on the same codebase. ARCTX keeps each attempt distinct and reviewable.
 
 ---
 

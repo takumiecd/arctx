@@ -1,7 +1,10 @@
 # arctx web
 
-Web GUI for arctx runs (React + React Flow + Vite). One frontend, two data
-modes — the UI only talks to a `RunClient`, so the same components serve both:
+Web GUI for ARCTX experiment graphs (React + React Flow + Vite). It visualizes
+hypotheses, trials, results, lanes, and cut branches from an arctx run.
+
+One frontend, two data modes — the UI only talks to a `RunClient`, so the same
+components serve both:
 
 - **Live mode (read + write)** — talks to `arctx serve`'s HTTP API. Add nodes
   and steps, create lanes, adopt existing records into lanes, attach payloads to

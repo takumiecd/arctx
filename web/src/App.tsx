@@ -11,6 +11,18 @@ const client = pickClient();
 
 type ThemePreference = "light" | "dark" | "system";
 
+function BrandMark() {
+  return (
+    <svg viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+      <g transform="translate(0 -10)" fill="currentColor">
+        <path d="M200 70 L125 205 Q151 190 170 190 L200 130 L290 255 L310 240 Z" />
+        <path d="M80 300 C110 205 180 185 290 250 C200 205 130 240 110 300 Z" />
+        <circle cx="300" cy="250" r="20" />
+      </g>
+    </svg>
+  );
+}
+
 function getInitialPreference(): ThemePreference {
   const stored = window.localStorage.getItem("arctx.theme");
   if (stored === "dark" || stored === "light" || stored === "system") return stored;
@@ -256,7 +268,11 @@ export function App() {
   return (
     <div className="layout">
       <header>
-        <strong>arctx</strong>{" "}
+        <div className="brand" aria-label="ARCTX">
+          <span className="brand-mark">
+            <BrandMark />
+          </span>
+        </div>
         {client.writable ? (
           <span className="lane-selector-popover" ref={runsPopoverRef}>
             <button
