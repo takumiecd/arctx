@@ -292,7 +292,6 @@ function buildEdges(
         style: {
           opacity: s.inactive ? 0.35 : crossLane ? 0.55 : 1,
           stroke: edgeColor,
-          strokeDasharray: crossLane ? "5 6" : undefined,
           strokeWidth: crossLane ? 1.5 : stepLaneId ? 2.4 : 1.8,
         },
         markerEnd: {
