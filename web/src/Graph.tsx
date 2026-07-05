@@ -22,6 +22,7 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useUpdateNodeInternals,
   useReactFlow,
   useStore,
   type Connection,
@@ -90,10 +91,10 @@ function DagNode({ data }: NodeProps) {
       style={laneStyle(d)}
     >
       {sides.map(([id, p]) => (
-        <Handle key={`source-${id}`} type="source" position={p} id={id} />
+        <Handle key={`source-${id}`} type="source" position={p} id={`source-${id}`} />
       ))}
       {sides.map(([id, p]) => (
-        <Handle key={`target-${id}`} type="target" position={p} id={id} />
+        <Handle key={`target-${id}`} type="target" position={p} id={`target-${id}`} />
       ))}
       {d.laneLabel && <em>{d.laneLabel}</em>}
       <span>{d.label}</span>
@@ -149,10 +150,22 @@ function LaneCollapsedNode({ data }: NodeProps) {
   return (
     <div className="lane-collapsed-node" title={d.title} style={laneStyle(d)}>
       {sides.map(([id, p]) => (
-        <Handle key={`source-${id}`} type="source" position={p} id={id} isConnectable={false} />
+        <Handle
+          key={`source-${id}`}
+          type="source"
+          position={p}
+          id={`source-${id}`}
+          isConnectable={false}
+        />
       ))}
       {sides.map(([id, p]) => (
-        <Handle key={`target-${id}`} type="target" position={p} id={id} isConnectable={false} />
+        <Handle
+          key={`target-${id}`}
+          type="target"
+          position={p}
+          id={`target-${id}`}
+          isConnectable={false}
+        />
       ))}
       <strong>{d.label}</strong>
       {d.status === "closed" && <span className="lane-status-badge closed">closed</span>}
@@ -259,24 +272,28 @@ function buildEdges(
       const source = endpointFor(doc, input, collapsedLaneIds);
       const target = endpointFor(doc, s.output_node_id, collapsedLaneIds);
       if (source === target) continue;
+      const inputLaneId = laneIdForRecord(doc, input);
+      const outputLaneId = laneIdForRecord(doc, s.output_node_id);
+      const crossLane = inputLaneId !== outputLaneId;
       const [sourceHandle, targetHandle] = edgeSides(positions[source], positions[target]);
       out.push({
-        id: `${s.step_id}:${input}:${source}->${target}`,
+        id: edgeId(s.step_id, input, source, target),
         source,
         target,
-        sourceHandle,
-        targetHandle,
-        type: "smoothstep",
-        label: label === "step" ? undefined : label,
+        sourceHandle: `source-${sourceHandle}`,
+        targetHandle: `target-${targetHandle}`,
+        type: crossLane ? "simplebezier" : "smoothstep",
+        label: crossLane || label === "step" ? undefined : label,
         data: { stepId: s.step_id },
         selectable: false,
         labelStyle: { fontSize: 11 },
         labelBgPadding: [6, 3],
         labelBgBorderRadius: 4,
         style: {
-          opacity: s.inactive ? 0.35 : 1,
+          opacity: s.inactive ? 0.35 : crossLane ? 0.55 : 1,
           stroke: edgeColor,
-          strokeWidth: stepLaneId ? 2.4 : 1.8,
+          strokeDasharray: crossLane ? "5 6" : undefined,
+          strokeWidth: crossLane ? 1.5 : stepLaneId ? 2.4 : 1.8,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -288,6 +305,15 @@ function buildEdges(
     }
   }
   return out;
+}
+
+function edgeId(stepId: string, inputId: string, sourceId: string, targetId: string): string {
+  const parts = [stepId, inputId, sourceId, targetId].map(safeEdgePart);
+  return `edge_${parts.join("_")}`;
+}
+
+function safeEdgePart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 function endpointFor(doc: RunDocument, nodeId: string, collapsedLaneIds: Set<string>): string {
@@ -340,6 +366,7 @@ function GraphCanvas({
   focusLane,
 }: Props) {
   const reactFlow = useReactFlow<Node, Edge>();
+  const updateNodeInternals = useUpdateNodeInternals();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -480,8 +507,19 @@ function GraphCanvas({
     for (const n of nodes) {
       positions[n.id] = n.position;
     }
-    setEdges(buildEdges(doc, positions, collapsedLaneIds, laneColorOverrides, showCuts, dark));
+    const nextEdges = buildEdges(doc, positions, collapsedLaneIds, laneColorOverrides, showCuts, dark);
+    setEdges(nextEdges);
   }, [collapsedLaneIds, dark, doc, laneColorOverrides, nodes, setEdges, showCuts]);
+
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      for (const node of nodes) {
+        updateNodeInternals(node.id);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [nodes, updateNodeInternals]);
 
   useEffect(() => {
     const targetSelectedNodes = new Set<string>();
