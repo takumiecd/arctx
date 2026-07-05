@@ -21,12 +21,10 @@
 // -- one per lane, plus a single cluster for unlaned nodes -- and each
 // cluster's *internal* subgraph (edges to nodes outside the cluster are
 // dropped for placement purposes) is laid out with the layered+serpentine
-// algorithm above. Clusters are then packed as non-overlapping blocks,
-// ordered chronologically by lane `started_at` (falling back to document
-// order when that's missing), flowing left-to-right and wrapping rows at a
-// maximum width. Cross-cluster edges (rendered separately in Graph.tsx) may
-// end up long as a result; that's an acceptable tradeoff for keeping each
-// lane visually together.
+// algorithm above. Clusters are then arranged as a DAG themselves: cluster
+// dependencies determine left-to-right columns, and chronological/document
+// order only breaks ties within a column. This keeps lane blocks visually
+// together while preserving the tree-like direction of the run.
 
 import type { RunDocument } from "./types";
 import { laneIdForRecord } from "./model";
@@ -51,8 +49,9 @@ const MARGIN_Y = 42;
 const CHAIN_WRAP_LENGTH = 7;
 
 // Cluster (lane block) packing parameters.
-const CLUSTER_PADDING = 140; // gap between adjacent cluster boxes
-const MAX_ROW_WIDTH = 3000; // wrap to a new row of clusters past this width
+const CLUSTER_COLUMN_GAP = 220;
+const CLUSTER_ROW_GAP = 120;
+const CLUSTER_DEPTH_BUCKET = 8;
 const UNLANED_CLUSTER_KEY = "__unlaned__";
 
 interface VisibleGraph {
@@ -69,31 +68,20 @@ interface VisibleGraph {
 export function layout(doc: RunDocument, opts: LayoutOpts): Record<string, Pos> {
   const graph = buildVisibleGraph(doc, opts);
   const clusters = buildClusters(doc, graph);
+  const clusterLayouts = clusters.map((cluster) => ({
+    ...cluster,
+    ...layoutCluster(cluster, graph),
+  }));
+  const origins = placeClusterDag(doc, graph, clusterLayouts);
 
   const positions: Record<string, Pos> = {};
-  let originX = 0;
-  let originY = 0;
-  let rowHeight = 0;
-  let rowWidth = 0;
 
-  for (const cluster of clusters) {
-    const { positions: local, width, height } = layoutCluster(cluster, graph);
+  for (const cluster of clusterLayouts) {
+    const origin = origins.get(cluster.key) ?? { x: 0, y: 0 };
 
-    if (rowWidth > 0 && rowWidth + CLUSTER_PADDING + width > MAX_ROW_WIDTH) {
-      // Wrap to a new row of clusters.
-      originX = 0;
-      originY += rowHeight + CLUSTER_PADDING;
-      rowWidth = 0;
-      rowHeight = 0;
+    for (const [nodeId, pos] of cluster.positions) {
+      positions[nodeId] = { x: pos.x + origin.x, y: pos.y + origin.y };
     }
-
-    for (const [nodeId, pos] of local) {
-      positions[nodeId] = { x: pos.x + originX, y: pos.y + originY };
-    }
-
-    rowWidth += width + CLUSTER_PADDING;
-    rowHeight = Math.max(rowHeight, height);
-    originX += width + CLUSTER_PADDING;
   }
 
   return positions;
@@ -106,6 +94,13 @@ export function layout(doc: RunDocument, opts: LayoutOpts): Record<string, Pos> 
 interface Cluster {
   key: string;
   nodeIds: string[];
+  order: number;
+}
+
+interface ClusterLayout extends Cluster {
+  positions: Map<string, Pos>;
+  width: number;
+  height: number;
 }
 
 // Partition `graph.nodeIds` into one cluster per lane plus one cluster for
@@ -145,7 +140,11 @@ function buildClusters(doc: RunDocument, graph: VisibleGraph): Cluster[] {
     return aRank - bRank;
   });
 
-  return keys.map((key) => ({ key, nodeIds: memberIds.get(key) ?? [] }));
+  return keys.map((key) => ({
+    key,
+    nodeIds: memberIds.get(key) ?? [],
+    order: laneOrder.get(key) ?? laneCount + (firstIndexOf.get(key) ?? 0),
+  }));
 }
 
 // A visible node id's cluster key: its lane id (via provenance, same source
@@ -154,6 +153,150 @@ function buildClusters(doc: RunDocument, graph: VisibleGraph): Cluster[] {
 function clusterKeyFor(doc: RunDocument, nodeId: string): string {
   if (nodeId.startsWith("lane:")) return nodeId.slice("lane:".length);
   return laneIdForRecord(doc, nodeId) ?? UNLANED_CLUSTER_KEY;
+}
+
+// ---------------------------------------------------------------------------
+// Inter-cluster layout: place lane blocks by the DAG formed between clusters.
+// ---------------------------------------------------------------------------
+
+function placeClusterDag(
+  doc: RunDocument,
+  graph: VisibleGraph,
+  clusters: ClusterLayout[],
+): Map<string, Pos> {
+  const byKey = new Map(clusters.map((cluster) => [cluster.key, cluster]));
+  const childrenOf = new Map<string, string[]>();
+  const parentCountOf = new Map(clusters.map((cluster) => [cluster.key, 0]));
+  const parentsOf = new Map<string, string[]>();
+  const seenEdges = new Set<string>();
+  const globalDepth = layerDepths(graph.nodeIds, graph.childrenOf);
+
+  for (const [source, targets] of graph.childrenOf) {
+    const sourceKey = clusterKeyFor(doc, source);
+    if (!byKey.has(sourceKey)) continue;
+    for (const target of targets) {
+      const targetKey = clusterKeyFor(doc, target);
+      if (sourceKey === targetKey || !byKey.has(targetKey)) continue;
+
+      const edgeKey = `${sourceKey}->${targetKey}`;
+      if (seenEdges.has(edgeKey)) continue;
+      seenEdges.add(edgeKey);
+
+      appendUnique(childrenOf, sourceKey, targetKey);
+      appendUnique(parentsOf, targetKey, sourceKey);
+      parentCountOf.set(targetKey, (parentCountOf.get(targetKey) ?? 0) + 1);
+    }
+  }
+
+  const depthOf = clusterDepths(clusters, childrenOf, parentCountOf, globalDepth);
+  const maxDepth = Math.max(0, ...depthOf.values());
+  const layers: ClusterLayout[][] = Array.from({ length: maxDepth + 1 }, () => []);
+  for (const cluster of clusters) {
+    layers[depthOf.get(cluster.key) ?? 0].push(cluster);
+  }
+
+  const columnWidths = layers.map((layer) =>
+    Math.max(0, ...layer.map((cluster) => cluster.width)),
+  );
+  const columnX: number[] = [];
+  let nextX = 0;
+  for (const width of columnWidths) {
+    columnX.push(nextX);
+    nextX += width + CLUSTER_COLUMN_GAP;
+  }
+
+  const origins = new Map<string, Pos>();
+  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+    const layer = layers[layerIndex];
+    layer.sort((a, b) => compareClusterPlacement(a, b, parentsOf, origins));
+
+    let nextY = 0;
+    for (const cluster of layer) {
+      origins.set(cluster.key, { x: columnX[layerIndex] ?? 0, y: nextY });
+      nextY += cluster.height + CLUSTER_ROW_GAP;
+    }
+  }
+
+  return origins;
+}
+
+function clusterDepths(
+  clusters: ClusterLayout[],
+  childrenOf: Map<string, string[]>,
+  parentCountOf: Map<string, number>,
+  globalDepth: Map<string, number>,
+): Map<string, number> {
+  const indegree = new Map(parentCountOf);
+  const depth = new Map(
+    clusters.map((cluster) => [cluster.key, clusterBaseDepth(cluster, globalDepth)]),
+  );
+  const orderOf = new Map(clusters.map((cluster) => [cluster.key, cluster.order]));
+  const queue = clusters
+    .filter((cluster) => (indegree.get(cluster.key) ?? 0) === 0)
+    .map((cluster) => cluster.key)
+    .sort((a, b) => (orderOf.get(a) ?? 0) - (orderOf.get(b) ?? 0));
+  const visited = new Set<string>();
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const key = queue[index];
+    visited.add(key);
+    const nextDepth = (depth.get(key) ?? 0) + 1;
+
+    for (const childKey of childrenOf.get(key) ?? []) {
+      depth.set(childKey, Math.max(depth.get(childKey) ?? 0, nextDepth));
+      indegree.set(childKey, (indegree.get(childKey) ?? 0) - 1);
+      if ((indegree.get(childKey) ?? 0) === 0) {
+        queue.push(childKey);
+      }
+    }
+  }
+
+  // Defensive fallback: ARCTX should be a DAG, but if imported/custom data
+  // contains a cluster cycle, leave those clusters in their earliest known
+  // layer instead of dropping them from layout entirely.
+  for (const cluster of clusters) {
+    if (!visited.has(cluster.key)) {
+      depth.set(cluster.key, depth.get(cluster.key) ?? 0);
+    }
+  }
+
+  return depth;
+}
+
+function clusterBaseDepth(cluster: ClusterLayout, globalDepth: Map<string, number>): number {
+  const depths = cluster.nodeIds
+    .map((nodeId) => globalDepth.get(nodeId))
+    .filter((depth): depth is number => depth !== undefined);
+  if (depths.length === 0) return 0;
+  return Math.floor(Math.min(...depths) / CLUSTER_DEPTH_BUCKET);
+}
+
+function compareClusterPlacement(
+  a: ClusterLayout,
+  b: ClusterLayout,
+  parentsOf: Map<string, string[]>,
+  origins: Map<string, Pos>,
+): number {
+  const aParentY = averageParentY(a.key, parentsOf, origins);
+  const bParentY = averageParentY(b.key, parentsOf, origins);
+
+  if (aParentY !== bParentY) return aParentY - bParentY;
+  return a.order - b.order;
+}
+
+function averageParentY(
+  key: string,
+  parentsOf: Map<string, string[]>,
+  origins: Map<string, Pos>,
+): number {
+  const parentOrigins = (parentsOf.get(key) ?? [])
+    .map((parentKey) => origins.get(parentKey))
+    .filter((origin): origin is Pos => Boolean(origin));
+
+  if (parentOrigins.length === 0) return Number.POSITIVE_INFINITY;
+
+  const total = parentOrigins.reduce((sum, origin) => sum + origin.y, 0);
+  return total / parentOrigins.length;
 }
 
 // ---------------------------------------------------------------------------
