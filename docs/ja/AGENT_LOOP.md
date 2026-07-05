@@ -4,7 +4,10 @@
 
 1. `arctx guide --context` で Run ID / Current Lane / Active Frontiers を安価に
    確認する（毎ターン呼んでよい）。詳しい使い方は `arctx log` や `arctx guide`
-   （静的ガイド + Current Context）で読む。
+   （静的ガイド + Current Context）で読む。`arctx log`（プレーン実行）は
+   work event を古い順に並べた時系列ビュー（`git log --oneline` 相当）で、
+   これまでの経緯を素早く読み返すのに向く。lane 単位の目次が欲しいときは
+   `arctx log --lanes` を使う。
 2. `arctx add --from NODE_ID --type suggestion --field proposal="..."` で
    意図を append する。`--from` は省略可能で、その場合は現在の lane の
    active frontier（active かつ後続 step のない node）が唯一のときはそれを使う。

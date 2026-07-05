@@ -39,7 +39,7 @@ STATIC_GUIDE_TEXT = """\
 * **Lane**: A workspace/branch that isolates problem-solving steps.
 
 ## Recommended Workflow
-1. **Understand Context**: Use `arctx dump` to view the graph, or `arctx guide --context` for a cheap dynamic-only snapshot. Check your **Current Lane** and **Active Frontiers** at the bottom of this guide to know where to resume work.
+1. **Understand Context**: Use `arctx log` for a chronological read of the run (oldest first, like `git log --oneline`; add `--lanes` for a phase-level table of contents), `arctx dump` to view the graph structure, or `arctx guide --context` for a cheap dynamic-only snapshot. Check your **Current Lane** and **Active Frontiers** at the bottom of this guide to know where to resume work.
 2. **Isolate Approaches**: Use lanes to explore different solutions independently.
 3. **Record Everything**: Record progress with `arctx add --from NODE ...` or `arctx git commit`. `arctx add` creates a Step and its output Node; nodes are not created standalone. `--from` is optional: if omitted, it defaults to the current lane's single active frontier node. On a fresh run with zero frontiers, it falls back to the run root as long as the root hasn't been used yet (so the very first `add` needs no `--from`). Otherwise, zero or several frontiers errors with a corrective message.
 4. **Close & Summarize**: When a lane's work is done, close it with `arctx lane close NAME --summary "..."`. This is the *close* action — use it even for a single linear chain, not only when several paths must be merged. The summary is required and becomes the closing node's payload, so **put your full synthesis there** (one leaf → it stamps that leaf; several leaves → it merges them into one node). Use `--summary-format markdown|html|text` when Markdown is not the best fit. Do **not** write a separate synthesis step and then close on top of it — the close *is* your synthesis-and-close. A closed lane refuses further writes; reopen it with `arctx lane open NAME` to resume.
@@ -52,6 +52,8 @@ Record each branch's hypothesis, result, and evaluation signal. Do not discard a
 
 ## Essential Core Commands
 
+* `arctx log` : Chronological, oldest-first listing of the run (`git log --oneline` style), built from work events.
+* `arctx log --lanes` : Phase-level table of contents — one line per lane, ordered by when it started.
 * `arctx dump --format outline` : View the entire history graph.
 * `arctx dump --format outline --lane` : View the history of the current lane.
 * `arctx guide --context` : Print only the dynamic context (Run ID / Current Lane / Active Frontiers / enabled extensions) — cheap to call every turn.

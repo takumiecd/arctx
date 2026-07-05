@@ -242,6 +242,38 @@ registry エントリの field:
 `local_path` は環境固有です。`arctx export` はデフォルトでこれを除去します。
 `arctx git repo list` と `arctx git repo show` はローカル検査コマンドなので保持します。
 
+## arctx log
+
+`arctx log`（プレーン実行）は run の**時系列**ビューです。`git log --oneline`
+のように、work event（`WorkEvent`、`seq`/`created_at` を持つ append-only
+チョノロジー記録）を古い順に 1 行ずつ並べます:
+
+```text
+[seq] <YYYY-MM-DD HH:MM> <lane名> <user> <step/payload のタイトルか summary>
+```
+
+- node/step/payload 自体には timestamp がありません（metadata は空）。
+  時系列は `work_events.jsonl` の `seq`/`created_at` が担います。タイトルは
+  `arctx dump` と同じソース（step/node の payload content の `title`/`text`、
+  無ければ `type`）から取ります。
+- `--lanes`: record 単位ではなく lane 単位のフェーズ年表を表示する。
+  `started_at` 順に 1 lane 1 行（name, started_at, closed_at または `open`、
+  close summary の先頭行）。run の「目次」として使う。
+- `--outline`: 以前の spanning-tree outline 表示（`arctx dump --format outline`
+  相当）にフォールバックする。`--node`/`--depth`/`--full-payloads` はこちらの
+  モードでのみ効く。`--from NODE` / `--to NODE [--from-summary]` を渡した
+  場合も自動的にこちらへ切り替わる（`--to` は引き続き `trace` の JSON 結果を返す）。
+- work event が 1 件もない run（古いデータ、または `user_id`/`lane_id` を渡さず
+  書き込まれた run）では、時系列の代わりに storage の挿入順にフォールバックし、
+  その旨をヘッダ行に明記する。
+- `--limit N`（デフォルト 200）と `--reverse`（新しい順）。
+
+```bash
+arctx log --run demo              # 時系列（古い順）
+arctx log --lanes --run demo      # lane 年表（目次）
+arctx log --outline --run demo    # 旧来の spanning-tree outline
+```
+
 ## Dump
 
 `arctx dump` は検査と LLM コンテキスト用に run 全体を軽量表示します。

@@ -11,7 +11,7 @@
 // Cut/inactive records are dimmed. Selecting exactly one node or one edge
 // drives the detail panel.
 
-import { useCallback, useEffect, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties, type RefObject } from "react";
 import {
   Background,
   ConnectionMode,
@@ -23,6 +23,7 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useStore,
   type Connection,
   type Edge,
   type FinalConnectionState,
@@ -169,6 +170,25 @@ const NODE_HEIGHT = 58;
 const LANE_GROUP_PADDING_X = 42;
 const LANE_GROUP_PADDING_TOP = 44;
 const LANE_GROUP_PADDING_BOTTOM = 34;
+
+// Below this zoom level, edge labels and per-node lane chips are hidden (see
+// ZoomDeclutter below) -- at this scale they're mostly noise, not information.
+const ZOOMED_OUT_THRESHOLD = 0.45;
+
+// Toggles a "zoomed-out" class on the ReactFlow wrapper based on the current
+// viewport zoom. Subscribing to the raw transform would re-render on every
+// pan/zoom tick; instead this selects a boolean derived from the zoom level,
+// so React only re-renders when the value actually flips across the
+// threshold (avoids a per-node re-render storm while zooming).
+function ZoomDeclutter({ containerRef }: { containerRef: RefObject<HTMLDivElement | null> }) {
+  const isZoomedOut = useStore((s) => s.transform[2] < ZOOMED_OUT_THRESHOLD);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.classList.toggle("zoomed-out", isZoomedOut);
+  }, [containerRef, isZoomedOut]);
+  return null;
+}
 
 interface Props {
   doc: RunDocument;
@@ -322,6 +342,7 @@ function GraphCanvas({
   const reactFlow = useReactFlow<Node, Edge>();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   // The node the current connection drag started from, and the live multi-node
   // selection (used as step inputs when several nodes are selected).
@@ -646,59 +667,64 @@ function GraphCanvas({
   );
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeDragStop={
-        writable
-          ? (_event, _node, ns) =>
-              onNodePositionsChanged(
-                Object.fromEntries(
-                  ns
-                    .filter((node) => node.type !== "laneGroup")
-                    .map((node) => [node.id, node.position]),
-                ),
-              )
-          : undefined
-      }
-      onNodeDoubleClick={(_event, node) => {
-        if (node.id.startsWith("lane:")) onToggleLane(node.id.slice("lane:".length));
-      }}
-      onEdgeClick={(event, edge) => {
-        event.stopPropagation();
-        ignoreNextEmptySelection.current = true;
-        selectedNodeIds.current = [];
-        const stepId = (edge.data as { stepId?: string })?.stepId;
-        if (stepId) onSelect({ kind: "step", id: stepId });
-      }}
-      onPaneClick={() => {
-        ignoreNextEmptySelection.current = false;
-        selectedNodeIds.current = [];
-        onSelect(null);
-      }}
-      onSelectionChange={onSelectionChange}
-      onConnect={writable ? onConnect : undefined}
-      onConnectStart={writable ? onConnectStart : undefined}
-      onConnectEnd={writable ? onConnectEnd : undefined}
-      nodesConnectable={writable}
-      connectionMode={ConnectionMode.Loose}
-      panOnScroll={true}
-      panOnScrollSpeed={1.2}
-      zoomOnScroll={false}
-      zoomActivationKeyCode="Control"
-      panOnDrag={true}
-      selectionOnDrag={false}
-      multiSelectionKeyCode="Shift"
-      selectionMode={SelectionMode.Partial}
-      fitView
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background color={document.documentElement.getAttribute("data-theme") === "dark" ? "#334155" : undefined} />
-      <Controls />
-    </ReactFlow>
+    <div ref={wrapperRef} className="graph-flow-wrapper">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeDragStop={
+          writable
+            ? (_event, _node, ns) =>
+                onNodePositionsChanged(
+                  Object.fromEntries(
+                    ns
+                      .filter((node) => node.type !== "laneGroup")
+                      .map((node) => [node.id, node.position]),
+                  ),
+                )
+            : undefined
+        }
+        onNodeDoubleClick={(_event, node) => {
+          if (node.id.startsWith("lane:")) onToggleLane(node.id.slice("lane:".length));
+        }}
+        onEdgeClick={(event, edge) => {
+          event.stopPropagation();
+          ignoreNextEmptySelection.current = true;
+          selectedNodeIds.current = [];
+          const stepId = (edge.data as { stepId?: string })?.stepId;
+          if (stepId) onSelect({ kind: "step", id: stepId });
+        }}
+        onPaneClick={() => {
+          ignoreNextEmptySelection.current = false;
+          selectedNodeIds.current = [];
+          onSelect(null);
+        }}
+        onSelectionChange={onSelectionChange}
+        onConnect={writable ? onConnect : undefined}
+        onConnectStart={writable ? onConnectStart : undefined}
+        onConnectEnd={writable ? onConnectEnd : undefined}
+        nodesConnectable={writable}
+        connectionMode={ConnectionMode.Loose}
+        panOnScroll={true}
+        panOnScrollSpeed={1.2}
+        zoomOnScroll={false}
+        zoomActivationKeyCode="Control"
+        panOnDrag={true}
+        selectionOnDrag={false}
+        multiSelectionKeyCode="Shift"
+        selectionMode={SelectionMode.Partial}
+        fitView
+        minZoom={0.05}
+        fitViewOptions={{ minZoom: 0.05, maxZoom: 1.2, padding: 0.1 }}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background color={document.documentElement.getAttribute("data-theme") === "dark" ? "#334155" : undefined} />
+        <Controls />
+        <ZoomDeclutter containerRef={wrapperRef} />
+      </ReactFlow>
+    </div>
   );
 }
 
