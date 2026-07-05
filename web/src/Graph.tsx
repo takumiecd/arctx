@@ -36,7 +36,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { layout, type Pos } from "./layout";
+import { layout, type LayoutDirection, type Pos } from "./layout";
 import {
   laneColors,
   laneGroups,
@@ -220,6 +220,7 @@ interface Props {
   writable: boolean;
   showCuts: boolean;
   dark: boolean;
+  layoutDirection: LayoutDirection;
   focusLane?: LaneFocusRequest | null;
 }
 
@@ -232,8 +233,17 @@ function laneStyle(data: { laneColor?: string; laneBg?: string }): CSSProperties
   } as CSSProperties;
 }
 
-function edgeSides(source: Pos | undefined, target: Pos | undefined): [Side, Side] {
-  if (!source || !target) return ["right", "left"];
+function edgeSides(
+  source: Pos | undefined,
+  target: Pos | undefined,
+  direction: LayoutDirection,
+): [Side, Side] {
+  if (!source || !target) return direction === "down" ? ["bottom", "top"] : ["right", "left"];
+
+  if (direction === "down") {
+    const dy = target.y - source.y;
+    return dy >= 0 ? ["bottom", "top"] : ["top", "bottom"];
+  }
 
   const dx = target.x - source.x;
 
@@ -249,6 +259,7 @@ function buildEdges(
   laneColorOverrides: LaneColorOverrides,
   showCuts: boolean,
   dark: boolean,
+  layoutDirection: LayoutDirection,
 ): Edge[] {
   const out: Edge[] = [];
   const inactiveNodeIds = new Set(
@@ -272,27 +283,28 @@ function buildEdges(
       const source = endpointFor(doc, input, collapsedLaneIds);
       const target = endpointFor(doc, s.output_node_id, collapsedLaneIds);
       if (source === target) continue;
-      const inputLaneId = laneIdForRecord(doc, input);
-      const outputLaneId = laneIdForRecord(doc, s.output_node_id);
-      const crossLane = inputLaneId !== outputLaneId;
-      const [sourceHandle, targetHandle] = edgeSides(positions[source], positions[target]);
+      const [sourceHandle, targetHandle] = edgeSides(
+        positions[source],
+        positions[target],
+        layoutDirection,
+      );
       out.push({
         id: edgeId(s.step_id, input, source, target),
         source,
         target,
         sourceHandle: `source-${sourceHandle}`,
         targetHandle: `target-${targetHandle}`,
-        type: crossLane ? "simplebezier" : "smoothstep",
-        label: crossLane || label === "step" ? undefined : label,
+        type: "smoothstep",
+        label: label === "step" ? undefined : label,
         data: { stepId: s.step_id },
         selectable: false,
         labelStyle: { fontSize: 11 },
         labelBgPadding: [6, 3],
         labelBgBorderRadius: 4,
         style: {
-          opacity: s.inactive ? 0.35 : crossLane ? 0.55 : 1,
+          opacity: s.inactive ? 0.35 : 0.9,
           stroke: edgeColor,
-          strokeWidth: crossLane ? 1.5 : stepLaneId ? 2.4 : 1.8,
+          strokeWidth: 2,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -362,6 +374,7 @@ function GraphCanvas({
   writable,
   showCuts,
   dark,
+  layoutDirection,
   focusLane,
 }: Props) {
   const reactFlow = useReactFlow<Node, Edge>();
@@ -383,12 +396,13 @@ function GraphCanvas({
   // auto-layout should win instead, otherwise collapsing a lane or hiding
   // cuts leaves everything else at its old, now-sparse position.
   const lastVisibilityKeyRef = useRef<string | null>(null);
+  const lastLayoutDirectionRef = useRef<LayoutDirection | null>(null);
 
   // Rebuild from the run document, preserving manual positions and selection
   // across polled refetches so the canvas doesn't jump.
   useEffect(() => {
-    const pos = layout(doc, { collapsedLaneIds, showCuts });
-    const visibilityKey = `${[...collapsedLaneIds].sort().join(",")}|${showCuts}`;
+    const pos = layout(doc, { collapsedLaneIds, showCuts, direction: layoutDirection });
+    const visibilityKey = `${[...collapsedLaneIds].sort().join(",")}|${showCuts}|${layoutDirection}`;
     const visibilityChanged = lastVisibilityKeyRef.current !== null && lastVisibilityKeyRef.current !== visibilityKey;
     lastVisibilityKeyRef.current = visibilityKey;
 
@@ -407,8 +421,8 @@ function GraphCanvas({
           pendingNodePositions.current.delete(id);
           return pendingPos;
         }
-        if (savedNodePositions[id]) return savedNodePositions[id];
         if (visibilityChanged && pos[id]) return pos[id];
+        if (savedNodePositions[id]) return savedNodePositions[id];
         return prevPos.get(id) ?? pos[id] ?? { x: 0, y: 0 };
       };
 
@@ -495,20 +509,46 @@ function GraphCanvas({
 
       return nextNodes;
     });
-  }, [collapsedLaneIds, dark, doc, laneColorOverrides, savedNodePositions, setNodes, showCuts]);
+  }, [
+    collapsedLaneIds,
+    dark,
+    doc,
+    laneColorOverrides,
+    layoutDirection,
+    savedNodePositions,
+    setNodes,
+    showCuts,
+  ]);
 
   // Edge paths should follow where nodes actually are, including after a user
   // drags nodes around. Use the nearest side instead of letting React Flow
   // default every target toward the top.
   useEffect(() => {
-    const fallbackPos = layout(doc, { collapsedLaneIds, showCuts });
+    const fallbackPos = layout(doc, { collapsedLaneIds, showCuts, direction: layoutDirection });
     const positions: Record<string, Pos> = { ...fallbackPos };
     for (const n of nodes) {
       positions[n.id] = n.position;
     }
-    const nextEdges = buildEdges(doc, positions, collapsedLaneIds, laneColorOverrides, showCuts, dark);
+    const nextEdges = buildEdges(
+      doc,
+      positions,
+      collapsedLaneIds,
+      laneColorOverrides,
+      showCuts,
+      dark,
+      layoutDirection,
+    );
     setEdges(nextEdges);
-  }, [collapsedLaneIds, dark, doc, laneColorOverrides, nodes, setEdges, showCuts]);
+  }, [
+    collapsedLaneIds,
+    dark,
+    doc,
+    laneColorOverrides,
+    layoutDirection,
+    nodes,
+    setEdges,
+    showCuts,
+  ]);
 
   useEffect(() => {
     if (nodes.length === 0) return;
@@ -519,6 +559,23 @@ function GraphCanvas({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [nodes, updateNodeInternals]);
+
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    if (lastLayoutDirectionRef.current === null) {
+      lastLayoutDirectionRef.current = layoutDirection;
+      return;
+    }
+    if (lastLayoutDirectionRef.current === layoutDirection) return;
+    lastLayoutDirectionRef.current = layoutDirection;
+
+    void reactFlow.fitView({
+      duration: 300,
+      padding: 0.1,
+      minZoom: 0.05,
+      maxZoom: 1.2,
+    });
+  }, [layoutDirection, nodes, reactFlow]);
 
   useEffect(() => {
     const targetSelectedNodes = new Set<string>();

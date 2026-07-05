@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { pickClient } from "./api";
 import { Graph, type LaneFocusRequest, type Selection } from "./Graph";
+import type { LayoutDirection } from "./layout";
 import { Panel } from "./Panel";
 import { laneById, laneColors, laneOptions, laneStatus, type LaneColorOverrides } from "./model";
 import type { RunDocument } from "./types";
@@ -29,6 +30,11 @@ function getInitialPreference(): ThemePreference {
   return "system";
 }
 
+function getInitialLayoutDirection(): LayoutDirection {
+  const stored = window.localStorage.getItem("arctx.layoutDirection");
+  return stored === "down" ? "down" : "right";
+}
+
 function resolveTheme(pref: ThemePreference): "light" | "dark" {
   if (pref !== "system") return pref;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -49,6 +55,7 @@ export function App() {
   const [showExtsMenu, setShowExtsMenu] = useState<boolean>(false);
   const [showRunsMenu, setShowRunsMenu] = useState<boolean>(false);
   const [themePref, setThemePref] = useState<ThemePreference>(getInitialPreference);
+  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>(getInitialLayoutDirection);
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() => {
     const t = resolveTheme(getInitialPreference());
     document.documentElement.setAttribute("data-theme", t);
@@ -68,6 +75,10 @@ export function App() {
     document.documentElement.setAttribute("data-theme", resolved);
     window.localStorage.setItem("arctx.theme", themePref);
   }, [themePref]);
+
+  useEffect(() => {
+    window.localStorage.setItem("arctx.layoutDirection", layoutDirection);
+  }, [layoutDirection]);
 
   // Track OS preference changes when in "system" mode
   useEffect(() => {
@@ -516,6 +527,22 @@ export function App() {
           />
           <span>show cuts</span>
         </label>
+        <span className="theme-switcher" role="radiogroup" aria-label="Layout direction">
+          {(["right", "down"] as const).map((direction) => (
+            <button
+              key={direction}
+              type="button"
+              className={`theme-switcher-btn${layoutDirection === direction ? " active" : ""}`}
+              onClick={() => setLayoutDirection(direction)}
+              title={direction === "right" ? "Root left to right" : "Root top to bottom"}
+              aria-label={direction === "right" ? "Root left to right" : "Root top to bottom"}
+              role="radio"
+              aria-checked={layoutDirection === direction}
+            >
+              {direction === "right" ? "→" : "↓"}
+            </button>
+          ))}
+        </span>
         <span className="theme-switcher" role="radiogroup" aria-label="Theme">
           {(["light", "system", "dark"] as const).map((opt) => (
             <button
@@ -564,6 +591,7 @@ export function App() {
             writable={client.writable}
             showCuts={showCuts}
             dark={dark}
+            layoutDirection={layoutDirection}
             focusLane={focusLane}
           />
         </div>

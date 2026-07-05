@@ -34,9 +34,12 @@ export interface Pos {
   y: number;
 }
 
+export type LayoutDirection = "right" | "down";
+
 export interface LayoutOpts {
   collapsedLaneIds: Set<string>;
   showCuts: boolean;
+  direction: LayoutDirection;
 }
 
 const LAYER_GAP = 200;
@@ -84,7 +87,13 @@ export function layout(doc: RunDocument, opts: LayoutOpts): Record<string, Pos> 
     }
   }
 
-  return positions;
+  return opts.direction === "down" ? transposePositions(positions) : positions;
+}
+
+function transposePositions(positions: Record<string, Pos>): Record<string, Pos> {
+  return Object.fromEntries(
+    Object.entries(positions).map(([nodeId, pos]) => [nodeId, { x: pos.y, y: pos.x }]),
+  );
 }
 
 // ---------------------------------------------------------------------------
