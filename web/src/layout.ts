@@ -21,10 +21,11 @@
 // -- one per lane, plus a single cluster for unlaned nodes -- and each
 // cluster's *internal* subgraph (edges to nodes outside the cluster are
 // dropped for placement purposes) is laid out with the layered+serpentine
-// algorithm above. Clusters are then arranged as a DAG themselves: cluster
-// dependencies determine left-to-right columns, and chronological/document
-// order only breaks ties within a column. This keeps lane blocks visually
-// together while preserving the tree-like direction of the run.
+// algorithm above. Clusters are then arranged by their minimum distance from
+// the run root, with inter-cluster dependencies pushing children strictly
+// after parents. Chronological/document order only breaks ties within a
+// layer. This keeps lane blocks visually together while preserving the
+// tree-like direction of the run.
 
 import type { RunDocument } from "./types";
 import { laneIdForRecord } from "./model";
@@ -54,7 +55,6 @@ const CHAIN_WRAP_LENGTH = 7;
 // Cluster (lane block) packing parameters.
 const CLUSTER_COLUMN_GAP = 220;
 const CLUSTER_ROW_GAP = 120;
-const CLUSTER_DEPTH_BUCKET = 8;
 const UNLANED_CLUSTER_KEY = "__unlaned__";
 
 interface VisibleGraph {
@@ -178,7 +178,7 @@ function placeClusterDag(
   const parentCountOf = new Map(clusters.map((cluster) => [cluster.key, 0]));
   const parentsOf = new Map<string, string[]>();
   const seenEdges = new Set<string>();
-  const globalDepth = layerDepths(graph.nodeIds, graph.childrenOf);
+  const rootDepth = rootedLayerDepths(graph.nodeIds, graph.childrenOf, graph.rootEndpointId);
 
   for (const [source, targets] of graph.childrenOf) {
     const sourceKey = clusterKeyFor(doc, source);
@@ -197,11 +197,14 @@ function placeClusterDag(
     }
   }
 
-  const depthOf = clusterDepths(clusters, childrenOf, parentCountOf, globalDepth);
-  const maxDepth = Math.max(0, ...depthOf.values());
-  const layers: ClusterLayout[][] = Array.from({ length: maxDepth + 1 }, () => []);
+  const depthOf = clusterDepths(clusters, childrenOf, parentCountOf, rootDepth, graph.rootEndpointId);
+  const occupiedDepths = [...new Set(clusters.map((cluster) => depthOf.get(cluster.key) ?? 0))]
+    .sort((a, b) => a - b);
+  const layerIndexOf = new Map(occupiedDepths.map((depth, index) => [depth, index]));
+  const layers: ClusterLayout[][] = Array.from({ length: occupiedDepths.length }, () => []);
   for (const cluster of clusters) {
-    layers[depthOf.get(cluster.key) ?? 0].push(cluster);
+    const logicalDepth = depthOf.get(cluster.key) ?? 0;
+    layers[layerIndexOf.get(logicalDepth) ?? 0].push(cluster);
   }
 
   const columnWidths = layers.map((layer) =>
@@ -233,11 +236,12 @@ function clusterDepths(
   clusters: ClusterLayout[],
   childrenOf: Map<string, string[]>,
   parentCountOf: Map<string, number>,
-  globalDepth: Map<string, number>,
+  rootDepth: Map<string, number>,
+  rootEndpointId: string | null,
 ): Map<string, number> {
   const indegree = new Map(parentCountOf);
   const depth = new Map(
-    clusters.map((cluster) => [cluster.key, clusterBaseDepth(cluster, globalDepth)]),
+    clusters.map((cluster) => [cluster.key, clusterBaseDepth(cluster, rootDepth, rootEndpointId)]),
   );
   const orderOf = new Map(clusters.map((cluster) => [cluster.key, cluster.order]));
   const queue = clusters
@@ -272,12 +276,18 @@ function clusterDepths(
   return depth;
 }
 
-function clusterBaseDepth(cluster: ClusterLayout, globalDepth: Map<string, number>): number {
+function clusterBaseDepth(
+  cluster: ClusterLayout,
+  rootDepth: Map<string, number>,
+  rootEndpointId: string | null,
+): number {
+  if (rootEndpointId && cluster.nodeIds.includes(rootEndpointId)) return 0;
+
   const depths = cluster.nodeIds
-    .map((nodeId) => globalDepth.get(nodeId))
+    .map((nodeId) => rootDepth.get(nodeId))
     .filter((depth): depth is number => depth !== undefined);
-  if (depths.length === 0) return 0;
-  return Math.floor(Math.min(...depths) / CLUSTER_DEPTH_BUCKET);
+  if (depths.length === 0) return 1;
+  return Math.max(1, Math.min(...depths));
 }
 
 function compareClusterPlacement(
@@ -555,6 +565,35 @@ function layerDepths(nodeIds: string[], children: Map<string, string[]>): Map<st
   }
 
   return depth;
+}
+
+function rootedLayerDepths(
+  nodeIds: string[],
+  children: Map<string, string[]>,
+  rootEndpointId: string | null,
+): Map<string, number> {
+  const topoDepth = layerDepths(nodeIds, children);
+  if (!rootEndpointId || !nodeIds.includes(rootEndpointId)) return topoDepth;
+
+  const rootDepth = new Map<string, number>([[rootEndpointId, 0]]);
+  const orderedNodeIds = [...nodeIds].sort(
+    (a, b) => (topoDepth.get(a) ?? 0) - (topoDepth.get(b) ?? 0),
+  );
+
+  for (const nodeId of orderedNodeIds) {
+    const currentDepth = rootDepth.get(nodeId);
+    if (currentDepth === undefined) continue;
+    for (const childId of children.get(nodeId) ?? []) {
+      rootDepth.set(childId, Math.max(rootDepth.get(childId) ?? 0, currentDepth + 1));
+    }
+  }
+
+  for (const nodeId of nodeIds) {
+    if (rootDepth.has(nodeId)) continue;
+    rootDepth.set(nodeId, Math.max(1, (topoDepth.get(nodeId) ?? 0) + 1));
+  }
+
+  return rootDepth;
 }
 
 function subtreeSpan(primaryChildren: Map<string, string[]>): (nodeId: string) => number {
