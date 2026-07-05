@@ -84,6 +84,8 @@ arctx log --run demo
   `--reason` で理由を記録、`--node` で対象 leaf を明示できる。
   `arctx dump` では、closed lane は通常この closing summary を持つ 1 行に折りたたまれる。
   閉じた lane への書き込みは拒否される。（`arctx lane join` は本コマンドの deprecated エイリアス。）
+  `--summary` を省略すると、`arctx lane close <name-or-id> --summary "<your findings>"`
+  という実行すべき正確なコマンドを添えたエラーになる。
 - `arctx lane open <name-or-id>`: 閉じた lane を開き直して作業を再開する。`close` と対称。
 - `arctx lane adopt <name-or-id> --record ID`: 既存 record を lane の現在所属として
   登録する。作成 provenance は書き換えず、append-only な adoption event を残す。
@@ -93,10 +95,28 @@ arctx log --run demo
   `SummaryPayload` を列挙する。分岐した lane では複数返る。
 - `arctx export [--format md|tex|html]`: run を共有可能なドキュメントとして描画する。
 
+## arctx guide
+
+- `arctx guide`: 使い方の静的ガイドに加えて、動的な Current Context
+  （Run ID / Current Lane / Active Frontiers in Lane / 有効な extension 名）を表示する。
+  lane の解決順序は他の変更コマンドと同じ（`--lane` > `ARCTX_LANE_ID` > repo pointer）。
+  context の解決に失敗しても exit code は常に 0 で、
+  `## Current Context` の下に `(context unavailable: <例外型>: <メッセージ>)` という
+  可視のメモを出す（黙って握りつぶさない）。
+- `arctx guide --context`: 静的ガイド本文を省略し、動的な Current Context だけを表示する。
+  agent が毎ターン安価に呼べるように設計されている。
+
 ## DAG Records
 
 - `arctx add --from NODE --type TYPE --field key=value`: step とその出力 node を
   追加する。node は step の出力（または run root）としてのみ生まれる。
+  `--from` は省略可能で、省略すると現在の lane の active frontier
+  （lane 内で active かつ後続 step を持たない node）が唯一のときはそれを入力に使う。
+  frontier が 0 個で、かつ run root がまだどの step からも参照されていない
+  （run 開始直後の状態）ときは run root を入力に使う。それ以外で frontier が
+  0 個または複数ある場合は、候補 node 一覧（複数のとき）または `arctx guide
+  --context` / `arctx dump` で node を探す案内（0 個のとき）を添えてエラーに
+  なる。
 - `arctx attach <node-or-step-id> --type TYPE --field key=value`: payload を attach する。
 - `arctx attach NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: `diagram` extension が有効な run で、循環可能な図・モデル artifact を attach する。
 - `arctx show <node-or-step-or-payload-id>`: 1 件の record を付随 payload とともに見る。

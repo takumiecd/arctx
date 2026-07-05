@@ -404,20 +404,9 @@ def validate_lane_run(*, run_id: str, store_dir: str | None) -> dict:
 
 def _lane_active_leaves(handle, lane) -> list[str]:
     """Active leaf nodes of a lane (nodes in the lane with no step extending them)."""
-    from arctx.core.cuts import is_active_node
-    from arctx.core.lanes import lane_membership
+    from arctx.core.lanes import lane_active_frontiers
 
-    membership = lane_membership(handle.run_graph)
-    group = next((g for g in membership.groups if g.lane_id == lane.lane_id), None)
-    if not group:
-        return []
-    leaves = [
-        nid
-        for nid in group.node_ids
-        if is_active_node(handle.run_graph, nid)
-        and not handle.run_graph.steps_from_node(nid)
-    ]
-    return list(dict.fromkeys(leaves))
+    return list(lane_active_frontiers(handle.run_graph, lane.lane_id))
 
 
 def _normalize_summary_format(summary_format: str | None) -> str:
@@ -498,7 +487,9 @@ def run_lane_close_command(
     """
     if summary is None or not summary.strip():
         raise ValueError(
-            "lane close requires --summary; a closed lane must record its conclusion"
+            f"arctx lane close {name_or_id} requires --summary — the summary becomes "
+            "the closing node's synthesis. Run: "
+            f'arctx lane close {name_or_id} --summary "<your findings>"'
         )
     normalized_format = _normalize_summary_format(summary_format)
 

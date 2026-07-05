@@ -2,9 +2,16 @@
 
 ## 推奨ループ
 
-1. `arctx log` でコンテキストを読む。
+1. `arctx guide --context` で Run ID / Current Lane / Active Frontiers を安価に
+   確認する（毎ターン呼んでよい）。詳しい使い方は `arctx log` や `arctx guide`
+   （静的ガイド + Current Context）で読む。
 2. `arctx add --from NODE_ID --type suggestion --field proposal="..."` で
-   意図を append する。
+   意図を append する。`--from` は省略可能で、その場合は現在の lane の
+   active frontier（active かつ後続 step のない node）が唯一のときはそれを使う。
+   run 開始直後で frontier が 0 個かつ run root がまだ未使用のときは run root
+   を入力に使う（新規 run 最初の `add` が `--from` なしで成功する）。それ以外で
+   frontier が 0 個または複数あるときは、候補一覧または探し方の案内を添えた
+   エラーになる。
 3. 外部作業を行う: 実装、実験、レビュー、デバッグ、リサーチなど。
 4. `arctx add --from NODE_ID --type implementation --field result="..."` で
    結果を append する。
@@ -103,7 +110,10 @@ arctx add --from NODE_ID --type suggestion
 ```
 
 子プロセスには `spawn` を使います。子は固有の `ARCTX_LANE_ID` を受け取り、
-兄弟ターミナルや兄弟子プロセスは固定セッションを共有しません。
+兄弟ターミナルや兄弟子プロセスは固定セッションを共有しません。`arctx add`
+（`--from` 省略時の frontier 解決）と `arctx guide` / `arctx guide --context`
+は、この `ARCTX_LANE_ID` 環境変数を repo pointer より優先して解決するため、
+spawn された子プロセス内でもその子自身の lane が正しく見えます。
 
 ```bash
 arctx lane spawn --run run_x --user codex -- codex

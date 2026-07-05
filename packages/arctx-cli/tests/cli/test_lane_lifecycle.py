@@ -192,3 +192,34 @@ def test_open_when_open_and_close_when_closed_error():
                 name_or_id="work", summary="again", node_ids=None, reason=None,
                 run_id="run_lc", user_id="alice", store_dir=sd,
             )
+
+
+def test_close_without_summary_message_is_corrective():
+    """The missing --summary error must name the exact command to run."""
+    with tempfile.TemporaryDirectory() as td:
+        sd = _store_dir(td)
+        _init(td)
+        _create_lane(sd)
+        with pytest.raises(ValueError) as excinfo:
+            run_lane_close_command(
+                name_or_id="work", summary=None, node_ids=None, reason=None,
+                run_id="run_lc", user_id="alice", store_dir=sd,
+            )
+        message = str(excinfo.value)
+        assert "arctx lane close work requires --summary" in message
+        assert "closing node's synthesis" in message
+        assert 'arctx lane close work --summary "<your findings>"' in message
+
+
+def test_close_without_summary_cli_returns_corrective_message(capsys):
+    from arctx_cli.main import main
+
+    with tempfile.TemporaryDirectory() as td:
+        sd = _store_dir(td)
+        _init(td)
+        _create_lane(sd)
+        rc = main(["lane", "close", "work", "--run", "run_lc", "--store-dir", sd])
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "arctx lane close work requires --summary" in err
+        assert 'arctx lane close work --summary "<your findings>"' in err

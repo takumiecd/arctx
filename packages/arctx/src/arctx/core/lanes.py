@@ -499,6 +499,36 @@ def lane_edge_summaries(
     )
 
 
+def lane_active_frontiers(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
+) -> tuple[str, ...]:
+    """Return this lane's active frontier nodes.
+
+    A frontier is a lane-owned node that is active (:func:`arctx.core.cuts.
+    is_active_node`) and has *no* outgoing step at all — not even to another
+    lane. This is stricter than :func:`lane_edge_node_ids` (which only
+    excludes outgoing steps within the same lane) and is the set of nodes an
+    agent could plausibly continue from without an explicit ``--from``.
+    """
+    from arctx.core.cuts import is_active_node
+
+    membership = membership or lane_membership(graph, root_node_id=root_node_id)
+    lane_nodes = {
+        node_id
+        for node_id, owner in membership.node_to_lane.items()
+        if owner == lane_id
+    }
+    return tuple(
+        node_id
+        for node_id in sorted(lane_nodes)
+        if is_active_node(graph, node_id) and not graph.steps_from_node(node_id)
+    )
+
+
 def validate_lanes(
     graph: RunGraph,
     *,
