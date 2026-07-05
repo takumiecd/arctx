@@ -55,6 +55,13 @@ export type Selection =
   | { kind: "records"; records: { kind: "node" | "step"; id: string }[] }
   | null;
 
+// A nonce-carrying request to focus the viewport on a lane. Bump `ts` even
+// when re-selecting the same lane so the effect fires again.
+export interface LaneFocusRequest {
+  laneId: string;
+  ts: number;
+}
+
 // Custom node with source/target handles on each side. ConnectionMode.Loose
 // keeps dragging ergonomic while fixed handle IDs let rendered edges enter the
 // side that matches graph direction.
@@ -180,6 +187,7 @@ interface Props {
   writable: boolean;
   showCuts: boolean;
   dark: boolean;
+  focusLane?: LaneFocusRequest | null;
 }
 
 type Side = "top" | "right" | "bottom" | "left";
@@ -309,6 +317,7 @@ function GraphCanvas({
   writable,
   showCuts,
   dark,
+  focusLane,
 }: Props) {
   const reactFlow = useReactFlow<Node, Edge>();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -321,28 +330,46 @@ function GraphCanvas({
   const ignoreNextEmptySelection = useRef(false);
   const pendingNodePositions = useRef<Map<string, Pos>>(new Map());
 
+  // The serialized (collapsedLaneIds, showCuts) key from the last render.
+  // `prevPos` (previous on-screen position) exists so polled refetches don't
+  // make the canvas jump around; but when what's *visible* changes, the fresh
+  // auto-layout should win instead, otherwise collapsing a lane or hiding
+  // cuts leaves everything else at its old, now-sparse position.
+  const lastVisibilityKeyRef = useRef<string | null>(null);
+
   // Rebuild from the run document, preserving manual positions and selection
   // across polled refetches so the canvas doesn't jump.
   useEffect(() => {
-    const pos = layout(doc);
+    const pos = layout(doc, { collapsedLaneIds, showCuts });
+    const visibilityKey = `${[...collapsedLaneIds].sort().join(",")}|${showCuts}`;
+    const visibilityChanged = lastVisibilityKeyRef.current !== null && lastVisibilityKeyRef.current !== visibilityKey;
+    lastVisibilityKeyRef.current = visibilityKey;
+
     setNodes((prev) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
       const prevSel = new Map(prev.map((n) => [n.id, n.selected]));
       const resolvedPositions = new Map<string, Pos>();
+
+      // Position precedence: pendingNodePositions (just-created via drag) >
+      // savedNodePositions (manual, persisted) > fresh layout (when
+      // visibility changed) > prevPos (on-screen position, kept across
+      // polled refetches) > fresh layout (fallback) > origin.
+      const resolve = (id: string): Pos => {
+        const pendingPos = pendingNodePositions.current.get(id);
+        if (pendingPos) {
+          pendingNodePositions.current.delete(id);
+          return pendingPos;
+        }
+        if (savedNodePositions[id]) return savedNodePositions[id];
+        if (visibilityChanged && pos[id]) return pos[id];
+        return prevPos.get(id) ?? pos[id] ?? { x: 0, y: 0 };
+      };
+
       for (const n of doc.nodes) {
         if (!showCuts && n.inactive) continue;
-        const pendingPos = pendingNodePositions.current.get(n.node_id);
-        if (pendingPos) {
-          pendingNodePositions.current.delete(n.node_id);
-        }
-        resolvedPositions.set(
-          n.node_id,
-          pendingPos ??
-            savedNodePositions[n.node_id] ??
-            prevPos.get(n.node_id) ??
-            pos[n.node_id] ??
-            { x: 0, y: 0 },
-        );
+        const laneId = laneIdForRecord(doc, n.node_id);
+        if (laneId && collapsedLaneIds.has(laneId)) continue;
+        resolvedPositions.set(n.node_id, resolve(n.node_id));
       }
 
       const groups = laneGroups(doc);
@@ -368,15 +395,17 @@ function GraphCanvas({
       for (const group of groups) {
         if (!group.lane_id || !collapsedLaneIds.has(group.lane_id)) continue;
         const collapsedId = `lane:${group.lane_id}`;
-        const box = laneBounds(group, resolvedPositions);
+        // The pseudo-node position comes straight from the layout, which
+        // treats the collapsed lane as a single slot — this is what keeps
+        // the collapsed card from sitting in the middle of the hole left by
+        // its (now hidden) expanded bounds.
+        const collapsedPos = resolve(collapsedId);
+        resolvedPositions.set(collapsedId, collapsedPos);
         const colors = laneColors(doc, group.lane_id, laneColorOverrides, dark);
         nextNodes.push({
           id: collapsedId,
           type: "laneCollapsed",
-          position:
-            savedNodePositions[collapsedId] ??
-            prevPos.get(collapsedId) ??
-            (box ? { x: box.x + box.width / 2 - 70, y: box.y + box.height / 2 - 30 } : { x: 0, y: 0 }),
+          position: collapsedPos,
           selected: prevSel.get(collapsedId) ?? false,
           data: {
             label: group.label,
@@ -425,7 +454,7 @@ function GraphCanvas({
   // drags nodes around. Use the nearest side instead of letting React Flow
   // default every target toward the top.
   useEffect(() => {
-    const fallbackPos = layout(doc);
+    const fallbackPos = layout(doc, { collapsedLaneIds, showCuts });
     const positions: Record<string, Pos> = { ...fallbackPos };
     for (const n of nodes) {
       positions[n.id] = n.position;
@@ -458,6 +487,52 @@ function GraphCanvas({
       return changed ? nextNds : nds;
     });
   }, [selection, setNodes]);
+
+  // Pan/zoom to the active lane when it changes (or is re-selected — the
+  // caller bumps `ts` for that). Guard the very first render so we don't
+  // fight the initial `fitView` on mount, and dedup by `ts` so unrelated
+  // node updates (drags, polling) don't replay the animation.
+  const sawFirstFocusRef = useRef(false);
+  const lastFocusTsRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focusLane) return;
+    if (!sawFirstFocusRef.current) {
+      sawFirstFocusRef.current = true;
+      lastFocusTsRef.current = focusLane.ts;
+      return;
+    }
+    if (lastFocusTsRef.current === focusLane.ts) return;
+
+    const group = laneGroups(doc).find((g) => g.lane_id === focusLane.laneId);
+    if (!group) {
+      lastFocusTsRef.current = focusLane.ts;
+      return;
+    }
+
+    const memberIds = collapsedLaneIds.has(focusLane.laneId)
+      ? [`lane:${focusLane.laneId}`]
+      : group.node_ids.filter((id) => {
+          const n = doc.nodes.find((candidate) => candidate.node_id === id);
+          return !n || showCuts || !n.inactive;
+        });
+
+    const targetIds = memberIds.length > 0 ? memberIds : [`lane:${focusLane.laneId}`];
+    const existingIds = new Set(nodes.map((n) => n.id));
+    const fitTargets = targetIds.filter((id) => existingIds.has(id));
+    // Nodes may not have rendered yet for a just-switched-to lane; leave
+    // lastFocusTsRef unset so a later `nodes` update (this effect also
+    // depends on `nodes`) retries the same focus request instead of silently
+    // dropping it.
+    if (fitTargets.length === 0) return;
+    lastFocusTsRef.current = focusLane.ts;
+
+    void reactFlow.fitView({
+      nodes: fitTargets.map((id) => ({ id })),
+      duration: 450,
+      padding: 0.25,
+      maxZoom: 1.1,
+    });
+  }, [focusLane, collapsedLaneIds, doc, nodes, reactFlow, showCuts]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

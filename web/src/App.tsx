@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { pickClient } from "./api";
-import { Graph, type Selection } from "./Graph";
+import { Graph, type LaneFocusRequest, type Selection } from "./Graph";
 import { Panel } from "./Panel";
 import { laneById, laneColors, laneOptions, laneStatus, type LaneColorOverrides } from "./model";
 import type { RunDocument } from "./types";
@@ -44,6 +44,7 @@ export function App() {
   const [newRunName, setNewRunName] = useState("");
   const [showCuts, setShowCuts] = useState<boolean>(false);
   const [activeLaneId, setActiveLaneId] = useState<string | null>(null);
+  const [focusLane, setFocusLane] = useState<LaneFocusRequest | null>(null);
   const [showLanesMenu, setShowLanesMenu] = useState<boolean>(false);
   const [showExtsMenu, setShowExtsMenu] = useState<boolean>(false);
   const [showRunsMenu, setShowRunsMenu] = useState<boolean>(false);
@@ -112,6 +113,7 @@ export function App() {
     if (runId === data?.run_id) return;
     client.activeRunId = runId;
     setActiveLaneId(null);
+    setFocusLane(null);
     setSelection(null);
     setCollapsedLaneIds(new Set());
     setExpandedClosedLaneIds(new Set());
@@ -170,6 +172,14 @@ export function App() {
 
   useEffect(() => {
     client.activeLaneId = activeLaneId;
+  }, [activeLaneId]);
+
+  // Whenever the current lane switches, ask the canvas to pan/zoom to it.
+  // Graph ignores the very first firing so it doesn't fight the initial
+  // fitView on mount.
+  useEffect(() => {
+    if (!activeLaneId) return;
+    setFocusLane({ laneId: activeLaneId, ts: Date.now() });
   }, [activeLaneId]);
 
   useEffect(() => {
@@ -387,6 +397,10 @@ export function App() {
                             className="lane-activate-btn"
                             onClick={() => {
                               setActiveLaneId(laneId);
+                              // Force a refocus even when re-selecting the
+                              // already-active lane (setActiveLaneId alone
+                              // wouldn't change state / re-run the effect).
+                              setFocusLane({ laneId, ts: Date.now() });
                               setShowLanesMenu(false);
                             }}
                           >
@@ -550,6 +564,7 @@ export function App() {
             writable={client.writable}
             showCuts={showCuts}
             dark={dark}
+            focusLane={focusLane}
           />
         </div>
         <Panel
