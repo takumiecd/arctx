@@ -30,7 +30,7 @@ arctx lane geometry        # switch の省略形。存在しない名前は作�
 arctx lane                 # 今どのレーンか表示
 arctx lane list            # レーン一覧
 arctx lane summaries geometry # レーン末端 node の summary（複数あり得る）を表示
-arctx lane close geometry --summary "結論..." # レーンを閉じる。要約を末端に刻む（閉じたら書込拒否）
+arctx lane close geometry --summary "結論..." # レーンを閉じる。必須要約を末端に刻む（閉じたら書込拒否、--summary-format html/text も可）
 arctx lane open geometry    # 閉じたレーンを開き直して再開
 arctx lane adopt geometry --history <tip> # 既存履歴をレーン所属として採用（作成履歴は書き換えない）
 ```
@@ -47,8 +47,8 @@ eval "$(arctx lane switch geometry --shell)"  # この端末だけ env で固定
 ## 3. グラフを育てる
 
 ```bash
-arctx add step --from <node> --title "explore ProductGeometry"   # 構造を伸ばす
-arctx add step --from <A> --from <B> --title "merge A and B"      # 多入力 = 統合(join/merge)
+arctx add --from <node> --title "explore ProductGeometry"   # 構造を伸ばす
+arctx add --from <A> --from <B> --title "merge A and B"      # 多入力 = 統合(join/merge)
 arctx attach <node> --type result --json '{"recall@k":"rough at scale"}'  # 注釈を貼る
 ```
 
@@ -90,6 +90,6 @@ PR は **DAG の中の append-only な審査状態**。提案は転送(push)で�
 | 却下（残す） | `arctx reject <source> --reason ...`（＝cut） |
 | 同期 | `arctx push` / `arctx pull`（remote は `arctx remote add`、union 収束） |
 
-`accept` は内部で多入力 `add step`（join）を走らせ、土台が cut／サイクル／target が
+`accept` は内部で多入力 `add`（join）を走らせ、土台が cut／サイクル／target が
 前進していたら **拒否**（黙ってグラフを壊さない）。`reject` は `cut`。整合性の検査は
 **accept 時に target に対して**行う — それが分散(remote/local)でも唯一正しい場所。

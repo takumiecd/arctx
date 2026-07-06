@@ -522,6 +522,89 @@ def test_validate_lanes_accepts_entry_step_output_as_lane_root():
     assert not any(issue.severity == "error" for issue in issues)
 
 
+def test_lane_root_candidates_do_not_treat_join_continuation_as_new_root():
+    h = _handle()
+    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
+    h.ensure_lane(name="other", lane_id="lane_other", created_by="alice")
+    math = h.add_step(
+        [h.root_node_id],
+        _payload(h, "math"),
+        user_id="alice",
+        lane_id="lane_math",
+    )
+    other = h.add_step(
+        [h.root_node_id],
+        _payload(h, "other"),
+        user_id="alice",
+        lane_id="lane_other",
+    )
+    h.add_step(
+        [math.output_node_id, other.output_node_id],
+        _payload(h, "join"),
+        user_id="alice",
+        lane_id="lane_math",
+    )
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert lane_root_candidates(h.run_graph, "lane_math") == (math.output_node_id,)
+    assert not any(issue.severity == "error" for issue in issues)
+
+
+def test_adopt_lane_records_allows_repair_when_unrelated_errors_remain():
+    h = _handle()
+    h.ensure_lane(name="bad", lane_id="lane_bad", created_by="alice")
+    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
+    h.ensure_lane(name="repair", lane_id="lane_repair", created_by="alice")
+    h.add_step(
+        [h.root_node_id],
+        _payload(h, "bad-a"),
+        user_id="alice",
+        lane_id="lane_bad",
+    )
+    h.add_step(
+        [h.root_node_id],
+        _payload(h, "bad-b"),
+        user_id="alice",
+        lane_id="lane_bad",
+    )
+    kept = h.add_step(
+        [h.root_node_id],
+        _payload(h, "math-a"),
+        user_id="alice",
+        lane_id="lane_math",
+    )
+    moved = h.add_step(
+        [h.root_node_id],
+        _payload(h, "math-b"),
+        user_id="alice",
+        lane_id="lane_math",
+    )
+    before = [
+        issue for issue in validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+        if issue.severity == "error"
+    ]
+    assert len(before) == 2
+
+    h.adopt_lane_records(
+        "lane_repair",
+        [moved.step_id, moved.output_node_id],
+        user_id="alice",
+        reason="repair math lane root",
+    )
+
+    issues = [
+        issue for issue in validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+        if issue.severity == "error"
+    ]
+    membership = lane_membership(h.run_graph, root_node_id=h.root_node_id)
+    assert len(issues) == 1
+    assert issues[0].lane_id == "lane_bad"
+    assert membership.step_to_lane[moved.step_id] == "lane_repair"
+    assert membership.node_to_lane[moved.output_node_id] == "lane_repair"
+    assert membership.step_to_lane[kept.step_id] == "lane_math"
+
+
 def test_lane_export_view_is_json_ready():
     h = _handle()
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")

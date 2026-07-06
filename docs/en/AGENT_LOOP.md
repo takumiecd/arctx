@@ -3,9 +3,9 @@
 ## Recommended Loop
 
 1. Read context with `arctx log`.
-2. Append intent with `arctx add step --from NODE_ID --type suggestion --field proposal="..."`.
+2. Append intent with `arctx add --from NODE_ID --type suggestion --field proposal="..."`.
 3. Do external work: implementation, experiment, review, debugging, or research.
-4. Append the result with `arctx add step --from NODE_ID --type implementation --field result="..."`.
+4. Append the result with `arctx add --from NODE_ID --type implementation --field result="..."`.
 5. Cut wrong branches with `arctx cut NODE_ID` instead of deleting records.
 6. At checkpoints, produce an artifact with `arctx export --format md`; add
    `--exclude-cut` when the recipient should not see inactive branches.
@@ -15,6 +15,24 @@ node. Multi-input joins use repeated `--from` flags.
 
 Parallel processes can work in the same run when each writer appends only new
 records. Merge is record-level append, not mutation of existing history.
+
+## Parallel Experiment Strategy
+
+When approaches are independent, fan them out from the same baseline node
+instead of serializing them in one lane. Give each approach its own lane, and
+for code changes prefer a separate git worktree as well. This is different from
+ordinary git branching: ARCTX records the experiment relationship in the
+RunGraph, not just code refs.
+
+Record each branch's hypothesis, result, and evaluation signal. Do not discard a
+branch only because it is weak by itself; sometimes the best answer is a later
+multi-input join of ideas that were mediocre in isolation. After independent
+runs finish, combine promising terminal nodes with repeated `--from` arguments
+and record the synthesis as one step.
+
+Use `cut` for branches that should remain in history but no longer participate
+in the active solution. Use `arctx lane close --summary "..."` to preserve the
+final finding for each lane.
 
 ## Setup Mental Model
 
@@ -82,7 +100,7 @@ work session in each process environment instead.
 
 ```bash
 eval "$(arctx lane env --run run_x --new --user codex)"
-arctx add step --from NODE_ID --type suggestion
+arctx add --from NODE_ID --type suggestion
 ```
 
 Use `spawn` for child processes. The child receives a unique
@@ -98,7 +116,7 @@ For explicit mode, pass both `--run` and `--lane` on every mutating
 command.
 
 ```bash
-arctx add step --run run_x --lane ws_xxx --from NODE_ID --type implementation
+arctx add --run run_x --lane ws_xxx --from NODE_ID --type implementation
 ```
 
 The default attribution is `user=user` and `lane=default`. Set `--user`

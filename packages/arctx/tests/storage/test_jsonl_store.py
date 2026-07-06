@@ -121,6 +121,38 @@ def test_list_runs():
         assert "run_b" in ids
 
 
+def test_list_runs_ignores_manifest_directory_mismatch():
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(_make_populated_run("run_a"))
+        store.save_run(_make_populated_run("run_b"))
+        mismatched = Path(td) / "run_b.bak"
+        mismatched.mkdir()
+        (mismatched / "run.json").write_text(
+            (Path(td) / "run_b" / "run.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        listed = store.list_runs()
+
+    assert [r["run_id"] for r in listed].count("run_b") == 1
+
+
+def test_load_run_rejects_manifest_directory_mismatch():
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(_make_populated_run("run_b"))
+        mismatched = Path(td) / "run_b.bak"
+        mismatched.mkdir()
+        (mismatched / "run.json").write_text(
+            (Path(td) / "run_b" / "run.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="run manifest mismatch"):
+            store.load_run("run_b.bak")
+
+
 def test_incremental_save():
     """Saving twice should append only new records."""
     run = init(_req(), run_id="rt_incr")
@@ -174,6 +206,52 @@ def test_append_batch_allows_shared_lane_multi_actor():
             if e.lane_id == "ws_shared"
         }
         assert actors == {"user_a", "user_b"}
+
+
+def test_append_batch_sequences_follow_work_events_jsonl():
+    run = init(_req(), run_id="rt_seq")
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(run)
+        store.append_batch(
+            AppendBatch(
+                run_id=run.run_id,
+                user_id="user_a",
+                lane_id="ws_shared",
+                lane=Lane("ws_shared", run.run_id, "user_a"),
+                records=(),
+                events=(
+                    WorkEvent(
+                        event_id="we_a",
+                        run_id=run.run_id,
+                        lane_id="ws_shared",
+                        user_id="user_a",
+                        event_type="note",
+                    ),
+                ),
+            )
+        )
+        store.append_batch(
+            AppendBatch(
+                run_id=run.run_id,
+                user_id="user_b",
+                lane_id="ws_shared",
+                lane=Lane("ws_shared", run.run_id, "user_b"),
+                records=(),
+                events=(
+                    WorkEvent(
+                        event_id="we_b",
+                        run_id=run.run_id,
+                        lane_id="ws_shared",
+                        user_id="user_b",
+                        event_type="note",
+                    ),
+                ),
+            )
+        )
+
+        loaded = store.load_run("rt_seq")
+        assert [event.seq for event in loaded.run_graph.work_events] == [1, 2]
 
 
 def test_round_trip_preserves_objective():

@@ -6,6 +6,7 @@ Exercises every route through ``dispatch`` directly, so no port is bound.
 from __future__ import annotations
 
 import tempfile
+import io
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from arctx.session import resolve_store
 
 from arctx_cli.commands.init import run_init_command
 from arctx.serve.api import dispatch
+from arctx.serve.server import _make_handler
 
 
 def _store_dir(td: str) -> str:
@@ -674,7 +676,9 @@ class TestArtifactUpload:
                 {"filename": "chart.png", "file_data": self._b64()},
             )
             assert status == 201
+            assert body["artifact_id"].startswith("art_")
             assert body["filename"] == "chart.png"
+            assert body["mime_type"] == "image/png"
             assert body["path"].startswith("artifacts/art_")
             written = store.run_path(run_id) / body["path"]
             assert written.is_file()
@@ -712,6 +716,65 @@ class TestArtifactUpload:
             )
             assert status == 404
             assert not store.run_path("run_missing").exists()
+
+
+class TestServeHttpArtifacts:
+    @staticmethod
+    def _request(store, run_id, raw_request: bytes) -> bytes:
+        handler = _make_handler(
+            store,
+            run_id,
+            user_id="tester",
+            lane_id="ws_test",
+            cors_origin="*",
+        )
+
+        class FakeSocket:
+            def __init__(self, data: bytes):
+                self.rfile = io.BytesIO(data)
+                self.wfile = io.BytesIO()
+
+            def makefile(self, mode, *_args, **_kwargs):
+                return self.rfile if "r" in mode else self.wfile
+
+            def sendall(self, data: bytes) -> None:
+                self.wfile.write(data)
+
+        class FakeServer:
+            server_name = "127.0.0.1"
+            server_port = 0
+
+        sock = FakeSocket(raw_request)
+        handler(sock, ("127.0.0.1", 0), FakeServer())
+        return sock.wfile.getvalue()
+
+    def test_get_artifact_serves_selected_run_override(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, bound_run, _ = _setup(td, run_id="bound_run")
+            other_run = "asset_run"
+            _setup(td, run_id=other_run)
+            artifacts = store.run_path(other_run) / "artifacts"
+            artifacts.mkdir(parents=True)
+            (artifacts / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+            response = self._request(
+                store,
+                bound_run,
+                f"GET /artifacts/plot.png?run={other_run} HTTP/1.1\r\nHost: test\r\n\r\n".encode(),
+            )
+            assert response.startswith(b"HTTP/1.0 200 OK")
+            assert b"Content-Type: image/png" in response
+            assert response.endswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_get_artifact_rejects_path_escape(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            response = self._request(
+                store,
+                run_id,
+                b"GET /artifacts/../payloads.jsonl HTTP/1.1\r\nHost: test\r\n\r\n",
+            )
+            assert response.startswith(b"HTTP/1.0 404 Not Found")
 
 
 class TestVisibleAssets:

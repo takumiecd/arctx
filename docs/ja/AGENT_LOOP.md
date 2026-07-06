@@ -2,11 +2,21 @@
 
 ## 推奨ループ
 
-1. `arctx log` でコンテキストを読む。
-2. `arctx add step --from NODE_ID --type suggestion --field proposal="..."` で
-   意図を append する。
+1. `arctx guide --context` で Run ID / Current Lane / Active Frontiers を安価に
+   確認する（毎ターン呼んでよい）。詳しい使い方は `arctx log` や `arctx guide`
+   （静的ガイド + Current Context）で読む。`arctx log`（プレーン実行）は
+   work event を古い順に並べた時系列ビュー（`git log --oneline` 相当）で、
+   これまでの経緯を素早く読み返すのに向く。lane 単位の目次が欲しいときは
+   `arctx log --lanes` を使う。
+2. `arctx add --from NODE_ID --type suggestion --field proposal="..."` で
+   意図を append する。`--from` は省略可能で、その場合は現在の lane の
+   active frontier（active かつ後続 step のない node）が唯一のときはそれを使う。
+   run 開始直後で frontier が 0 個かつ run root がまだ未使用のときは run root
+   を入力に使う（新規 run 最初の `add` が `--from` なしで成功する）。それ以外で
+   frontier が 0 個または複数あるときは、候補一覧または探し方の案内を添えた
+   エラーになる。
 3. 外部作業を行う: 実装、実験、レビュー、デバッグ、リサーチなど。
-4. `arctx add step --from NODE_ID --type implementation --field result="..."` で
+4. `arctx add --from NODE_ID --type implementation --field result="..."` で
    結果を append する。
 5. 間違った枝は record を削除せず `arctx cut NODE_ID` で cut する。
 6. チェックポイントでは `arctx export --format md` で成果物を生成する。受け手に
@@ -17,6 +27,22 @@ join は `--from` を複数回渡します。
 
 各 writer が新しい record だけを append する限り、並列プロセスが同じ run で
 作業できます。マージは record 単位の append であり、既存履歴の変更ではありません。
+
+## 並列実験の置き方
+
+互いに独立して試せる方針は、1 つの lane で直列に試すのではなく、同じ baseline
+node から fan-out します。方針ごとに lane を分け、コード変更を伴うなら git
+worktree も分けるのが基本です。これは通常の git branch とは違います。ARCTX が
+記録するのは code ref の移動だけではなく、「どの baseline からどの実験が分岐し、
+あとでどう比較・合成されたか」という RunGraph 上の関係です。
+
+各枝には仮説、結果、評価シグナルを残します。単体で弱い枝でもすぐ捨てないで
+ください。単体では悪く見えた案が、別の枝と multi-input join したときに最良の
+組み合わせになることがあります。独立実験が終わったら、有望な terminal node を
+`--from` の繰り返しでまとめ、合成結果を 1 つの step として記録します。
+
+active な解から外す枝は削除せず `cut` します。lane ごとの最終知見は
+`arctx lane close --summary "..."` に入れて閉じます。
 
 ## セットアップのメンタルモデル
 
@@ -83,11 +109,14 @@ run と work session を固定します。
 
 ```bash
 eval "$(arctx lane env --run run_x --new --user codex)"
-arctx add step --from NODE_ID --type suggestion
+arctx add --from NODE_ID --type suggestion
 ```
 
 子プロセスには `spawn` を使います。子は固有の `ARCTX_LANE_ID` を受け取り、
-兄弟ターミナルや兄弟子プロセスは固定セッションを共有しません。
+兄弟ターミナルや兄弟子プロセスは固定セッションを共有しません。`arctx add`
+（`--from` 省略時の frontier 解決）と `arctx guide` / `arctx guide --context`
+は、この `ARCTX_LANE_ID` 環境変数を repo pointer より優先して解決するため、
+spawn された子プロセス内でもその子自身の lane が正しく見えます。
 
 ```bash
 arctx lane spawn --run run_x --user codex -- codex
@@ -97,7 +126,7 @@ arctx lane spawn --run run_x --user claude-code -- claude
 明示モードでは、変更系コマンドごとに `--run` と `--lane` の両方を渡します。
 
 ```bash
-arctx add step --run run_x --lane ws_xxx --from NODE_ID --type implementation
+arctx add --run run_x --lane ws_xxx --from NODE_ID --type implementation
 ```
 
 デフォルトの attribution は `user=user`, `lane=default` です。誰がどの

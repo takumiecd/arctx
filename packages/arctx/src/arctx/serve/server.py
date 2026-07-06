@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+import posixpath
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from arctx.serve.api import dispatch
+
+ARTIFACT_PREFIX = "/artifacts/"
 
 
 def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_origin: str):
@@ -29,6 +34,14 @@ def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_o
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_bytes(self, status: int, data: bytes, content_type: str) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Access-Control-Allow-Origin", cors_origin)
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_OPTIONS(self) -> None:
             self._send(204, {})
 
@@ -43,6 +56,20 @@ def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_o
             if not isinstance(parsed, dict):
                 raise ValueError("request body must be a JSON object")
             return parsed
+
+        def _request_run_id(self) -> str:
+            parsed = urlparse(self.path)
+            query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+            return query.get("run") or self.headers.get("X-Arctx-Run-Id") or run_id
+
+        def _serve_artifact(self) -> None:
+            parsed = urlparse(self.path)
+            target = _resolve_artifact(store.run_path(self._request_run_id()), parsed.path)
+            if target is None or not target.is_file():
+                self._send_bytes(404, b"not found", "text/plain; charset=utf-8")
+                return
+            ctype, _ = mimetypes.guess_type(str(target))
+            self._send_bytes(200, target.read_bytes(), ctype or "application/octet-stream")
 
         def _handle(self, method: str) -> None:
             parsed = urlparse(self.path)
@@ -72,12 +99,27 @@ def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_o
             self._send(status, payload)
 
         def do_GET(self) -> None:
+            if urlparse(self.path).path.startswith(ARTIFACT_PREFIX):
+                self._serve_artifact()
+                return
             self._handle("GET")
 
         def do_POST(self) -> None:
             self._handle("POST")
 
     return _Handler
+
+
+def _resolve_artifact(run_dir: Path, url_path: str) -> Path | None:
+    raw = unquote(url_path[len(ARTIFACT_PREFIX):])
+    rel = posixpath.normpath(raw).lstrip("/")
+    if rel in ("", ".") or rel.startswith("../"):
+        return None
+    root = (run_dir / "artifacts").resolve()
+    target = (root / rel).resolve()
+    if target == root or root not in target.parents:
+        return None
+    return target
 
 
 def serve(

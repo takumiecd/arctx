@@ -7,7 +7,7 @@ import pytest
 from arctx import init
 from arctx.core.run.dump import DumpOptions, render_mermaid, render_outline
 from arctx.core.schema.graph import Node
-from arctx.core.schema.payloads import StepPayload
+from arctx.core.schema.payloads import StepPayload, SummaryPayload
 from arctx.core.schema.requirements import Requirement
 
 
@@ -107,6 +107,92 @@ def test_outline_lists_orphan_components():
 
     assert "orphans:" in out
     assert orphan.node_id in out
+
+
+def test_outline_collapses_closed_lane_to_summary():
+    run = init(_req(), run_id="dump_closed_lane")
+    run.ensure_lane(name="finished", lane_id="lane_finished", created_by="alice")
+    t1 = run.add_step(
+        [run.root_node_id],
+        _tp("internal-research"),
+        user_id="alice",
+        lane_id="lane_finished",
+    )
+    t2 = run.add_step(
+        [t1.output_node_id],
+        _tp("internal-implementation"),
+        user_id="alice",
+        lane_id="lane_finished",
+    )
+    run.attach(
+        t2.output_node_id,
+        SummaryPayload(payload_id="_", target_id="_", text="finished conclusion"),
+        user_id="alice",
+        lane_id="lane_finished",
+    )
+    run.set_lane_status("lane_finished", status="closed", user_id="alice")
+
+    out = render_outline(run, DumpOptions())
+
+    assert "closed lane finished" in out
+    assert "finished conclusion" in out
+    assert "internal-research" not in out
+    assert "internal-implementation" not in out
+    assert "orphans:" not in out
+
+
+def test_outline_can_expand_closed_lane():
+    run = init(_req(), run_id="dump_closed_lane_expanded")
+    run.ensure_lane(name="finished", lane_id="lane_finished", created_by="alice")
+    step = run.add_step(
+        [run.root_node_id],
+        _tp("internal-research"),
+        user_id="alice",
+        lane_id="lane_finished",
+    )
+    run.attach(
+        step.output_node_id,
+        SummaryPayload(payload_id="_", target_id="_", text="finished conclusion"),
+        user_id="alice",
+        lane_id="lane_finished",
+    )
+    run.set_lane_status("lane_finished", status="closed", user_id="alice")
+
+    out = render_outline(run, DumpOptions(expand_closed_lanes=True))
+
+    assert "closed lane finished" not in out
+    assert "internal-research" in out
+
+
+def test_outline_keeps_successor_after_collapsed_closed_lane():
+    run = init(_req(), run_id="dump_closed_lane_successor")
+    run.ensure_lane(name="finished", lane_id="lane_finished", created_by="alice")
+    run.ensure_lane(name="next", lane_id="lane_next", created_by="bob")
+    closed_step = run.add_step(
+        [run.root_node_id],
+        _tp("internal-research"),
+        user_id="alice",
+        lane_id="lane_finished",
+    )
+    run.attach(
+        closed_step.output_node_id,
+        SummaryPayload(payload_id="_", target_id="_", text="finished conclusion"),
+        user_id="alice",
+        lane_id="lane_finished",
+    )
+    run.set_lane_status("lane_finished", status="closed", user_id="alice")
+    run.add_step(
+        [closed_step.output_node_id],
+        _tp("successor-work"),
+        user_id="bob",
+        lane_id="lane_next",
+    )
+
+    out = render_outline(run, DumpOptions())
+
+    assert "closed lane finished" in out
+    assert "successor-work" in out
+    assert "orphans:" not in out
 
 
 # ---------------------------------------------------------------------------

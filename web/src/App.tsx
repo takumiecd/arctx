@@ -2,19 +2,37 @@ import { useEffect, useState, useRef, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { pickClient } from "./api";
-import { Graph, type Selection } from "./Graph";
+import { Graph, type LaneFocusRequest, type Selection } from "./Graph";
+import type { LayoutDirection } from "./layout";
 import { Panel } from "./Panel";
-import { laneColors, laneOptions, type LaneColorOverrides } from "./model";
+import { laneById, laneColors, laneOptions, laneStatus, type LaneColorOverrides } from "./model";
 import type { RunDocument } from "./types";
 
 const client = pickClient();
 
 type ThemePreference = "light" | "dark" | "system";
 
+function BrandMark() {
+  return (
+    <svg viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+      <g transform="translate(0 -10)" fill="currentColor">
+        <path d="M200 70 L125 205 Q151 190 170 190 L200 130 L290 255 L310 240 Z" />
+        <path d="M80 300 C110 205 180 185 290 250 C200 205 130 240 110 300 Z" />
+        <circle cx="300" cy="250" r="20" />
+      </g>
+    </svg>
+  );
+}
+
 function getInitialPreference(): ThemePreference {
   const stored = window.localStorage.getItem("arctx.theme");
   if (stored === "dark" || stored === "light" || stored === "system") return stored;
   return "system";
+}
+
+function getInitialLayoutDirection(): LayoutDirection {
+  const stored = window.localStorage.getItem("arctx.layoutDirection");
+  return stored === "down" ? "down" : "right";
 }
 
 function resolveTheme(pref: ThemePreference): "light" | "dark" {
@@ -25,16 +43,19 @@ function resolveTheme(pref: ThemePreference): "light" | "dark" {
 export function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [collapsedLaneIds, setCollapsedLaneIds] = useState<Set<string>>(() => new Set());
+  const [expandedClosedLaneIds, setExpandedClosedLaneIds] = useState<Set<string>>(() => new Set());
   const [laneColorOverrides, setLaneColorOverrides] = useState<LaneColorOverrides>({});
   const [laneColorRunId, setLaneColorRunId] = useState<string | null>(null);
   const [newLaneName, setNewLaneName] = useState("");
   const [newRunName, setNewRunName] = useState("");
   const [showCuts, setShowCuts] = useState<boolean>(false);
   const [activeLaneId, setActiveLaneId] = useState<string | null>(null);
+  const [focusLane, setFocusLane] = useState<LaneFocusRequest | null>(null);
   const [showLanesMenu, setShowLanesMenu] = useState<boolean>(false);
   const [showExtsMenu, setShowExtsMenu] = useState<boolean>(false);
   const [showRunsMenu, setShowRunsMenu] = useState<boolean>(false);
   const [themePref, setThemePref] = useState<ThemePreference>(getInitialPreference);
+  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>(getInitialLayoutDirection);
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() => {
     const t = resolveTheme(getInitialPreference());
     document.documentElement.setAttribute("data-theme", t);
@@ -54,6 +75,10 @@ export function App() {
     document.documentElement.setAttribute("data-theme", resolved);
     window.localStorage.setItem("arctx.theme", themePref);
   }, [themePref]);
+
+  useEffect(() => {
+    window.localStorage.setItem("arctx.layoutDirection", layoutDirection);
+  }, [layoutDirection]);
 
   // Track OS preference changes when in "system" mode
   useEffect(() => {
@@ -99,8 +124,10 @@ export function App() {
     if (runId === data?.run_id) return;
     client.activeRunId = runId;
     setActiveLaneId(null);
+    setFocusLane(null);
     setSelection(null);
     setCollapsedLaneIds(new Set());
+    setExpandedClosedLaneIds(new Set());
     setNewLaneName("");
     qc.invalidateQueries();
   };
@@ -158,6 +185,14 @@ export function App() {
     client.activeLaneId = activeLaneId;
   }, [activeLaneId]);
 
+  // Whenever the current lane switches, ask the canvas to pan/zoom to it.
+  // Graph ignores the very first firing so it doesn't fight the initial
+  // fitView on mount.
+  useEffect(() => {
+    if (!activeLaneId) return;
+    setFocusLane({ laneId: activeLaneId, ts: Date.now() });
+  }, [activeLaneId]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
@@ -198,9 +233,19 @@ export function App() {
     (activeLaneId
       ? lanes.find((l) => l.lane_id === activeLaneId)?.label || activeLaneId
       : data.current_lane_name) || "none";
+  const currentLaneStatus = currentLaneId ? laneStatus(data, currentLaneId) : null;
   const knownLaneIds = new Set(lanes.map((lane) => lane.lane_id).filter(Boolean) as string[]);
+  const closedLaneIds = new Set(
+    (data.lanes ?? [])
+      .filter((lane) => lane.status === "closed")
+      .map((lane) => lane.lane_id)
+      .filter((laneId) => knownLaneIds.has(laneId)),
+  );
   const visibleCollapsedLaneIds = new Set(
-    [...collapsedLaneIds].filter((laneId) => knownLaneIds.has(laneId)),
+    [
+      ...[...collapsedLaneIds].filter((laneId) => knownLaneIds.has(laneId)),
+      ...[...closedLaneIds].filter((laneId) => !expandedClosedLaneIds.has(laneId)),
+    ],
   );
   const sortedLanes = [...lanes].sort((a, b) => {
     const aCollapsed = visibleCollapsedLaneIds.has(a.lane_id);
@@ -211,16 +256,31 @@ export function App() {
     return aCollapsed ? 1 : -1;
   });
   const toggleLane = (laneId: string) => {
+    const isCollapsed = visibleCollapsedLaneIds.has(laneId);
+    if (isCollapsed) {
+      setCollapsedLaneIds((prev) => {
+        const next = new Set(prev);
+        next.delete(laneId);
+        return next;
+      });
+      setExpandedClosedLaneIds((prev) => {
+        const next = new Set(prev);
+        if (closedLaneIds.has(laneId)) next.add(laneId);
+        return next;
+      });
+      return;
+    }
     setCollapsedLaneIds((prev) => {
       const next = new Set(prev);
-      if (next.has(laneId)) {
-        next.delete(laneId);
-      } else {
-        next.add(laneId);
-        setSelection(null);
-      }
+      next.add(laneId);
       return next;
     });
+    setExpandedClosedLaneIds((prev) => {
+      const next = new Set(prev);
+      next.delete(laneId);
+      return next;
+    });
+    setSelection(null);
   };
   const setLaneColor = (laneId: string, color: string) => {
     setLaneColorOverrides((prev) => ({ ...prev, [laneId]: color }));
@@ -229,7 +289,11 @@ export function App() {
   return (
     <div className="layout">
       <header>
-        <strong>arctx</strong>{" "}
+        <div className="brand" aria-label="ARCTX">
+          <span className="brand-mark">
+            <BrandMark />
+          </span>
+        </div>
         {client.writable ? (
           <span className="lane-selector-popover" ref={runsPopoverRef}>
             <button
@@ -310,6 +374,7 @@ export function App() {
               onClick={() => setShowLanesMenu(!showLanesMenu)}
             >
               current lane: <strong>{currentLaneName}</strong> ▾
+              {currentLaneStatus === "closed" && <span className="lane-status-badge closed">closed</span>}
             </button>
             {showLanesMenu && (
               <div className="lane-dropdown-menu">
@@ -322,10 +387,12 @@ export function App() {
                       if (!laneId) return null;
                       const collapsed = visibleCollapsedLaneIds.has(laneId);
                       const current = laneId === currentLaneId;
+                      const status = laneStatus(data, laneId);
+                      const closedAt = laneById(data, laneId)?.closed_at;
                       return (
                         <div
                           key={lane.group_id}
-                          className={`lane-menu-item${current ? " active" : ""}${collapsed ? " menu-collapsed" : ""}`}
+                          className={`lane-menu-item${current ? " active" : ""}${collapsed ? " menu-collapsed" : ""}${status === "closed" ? " lane-closed" : ""}`}
                           style={laneChipStyle(data, laneId, laneColorOverrides, dark)}
                         >
                           <button
@@ -341,11 +408,21 @@ export function App() {
                             className="lane-activate-btn"
                             onClick={() => {
                               setActiveLaneId(laneId);
+                              // Force a refocus even when re-selecting the
+                              // already-active lane (setActiveLaneId alone
+                              // wouldn't change state / re-run the effect).
+                              setFocusLane({ laneId, ts: Date.now() });
                               setShowLanesMenu(false);
                             }}
                           >
                             <span className="lane-color-dot" style={{ backgroundColor: "var(--lane-color)" }} />
                             <span className="lane-name">{lane.label}</span>
+                            <span
+                              className={`lane-status-badge ${status}`}
+                              title={status === "closed" && closedAt ? `closed at ${closedAt}` : status}
+                            >
+                              {status}
+                            </span>
                             {current && <span className="active-badge">current</span>}
                           </button>
                           <label className="lane-color-picker" title={`change ${lane.label} color`}>
@@ -450,6 +527,22 @@ export function App() {
           />
           <span>show cuts</span>
         </label>
+        <span className="theme-switcher" role="radiogroup" aria-label="Layout direction">
+          {(["right", "down"] as const).map((direction) => (
+            <button
+              key={direction}
+              type="button"
+              className={`theme-switcher-btn${layoutDirection === direction ? " active" : ""}`}
+              onClick={() => setLayoutDirection(direction)}
+              title={direction === "right" ? "Root left to right" : "Root top to bottom"}
+              aria-label={direction === "right" ? "Root left to right" : "Root top to bottom"}
+              role="radio"
+              aria-checked={layoutDirection === direction}
+            >
+              {direction === "right" ? "→" : "↓"}
+            </button>
+          ))}
+        </span>
         <span className="theme-switcher" role="radiogroup" aria-label="Theme">
           {(["light", "system", "dark"] as const).map((opt) => (
             <button
@@ -498,6 +591,8 @@ export function App() {
             writable={client.writable}
             showCuts={showCuts}
             dark={dark}
+            layoutDirection={layoutDirection}
+            focusLane={focusLane}
           />
         </div>
         <Panel

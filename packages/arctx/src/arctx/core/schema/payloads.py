@@ -184,8 +184,10 @@ class SummaryPayload(PayloadBase):
 
     Node-targeting only: a summary describes the state reached at a node.
 
-    ``text`` is **Markdown** — rendered as such in the web GUI — so closing
-    summaries and hand-off notes may use headings, lists, code, and image links.
+    ``text`` is rendered according to ``metadata["format"]`` when present.
+    Supported GUI formats are ``"markdown"`` (default), ``"html"`` (sanitized),
+    and ``"text"``. Closing summaries and hand-off notes should be complete
+    enough to read as the conclusion for a collapsed lane.
     """
 
     payload_id: str

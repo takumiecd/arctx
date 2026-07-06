@@ -38,6 +38,8 @@ class SqliteRunStore:
                 continue
             try:
                 data = json.loads(run_json.read_text(encoding="utf-8"))
+                if data["run_id"] != entry.name:
+                    continue
                 runs.append(
                     {
                         "run_id": data["run_id"],
@@ -179,6 +181,7 @@ class SqliteRunStore:
     def load_run(self, run_id: str) -> RunHandle:
         run_path = self.run_path(run_id)
         manifest = _read_json(run_path / "run.json")
+        _ensure_manifest_run_id(run_path, manifest, run_id)
         row_counts = self._row_counts(run_path)
         cached_graph = load_cache(run_path, row_counts)
         requirement = requirement_from_dict(manifest["requirement"])
@@ -335,3 +338,12 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _ensure_manifest_run_id(run_path: Path, manifest: dict[str, Any], expected_run_id: str) -> None:
+    actual = manifest.get("run_id")
+    if actual != expected_run_id:
+        raise ValueError(
+            f"run manifest mismatch at {run_path}: "
+            f"directory is {expected_run_id!r} but run.json has {actual!r}"
+        )

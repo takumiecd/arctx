@@ -46,8 +46,8 @@ eval "$(arctx lane geometry --shell)"    # pin via env for THIS terminal (env be
 ## 3. Grow the graph
 
 ```bash
-arctx add step --from <node> --title "explore ProductGeometry"   # grow topology
-arctx add step --from <A> --from <B> --title "merge A and B"      # multi-input = join/merge
+arctx add --from <node> --title "explore ProductGeometry"   # grow topology
+arctx add --from <A> --from <B> --title "merge A and B"      # multi-input = join/merge
 arctx attach <node> --type result --json '{"recall@k":"rough at scale"}'  # annotate
 ```
 
@@ -92,7 +92,7 @@ A PR is an append-only review STATE in the DAG. Proposing is not a transport
 | reject (kept) | `arctx reject <source> --reason ...` (= cut) |
 | sync | `arctx push` / `arctx pull` (`arctx remote add` first; union converges) |
 
-`accept` runs a multi-input `add step` (join); if the base was cut, it would
+`accept` runs a multi-input `add` (join); if the base was cut, it would
 cycle, or the target advanced, it is **refused** (never silent corruption).
 `reject` is a `cut`. Consistency is checked **at accept time against the target**
 — the only correct place once replicas are split (remote/local).

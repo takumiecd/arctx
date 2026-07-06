@@ -88,8 +88,7 @@ arctx transition create \
 
 ```bash
 # ノードにメモを付ける
-arctx payload add \
-  --node <node_id> \
+arctx attach <node_id> \
   --payload-type node_payload \
   --field type=note \
   --field 'content={"text": "この実装では backward pass が全スロット対象になる（設計上の意図）"}'
@@ -216,5 +215,5 @@ arctx dump --node <node_id> --depth 3
 arctx trace <node_id>
 
 # ノードのペイロードを確認する
-arctx payload list --node <node_id>
+arctx show <node_id>
 ```

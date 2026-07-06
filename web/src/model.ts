@@ -1,6 +1,6 @@
 // Small read helpers over a RunDocument: payload lookups and graph labeling.
 
-import type { RecordProvenance, RunDocument, RunGroup, RunPayload } from "./types";
+import type { RecordProvenance, RunDocument, RunGroup, RunLane, RunPayload } from "./types";
 import { payloadDisplayFor } from "./payloadExtensions";
 
 export type LaneColorOverrides = Record<string, string>;
@@ -125,6 +125,14 @@ export function laneLabel(doc: RunDocument, laneId: string): string {
   if (group?.label) return group.label;
   const lane = (doc.lanes ?? []).find((candidate) => candidate.lane_id === laneId);
   return lane?.name || laneId;
+}
+
+export function laneById(doc: RunDocument, laneId: string): RunLane | null {
+  return (doc.lanes ?? []).find((lane) => lane.lane_id === laneId) ?? null;
+}
+
+export function laneStatus(doc: RunDocument, laneId: string): "open" | "closed" {
+  return laneById(doc, laneId)?.status === "closed" ? "closed" : "open";
 }
 
 export function laneColorIndex(doc: RunDocument, laneId: string): number {

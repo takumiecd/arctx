@@ -1,6 +1,7 @@
-# arctx
+# ARCTX core
 
-Python API for ARCTX (Arc + Context) — records the process of optimization and problem-solving.
+Python API for ARCTX: an append-only experiment graph for hypotheses, trials,
+results, and abandoned branches.
 
 ## Installation
 
@@ -11,11 +12,12 @@ pip install arctx
 ## Usage
 
 ```python
-import arctx as arctx
+import arctx
 
 handle = arctx.init(arctx.Requirement(text="Solve the problem"))
 ```
 
 ## Package layout
 
-This package provides the core API, storage, and extension framework. The `arctx` command-line tool is in the separate `arctx-cli` package.
+This package provides the core API, storage, and extension framework. The
+`arctx` command-line tool is in the separate `arctx-cli` package.

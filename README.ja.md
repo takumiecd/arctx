@@ -1,13 +1,20 @@
 # ARCTX
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/arctx-mark-dark.svg">
+    <img src="assets/arctx-mark.svg" alt="ARCTX" width="120">
+  </picture>
+</p>
+
 [![CI](https://github.com/takumiecd/arctx/actions/workflows/ci.yml/badge.svg)](https://github.com/takumiecd/arctx/actions/workflows/ci.yml)
 
-> **Git は何が変わったかを記録する。ARCTX は、なぜ変えたか — そして何を採らないと決めたか — を記録する。**
+> **ARCTX は、仮説・試行・結果・放棄した枝を append-only な DAG として残す experiment graph です。**
 >
-> 推論履歴・並列エージェント協調・グラフに残し続ける放棄ブランチのための append-only な DAG。
+> Git は何が変わったかを記録する。ARCTX は、何を試し、なぜ試し、何が起き、何が残ったかを記録する。
 
-**30 秒で体感** — 1 コマンドで使い捨ての repo を立ち上げ、2 つのエージェントが
-同じタスクを 2 通りに試し、片方の行き止まりが *理由つきで* cut され、その全過程が
+**30 秒で体感** — 1 コマンドで使い捨ての repo を立ち上げ、同じベースラインから
+2 つの最適化仮説を試し、片方の行き止まりが *理由つきで* cut され、その全過程が
 共有可能なドキュメントとして export されます:
 
 ```bash
@@ -15,7 +22,7 @@ git clone https://github.com/takumiecd/arctx && cd arctx
 ./examples/quickstart_demo.sh      # グラフを表示し、共有可能な HTML を書き出す
 ```
 
-![ARCTX benchmark graph — baseline, a cut dead-end, and the winning branch](examples/arctx-benchmark-graph.png)
+![ARCTX web GUI — baseline, a cut dead-end, and the winning branch](examples/demo_web.gif)
 
 *`quickstart_demo.sh` が記録するもの: 両方の仮説が 1 つのベースラインから fan-out し、遅いキャッシュ案は **理由つきで** cut (✂) され、組み込み `sum()` の勝者は active のまま残る — その判断全体が 1 つのグラフに残ります。*
 
@@ -39,7 +46,7 @@ handle = arctx.init(arctx.Requirement(requirement_id="r", target_type="code", ta
 ---
 
 ARCTX は agent framework でも planner でも executor でも **ありません**。
-それらの下に位置するグラフ層です。
+研究・最適化・デバッグ・エージェント作業の下に位置するグラフ層です。
 
 ![ARCTX CLI Demo](examples/demo_cli.gif)
 
@@ -53,31 +60,33 @@ ARCTX は agent framework でも planner でも executor でも **ありませ�
 
 ## なぜ ARCTX か？
 
-実際の作業は一直線ではありません。仮説を立て、試し、何が起きたかを観測し、ある
+研究や最適化の作業は一直線ではありません。仮説を立て、試し、何が起きたかを観測し、ある
 ブランチを捨て、別を取り、後で *なぜ* その地点に至ったかを再構成する必要が出てきます。
 
 - Git は **ファイル履歴** — どの commit でどのバイトが変わったか。
-- ARCTX は **推論 / アクション / 判断の履歴** — どの仮説を検証し、どんな結果が出て、どのブランチを cut したか。
+- ARCTX は **実験 / 推論 / 判断の履歴** — どの仮説を検証し、どんな結果が出て、どのブランチを cut したか。
 
 ARCTX はそのすべてを 1 つの append-only な DAG として記録します:
 
-- **並列エージェント、衝突なし。** 複数のエージェントや人間が同じ run を駆動でき、各自が追跡された lane を持ち、その試行は兄弟 step になります。
-- **revert もグラフに残る。** 失敗した書き換えは削除されず、`CutPayload` で inactive にされます。何を試し、なぜやめたかを後から見られます。
+- **仮説が branch になる。** 競合する試行は、単なるログに押し潰されず、同じベースラインから fan-out できます。
+- **失敗した実験も資産として残る。** 放棄した枝は削除されず、`CutPayload` で inactive にされます。何を試し、なぜやめたかを後から見られます。
 - **commit だけでなくドメイン payload。** ベンチマーク結果・予測・意図など何でも attach できます。DAG は各 step が *何のため* だったかを知っています。
+- **並列エージェント、衝突なし。** 複数のエージェントや人間が同じ run を駆動でき、各自が追跡された lane を持ち、その試行は兄弟 step になります。
 - **read-time の活性判定。** kill されたブランチは自動でフィルタされ、履歴を書き換えずにグラフはクリーンに保たれます。
 
 ARCTX は executor でも planner でも agent framework でも *ありません*。それらが何をして
-なぜしたかを保存する基盤です。
+なぜしたか、何を試して捨てたかを保存する基盤です。
 
 ---
 
 ## ARCTX が合う場面は？
 
-- **マルチエージェントのソフトウェア作業** — Claude Code・Codex・自作エージェント・人間が同じコードベースで作業。ARCTX は各試行を区別しレビュー可能に保ちます。
 - **リサーチ・設計探索** — 仮説を分岐させ、結果を payload として記録し、捨てたブランチを証拠として残す。
-- **デバッグ・調査** — 仮説と観測を payload として記録し、バグを見つけたらトレースを遡る。
+- **最適化作業** — variant を比較し、ベースラインを明示し、遅い経路を捨てた理由を残す。
 - **ベンチマーク駆動の工学** — 「variant A を試す、variant B を試す」が毎回、計測を attach した step として着地。
 - **カーネル / 数値最適化** — 上記の具体例: タイル化 / ベクトル化 / 融合の実験を兄弟 step として、revert と merge を first-class に。
+- **デバッグ・調査** — 仮説と観測を payload として記録し、バグを見つけたらトレースを遡る。
+- **マルチエージェントのソフトウェア作業** — Claude Code・Codex・自作エージェント・人間が同じコードベースで作業。ARCTX は各試行を区別しレビュー可能に保ちます。
 
 ---
 
@@ -300,8 +309,7 @@ RunGraph
 | コマンド | 何をするか |
 | --- | --- |
 | `arctx init <req-id>` | 新しい run を開始する。git 連携には `--extension git` を付ける。 |
-| `arctx add node` | 独立した DAG node を追加する。 |
-| `arctx add step --from <node> --title ...` | DAG step とその出力 node を追加する。 |
+| `arctx add --from <node> --title ...` | DAG step とその出力 node を追加する。node は単独では作らない。 |
 | `arctx attach <node-or-step> --title ...` | 既存の node または step に payload を attach する。 |
 | `arctx cut <node-or-step>` | append-only payload で node または step を inactive にする。 |
 | `arctx show [id]` | 現在の run、または 1 件の node/step/payload を表示する。 |

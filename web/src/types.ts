@@ -105,7 +105,10 @@ export interface LaneEdgeSummary {
   node_id: string;
   payload_id: string;
   text: string;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    format?: "markdown" | "html" | "text" | string;
+    [key: string]: unknown;
+  };
 }
 
 export interface RunDocument {

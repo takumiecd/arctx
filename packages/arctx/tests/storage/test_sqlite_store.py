@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -96,6 +97,38 @@ def test_list_runs():
         ids = [r["run_id"] for r in listed]
         assert "sq_a" in ids
         assert "sq_b" in ids
+
+
+def test_list_runs_ignores_manifest_directory_mismatch():
+    with tempfile.TemporaryDirectory() as td:
+        store = SqliteRunStore(td)
+        store.save_run(_make_populated_run("sq_a"))
+        store.save_run(_make_populated_run("sq_b"))
+        mismatched = Path(td) / "sq_b.bak"
+        mismatched.mkdir()
+        (mismatched / "run.json").write_text(
+            (Path(td) / "sq_b" / "run.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        listed = store.list_runs()
+
+    assert [r["run_id"] for r in listed].count("sq_b") == 1
+
+
+def test_load_run_rejects_manifest_directory_mismatch():
+    with tempfile.TemporaryDirectory() as td:
+        store = SqliteRunStore(td)
+        store.save_run(_make_populated_run("sq_b"))
+        mismatched = Path(td) / "sq_b.bak"
+        mismatched.mkdir()
+        (mismatched / "run.json").write_text(
+            (Path(td) / "sq_b" / "run.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="run manifest mismatch"):
+            store.load_run("sq_b.bak")
 
 
 def test_append_batch_allows_shared_lane_multi_actor():

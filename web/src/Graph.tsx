@@ -11,7 +11,7 @@
 // Cut/inactive records are dimmed. Selecting exactly one node or one edge
 // drives the detail panel.
 
-import { useCallback, useEffect, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties, type RefObject } from "react";
 import {
   Background,
   ConnectionMode,
@@ -22,7 +22,9 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useUpdateNodeInternals,
   useReactFlow,
+  useStore,
   type Connection,
   type Edge,
   type FinalConnectionState,
@@ -34,12 +36,13 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { layout, type Pos } from "./layout";
+import { layout, type LayoutDirection, type Pos } from "./layout";
 import {
   laneColors,
   laneGroups,
   laneIdForRecord,
   laneLabel,
+  laneStatus,
   nodeLabel,
   nodeSummaryText,
   stepType,
@@ -53,6 +56,13 @@ export type Selection =
   | { kind: "lane"; id: string }
   | { kind: "records"; records: { kind: "node" | "step"; id: string }[] }
   | null;
+
+// A nonce-carrying request to focus the viewport on a lane. Bump `ts` even
+// when re-selecting the same lane so the effect fires again.
+export interface LaneFocusRequest {
+  laneId: string;
+  ts: number;
+}
 
 // Custom node with source/target handles on each side. ConnectionMode.Loose
 // keeps dragging ergonomic while fixed handle IDs let rendered edges enter the
@@ -81,10 +91,10 @@ function DagNode({ data }: NodeProps) {
       style={laneStyle(d)}
     >
       {sides.map(([id, p]) => (
-        <Handle key={`source-${id}`} type="source" position={p} id={id} />
+        <Handle key={`source-${id}`} type="source" position={p} id={`source-${id}`} />
       ))}
       {sides.map(([id, p]) => (
-        <Handle key={`target-${id}`} type="target" position={p} id={id} />
+        <Handle key={`target-${id}`} type="target" position={p} id={`target-${id}`} />
       ))}
       {d.laneLabel && <em>{d.laneLabel}</em>}
       <span>{d.label}</span>
@@ -129,6 +139,7 @@ function LaneCollapsedNode({ data }: NodeProps) {
     nodeCount: number;
     stepCount: number;
     summaryCount: number;
+    status?: "open" | "closed";
   };
   const sides = [
     ["top", Position.Top],
@@ -139,12 +150,25 @@ function LaneCollapsedNode({ data }: NodeProps) {
   return (
     <div className="lane-collapsed-node" title={d.title} style={laneStyle(d)}>
       {sides.map(([id, p]) => (
-        <Handle key={`source-${id}`} type="source" position={p} id={id} isConnectable={false} />
+        <Handle
+          key={`source-${id}`}
+          type="source"
+          position={p}
+          id={`source-${id}`}
+          isConnectable={false}
+        />
       ))}
       {sides.map(([id, p]) => (
-        <Handle key={`target-${id}`} type="target" position={p} id={id} isConnectable={false} />
+        <Handle
+          key={`target-${id}`}
+          type="target"
+          position={p}
+          id={`target-${id}`}
+          isConnectable={false}
+        />
       ))}
       <strong>{d.label}</strong>
+      {d.status === "closed" && <span className="lane-status-badge closed">closed</span>}
       <span>
         {d.nodeCount} nodes · {d.stepCount} steps
       </span>
@@ -159,6 +183,25 @@ const NODE_HEIGHT = 58;
 const LANE_GROUP_PADDING_X = 42;
 const LANE_GROUP_PADDING_TOP = 44;
 const LANE_GROUP_PADDING_BOTTOM = 34;
+
+// Below this zoom level, edge labels and per-node lane chips are hidden (see
+// ZoomDeclutter below) -- at this scale they're mostly noise, not information.
+const ZOOMED_OUT_THRESHOLD = 0.45;
+
+// Toggles a "zoomed-out" class on the ReactFlow wrapper based on the current
+// viewport zoom. Subscribing to the raw transform would re-render on every
+// pan/zoom tick; instead this selects a boolean derived from the zoom level,
+// so React only re-renders when the value actually flips across the
+// threshold (avoids a per-node re-render storm while zooming).
+function ZoomDeclutter({ containerRef }: { containerRef: RefObject<HTMLDivElement | null> }) {
+  const isZoomedOut = useStore((s) => s.transform[2] < ZOOMED_OUT_THRESHOLD);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.classList.toggle("zoomed-out", isZoomedOut);
+  }, [containerRef, isZoomedOut]);
+  return null;
+}
 
 interface Props {
   doc: RunDocument;
@@ -177,6 +220,8 @@ interface Props {
   writable: boolean;
   showCuts: boolean;
   dark: boolean;
+  layoutDirection: LayoutDirection;
+  focusLane?: LaneFocusRequest | null;
 }
 
 type Side = "top" | "right" | "bottom" | "left";
@@ -188,8 +233,17 @@ function laneStyle(data: { laneColor?: string; laneBg?: string }): CSSProperties
   } as CSSProperties;
 }
 
-function edgeSides(source: Pos | undefined, target: Pos | undefined): [Side, Side] {
-  if (!source || !target) return ["right", "left"];
+function edgeSides(
+  source: Pos | undefined,
+  target: Pos | undefined,
+  direction: LayoutDirection,
+): [Side, Side] {
+  if (!source || !target) return direction === "down" ? ["bottom", "top"] : ["right", "left"];
+
+  if (direction === "down") {
+    const dy = target.y - source.y;
+    return dy >= 0 ? ["bottom", "top"] : ["top", "bottom"];
+  }
 
   const dx = target.x - source.x;
 
@@ -205,6 +259,7 @@ function buildEdges(
   laneColorOverrides: LaneColorOverrides,
   showCuts: boolean,
   dark: boolean,
+  layoutDirection: LayoutDirection,
 ): Edge[] {
   const out: Edge[] = [];
   const inactiveNodeIds = new Set(
@@ -228,13 +283,17 @@ function buildEdges(
       const source = endpointFor(doc, input, collapsedLaneIds);
       const target = endpointFor(doc, s.output_node_id, collapsedLaneIds);
       if (source === target) continue;
-      const [sourceHandle, targetHandle] = edgeSides(positions[source], positions[target]);
+      const [sourceHandle, targetHandle] = edgeSides(
+        positions[source],
+        positions[target],
+        layoutDirection,
+      );
       out.push({
-        id: `${s.step_id}:${input}:${source}->${target}`,
+        id: edgeId(s.step_id, input, source, target),
         source,
         target,
-        sourceHandle,
-        targetHandle,
+        sourceHandle: `source-${sourceHandle}`,
+        targetHandle: `target-${targetHandle}`,
         type: "smoothstep",
         label: label === "step" ? undefined : label,
         data: { stepId: s.step_id },
@@ -243,9 +302,9 @@ function buildEdges(
         labelBgPadding: [6, 3],
         labelBgBorderRadius: 4,
         style: {
-          opacity: s.inactive ? 0.35 : 1,
+          opacity: s.inactive ? 0.35 : 0.9,
           stroke: edgeColor,
-          strokeWidth: stepLaneId ? 2.4 : 1.8,
+          strokeWidth: 2,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -257,6 +316,15 @@ function buildEdges(
     }
   }
   return out;
+}
+
+function edgeId(stepId: string, inputId: string, sourceId: string, targetId: string): string {
+  const parts = [stepId, inputId, sourceId, targetId].map(safeEdgePart);
+  return `edge_${parts.join("_")}`;
+}
+
+function safeEdgePart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 function endpointFor(doc: RunDocument, nodeId: string, collapsedLaneIds: Set<string>): string {
@@ -306,10 +374,14 @@ function GraphCanvas({
   writable,
   showCuts,
   dark,
+  layoutDirection,
+  focusLane,
 }: Props) {
   const reactFlow = useReactFlow<Node, Edge>();
+  const updateNodeInternals = useUpdateNodeInternals();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   // The node the current connection drag started from, and the live multi-node
   // selection (used as step inputs when several nodes are selected).
@@ -318,28 +390,47 @@ function GraphCanvas({
   const ignoreNextEmptySelection = useRef(false);
   const pendingNodePositions = useRef<Map<string, Pos>>(new Map());
 
+  // The serialized (collapsedLaneIds, showCuts) key from the last render.
+  // `prevPos` (previous on-screen position) exists so polled refetches don't
+  // make the canvas jump around; but when what's *visible* changes, the fresh
+  // auto-layout should win instead, otherwise collapsing a lane or hiding
+  // cuts leaves everything else at its old, now-sparse position.
+  const lastVisibilityKeyRef = useRef<string | null>(null);
+  const lastLayoutDirectionRef = useRef<LayoutDirection | null>(null);
+
   // Rebuild from the run document, preserving manual positions and selection
   // across polled refetches so the canvas doesn't jump.
   useEffect(() => {
-    const pos = layout(doc);
+    const pos = layout(doc, { collapsedLaneIds, showCuts, direction: layoutDirection });
+    const visibilityKey = `${[...collapsedLaneIds].sort().join(",")}|${showCuts}|${layoutDirection}`;
+    const visibilityChanged = lastVisibilityKeyRef.current !== null && lastVisibilityKeyRef.current !== visibilityKey;
+    lastVisibilityKeyRef.current = visibilityKey;
+
     setNodes((prev) => {
       const prevPos = new Map(prev.map((n) => [n.id, n.position]));
       const prevSel = new Map(prev.map((n) => [n.id, n.selected]));
       const resolvedPositions = new Map<string, Pos>();
+
+      // Position precedence: pendingNodePositions (just-created via drag) >
+      // savedNodePositions (manual, persisted) > fresh layout (when
+      // visibility changed) > prevPos (on-screen position, kept across
+      // polled refetches) > fresh layout (fallback) > origin.
+      const resolve = (id: string): Pos => {
+        const pendingPos = pendingNodePositions.current.get(id);
+        if (pendingPos) {
+          pendingNodePositions.current.delete(id);
+          return pendingPos;
+        }
+        if (visibilityChanged && pos[id]) return pos[id];
+        if (savedNodePositions[id]) return savedNodePositions[id];
+        return prevPos.get(id) ?? pos[id] ?? { x: 0, y: 0 };
+      };
+
       for (const n of doc.nodes) {
         if (!showCuts && n.inactive) continue;
-        const pendingPos = pendingNodePositions.current.get(n.node_id);
-        if (pendingPos) {
-          pendingNodePositions.current.delete(n.node_id);
-        }
-        resolvedPositions.set(
-          n.node_id,
-          pendingPos ??
-            savedNodePositions[n.node_id] ??
-            prevPos.get(n.node_id) ??
-            pos[n.node_id] ??
-            { x: 0, y: 0 },
-        );
+        const laneId = laneIdForRecord(doc, n.node_id);
+        if (laneId && collapsedLaneIds.has(laneId)) continue;
+        resolvedPositions.set(n.node_id, resolve(n.node_id));
       }
 
       const groups = laneGroups(doc);
@@ -365,15 +456,17 @@ function GraphCanvas({
       for (const group of groups) {
         if (!group.lane_id || !collapsedLaneIds.has(group.lane_id)) continue;
         const collapsedId = `lane:${group.lane_id}`;
-        const box = laneBounds(group, resolvedPositions);
+        // The pseudo-node position comes straight from the layout, which
+        // treats the collapsed lane as a single slot — this is what keeps
+        // the collapsed card from sitting in the middle of the hole left by
+        // its (now hidden) expanded bounds.
+        const collapsedPos = resolve(collapsedId);
+        resolvedPositions.set(collapsedId, collapsedPos);
         const colors = laneColors(doc, group.lane_id, laneColorOverrides, dark);
         nextNodes.push({
           id: collapsedId,
           type: "laneCollapsed",
-          position:
-            savedNodePositions[collapsedId] ??
-            prevPos.get(collapsedId) ??
-            (box ? { x: box.x + box.width / 2 - 70, y: box.y + box.height / 2 - 30 } : { x: 0, y: 0 }),
+          position: collapsedPos,
           selected: prevSel.get(collapsedId) ?? false,
           data: {
             label: group.label,
@@ -383,6 +476,7 @@ function GraphCanvas({
             summaryCount: (doc.lane_edge_summaries ?? []).filter(
               (summary) => summary.lane_id === group.lane_id,
             ).length,
+            status: laneStatus(doc, group.lane_id),
             ...colors,
           },
           zIndex: 2,
@@ -415,19 +509,73 @@ function GraphCanvas({
 
       return nextNodes;
     });
-  }, [collapsedLaneIds, dark, doc, laneColorOverrides, savedNodePositions, setNodes, showCuts]);
+  }, [
+    collapsedLaneIds,
+    dark,
+    doc,
+    laneColorOverrides,
+    layoutDirection,
+    savedNodePositions,
+    setNodes,
+    showCuts,
+  ]);
 
   // Edge paths should follow where nodes actually are, including after a user
   // drags nodes around. Use the nearest side instead of letting React Flow
   // default every target toward the top.
   useEffect(() => {
-    const fallbackPos = layout(doc);
+    const fallbackPos = layout(doc, { collapsedLaneIds, showCuts, direction: layoutDirection });
     const positions: Record<string, Pos> = { ...fallbackPos };
     for (const n of nodes) {
       positions[n.id] = n.position;
     }
-    setEdges(buildEdges(doc, positions, collapsedLaneIds, laneColorOverrides, showCuts, dark));
-  }, [collapsedLaneIds, dark, doc, laneColorOverrides, nodes, setEdges, showCuts]);
+    const nextEdges = buildEdges(
+      doc,
+      positions,
+      collapsedLaneIds,
+      laneColorOverrides,
+      showCuts,
+      dark,
+      layoutDirection,
+    );
+    setEdges(nextEdges);
+  }, [
+    collapsedLaneIds,
+    dark,
+    doc,
+    laneColorOverrides,
+    layoutDirection,
+    nodes,
+    setEdges,
+    showCuts,
+  ]);
+
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      for (const node of nodes) {
+        updateNodeInternals(node.id);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [nodes, updateNodeInternals]);
+
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    if (lastLayoutDirectionRef.current === null) {
+      lastLayoutDirectionRef.current = layoutDirection;
+      return;
+    }
+    if (lastLayoutDirectionRef.current === layoutDirection) return;
+    lastLayoutDirectionRef.current = layoutDirection;
+
+    void reactFlow.fitView({
+      duration: 300,
+      padding: 0.1,
+      minZoom: 0.05,
+      maxZoom: 1.2,
+    });
+  }, [layoutDirection, nodes, reactFlow]);
 
   useEffect(() => {
     const targetSelectedNodes = new Set<string>();
@@ -454,6 +602,52 @@ function GraphCanvas({
       return changed ? nextNds : nds;
     });
   }, [selection, setNodes]);
+
+  // Pan/zoom to the active lane when it changes (or is re-selected — the
+  // caller bumps `ts` for that). Guard the very first render so we don't
+  // fight the initial `fitView` on mount, and dedup by `ts` so unrelated
+  // node updates (drags, polling) don't replay the animation.
+  const sawFirstFocusRef = useRef(false);
+  const lastFocusTsRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focusLane) return;
+    if (!sawFirstFocusRef.current) {
+      sawFirstFocusRef.current = true;
+      lastFocusTsRef.current = focusLane.ts;
+      return;
+    }
+    if (lastFocusTsRef.current === focusLane.ts) return;
+
+    const group = laneGroups(doc).find((g) => g.lane_id === focusLane.laneId);
+    if (!group) {
+      lastFocusTsRef.current = focusLane.ts;
+      return;
+    }
+
+    const memberIds = collapsedLaneIds.has(focusLane.laneId)
+      ? [`lane:${focusLane.laneId}`]
+      : group.node_ids.filter((id) => {
+          const n = doc.nodes.find((candidate) => candidate.node_id === id);
+          return !n || showCuts || !n.inactive;
+        });
+
+    const targetIds = memberIds.length > 0 ? memberIds : [`lane:${focusLane.laneId}`];
+    const existingIds = new Set(nodes.map((n) => n.id));
+    const fitTargets = targetIds.filter((id) => existingIds.has(id));
+    // Nodes may not have rendered yet for a just-switched-to lane; leave
+    // lastFocusTsRef unset so a later `nodes` update (this effect also
+    // depends on `nodes`) retries the same focus request instead of silently
+    // dropping it.
+    if (fitTargets.length === 0) return;
+    lastFocusTsRef.current = focusLane.ts;
+
+    void reactFlow.fitView({
+      nodes: fitTargets.map((id) => ({ id })),
+      duration: 450,
+      padding: 0.25,
+      maxZoom: 1.1,
+    });
+  }, [focusLane, collapsedLaneIds, doc, nodes, reactFlow, showCuts]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -567,59 +761,64 @@ function GraphCanvas({
   );
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeDragStop={
-        writable
-          ? (_event, _node, ns) =>
-              onNodePositionsChanged(
-                Object.fromEntries(
-                  ns
-                    .filter((node) => node.type !== "laneGroup")
-                    .map((node) => [node.id, node.position]),
-                ),
-              )
-          : undefined
-      }
-      onNodeDoubleClick={(_event, node) => {
-        if (node.id.startsWith("lane:")) onToggleLane(node.id.slice("lane:".length));
-      }}
-      onEdgeClick={(event, edge) => {
-        event.stopPropagation();
-        ignoreNextEmptySelection.current = true;
-        selectedNodeIds.current = [];
-        const stepId = (edge.data as { stepId?: string })?.stepId;
-        if (stepId) onSelect({ kind: "step", id: stepId });
-      }}
-      onPaneClick={() => {
-        ignoreNextEmptySelection.current = false;
-        selectedNodeIds.current = [];
-        onSelect(null);
-      }}
-      onSelectionChange={onSelectionChange}
-      onConnect={writable ? onConnect : undefined}
-      onConnectStart={writable ? onConnectStart : undefined}
-      onConnectEnd={writable ? onConnectEnd : undefined}
-      nodesConnectable={writable}
-      connectionMode={ConnectionMode.Loose}
-      panOnScroll={true}
-      panOnScrollSpeed={1.2}
-      zoomOnScroll={false}
-      zoomActivationKeyCode="Control"
-      panOnDrag={true}
-      selectionOnDrag={false}
-      multiSelectionKeyCode="Shift"
-      selectionMode={SelectionMode.Partial}
-      fitView
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background color={document.documentElement.getAttribute("data-theme") === "dark" ? "#334155" : undefined} />
-      <Controls />
-    </ReactFlow>
+    <div ref={wrapperRef} className="graph-flow-wrapper">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeDragStop={
+          writable
+            ? (_event, _node, ns) =>
+                onNodePositionsChanged(
+                  Object.fromEntries(
+                    ns
+                      .filter((node) => node.type !== "laneGroup")
+                      .map((node) => [node.id, node.position]),
+                  ),
+                )
+            : undefined
+        }
+        onNodeDoubleClick={(_event, node) => {
+          if (node.id.startsWith("lane:")) onToggleLane(node.id.slice("lane:".length));
+        }}
+        onEdgeClick={(event, edge) => {
+          event.stopPropagation();
+          ignoreNextEmptySelection.current = true;
+          selectedNodeIds.current = [];
+          const stepId = (edge.data as { stepId?: string })?.stepId;
+          if (stepId) onSelect({ kind: "step", id: stepId });
+        }}
+        onPaneClick={() => {
+          ignoreNextEmptySelection.current = false;
+          selectedNodeIds.current = [];
+          onSelect(null);
+        }}
+        onSelectionChange={onSelectionChange}
+        onConnect={writable ? onConnect : undefined}
+        onConnectStart={writable ? onConnectStart : undefined}
+        onConnectEnd={writable ? onConnectEnd : undefined}
+        nodesConnectable={writable}
+        connectionMode={ConnectionMode.Loose}
+        panOnScroll={true}
+        panOnScrollSpeed={1.2}
+        zoomOnScroll={false}
+        zoomActivationKeyCode="Control"
+        panOnDrag={true}
+        selectionOnDrag={false}
+        multiSelectionKeyCode="Shift"
+        selectionMode={SelectionMode.Partial}
+        fitView
+        minZoom={0.05}
+        fitViewOptions={{ minZoom: 0.05, maxZoom: 1.2, padding: 0.1 }}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background color={document.documentElement.getAttribute("data-theme") === "dark" ? "#334155" : undefined} />
+        <Controls />
+        <ZoomDeclutter containerRef={wrapperRef} />
+      </ReactFlow>
+    </div>
   );
 }
 

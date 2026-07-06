@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from arctx.core.lanes import ensure_valid_lanes
+from arctx.core.lanes import format_lane_validation_errors, lane_validation_errors
 from arctx.core.schema.work import WorkEvent
 from arctx.core.types import JSONValue
 
@@ -83,6 +83,10 @@ def adopt_lane_records_impl(
     if unknown:
         raise KeyError(f"unknown record_id: {unknown[0]}")
 
+    baseline_errors = lane_validation_errors(
+        self.run_graph,
+        root_node_id=self.root_node_id,
+    )
     data: dict[str, JSONValue] = {
         "record_ids": list(ids),
         "mode": mode,
@@ -102,9 +106,11 @@ def adopt_lane_records_impl(
     )
     if event is None:  # defensive; user_id/lane_id were validated above.
         raise RuntimeError("failed to record lane adoption event")
-    try:
-        ensure_valid_lanes(self.run_graph, root_node_id=self.root_node_id)
-    except ValueError:
+    errors = lane_validation_errors(
+        self.run_graph,
+        root_node_id=self.root_node_id,
+    )
+    if len(errors) > len(baseline_errors):
         if self.run_graph.work_events and self.run_graph.work_events[-1] == event:
             self.run_graph.work_events.pop()
         else:  # defensive: keep rollback correct if hooks append extra events later.
@@ -113,5 +119,5 @@ def adopt_lane_records_impl(
                 for existing in self.run_graph.work_events
                 if existing.event_id != event.event_id
             ]
-        raise
+        raise ValueError(format_lane_validation_errors(errors[len(baseline_errors):]))
     return event

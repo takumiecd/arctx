@@ -112,17 +112,39 @@ body {
   height: 100vh;
 }
 header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--color-border);
   font-size: 14px;
   background: var(--color-bg);
   transition: background 0.2s ease, border-color 0.2s ease;
 }
+.brand {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin-right: 4px;
+  color: var(--color-text);
+}
+.brand-mark {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  color: var(--color-text);
+}
+.brand-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .show-cuts-toggle {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: 12px;
   cursor: pointer;
   user-select: none;
   font-size: 13px;
@@ -138,7 +160,6 @@ header {
 .theme-switcher {
   display: inline-flex;
   align-items: center;
-  margin-left: 10px;
   border: 1px solid var(--color-border-strong);
   border-radius: 6px;
   background: var(--color-bg-subtle);
@@ -178,7 +199,6 @@ header {
   position: relative;
   display: inline-block;
   vertical-align: middle;
-  margin-left: 12px;
 }
 
 /* Trigger button */
@@ -258,6 +278,9 @@ header {
   opacity: 0.45;
   filter: grayscale(0.4);
 }
+.lane-menu-item.lane-closed {
+  opacity: 0.72;
+}
 
 /* Collapse/Expand triangle button */
 .lane-collapse-toggle-btn {
@@ -326,6 +349,29 @@ header {
   border-radius: 999px;
   font-weight: normal;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+.lane-status-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.lane-status-badge.open {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+}
+.lane-status-badge.closed {
+  border-color: color-mix(in srgb, var(--color-error) 55%, var(--color-border));
+  background: color-mix(in srgb, var(--color-error) 12%, var(--color-bg));
+  color: var(--color-error);
 }
 
 /* Divider line */
@@ -427,6 +473,10 @@ main {
   flex: 1;
   min-width: 0;
 }
+.graph-flow-wrapper {
+  width: 100%;
+  height: 100%;
+}
 .hint {
   font-size: 12px;
 }
@@ -475,6 +525,17 @@ main {
 }
 .dag-node.inactive {
   opacity: 0.4;
+}
+/* Zoomed-out declutter: hide edge labels and per-node lane chips once the
+   viewport is zoomed out past a threshold (see Graph.tsx's cheap zoom-level
+   subscription, which toggles this class on the ReactFlow wrapper instead of
+   re-rendering every node on each zoom tick). */
+.zoomed-out .dag-node em {
+  display: none;
+}
+.zoomed-out .react-flow__edge-text,
+.zoomed-out .react-flow__edge-textbg {
+  display: none;
 }
 .react-flow__node.selected .dag-node {
   border: 2px solid var(--color-accent);
@@ -526,6 +587,10 @@ main {
 .lane-collapsed-node span {
   color: var(--color-text-muted);
   font-size: 11px;
+}
+.lane-collapsed-node .lane-status-badge {
+  color: var(--color-error);
+  font-size: 10px;
 }
 .panel {
   width: 340px;

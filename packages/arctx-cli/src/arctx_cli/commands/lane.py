@@ -49,7 +49,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
             "`arctx lane create NAME` creates a lane (status open). `arctx lane switch "
             "NAME` switches to an existing lane and pins it for this checkout. "
             "`arctx lane NAME` is switch shorthand and errors when NAME is absent. "
-            "`arctx lane close NAME --summary TEXT` closes a lane (attaching the summary "
+            "`arctx lane close NAME --summary TEXT` closes a lane (attaching the required summary "
             "to its terminal); `arctx lane open NAME` reopens it. Writes to a closed lane "
             "are refused until it is reopened."
         ),
@@ -94,7 +94,13 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--summary",
         default=None,
-        help="Closing summary (Markdown), attached to the lane's terminal node (lane close)",
+        help="Required closing summary, attached to the lane's terminal node (lane close)",
+    )
+    parser.add_argument(
+        "--summary-format",
+        choices=("markdown", "md", "html", "text"),
+        default="markdown",
+        help="Closing summary format: markdown (default), html, or text",
     )
     parser.add_argument(
         "--node",
@@ -398,23 +404,31 @@ def validate_lane_run(*, run_id: str, store_dir: str | None) -> dict:
 
 def _lane_active_leaves(handle, lane) -> list[str]:
     """Active leaf nodes of a lane (nodes in the lane with no step extending them)."""
-    from arctx.core.cuts import is_active_node
-    from arctx.core.lanes import lane_membership
+    from arctx.core.lanes import lane_active_frontiers
 
-    membership = lane_membership(handle.run_graph)
-    group = next((g for g in membership.groups if g.lane_id == lane.lane_id), None)
-    if not group:
-        return []
-    leaves = [
-        nid
-        for nid in group.node_ids
-        if is_active_node(handle.run_graph, nid)
-        and not handle.run_graph.steps_from_node(nid)
-    ]
-    return list(dict.fromkeys(leaves))
+    return list(lane_active_frontiers(handle.run_graph, lane.lane_id))
 
 
-def _attach_lane_summary(handle, *, lane, summary: str, node_ids, user_id: str):
+def _normalize_summary_format(summary_format: str | None) -> str:
+    if summary_format in (None, "", "markdown", "md"):
+        return "markdown"
+    if summary_format in ("html", "text"):
+        return summary_format
+    raise ValueError(
+        f"invalid summary format: {summary_format!r} "
+        "(expected markdown, html, or text)"
+    )
+
+
+def _attach_lane_summary(
+    handle,
+    *,
+    lane,
+    summary: str,
+    summary_format: str,
+    node_ids,
+    user_id: str,
+):
     """Stamp a lane's terminal with ``summary``. Returns (summary_node, leaves).
 
     - 1 leaf  → attach the summary to that existing leaf (no extra node).
@@ -441,7 +455,12 @@ def _attach_lane_summary(handle, *, lane, summary: str, node_ids, user_id: str):
 
     handle.attach(
         target,
-        SummaryPayload(payload_id=handle._next_id("pl"), target_id=target, text=summary),
+        SummaryPayload(
+            payload_id=handle._next_id("pl"),
+            target_id=target,
+            text=summary,
+            metadata={"format": _normalize_summary_format(summary_format)},
+        ),
         user_id=user_id,
         lane_id=lane.lane_id,
     )
@@ -457,15 +476,23 @@ def run_lane_close_command(
     run_id: str,
     user_id: str,
     store_dir: str | None,
+    summary_format: str = "markdown",
 ) -> dict:
     """Close a lane: attach the closing ``summary`` to its terminal, then mark it closed.
 
-    ``summary`` is **Markdown** (rendered as such in the web GUI), so put the full
-    closing write-up here. It lands on the lane's single leaf when there is one (no
-    redundant node), or on a fresh convergence node when several leaves must be
-    merged. Once closed, writes to the lane are refused until it is reopened with
-    ``lane open``.
+    ``summary`` is required: a closed lane must have a durable conclusion. It
+    lands on the lane's single leaf when there is one (no redundant node), or on
+    a fresh convergence node when several leaves must be merged. Once closed,
+    writes to the lane are refused until it is reopened with ``lane open``.
     """
+    if summary is None or not summary.strip():
+        raise ValueError(
+            f"arctx lane close {name_or_id} requires --summary — the summary becomes "
+            "the closing node's synthesis. Run: "
+            f'arctx lane close {name_or_id} --summary "<your findings>"'
+        )
+    normalized_format = _normalize_summary_format(summary_format)
+
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
@@ -480,11 +507,16 @@ def run_lane_close_command(
             f"reopen it with `arctx lane open {name_or_id}`"
         )
 
-    summary_node, leaves = (None, [])
-    if summary:
-        summary_node, leaves = _attach_lane_summary(
-            handle, lane=lane, summary=summary, node_ids=node_ids, user_id=user_id
-        )
+    summary_node, leaves = _attach_lane_summary(
+        handle,
+        lane=lane,
+        summary=summary,
+        summary_format=normalized_format,
+        node_ids=node_ids,
+        user_id=user_id,
+    )
+    if summary_node is None:
+        raise ValueError("lane close requires at least one active terminal node to summarize")
     event = handle.set_lane_status(
         lane.lane_id, status="closed", user_id=user_id, reason=reason
     )
@@ -594,11 +626,13 @@ def cli_lane(args) -> int:
                 )
             if len(argv) != 2:
                 raise ValueError(
-                    "usage: arctx lane close NAME_OR_ID --summary TEXT [--node ID...] [--reason TEXT]"
+                    "usage: arctx lane close NAME_OR_ID --summary TEXT "
+                    "[--summary-format markdown|html|text] [--node ID...] [--reason TEXT]"
                 )
             result = run_lane_close_command(
                 name_or_id=argv[1],
                 summary=args.summary,
+                summary_format=args.summary_format,
                 node_ids=args.node,
                 reason=args.reason,
                 run_id=resolve_run_id_from_args(args),

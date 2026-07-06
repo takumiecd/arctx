@@ -68,7 +68,7 @@ register_payload_class(ExperimentNotePayload)
 ### 命名規則
 
 - `payload_type` はプロジェクト固有のプレフィックスを付けると衝突を避けやすい（例: `"myproject_benchmark"`)
-- `target_kind` が `"node"` なら `attach()` 対象、`"transition"` なら `transition()` や `payload add --transition` 対象
+- `target_kind` が `"node"` なら `attach()` 対象、`"step"` なら `run_graph.attach_payload()` や CLI の `attach <step_id> --payload-type ...` 対象
 
 ## 2. モジュールをアプリ初期化時にインポートする
 
@@ -92,16 +92,16 @@ from myproject.arctx_payloads import BenchmarkPayload, ExperimentNotePayload
 store = JsonlRunStore()
 handle = store.load_run(run_id)
 
-# Transition に BenchmarkPayload をアタッチする
+# Step に BenchmarkPayload をアタッチする
 payload = BenchmarkPayload(
     payload_id=handle._next_id("pl"),
-    target_id=transition_id,          # 既存の transition_id
+    target_id=step_id,                # 既存の step_id
     metric_name="throughput",
     value=1234.5,
     unit="samples/sec",
     baseline=980.0,
 )
-# TransitionPayload は handle.attach ではなく run_graph.attach_payload を使う
+# StepPayload は handle.attach ではなく run_graph.attach_payload を使う
 handle.run_graph.attach_payload(payload)
 store.save_run(handle)
 
@@ -117,11 +117,11 @@ store.save_run(handle)
 ```
 
 `handle.attach()` は `target_kind == "node"` のペイロード専用。
-`target_kind == "transition"` のペイロードは `handle.run_graph.attach_payload()` を直接呼ぶ。
+`target_kind == "step"` のペイロードは `handle.run_graph.attach_payload()` を直接呼ぶ。
 
 ## 4. CLI からアタッチする（カスタムデコーダーなしの場合）
 
-カスタムペイロードを `arctx payload add` 経由でアタッチするには、
+カスタムペイロードを `arctx attach --payload-type ...` 経由でアタッチするには、
 CLIが起動する前にモジュールが読み込まれている必要がある。
 プロジェクト内専用の場合はラッパースクリプト経由が簡単:
 
@@ -134,8 +134,7 @@ sys.exit(main())
 ```
 
 ```bash
-PYTHONPATH=src python3 wrapper.py payload add \
-  --transition <transition_id> \
+PYTHONPATH=src python3 wrapper.py attach <step_id> \
   --payload-type benchmark \
   --field metric_name=throughput \
   --field value=1234.5 \
@@ -145,7 +144,7 @@ PYTHONPATH=src python3 wrapper.py payload add \
 ## 5. 未知のペイロードタイプのフォールバック動作
 
 登録されていない `payload_type` を持つレコードは、`payload_from_dict` が
-`target_kind` に応じて汎用の `NodePayload` または `TransitionPayload` に変換する。
+`target_kind` に応じて汎用の `NodePayload` または `StepPayload` に変換する。
 フィールドは `content` に収まる。CLIはクラッシュしない。
 
 これは後方互換性の保証:
