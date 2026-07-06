@@ -9,6 +9,7 @@ import pytest
 from arctx_cli.commands.add import run_add_step_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.lane import run_lane_create_command
+from arctx_cli.context import resolve_store
 from arctx_cli.main import main
 
 
@@ -195,6 +196,34 @@ def test_add_explicit_from_unchanged(tmp_path):
         left["output_node_id"],
         right["output_node_id"],
     }
+
+
+def test_add_rejects_new_lane_validation_error(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+    sd = _store_dir(td)
+    math = run_lane_create_command(
+        name="math", run_id="run_add_frontier", user_id="alice", store_dir=sd
+    )
+    other = run_lane_create_command(
+        name="other", run_id="run_add_frontier", user_id="alice", store_dir=sd
+    )
+    _step(sd, "run_add_frontier", init["root_node_id"], "math-root", math["lane_id"])
+    other_root = _step(
+        sd, "run_add_frontier", init["root_node_id"], "other-root", other["lane_id"]
+    )
+
+    with pytest.raises(ValueError, match="multiple_lane_roots"):
+        _step(
+            sd,
+            "run_add_frontier",
+            other_root["output_node_id"],
+            "bad second root",
+            math["lane_id"],
+        )
+
+    handle = resolve_store(sd).load_run("run_add_frontier")
+    assert len(handle.run_graph.steps) == 2
 
 
 def test_add_cli_without_from_flag_succeeds(tmp_path, capsys):

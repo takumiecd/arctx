@@ -218,7 +218,7 @@ def lane_root_candidates(
     at the unit level. A lane root candidate may be either:
 
     - a lane-owned node with no producing step in the same lane, or
-    - the output node of a lane-owned entry step whose input comes from another
+    - the output node of a lane-owned entry step with no input from the same
       lane.
 
     The second form matches the UI's "step + output node" unit: a lane can
@@ -252,8 +252,8 @@ def lane_root_candidates(
             roots.add(node_id)
             continue
         step = graph.steps[incoming_step]
-        if any(
-            membership.node_to_lane.get(input_node_id) != lane_id
+        if not any(
+            membership.node_to_lane.get(input_node_id) == lane_id
             for input_node_id in step.input_node_ids
         ):
             roots.add(node_id)

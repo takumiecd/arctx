@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from arctx.core.append import AppendBatch, GraphRecordEnvelope
+from arctx.core.lanes import format_lane_validation_errors, lane_validation_errors
 
 
 def graph_counts(handle) -> dict[str, set[str]]:
@@ -12,6 +13,7 @@ def graph_counts(handle) -> dict[str, set[str]]:
         "steps": set(handle.run_graph.steps),
         "payloads": set(handle.run_graph.payloads),
         "work_events": {event.event_id for event in handle.run_graph.work_events},
+        "lane_error_count": {str(_lane_error_count(handle))},
     }
 
 
@@ -24,6 +26,8 @@ def maybe_append_or_save(
     before: dict[str, set[str]],
 ) -> None:
     """Use append_batch for capable stores, otherwise fall back to save_run."""
+    if _has_new_work_events(handle, before):
+        _ensure_no_new_lane_errors(handle, baseline=_baseline_lane_error_count(before))
     if user_id is None or lane_id is None or not hasattr(store, "append_batch"):
         store.save_run(handle)
         return
@@ -80,3 +84,36 @@ def build_append_batch(
 
 def _new_ids(current: dict[str, object], before: dict[str, set[str]], key: str) -> list[str]:
     return [record_id for record_id in current if record_id not in before.get(key, set())]
+
+
+def _has_new_work_events(handle, before: dict[str, set[str]]) -> bool:
+    return any(
+        event.event_id not in before.get("work_events", set())
+        for event in handle.run_graph.work_events
+    )
+
+
+def _lane_error_count(handle) -> int:
+    return len(
+        lane_validation_errors(
+            handle.run_graph,
+            root_node_id=handle.root_node_id,
+        )
+    )
+
+
+def _baseline_lane_error_count(before: dict[str, set[str]]) -> int:
+    values = before.get("lane_error_count", {"0"})
+    try:
+        return int(next(iter(values)))
+    except (StopIteration, ValueError):
+        return 0
+
+
+def _ensure_no_new_lane_errors(handle, *, baseline: int) -> None:
+    current = lane_validation_errors(
+        handle.run_graph,
+        root_node_id=handle.root_node_id,
+    )
+    if len(current) > baseline:
+        raise ValueError(format_lane_validation_errors(current[baseline:]))

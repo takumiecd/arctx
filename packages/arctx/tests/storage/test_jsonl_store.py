@@ -208,6 +208,52 @@ def test_append_batch_allows_shared_lane_multi_actor():
         assert actors == {"user_a", "user_b"}
 
 
+def test_append_batch_sequences_follow_work_events_jsonl():
+    run = init(_req(), run_id="rt_seq")
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(run)
+        store.append_batch(
+            AppendBatch(
+                run_id=run.run_id,
+                user_id="user_a",
+                lane_id="ws_shared",
+                lane=Lane("ws_shared", run.run_id, "user_a"),
+                records=(),
+                events=(
+                    WorkEvent(
+                        event_id="we_a",
+                        run_id=run.run_id,
+                        lane_id="ws_shared",
+                        user_id="user_a",
+                        event_type="note",
+                    ),
+                ),
+            )
+        )
+        store.append_batch(
+            AppendBatch(
+                run_id=run.run_id,
+                user_id="user_b",
+                lane_id="ws_shared",
+                lane=Lane("ws_shared", run.run_id, "user_b"),
+                records=(),
+                events=(
+                    WorkEvent(
+                        event_id="we_b",
+                        run_id=run.run_id,
+                        lane_id="ws_shared",
+                        user_id="user_b",
+                        event_type="note",
+                    ),
+                ),
+            )
+        )
+
+        loaded = store.load_run("rt_seq")
+        assert [event.seq for event in loaded.run_graph.work_events] == [1, 2]
+
+
 def test_round_trip_preserves_objective():
     """Requirement.objective must survive a save/load round-trip."""
     req = Requirement(

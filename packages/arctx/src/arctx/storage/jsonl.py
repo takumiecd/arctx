@@ -330,12 +330,14 @@ def _run_lock(run_path: Path):
 
 
 def _existing_ids(run_path: Path) -> dict[str, set[str]]:
+    work_event_ids = _ids_from_jsonl(run_path / "work_events.jsonl", "event_id")
+    work_event_ids.update(_ids_from_jsonl(run_path / "lane_events.jsonl", "event_id"))
     return {
         "node": _ids_from_jsonl(run_path / "nodes.jsonl", "node_id"),
         "step": _ids_from_jsonl(run_path / "steps.jsonl", "step_id"),
         "payload": _ids_from_jsonl(run_path / "payloads.jsonl", "payload_id"),
         "lanes": _ids_from_jsonl(run_path / "lanes.jsonl", "lane_id"),
-        "work_events": _ids_from_jsonl(run_path / "lane_events.jsonl", "event_id"),
+        "work_events": work_event_ids,
     }
 
 
