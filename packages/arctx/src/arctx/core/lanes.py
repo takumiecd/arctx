@@ -509,8 +509,11 @@ def lane_active_frontiers(
     """Return this lane's active frontier nodes.
 
     A frontier is a lane-owned node that is active (:func:`arctx.core.cuts.
-    is_active_node`) and has *no* outgoing step at all — not even to another
-    lane. This is stricter than :func:`lane_edge_node_ids` (which only
+    is_active_node`) and has *no active* outgoing step — not even to another
+    lane. A cut outgoing step does not count: append-only history means a
+    node whose only child was later cut must be able to re-enter the
+    frontier, since there is no way to "undo" the child creation other than
+    cutting it. This is stricter than :func:`lane_edge_node_ids` (which only
     excludes outgoing steps within the same lane) and is the set of nodes an
     agent could plausibly continue from without an explicit ``--from``.
     """
@@ -522,10 +525,14 @@ def lane_active_frontiers(
         for node_id, owner in membership.node_to_lane.items()
         if owner == lane_id
     }
+    inactive_steps = inactive_step_ids(graph)
     return tuple(
         node_id
         for node_id in sorted(lane_nodes)
-        if is_active_node(graph, node_id) and not graph.steps_from_node(node_id)
+        if is_active_node(graph, node_id)
+        and all(
+            step_id in inactive_steps for step_id in graph.steps_from_node(node_id)
+        )
     )
 
 
@@ -575,6 +582,9 @@ def validate_lanes(
                 )
             )
 
+    inactive_nodes_all = inactive_node_ids(graph)
+    inactive_steps_all = inactive_step_ids(graph)
+
     for lane_id in sorted(set(lane_node_ids) | set(lane_step_ids)):
         nodes = lane_node_ids.get(lane_id, set())
         steps = lane_step_ids.get(lane_id, set())
@@ -585,18 +595,24 @@ def validate_lanes(
             root_node_id=run_root,
         )
 
-        if lane_id == "default" and (nodes or steps):
-            issues.append(
-                LaneValidationIssue(
-                    code="default_lane_membership",
-                    severity="warning",
-                    message=(
-                        f"default lane still owns {len(nodes)} nodes and "
-                        f"{len(steps)} steps"
-                    ),
-                    lane_id=lane_id,
+        if lane_id == "default":
+            # Hygiene check only: cut records shouldn't keep this warning
+            # alive forever, since append-only history can never remove a
+            # default-lane record from membership — only cutting it.
+            active_default_nodes = nodes - inactive_nodes_all
+            active_default_steps = steps - inactive_steps_all
+            if active_default_nodes or active_default_steps:
+                issues.append(
+                    LaneValidationIssue(
+                        code="default_lane_membership",
+                        severity="warning",
+                        message=(
+                            f"default lane still owns {len(active_default_nodes)} "
+                            f"nodes and {len(active_default_steps)} steps"
+                        ),
+                        lane_id=lane_id,
+                    )
                 )
-            )
 
         if not roots and (nodes or steps):
             issues.append(

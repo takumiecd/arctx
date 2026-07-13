@@ -64,7 +64,8 @@ def warn_if_invalid(handle_or_run_id, store_dir: str | None, *, command_name: st
         print(f"  - {issue.code}: {issue.message}", file=sys.stderr)
     print(
         "hint: run 'arctx lane validate' for details; "
-        "see 'arctx guide' for the data model.",
+        "fix with 'arctx lane adopt <LANE>' (claim nodes into a lane) or "
+        "'arctx cut <ID>' (retire them); see 'arctx guide' for the data model.",
         file=sys.stderr,
     )
 

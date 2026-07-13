@@ -101,7 +101,11 @@ def test_warn_if_invalid_reports_issues_on_stderr(tmp_path, capsys, monkeypatch)
     err = capsys.readouterr().err
     assert "arctx: warning: run 'run_pwc' has 1 consistency issue(s) after add:" in err
     assert "fake_issue: something looks off" in err
-    assert "hint: run 'arctx lane validate' for details; see 'arctx guide' for the data model." in err
+    assert (
+        "hint: run 'arctx lane validate' for details; "
+        "fix with 'arctx lane adopt <LANE>' (claim nodes into a lane) or "
+        "'arctx cut <ID>' (retire them); see 'arctx guide' for the data model."
+    ) in err
 
 
 def test_warn_if_invalid_skips_when_validate_off(tmp_path, capsys, monkeypatch):
