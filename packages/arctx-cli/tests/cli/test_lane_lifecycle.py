@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from arctx_cli.commands.add import run_add_step_command
+from arctx_cli.commands.cut import run_cut_command
 from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.lane import (
     list_lanes,
@@ -223,3 +224,56 @@ def test_close_without_summary_cli_returns_corrective_message(capsys):
         err = capsys.readouterr().err
         assert "arctx lane close work requires --summary" in err
         assert 'arctx lane close work --summary "<your findings>"' in err
+
+
+def test_close_succeeds_without_explicit_node_after_cutting_only_child(
+    tmp_path, monkeypatch
+):
+    """Regression for the frontier bug: a node whose only child was cut must
+    count as an active terminal again, so `lane close` without `--node`
+    should find it instead of raising "requires at least one active
+    terminal node".
+
+    Isolated via monkeypatch.chdir(tmp_path): run_init_command writes the
+    active-run pointer under the nearest git repo's .git/arctx-id, and this
+    repo's own .git/arctx-id must not be touched by test runs.
+    """
+    monkeypatch.chdir(tmp_path)
+    td = str(tmp_path)
+    sd = _store_dir(td)
+    _init(td)
+    lane_id = _create_lane(sd)
+    root = _root(sd)
+    parent = _add(sd, root, lane_id, title="parent")
+    child = _add(sd, parent, lane_id, title="child")
+
+    run = resolve_store(sd).load_run("run_lc")
+    child_step_id = next(
+        s.step_id for s in run.run_graph.steps.values() if s.output_node_id == child
+    )
+    run_cut_command(
+        run_id="run_lc",
+        target_id=child,
+        target_kind="node",
+        reason="stale",
+        store_dir=sd,
+        user_id="alice",
+        lane_id=lane_id,
+    )
+    run_cut_command(
+        run_id="run_lc",
+        target_id=child_step_id,
+        target_kind="step",
+        reason="stale",
+        store_dir=sd,
+        user_id="alice",
+        lane_id=lane_id,
+    )
+
+    res = run_lane_close_command(
+        name_or_id="work", summary="findings", node_ids=None, reason="done",
+        run_id="run_lc", user_id="alice", store_dir=sd,
+    )
+    assert res["status"] == "closed"
+    assert res["summary_node"] == parent
+    assert res["joined_nodes"] == [parent]

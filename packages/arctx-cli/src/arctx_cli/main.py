@@ -9,10 +9,37 @@ import sys
 
 from arctx_cli.commands import core_cli_commands, register_cli_commands
 
+GUIDE_HINT = "hint: run 'arctx guide' to see the usage model and current context"
 
-def _user_error(message: str) -> int:
-    """Print a clean ``arctx: <message>`` to stderr and return exit code 1."""
+
+class _RootArgumentParser(argparse.ArgumentParser):
+    """Root parser that points users at ``arctx guide`` on a parse error.
+
+    Base ``argparse`` prints usage + message on ``error()`` and exits, without
+    ever showing the epilog — so a missing/typo'd subcommand gives no signal
+    toward ``arctx guide``. This appends the same hint used elsewhere
+    (:data:`GUIDE_HINT`) after the standard usage/message, then exits with the
+    usual code 2. Subparsers created via ``subparsers.add_parser`` inherit
+    this class (``add_subparsers`` defaults ``parser_class`` to the parent's
+    type), so subcommand parse errors funnel to the guide as well.
+    """
+
+    def error(self, message: str) -> None:  # noqa: D102 — argparse override
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        print(GUIDE_HINT, file=sys.stderr)
+        self.exit(2)
+
+
+def _user_error(message: str, *, command: str | None = None) -> int:
+    """Print a clean ``arctx: <message>`` to stderr and return exit code 1.
+
+    Appends the ``arctx guide`` hint unless the failing command is ``guide``
+    itself (that would just loop the user back to the thing that failed).
+    """
     print(f"arctx: {message}", file=sys.stderr)
+    if command != "guide":
+        print(GUIDE_HINT, file=sys.stderr)
     return 1
 
 
@@ -40,9 +67,15 @@ def _format_user_error(exc: BaseException, args) -> str | None:
 
 
 def _build_parser(*, run_dir: str | None = None) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _RootArgumentParser(
         prog="arctx",
         description="Record optimization and problem-solving processes",
+        epilog=(
+            "First time or an agent? Run 'arctx guide' first — it explains "
+            "the data model (Node/Step/Lane), the recommended workflow, and "
+            "shows the current context in one shot."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -173,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         message = _format_user_error(exc, args)
         if message is None:
             raise
-        return _user_error(message)
+        return _user_error(message, command=getattr(args, "command", None))
 
 
 if __name__ == "__main__":

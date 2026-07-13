@@ -20,6 +20,7 @@ from arctx_cli.context import (
     resolve_lane_id_from_args,
 )
 from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
+from arctx_cli.post_write_check import warn_if_invalid
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -107,8 +108,9 @@ def run_reparent_command(
 
 def cli_reparent(args) -> int:
     try:
+        run_id = resolve_run_id_from_args(args)
         result = run_reparent_command(
-            run_id=resolve_run_id_from_args(args),
+            run_id=run_id,
             node_id=args.node_id,
             input_node_ids=args.input_nodes,
             title=args.title,
@@ -122,7 +124,8 @@ def cli_reparent(args) -> int:
             lane_id=resolve_lane_id_from_args(args),
         )
         print(json.dumps(result["step"], ensure_ascii=False, indent=2))
-        return 0
+        strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="reparent")
+        return strict_rc or 0
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

@@ -13,6 +13,7 @@ from arctx_cli.context import (
     resolve_user_id_from_args,
     resolve_lane_id_from_args,
 )
+from arctx_cli.post_write_check import warn_if_invalid
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -96,4 +97,5 @@ def cli_uncut(args) -> int:
         lane_id=resolve_lane_id_from_args(args),
     )
     print(json.dumps(result["uncut"], ensure_ascii=False, indent=2))
-    return 0
+    strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="uncut")
+    return strict_rc or 0

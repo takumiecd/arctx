@@ -16,6 +16,7 @@ from arctx_cli.context import (
 )
 from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
 from arctx_cli.lane_gate import ensure_lane_open
+from arctx_cli.post_write_check import warn_if_invalid
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -102,8 +103,9 @@ def run_attach_command(
 
 def cli_attach(args) -> int:
     try:
+        run_id = resolve_run_id_from_args(args)
         result = run_attach_command(
-            run_id=resolve_run_id_from_args(args),
+            run_id=run_id,
             target_id=args.target_id,
             payload_kind=args.payload_kind,
             payload_type=args.payload_type,
@@ -115,7 +117,8 @@ def cli_attach(args) -> int:
             force=args.force,
         )
         print(json.dumps(result["payload"], ensure_ascii=False, indent=2))
-        return 0
+        strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="attach")
+        return strict_rc or 0
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

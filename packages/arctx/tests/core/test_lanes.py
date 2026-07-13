@@ -6,6 +6,7 @@ import pytest
 
 import arctx
 from arctx.core.lanes import (
+    lane_active_frontiers,
     lane_boundaries,
     lane_edge_node_ids,
     lane_edge_summaries,
@@ -236,6 +237,39 @@ def test_reparent_within_lane_stays_lane_valid():
     assert errors == []
 
 
+def test_lane_active_frontiers_recovers_parent_after_cutting_only_child():
+    """Cutting a node's only outgoing step must let the parent re-enter the
+    frontier. Append-only history means a node's producing steps never go
+    away, so ``lane_active_frontiers`` must judge "no outgoing step" by
+    active steps only, not raw ``steps_from_node``.
+    """
+    h = _handle()
+    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
+
+    n1 = h.add_step(
+        [h.root_node_id],
+        _payload(h, "n1"),
+        user_id="alice",
+        lane_id="lane_math",
+    )
+    n2 = h.add_step(
+        [n1.output_node_id],
+        _payload(h, "n2"),
+        user_id="alice",
+        lane_id="lane_math",
+    )
+
+    # Before the cut: only n2 (the leaf) is a frontier; n1 has a live child.
+    assert lane_active_frontiers(h.run_graph, "lane_math") == (n2.output_node_id,)
+
+    h.cut(n2.output_node_id, target_kind="node", user_id="alice", lane_id="lane_math")
+    h.cut(n2.step_id, target_kind="step", user_id="alice", lane_id="lane_math")
+
+    # After the cut: n2 is inactive and drops out; n1 has no *active* outgoing
+    # step left, so it must recover frontier status.
+    assert lane_active_frontiers(h.run_graph, "lane_math") == (n1.output_node_id,)
+
+
 def test_validate_lanes_reports_output_lane_mismatch():
     h = _handle()
     h.ensure_lane(name="seed", lane_id="lane_seed", created_by="alice")
@@ -341,6 +375,38 @@ def test_validate_lanes_warns_about_default_lane_membership():
     assert any(
         issue.code == "default_lane_membership" and issue.lane_id == "default"
         for issue in issues
+    )
+
+
+def test_validate_lanes_default_lane_membership_ignores_cut_records():
+    """The default-lane hygiene warning is about records someone still needs
+    to adopt out of ``default``. Cutting a stray default-lane node should
+    retire it from that count (append-only history can never remove it from
+    membership outright — cutting is the only way to "resolve" it), and
+    uncutting it must bring the warning back.
+    """
+    h = _handle()
+    node = _seed_node(h, lane_id="default")
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+    assert any(
+        issue.code == "default_lane_membership" and issue.lane_id == "default"
+        for issue in issues
+    )
+
+    h.cut(node.node_id, target_kind="node", user_id="alice", lane_id="default")
+
+    issues_after_cut = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+    assert not any(
+        issue.code == "default_lane_membership" for issue in issues_after_cut
+    )
+
+    h.uncut(node.node_id, target_kind="node", user_id="alice", lane_id="default")
+
+    issues_after_uncut = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+    assert any(
+        issue.code == "default_lane_membership" and issue.lane_id == "default"
+        for issue in issues_after_uncut
     )
 
 
