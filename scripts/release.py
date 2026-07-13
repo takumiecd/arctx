@@ -70,7 +70,10 @@ def set_version(version: str) -> None:
             replace_once(path, r'^version = "[^"]+"', f'version = "{version}"')
 
     for path in DEPENDENCY_FILES:
-        replace_once(path, r'"arctx>=[^"]+"', f'"arctx>={version}"')
+        # Exact pin: the three packages are versioned and released in
+        # lockstep, and a loose lower bound lets pip pair a new CLI with an
+        # older core (ImportError at runtime instead of a resolver error).
+        replace_once(path, r'"arctx[>=]=[^"]+"', f'"arctx=={version}"')
 
 
 def clean_dist(packages: tuple[str, ...]) -> None:
