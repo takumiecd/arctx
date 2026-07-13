@@ -38,6 +38,7 @@ from arctx_cli.paths import (
     read_arctx_lane,
     write_arctx_lane,
 )
+from arctx_cli.post_write_check import warn_if_invalid
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -586,9 +587,10 @@ def cli_lane(args) -> int:
         if command == "create":
             if len(argv) != 2:
                 raise ValueError("usage: arctx lane create NAME")
+            run_id = resolve_run_id_from_args(args)
             result = run_lane_create_command(
                 name=argv[1],
-                run_id=resolve_run_id_from_args(args),
+                run_id=run_id,
                 user_id=resolve_user_id_from_args(args),
                 store_dir=args.store_dir,
             )
@@ -596,7 +598,8 @@ def cli_lane(args) -> int:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             else:
                 print(result["name"])
-            return 0
+            strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane create")
+            return strict_rc or 0
 
         if command == "adopt":
             if len(argv) != 2:
@@ -629,31 +632,35 @@ def cli_lane(args) -> int:
                     "usage: arctx lane close NAME_OR_ID --summary TEXT "
                     "[--summary-format markdown|html|text] [--node ID...] [--reason TEXT]"
                 )
+            run_id = resolve_run_id_from_args(args)
             result = run_lane_close_command(
                 name_or_id=argv[1],
                 summary=args.summary,
                 summary_format=args.summary_format,
                 node_ids=args.node,
                 reason=args.reason,
-                run_id=resolve_run_id_from_args(args),
+                run_id=run_id,
                 user_id=resolve_user_id_from_args(args),
                 store_dir=args.store_dir,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
-            return 0
+            strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane close")
+            return strict_rc or 0
 
         if command == "open":
             if len(argv) != 2:
                 raise ValueError("usage: arctx lane open NAME_OR_ID [--reason TEXT]")
+            run_id = resolve_run_id_from_args(args)
             result = run_lane_open_command(
                 name_or_id=argv[1],
                 reason=args.reason,
-                run_id=resolve_run_id_from_args(args),
+                run_id=run_id,
                 user_id=resolve_user_id_from_args(args),
                 store_dir=args.store_dir,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
-            return 0
+            strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane open")
+            return strict_rc or 0
 
         if command in ("switch", "use"):
             if len(argv) != 2:
