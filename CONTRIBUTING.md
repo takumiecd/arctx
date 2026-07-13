@@ -129,7 +129,8 @@ git diff
 git add packages/arctx/pyproject.toml \
   packages/arctx-cli/pyproject.toml \
   packages/arctx-tui/pyproject.toml \
-  packages/arctx/src/arctx/__init__.py
+  packages/arctx/src/arctx/__init__.py \
+  uv.lock
 git commit -m "release: prepare 0.3.1b4"
 
 # Tag the commit that contains the matching pyproject.toml versions.
