@@ -73,12 +73,24 @@ arctx log --run demo
 - `arctx use <run_id>`: repo スコープの current run pointer を書き込む。
 - `arctx use <run_id> --shell`: shell ローカル固定用の `ARCTX_RUN_ID` export を
   出力する。
-- `arctx lane create <name>`: run に lane を作成する。切替はしない。
+- `arctx lane create <name> --summary "..." [--purpose "..."] [--parent LANE ...]`:
+  初期current summaryを持つlaneを作成する。切替はしない。`--parent`は反復でき、
+  Lane DAGで複数の親から同じlaneを参照できる。
+- `arctx lane summarize <name-or-id> --summary "..."`: open/closedにかかわらず、
+  現在地のsummaryをappendする。過去summaryは残り、最新のものがOverviewに出る。
+- `arctx lane attach <name-or-id> --type TYPE --text "..."`: `purpose`, `question`,
+  `decision`, `note`など任意typeのLanePayloadをappendする。
+- `arctx lane link <parent> <child>`: Lane DAGに探索linkをappendする。自己link、重複、
+  cycleは拒否する。
+- `arctx explore [lane] [--depth N] [--contents] [--json]`: Laneを畳んだsummaryから
+  探索する。対象を省略するとDAG rootから開始し、既定では子を1段だけ展開する。
+  `--contents`はLaneに直接所属するNode/Step/Payload件数を加える。
 - `arctx lane switch <name-or-id>`: 既存 lane に切り替え、repo スコープの
   current lane pointer を書き込む。存在しない名前はエラー。
 - `arctx lane <name-or-id>`: `switch` の省略形。typo 防止のため自動作成しない。
 - `arctx lane close <name-or-id> --summary "..." [--summary-format markdown|html|text]`: lane を閉じる。
-  要約は必須で、lane の末端に付ける（leaf が 1 つならその leaf に刻む。複数なら
+  要約は必須で、Laneのcurrent summaryを更新すると同時に末端Nodeにも付ける
+  （leaf が 1 つならその leaf に刻む。複数なら
   1 つの収束 node にまとめる）ので、結論は別 step を作らず `--summary` に入れる。
   format は既定が markdown。必要なら sanitized HTML や plain text も指定できる。
   `--reason` で理由を記録、`--node` で対象 leaf を明示できる。
@@ -117,7 +129,8 @@ arctx log --run demo
   0 個または複数ある場合は、候補 node 一覧（複数のとき）または `arctx guide
   --context` / `arctx dump` で node を探す案内（0 個のとき）を添えてエラーに
   なる。
-- `arctx attach <node-or-step-id> --type TYPE --field key=value`: payload を attach する。
+- `arctx attach <node-or-step-or-lane-id> --type TYPE --field key=value`: payload を
+  attachする。Lane targetでは`LanePayload`になり、closed Laneにも記述情報を追記できる。
 - `arctx attach NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: `diagram` extension が有効な run で、循環可能な図・モデル artifact を attach する。
 - `arctx show <node-or-step-or-payload-id>`: 1 件の record を付随 payload とともに見る。
 
@@ -357,13 +370,20 @@ repo が登録されている場合、export には Repos セクションが含�
 GUI の live モード用バックエンドです（共有用の静的 JSON とは別物）。標準ライブラリ
 （`http.server`）のみで動き、追加インストール不要・CORS 対応です。
 
-- `GET /run` — `export --format json` と同じデータ契約（全 node/step/payload、`lane_edge_summaries`）に加え、live API の現在 lane（`current_lane_id` / `current_lane_name`）を返す。
+- `GET /run` — `export --format json` と同じデータ契約（全 node/step/payload、
+  `lane_links`, `lane_overviews`, `lane_edge_summaries`）に加え、live API の現在 lane
+  （`current_lane_id` / `current_lane_name`）を返す。
 - `POST /step` — `{ "input_node_ids": [...], "type": ..., "content": {...} }` で Step を作成（出力 node も同時に生成）。
 - `POST /attach` — `{ "target_id": ..., "target_kind": "node"|"step", "type": ..., "content": {...} }` で node/step に payload を付与（`target_kind` 省略時は id から自動判定。旧 `node_id` も受理）。
 - `POST /cut` — `{ "target_id": ..., "target_kind": "node"|"step", "reason": ... }` で cut。
 - `POST /uncut` — `{ "target_id": ..., "target_kind": "node"|"step", "reason": ... }` で cut を取り消す（append-only な反転）。
 - `POST /reparent` — `{ "node_id": ..., "input_node_ids": [...], "type": ..., "reason": ... }` で node を新しい入力へ付け替え（新 step を append ＋旧 producer を cut）。新しい step を返す。
-- `POST /lane` — `{ "name": ..., "metadata": {...} }` で lane を作成。
+- `POST /lane` — `{ "name": ..., "summary": ..., "purpose": ..., "metadata": {...} }`
+  で初期summary付きlaneを作成。`summary`は必須。
+- `POST /lane/payload` — `{ "lane_id": ..., "type": ..., "text": ... }` で
+  LanePayloadをappend。
+- `POST /lane/link` — `{ "parent_lane_id": ..., "child_lane_id": ... }` で
+  cycle-safeなLane DAG linkをappend。
 - `POST /lane/adopt` — `{ "lane_id": ..., "record_ids": [...] }` で既存 record を lane に採用。`history_node_id` または `reachable_node_id` を指定すると node 履歴/到達部分グラフをまとめて採用する。
 - `GET /health` — 死活確認。
 

@@ -84,8 +84,8 @@ def cli_cut(args) -> int:
             raise KeyError(f"unknown run_id: {run_id}")
         handle = store.load_run(run_id)
         resolved = resolve_target_kind(handle, target_id)
-        if resolved == "payload":
-            raise ValueError("cannot cut a payload")
+        if resolved not in ("node", "step"):
+            raise ValueError(f"cannot cut a {resolved}")
         target_kind = resolved
     else:
         raise ValueError("provide '<id>', 'node <id>', 'step <id>', --node, or --step")

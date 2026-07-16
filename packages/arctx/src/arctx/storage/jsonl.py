@@ -234,6 +234,10 @@ class JsonlRunStore:
                 graph.payloads_by_step.setdefault(payload.target_id, []).append(
                     payload.payload_id
                 )
+            elif payload.target_kind == "lane":
+                graph.payloads_by_lane.setdefault(payload.target_id, []).append(
+                    payload.payload_id
+                )
 
         for lpath in [run_path / "work_sessions.jsonl", run_path / "lanes.jsonl"]:
             if lpath.exists():

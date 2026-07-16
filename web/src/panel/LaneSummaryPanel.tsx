@@ -44,6 +44,12 @@ export function LaneSummaryPanel({
   const status = laneStatus(doc, laneId);
   const group = laneGroups(doc).find((lane) => lane.lane_id === laneId);
   const summaries = laneEdgeSummariesFor(doc, laneId);
+  const overview = (doc.lane_overviews ?? []).find((item) => item.lane_id === laneId);
+  const currentSummary = overview?.current_values?.summary;
+  const currentSummaryText = currentSummary?.content?.text;
+  const childOverviews = (overview?.child_lane_ids ?? [])
+    .map((childId) => (doc.lane_overviews ?? []).find((item) => item.lane_id === childId))
+    .filter((item) => item !== undefined);
   const edgeNodeIds = new Set(summaries.map((summary) => summary.node_id));
   return (
     <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
@@ -90,6 +96,44 @@ export function LaneSummaryPanel({
             <strong>{summaries.length}</strong>
           </div>
         </section>
+
+        <section className="panel-view">
+          <h3>current overview</h3>
+          {typeof currentSummaryText === "string" ? (
+            <SummaryBody
+              text={currentSummaryText}
+              format={summaryFormat(currentSummary?.metadata?.format as string | undefined)}
+            />
+          ) : (
+            <p className="muted">No current lane summary.</p>
+          )}
+          {(overview?.stale_child_lane_ids.length ?? 0) > 0 && (
+            <p className="muted">
+              {overview?.stale_child_lane_ids.length} child summaries changed since this overview.
+            </p>
+          )}
+        </section>
+
+        {childOverviews.length > 0 && (
+          <section className="record-context">
+            <h3>child lanes</h3>
+            <div className="flow-list">
+              {childOverviews.map((child) => (
+                <button
+                  key={child.lane_id}
+                  type="button"
+                  className="unit-card"
+                  onClick={() => onSelect({ kind: "lane", id: child.lane_id })}
+                >
+                  <span className="unit-card-title">{child.name || child.lane_id}</span>
+                  <span className="payload-summary">
+                    {String(child.current_values.summary?.content?.text ?? "(summary missing)")}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="panel-view">
           <h3>terminal summaries ({summaries.length})</h3>

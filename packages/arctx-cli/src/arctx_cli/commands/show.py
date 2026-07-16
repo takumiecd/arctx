@@ -6,6 +6,7 @@ import argparse
 import json
 
 from arctx.core.cuts import is_active_node, is_inactive_step
+from arctx.core.lanes import lane_overview
 from arctx_cli.commands._targets import resolve_target_kind, step_view
 from arctx_cli.context import resolve_store, resolve_run_id_from_args
 
@@ -63,6 +64,16 @@ def run_show_record_command(
             "active": not is_inactive_step(graph, record_id),
             "step": step_view(step),
             "payloads": [p.to_dict() for p in graph.payloads_for_step(record_id)],
+        }
+
+    if kind == "lane":
+        lane = graph.lanes[record_id]
+        return {
+            "kind": "lane",
+            "id": record_id,
+            "lane": lane.to_dict(),
+            "overview": lane_overview(graph, record_id).to_dict(),
+            "payloads": [p.to_dict() for p in graph.payloads_for_lane(record_id)],
         }
 
     payload = graph.payloads[record_id]

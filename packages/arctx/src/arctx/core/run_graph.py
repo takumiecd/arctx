@@ -28,6 +28,7 @@ class RunGraph:
     step_by_output_node: dict[str, list[str]] = field(default_factory=dict)
     payloads_by_node: dict[str, list[str]] = field(default_factory=dict)
     payloads_by_step: dict[str, list[str]] = field(default_factory=dict)
+    payloads_by_lane: dict[str, list[str]] = field(default_factory=dict)
 
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
@@ -88,6 +89,10 @@ class RunGraph:
             if payload.target_id not in self.steps:
                 raise KeyError(f"unknown target step: {payload.target_id}")
             self.payloads_by_step.setdefault(payload.target_id, []).append(payload.payload_id)
+        elif payload.target_kind == "lane":
+            if payload.target_id not in self.lanes:
+                raise KeyError(f"unknown target lane: {payload.target_id}")
+            self.payloads_by_lane.setdefault(payload.target_id, []).append(payload.payload_id)
         else:
             raise ValueError(f"unknown target_kind: {payload.target_kind!r}")
         self.payloads[payload.payload_id] = payload
@@ -150,6 +155,15 @@ class RunGraph:
         self, step_id: str, *, payload_type: str | None = None
     ) -> list[PayloadBase]:
         ids = self.payloads_by_step.get(step_id, ())
+        items = [self.payloads[pid] for pid in ids]
+        return (
+            items if payload_type is None else [p for p in items if p.payload_type == payload_type]
+        )
+
+    def payloads_for_lane(
+        self, lane_id: str, *, payload_type: str | None = None
+    ) -> list[PayloadBase]:
+        ids = self.payloads_by_lane.get(lane_id, ())
         items = [self.payloads[pid] for pid in ids]
         return (
             items if payload_type is None else [p for p in items if p.payload_type == payload_type]

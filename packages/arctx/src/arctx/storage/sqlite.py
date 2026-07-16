@@ -287,6 +287,8 @@ def _load_graph(con: sqlite3.Connection) -> RunGraph:
             graph.payloads_by_node.setdefault(payload.target_id, []).append(payload.payload_id)
         elif payload.target_kind == "step":
             graph.payloads_by_step.setdefault(payload.target_id, []).append(payload.payload_id)
+        elif payload.target_kind == "lane":
+            graph.payloads_by_lane.setdefault(payload.target_id, []).append(payload.payload_id)
     for data in _rows(con, "lanes"):
         session = lane_from_dict(data)
         graph.lanes[session.lane_id] = session

@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 JSONValue = Any
 
-TargetKind = Literal["node", "step"]
+TargetKind = Literal["node", "step", "lane"]
 
 NODE_PREFIX = "n"
 STEP_PREFIX = "t"

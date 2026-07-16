@@ -21,7 +21,7 @@ export interface RunStep {
 export interface RunPayload {
   payload_id: string;
   payload_type: string;
-  target_kind: "node" | "step";
+  target_kind: "node" | "step" | "lane";
   target_id: string;
   type?: string;
   content?: Record<string, unknown>;
@@ -111,6 +111,23 @@ export interface LaneEdgeSummary {
   };
 }
 
+export interface LaneLink {
+  parent_lane_id: string;
+  child_lane_id: string;
+  event_id?: string | null;
+}
+
+export interface LaneOverview {
+  lane_id: string;
+  name?: string | null;
+  status: string;
+  parent_lane_ids: string[];
+  child_lane_ids: string[];
+  current_values: Record<string, RunPayload>;
+  collections: Record<string, RunPayload[]>;
+  stale_child_lane_ids: string[];
+}
+
 export interface RunDocument {
   arctx_export_version: number;
   run_id: string;
@@ -127,6 +144,8 @@ export interface RunDocument {
   groups?: RunGroup[];
   lane_boundaries?: LaneBoundary[];
   lane_edge_summaries?: LaneEdgeSummary[];
+  lane_links?: LaneLink[];
+  lane_overviews?: LaneOverview[];
   current_lane_id?: string;
   current_lane_name?: string | null;
 }
@@ -242,6 +261,8 @@ export interface ReparentRequest {
 
 export interface CreateLaneRequest {
   name: string;
+  summary: string;
+  purpose?: string;
   metadata?: Record<string, unknown>;
 }
 

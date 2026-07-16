@@ -2,24 +2,28 @@
 
 ## 推奨ループ
 
-1. `arctx guide --context` で Run ID / Current Lane / Active Frontiers を安価に
+1. `arctx explore` でトップレベルLaneのcurrent summaryを読み、必要なLaneだけ
+   `arctx explore <lane>`で一段ずつ展開する。生のNode/Stepが必要になったときだけ
+   `--contents`、`arctx dump`、`arctx log`へ降りる。
+2. `arctx guide --context` で Run ID / Current Lane / Active Frontiers を安価に
    確認する（毎ターン呼んでよい）。詳しい使い方は `arctx log` や `arctx guide`
    （静的ガイド + Current Context）で読む。`arctx log`（プレーン実行）は
    work event を古い順に並べた時系列ビュー（`git log --oneline` 相当）で、
    これまでの経緯を素早く読み返すのに向く。lane 単位の目次が欲しいときは
    `arctx log --lanes` を使う。
-2. `arctx add --from NODE_ID --type suggestion --field proposal="..."` で
+3. `arctx add --from NODE_ID --type suggestion --field proposal="..."` で
    意図を append する。`--from` は省略可能で、その場合は現在の lane の
    active frontier（active かつ後続 step のない node）が唯一のときはそれを使う。
    run 開始直後で frontier が 0 個かつ run root がまだ未使用のときは run root
    を入力に使う（新規 run 最初の `add` が `--from` なしで成功する）。それ以外で
    frontier が 0 個または複数あるときは、候補一覧または探し方の案内を添えた
    エラーになる。
-3. 外部作業を行う: 実装、実験、レビュー、デバッグ、リサーチなど。
-4. `arctx add --from NODE_ID --type implementation --field result="..."` で
+4. 外部作業を行う。探索の現在地が変わったら、closeを待たず
+   `arctx lane summarize <lane> --summary "..."`を追記する。
+5. `arctx add --from NODE_ID --type implementation --field result="..."` で
    結果を append する。
-5. 間違った枝は record を削除せず `arctx cut NODE_ID` で cut する。
-6. チェックポイントでは `arctx export --format md` で成果物を生成する。受け手に
+6. 間違った枝は record を削除せず `arctx cut NODE_ID` で cut する。
+7. チェックポイントでは `arctx export --format md` で成果物を生成する。受け手に
    inactive な枝を見せたくない場合は `--exclude-cut` を付ける。
 
 fan-out は、同じ入力 Node から複数の step を作ることで表現します。multi-input
@@ -41,8 +45,9 @@ worktree も分けるのが基本です。これは通常の git branch とは�
 組み合わせになることがあります。独立実験が終わったら、有望な terminal node を
 `--from` の繰り返しでまとめ、合成結果を 1 つの step として記録します。
 
-active な解から外す枝は削除せず `cut` します。lane ごとの最終知見は
-`arctx lane close --summary "..."` に入れて閉じます。
+active な解から外す枝は削除せず `cut` します。laneのsummaryは作業中も更新し、
+最終知見を`arctx lane close --summary "..."`に入れて閉じます。独立した小Laneを
+複数の上位テーマから参照する場合は`arctx lane link`でDAGとして接続します。
 
 ## セットアップのメンタルモデル
 

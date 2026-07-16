@@ -11,8 +11,8 @@
 各 `Step` は `input_node_ids` と、ちょうど 1 つの `output_node_id` を保持します。
 現行スキーマには永続化された `Edge` record はありません。
 
-Payload のインデックスは target から導出されます: `payloads_by_node` と
-`payloads_by_step`。
+Payload のインデックスは target から導出されます: `payloads_by_node`,
+`payloads_by_step`, `payloads_by_lane`。
 
 トポロジのインデックスは step の端点から導出されます:
 `steps_by_input_node` と `step_by_output_node`。後者は **node → producing step の
@@ -56,6 +56,26 @@ lane root は producer-less な lane node だけでなく、別 lane の input �
 lane 内 entry step の output node でも構いません。ただし run root 自体を lane root
 にすることはできません。
 
+### Lane DAG と Overview
+
+Lane は RunGraph の Node/Step DAGとは別に、探索範囲を表す DAG を構成します。
+`parent -> child` は「親の概要から子の詳細へ展開できる」という包含・探索関係です。
+一つの child は複数の parent から参照でき、`RunHandle.link_lanes(...)` は cycle を
+作る link を拒否します。link は Lane row の書き換えではなく、append-only な
+`lane_linked` WorkEvent として保存され、`lane_links()` が現在の DAG を投影します。
+
+Lane 自身への情報は `LanePayload(payload_type="lane_payload", target_kind="lane")`
+として `payloads` に追記します。主な `type` と読み取り規則は次の通りです。
+
+- `summary`, `purpose`: 最新の payload を current value として表示する。
+- `question`, `decision`, `note` など: 同じ type の payload を集合として保持する。
+
+`lane_overview()` はこれらを `current_values` / `collections` に畳み込み、親・子Lane、
+status、子summary更新後の `stale_child_lane_ids` と合わせて返します。過去のsummaryは
+削除されず、`lane_payload_attached` event の順序がcurrent summaryを決めます。
+publicなLane作成では初期summaryが必須です。open中も`arctx lane summarize`で自由に
+現在地を追記できます。
+
 ### Lane の lifecycle（open / closed）
 
 lane は `create` 時に **open** で始まり、`open` ↔ `closed` の 2 状態を持ちます。
@@ -68,7 +88,7 @@ status は lane record 上の可変フィールドではなく、append-only な
 **closed の lane への書き込み（add/attach/asset/git add）は拒否され**、`arctx lane open`
 で開き直すか `--force` を渡すまで再開できません。
 
-コア payload は汎用の `NodePayload` / `StepPayload` に加えて `CutPayload` /
+コア payload は汎用の `NodePayload` / `StepPayload` / `LanePayload` に加えて `CutPayload` /
 `UncutPayload` です。`CutPayload` は node または step を無効化する append-only な
 手段で、対象はストレージから削除されません。`UncutPayload` は同一対象への cut を
 **supersession（後勝ち）** で打ち消す append-only な反転で、cut 自体は削除しません。

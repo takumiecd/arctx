@@ -4,6 +4,7 @@ from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import (
     CutPayload,
     NodePayload,
+    LanePayload,
     Payload,
     PayloadBase,
     StepPayload,
@@ -20,6 +21,7 @@ from arctx.core.schema.work import Lane, WorkEvent, Lane
 __all__ = [
     "CutPayload",
     "Lane",
+    "LanePayload",
     "Node",
     "NodePayload",
     "Payload",

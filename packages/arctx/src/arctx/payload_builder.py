@@ -8,6 +8,7 @@ from typing import Literal
 
 from arctx.core.schema.payloads import (
     CutPayload,
+    LanePayload,
     NodePayload,
     PayloadBase,
     StepPayload,
@@ -75,7 +76,7 @@ def payload_schema(payload_type: str) -> dict[str, JSONValue]:
 def build_payload(
     *,
     payload_type: str,
-    target_kind: Literal["node", "step"],
+    target_kind: Literal["node", "step", "lane"],
     target_id: str,
     payload_id: str,
     json_data: dict[str, JSONValue] | None = None,
@@ -114,7 +115,24 @@ def build_payload(
             metadata=metadata,
         )
 
+    if payload_type == "lane_payload":
+        if target_kind != "lane":
+            raise ValueError("lane_payload can only target a lane")
+        payload_kind = str(data.pop("type", "payload"))
+        metadata = _dict_field(data.pop("metadata", {}), "metadata")
+        content = _dict_field(data.pop("content", {}), "content")
+        content.update(data)
+        return LanePayload(
+            payload_id=payload_id,
+            target_id=target_id,
+            type=payload_kind,
+            content=content,
+            metadata=metadata,
+        )
+
     if payload_type == "cut":
+        if target_kind == "lane":
+            raise ValueError("cut can only target a node or step")
         reason = data.pop("reason", None)
         metadata = _dict_field(data.pop("metadata", {}), "metadata")
         if data:

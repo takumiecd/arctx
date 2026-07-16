@@ -139,6 +139,8 @@ function LaneCollapsedNode({ data }: NodeProps) {
     nodeCount: number;
     stepCount: number;
     summaryCount: number;
+    summaryText?: string;
+    staleCount?: number;
     status?: "open" | "closed";
   };
   const sides = [
@@ -173,6 +175,8 @@ function LaneCollapsedNode({ data }: NodeProps) {
         {d.nodeCount} nodes · {d.stepCount} steps
       </span>
       {d.summaryCount > 0 && <span>{d.summaryCount} summaries</span>}
+      {d.summaryText && <span className="payload-summary">{d.summaryText}</span>}
+      {(d.staleCount ?? 0) > 0 && <span>{d.staleCount} child summaries changed</span>}
     </div>
   );
 }
@@ -463,6 +467,10 @@ function GraphCanvas({
         const collapsedPos = resolve(collapsedId);
         resolvedPositions.set(collapsedId, collapsedPos);
         const colors = laneColors(doc, group.lane_id, laneColorOverrides, dark);
+        const overview = (doc.lane_overviews ?? []).find(
+          (candidate) => candidate.lane_id === group.lane_id,
+        );
+        const summaryText = overview?.current_values?.summary?.content?.text;
         nextNodes.push({
           id: collapsedId,
           type: "laneCollapsed",
@@ -476,6 +484,8 @@ function GraphCanvas({
             summaryCount: (doc.lane_edge_summaries ?? []).filter(
               (summary) => summary.lane_id === group.lane_id,
             ).length,
+            summaryText: typeof summaryText === "string" ? summaryText : undefined,
+            staleCount: overview?.stale_child_lane_ids.length ?? 0,
             status: laneStatus(doc, group.lane_id),
             ...colors,
           },

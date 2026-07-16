@@ -1,4 +1,4 @@
-"""Payload records attached to nodes or steps.
+"""Payload records attached to nodes, steps, or lanes.
 
 A target may have multiple payloads attached.
 Payloads are immutable and append-only; CutPayload encodes cuts
@@ -7,6 +7,7 @@ without ever deleting graph records.
 Built-in payload types defined here (core):
   - NodePayload: generic node payload with type + content dict
   - StepPayload: generic step payload with type + content dict
+  - LanePayload: generic lane payload with type + content dict
   - CutPayload: append-only inactivity marker (node or step)
   - SummaryPayload: descriptive context snapshot on a node (history truncation)
 
@@ -35,7 +36,7 @@ class PayloadBase(ABC):
 
     payload_id: str
     target_id: str
-    target_kind: Literal["node", "step"]
+    target_kind: Literal["node", "step", "lane"]
     payload_type: str
 
     @abstractmethod
@@ -62,6 +63,7 @@ class NodePayload(PayloadBase):
     payload_type: str = field(default="node_payload", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
+        """Return a JSON-compatible record."""
         return to_jsonable(self)  # type: ignore[return-value]
 
 
@@ -77,6 +79,28 @@ class StepPayload(PayloadBase):
 
     target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="step_payload", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return to_jsonable(self)  # type: ignore[return-value]
+
+
+@dataclass(frozen=True)
+class LanePayload(PayloadBase):
+    """Generic append-only information attached to a Lane.
+
+    ``type`` determines how readers project the payloads into a lane overview.
+    Current-value types such as ``summary`` and ``purpose`` use their latest
+    payload; collection types such as ``question`` and ``decision`` accumulate.
+    """
+
+    payload_id: str
+    target_id: str
+    type: str
+    content: dict[str, JSONValue] = field(default_factory=dict)
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    target_kind: Literal["lane"] = field(default="lane", init=False)
+    payload_type: str = field(default="lane_payload", init=False)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return to_jsonable(self)  # type: ignore[return-value]
@@ -209,6 +233,7 @@ class SummaryPayload(PayloadBase):
 Payload = (
     NodePayload
     | StepPayload
+    | LanePayload
     | CutPayload
     | UncutPayload
     | AssetPayload
@@ -262,6 +287,16 @@ def _node_payload_from_dict(data: dict[str, JSONValue]) -> NodePayload:
 
 def _step_payload_from_dict(data: dict[str, JSONValue]) -> StepPayload:
     return StepPayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        type=str(data.get("type", "")),
+        content=dict(data.get("content") or {}),
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
+def _lane_payload_from_dict(data: dict[str, JSONValue]) -> LanePayload:
+    return LanePayload(
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
         type=str(data.get("type", "")),
@@ -339,6 +374,7 @@ def _generic_custom_from_dict(cls: type[PayloadBase], data: dict[str, JSONValue]
 # Register core built-ins.
 register_payload_class(NodePayload)
 register_payload_class(StepPayload)
+register_payload_class(LanePayload)
 register_payload_class(CutPayload)
 register_payload_class(UncutPayload)
 register_payload_class(AssetPayload)
@@ -347,6 +383,7 @@ register_payload_class(JoinPayload)
 
 register_payload_decoder("node_payload", _node_payload_from_dict)
 register_payload_decoder("step_payload", _step_payload_from_dict)
+register_payload_decoder("lane_payload", _lane_payload_from_dict)
 register_payload_decoder("cut", _cut_from_dict)
 register_payload_decoder("uncut", _uncut_from_dict)
 register_payload_decoder("asset", _asset_from_dict)
@@ -366,7 +403,7 @@ def payload_from_dict(data: dict[str, JSONValue]) -> PayloadBase:
       1. Custom decoder registered via register_payload_decoder.
       2. Registered class (via register_payload_class) — best-effort
          constructor invocation through _generic_custom_from_dict.
-      3. Generic NodePayload / StepPayload fallback (unknown type).
+      3. Generic NodePayload / StepPayload / LanePayload fallback (unknown type).
     """
     payload_type = data.get("payload_type")
     pt_str = str(payload_type) if payload_type is not None else ""
@@ -396,6 +433,14 @@ def payload_from_dict(data: dict[str, JSONValue]) -> PayloadBase:
     }
     if target_kind == "step":
         return StepPayload(
+            payload_id=str(data.get("payload_id", "")),
+            target_id=str(data.get("target_id", "")),
+            type=pt_str or "unknown",
+            content=leftover,
+            metadata=dict(data.get("metadata") or {}),
+        )
+    if target_kind == "lane":
+        return LanePayload(
             payload_id=str(data.get("payload_id", "")),
             target_id=str(data.get("target_id", "")),
             type=pt_str or "unknown",

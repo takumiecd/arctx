@@ -31,7 +31,8 @@ runs finish, combine promising terminal nodes with repeated `--from` arguments
 and record the synthesis as one step.
 
 Use `cut` for branches that should remain in history but no longer participate
-in the active solution. Use `arctx lane close --summary "..."` to preserve the
+in the active solution. Update the live overview with `arctx lane summarize`
+while exploring. Use `arctx lane close --summary "..."` to preserve the
 final finding for each lane.
 
 ## Setup Mental Model

@@ -173,7 +173,13 @@ def render_chronological(handle, *, limit: int, reverse: bool) -> str:
     ``seq is None`` event together, so list order is the source of truth and
     ``seq``/``created_at`` are used only for display.
     """
-    events = list(handle.run_graph.work_events)
+    # Lane overview maintenance has its own summary-first ``explore`` surface;
+    # keep the default chronological log focused on graph work.
+    events = [
+        event
+        for event in handle.run_graph.work_events
+        if event.event_type != "lane_payload_attached"
+    ]
     if not events:
         graph = handle.run_graph
         lines = [

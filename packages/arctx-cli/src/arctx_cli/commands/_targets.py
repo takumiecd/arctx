@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 
-TargetKind = Literal["node", "step", "payload"]
+TargetKind = Literal["node", "step", "lane", "payload"]
 
 
 def resolve_target_kind(handle, record_id: str) -> TargetKind:
@@ -16,6 +16,8 @@ def resolve_target_kind(handle, record_id: str) -> TargetKind:
         matches.append("node")
     if record_id in graph.steps:
         matches.append("step")
+    if record_id in graph.lanes:
+        matches.append("lane")
     if record_id in graph.payloads:
         matches.append("payload")
     if not matches:

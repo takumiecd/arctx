@@ -6,21 +6,21 @@ import argparse
 import json
 import sys
 
-from arctx_cli.commands._targets import resolve_target_kind
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
+from arctx_cli.commands._targets import resolve_target_kind
 from arctx_cli.context import (
+    resolve_lane_id_from_args,
     resolve_run_id_from_args,
     resolve_store,
     resolve_user_id_from_args,
-    resolve_lane_id_from_args,
 )
-from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
 from arctx_cli.lane_gate import ensure_lane_open
+from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
 from arctx_cli.post_write_check import warn_if_invalid
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
-    parser = subparsers.add_parser("attach", help="Attach a Payload to a Node or Step")
+    parser = subparsers.add_parser("attach", help="Attach a Payload to a Node, Step, or Lane")
     parser.add_argument("target_id")
     parser.add_argument("--type", dest="payload_kind", default="payload")
     parser.add_argument("--payload-type", default=None)
@@ -52,16 +52,19 @@ def run_attach_command(
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
-    ensure_lane_open(handle, lane_id, force=force)
     target_kind = resolve_target_kind(handle, target_id)
     if target_kind == "payload":
         raise ValueError("cannot attach a payload to another payload")
+    if target_kind != "lane":
+        ensure_lane_open(handle, lane_id, force=force)
 
     data = dict(json_data or {})
     data.update(field_data or {})
     data.setdefault("type", payload_kind)
     internal_payload_type = payload_type or (
-        "node_payload" if target_kind == "node" else "step_payload"
+        "node_payload" if target_kind == "node" else
+        "lane_payload" if target_kind == "lane" else
+        "step_payload"
     )
     before = graph_counts(handle)
     payload = build_payload(
@@ -72,12 +75,19 @@ def run_attach_command(
         json_data={},
         field_data=data,
     )
+    effective_lane_id = target_id if target_kind == "lane" else lane_id
     if payload.target_kind == "node":
         attached = handle.attach(
             payload.target_id,
             payload,
             user_id=user_id,
             lane_id=lane_id,
+        )
+    elif payload.target_kind == "lane":
+        attached = handle.attach_lane(
+            payload.target_id,
+            payload,
+            user_id=user_id,
         )
     else:
         handle.run_graph.attach_payload(payload)
@@ -95,7 +105,7 @@ def run_attach_command(
         store=store,
         handle=handle,
         user_id=user_id,
-        lane_id=lane_id,
+        lane_id=effective_lane_id,
         before=before,
     )
     return {"payload": attached.to_dict()}

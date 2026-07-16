@@ -8,6 +8,7 @@ from arctx.core.run_graph import RunGraph
 from arctx.core.schema import (
     CutPayload,
     Lane,
+    LanePayload,
     Node,
     NodePayload,
     Payload,
@@ -36,6 +37,7 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 __all__ = [
     "CutPayload",
     "Lane",
+    "LanePayload",
     "Node",
     "NodePayload",
     "Payload",

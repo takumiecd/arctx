@@ -292,7 +292,7 @@ class TestWriteRoutes:
 
             # Creating a lane and adding records into it still succeeds despite
             # the pre-existing legacy violations.
-            status, body = _call(store, run_id, "POST", "/lane", {"name": "L1"})
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "L1", "summary": "L1 started"})
             assert status == 201
             lane_id = body["lane"]["lane_id"]
 
@@ -396,28 +396,70 @@ class TestWriteRoutes:
     def test_post_lane_create_then_visible_in_run(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, _ = _setup(td)
-            status, body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
             assert status == 201
             assert body["lane"]["name"] == "math"
             lane_id = body["lane"]["lane_id"]
 
             _, run = _call(store, run_id, "GET", "/run")
             assert any(lane["lane_id"] == lane_id for lane in run["lanes"])
+            assert any(
+                payload["target_kind"] == "lane" and payload["target_id"] == lane_id
+                for payload in run["payloads"]
+            )
+
+    def test_post_lane_requires_summary(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            assert status == 400
+            assert body["error"] == "summary is required"
+
+    def test_post_lane_payload_and_link(self):
+        with tempfile.TemporaryDirectory() as td:
+            store, run_id, _ = _setup(td)
+            _, parent = _call(
+                store, run_id, "POST", "/lane",
+                {"name": "parent", "summary": "parent summary"},
+            )
+            _, child = _call(
+                store, run_id, "POST", "/lane",
+                {"name": "child", "summary": "child summary"},
+            )
+            parent_id = parent["lane"]["lane_id"]
+            child_id = child["lane"]["lane_id"]
+
+            status, payload = _call(
+                store, run_id, "POST", "/lane/payload",
+                {"lane_id": child_id, "type": "question", "text": "what remains?"},
+            )
+            assert status == 201
+            assert payload["payload"]["type"] == "question"
+
+            status, link = _call(
+                store, run_id, "POST", "/lane/link",
+                {"parent_lane_id": parent_id, "child_lane_id": child_id},
+            )
+            assert status == 201
+            assert link["child_lane_id"] == child_id
+
+            _, run = _call(store, run_id, "GET", "/run")
+            assert run["lane_links"][0]["parent_lane_id"] == parent_id
 
     def test_post_lane_create_rejects_duplicate_name(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, _ = _setup(td)
-            status, _ = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            status, _ = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
             assert status == 201
 
-            status, body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            status, body = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "duplicate"})
             assert status == 400
             assert "already exists" in body["error"]
 
     def test_post_lane_adopt_explicit_records(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
-            _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
             lane_id = lane_body["lane"]["lane_id"]
             _, made = _call(store, run_id, "POST", "/step", {
                 "input_node_ids": [root],
@@ -445,7 +487,7 @@ class TestWriteRoutes:
     def test_post_lane_adopt_by_name_history(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
-            _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
             _, made = _call(store, run_id, "POST", "/step", {
                 "input_node_ids": [root],
                 "type": "derive",
@@ -463,8 +505,8 @@ class TestWriteRoutes:
     def test_post_lane_adopt_reachable_includes_producing_step(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
-            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
-            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment", "summary": "experiment started"})
             math_id = math_body["lane"]["lane_id"]
             exp_id = exp_body["lane"]["lane_id"]
 
@@ -498,8 +540,8 @@ class TestWriteRoutes:
     def test_post_lane_adopt_lane_tail_stays_within_source_lane(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
-            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
-            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment", "summary": "experiment started"})
             math_id = math_body["lane"]["lane_id"]
             exp_id = exp_body["lane"]["lane_id"]
 
@@ -536,8 +578,8 @@ class TestWriteRoutes:
     def test_post_lane_adopt_lane_head_stays_within_source_lane(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
-            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
-            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment", "summary": "experiment started"})
             math_id = math_body["lane"]["lane_id"]
             exp_id = exp_body["lane"]["lane_id"]
 
@@ -584,7 +626,7 @@ class TestWriteRoutes:
     def test_post_lane_adopt_requires_one_source(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
-            _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
+            _, lane_body = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
             status, body = _call(store, run_id, "POST", "/lane/adopt", {
                 "lane_id": lane_body["lane"]["lane_id"],
                 "record_ids": [root],
@@ -596,8 +638,8 @@ class TestWriteRoutes:
     def test_post_lane_adopt_rejects_multiple_lane_roots(self):
         with tempfile.TemporaryDirectory() as td:
             store, run_id, root = _setup(td)
-            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math"})
-            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment"})
+            _, math_body = _call(store, run_id, "POST", "/lane", {"name": "math", "summary": "math started"})
+            _, exp_body = _call(store, run_id, "POST", "/lane", {"name": "experiment", "summary": "experiment started"})
             math_id = math_body["lane"]["lane_id"]
             exp_id = exp_body["lane"]["lane_id"]
 

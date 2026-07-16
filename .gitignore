@@ -10,6 +10,7 @@ __pycache__/
 .venv/
 .coverage
 htmlcov/
+.DS_Store
 
 # ARCTX generated run/output files
 runs/

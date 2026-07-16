@@ -24,7 +24,14 @@ import os
 import sys
 
 from arctx.core.append import AppendBatch
-from arctx.core.lanes import lane_edge_node_ids, lane_edge_summaries, validate_lanes
+from arctx.core.lanes import (
+    current_lane_payload,
+    lane_edge_node_ids,
+    lane_edge_summaries,
+    lane_overview,
+    validate_lanes,
+)
+from arctx.core.schema.payloads import LanePayload
 
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 from arctx_cli.context import (
@@ -95,8 +102,18 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--summary",
         default=None,
-        help="Required closing summary, attached to the lane's terminal node (lane close)",
+        help="Current lane summary (required for create and close)",
     )
+    parser.add_argument("--purpose", default=None, help="Durable purpose payload (lane create)")
+    parser.add_argument(
+        "--parent",
+        action="append",
+        default=None,
+        help="Parent lane name/id in the Lane DAG (repeatable; lane create)",
+    )
+    parser.add_argument("--type", dest="lane_payload_type", default=None,
+                        help="Lane payload type (lane attach)")
+    parser.add_argument("--text", default=None, help="Lane payload text (lane attach)")
     parser.add_argument(
         "--summary-format",
         choices=("markdown", "md", "html", "text"),
@@ -145,10 +162,58 @@ def _append_or_save_lane(store, handle, run_id: str, user_id: str, lane) -> None
         store.save_run(handle)
 
 
+def _summary_metadata(handle, lane_id: str, summary_format: str = "markdown") -> dict:
+    based_on = []
+    for child_id in lane_overview(handle.run_graph, lane_id).child_lane_ids:
+        child_summary = current_lane_payload(handle.run_graph, child_id, "summary")
+        if child_summary is not None:
+            based_on.append(
+                {"lane_id": child_id, "summary_payload_id": child_summary.payload_id}
+            )
+    return {"format": _normalize_summary_format(summary_format), "based_on": based_on}
+
+
+def _attach_lane_text_payload(
+    handle, *, lane_id: str, type: str, text: str, user_id: str,
+    metadata: dict | None = None,
+):
+    if not type.strip():
+        raise ValueError("lane payload type must not be empty")
+    if not text.strip():
+        raise ValueError(f"lane {type} must not be empty")
+    return handle.attach_lane(
+        lane_id,
+        LanePayload(
+            payload_id=handle._next_id("pl"),
+            target_id=lane_id,
+            type=type,
+            content={"text": text.strip()},
+            metadata=dict(metadata or {}),
+        ),
+        user_id=user_id,
+    )
+
+
+_SUMMARY_NOT_PROVIDED = object()
+
+
 def run_lane_create_command(
     *, name: str, run_id: str, user_id: str, store_dir: str | None,
+    summary: str | None | object = _SUMMARY_NOT_PROVIDED,
+    purpose: str | None = None,
+    parent_lane_ids: list[str] | None = None,
 ) -> dict:
     """Create a lane by name. Creation does not switch the active lane."""
+    # Direct callers from older integrations still produce a valid collapsed
+    # lane. The public CLI passes None explicitly and therefore requires the
+    # user-authored --summary.
+    if summary is _SUMMARY_NOT_PROVIDED:
+        summary = f"{name}: exploration started"
+    if summary is None or not isinstance(summary, str) or not summary.strip():
+        raise ValueError(
+            f"arctx lane create {name} requires --summary so the collapsed lane "
+            "is always explorable"
+        )
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
@@ -157,9 +222,92 @@ def run_lane_create_command(
     if _find_lane_by_name(handle, name) is not None:
         raise ValueError(f"lane already exists: {name!r}")
 
+    parents = []
+    for parent_name in parent_lane_ids or []:
+        parent = _find_lane(handle, parent_name)
+        if parent is None:
+            raise KeyError(f"unknown parent lane: {parent_name!r}")
+        parents.append(parent)
+
     lane = handle.ensure_lane(name=name, created_by=user_id)
-    _append_or_save_lane(store, handle, run_id, user_id, lane)
-    return {"lane_id": lane.lane_id, "name": name, "created": True}
+    summary_payload = _attach_lane_text_payload(
+        handle,
+        lane_id=lane.lane_id,
+        type="summary",
+        text=summary,
+        user_id=user_id,
+        metadata={"format": "markdown", "based_on": []},
+    )
+    purpose_payload = None
+    if purpose:
+        purpose_payload = _attach_lane_text_payload(
+            handle,
+            lane_id=lane.lane_id,
+            type="purpose",
+            text=purpose,
+            user_id=user_id,
+        )
+    for parent in parents:
+        handle.link_lanes(parent.lane_id, lane.lane_id, user_id=user_id)
+    store.save_run(handle)
+    return {
+        "lane_id": lane.lane_id,
+        "name": name,
+        "created": True,
+        "summary_payload_id": summary_payload.payload_id,
+        "purpose_payload_id": purpose_payload.payload_id if purpose_payload else None,
+        "parent_lane_ids": [parent.lane_id for parent in parents],
+    }
+
+
+def run_lane_payload_command(
+    *, name_or_id: str, type: str, text: str, run_id: str, user_id: str,
+    store_dir: str | None, summary_format: str = "markdown",
+) -> dict:
+    """Append a typed LanePayload; current-value projection is computed on read."""
+    store = resolve_store(store_dir)
+    handle = store.load_run(run_id)
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id!r}")
+    metadata = _summary_metadata(handle, lane.lane_id, summary_format) if type == "summary" else {}
+    payload = _attach_lane_text_payload(
+        handle,
+        lane_id=lane.lane_id,
+        type=type,
+        text=text,
+        user_id=user_id,
+        metadata=metadata,
+    )
+    store.save_run(handle)
+    return {
+        "lane_id": lane.lane_id,
+        "name": lane.name,
+        "payload": payload.to_dict(),
+        "overview": lane_overview(handle.run_graph, lane.lane_id).to_dict(),
+    }
+
+
+def run_lane_link_command(
+    *, parent_name_or_id: str, child_name_or_id: str, run_id: str,
+    user_id: str, store_dir: str | None,
+) -> dict:
+    """Append a cycle-safe link between two named Lane records."""
+    store = resolve_store(store_dir)
+    handle = store.load_run(run_id)
+    parent = _find_lane(handle, parent_name_or_id)
+    child = _find_lane(handle, child_name_or_id)
+    if parent is None:
+        raise KeyError(f"unknown parent lane: {parent_name_or_id!r}")
+    if child is None:
+        raise KeyError(f"unknown child lane: {child_name_or_id!r}")
+    event = handle.link_lanes(parent.lane_id, child.lane_id, user_id=user_id)
+    store.save_run(handle)
+    return {
+        "parent_lane_id": parent.lane_id,
+        "child_lane_id": child.lane_id,
+        "event_id": event.event_id,
+    }
 
 
 def run_lane_switch_command(
@@ -338,19 +486,29 @@ def list_lanes(*, run_id: str, store_dir: str | None) -> list[dict]:
         handle.run_graph.lanes.values(),
         key=lambda s: (s.started_at or "", s.lane_id),
     )
-    return [
-        {
+    rows = []
+    for s in sessions:
+        overview = lane_overview(handle.run_graph, s.lane_id)
+        rows.append({
             "lane_id": s.lane_id,
             "name": s.name,
             "created_by": s.user_id,
-            "parent_lane_id": s.parent_lane_id,
+            "parent_lane_ids": list(overview.parent_lane_ids),
+            "child_lane_ids": list(overview.child_lane_ids),
             "status": s.status,
-        }
-        for s in sessions
-    ]
+            "summary": (
+                overview.summary.content.get("text") if overview.summary else None
+            ),
+            "purpose": (
+                overview.purpose.content.get("text") if overview.purpose else None
+            ),
+            "stale_child_lane_ids": list(overview.stale_child_lane_ids),
+        })
+    return rows
 
 
 def show_lane(*, run_id: str, store_dir: str | None, name_or_id: str) -> dict:
+    """Return one Lane, its overview, and its payload history."""
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
@@ -358,7 +516,14 @@ def show_lane(*, run_id: str, store_dir: str | None, name_or_id: str) -> dict:
     lane = _find_lane(handle, name_or_id)
     if lane is None:
         raise KeyError(f"unknown lane: {name_or_id}")
-    return {"run_id": run_id, "lane": lane.to_dict()}
+    return {
+        "run_id": run_id,
+        "lane": lane.to_dict(),
+        "overview": lane_overview(handle.run_graph, lane.lane_id).to_dict(),
+        "payloads": [
+            payload.to_dict() for payload in handle.run_graph.payloads_for_lane(lane.lane_id)
+        ],
+    }
 
 
 def lane_summaries(*, run_id: str, store_dir: str | None, name_or_id: str) -> dict:
@@ -518,6 +683,14 @@ def run_lane_close_command(
     )
     if summary_node is None:
         raise ValueError("lane close requires at least one active terminal node to summarize")
+    _attach_lane_text_payload(
+        handle,
+        lane_id=lane.lane_id,
+        type="summary",
+        text=summary,
+        user_id=user_id,
+        metadata=_summary_metadata(handle, lane.lane_id, normalized_format),
+    )
     event = handle.set_lane_status(
         lane.lane_id, status="closed", user_id=user_id, reason=reason
     )
@@ -593,6 +766,9 @@ def cli_lane(args) -> int:
                 run_id=run_id,
                 user_id=resolve_user_id_from_args(args),
                 store_dir=args.store_dir,
+                summary=args.summary,
+                purpose=args.purpose,
+                parent_lane_ids=args.parent,
             )
             if args.as_json:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -600,6 +776,41 @@ def cli_lane(args) -> int:
                 print(result["name"])
             strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane create")
             return strict_rc or 0
+
+        if command in ("summarize", "attach"):
+            if len(argv) != 2:
+                raise ValueError(f"usage: arctx lane {command} NAME_OR_ID --text TEXT")
+            payload_type = "summary" if command == "summarize" else args.lane_payload_type
+            text = args.summary if command == "summarize" and args.summary else args.text
+            if payload_type is None or text is None:
+                raise ValueError(
+                    "lane summarize requires --summary/--text; "
+                    "lane attach requires --type and --text"
+                )
+            result = run_lane_payload_command(
+                name_or_id=argv[1],
+                type=payload_type,
+                text=text,
+                summary_format=args.summary_format,
+                run_id=resolve_run_id_from_args(args),
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+
+        if command == "link":
+            if len(argv) != 3:
+                raise ValueError("usage: arctx lane link PARENT CHILD")
+            result = run_lane_link_command(
+                parent_name_or_id=argv[1],
+                child_name_or_id=argv[2],
+                run_id=resolve_run_id_from_args(args),
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
 
         if command == "adopt":
             if len(argv) != 2:

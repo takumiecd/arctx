@@ -47,6 +47,7 @@ export function App() {
   const [laneColorOverrides, setLaneColorOverrides] = useState<LaneColorOverrides>({});
   const [laneColorRunId, setLaneColorRunId] = useState<string | null>(null);
   const [newLaneName, setNewLaneName] = useState("");
+  const [newLaneSummary, setNewLaneSummary] = useState("");
   const [newRunName, setNewRunName] = useState("");
   const [showCuts, setShowCuts] = useState<boolean>(false);
   const [activeLaneId, setActiveLaneId] = useState<string | null>(null);
@@ -64,6 +65,10 @@ export function App() {
   const popoverRef = useRef<HTMLDivElement>(null);
   const extPopoverRef = useRef<HTMLDivElement>(null);
   const runsPopoverRef = useRef<HTMLDivElement>(null);
+  const seenLaneIdsRef = useRef<{ runId: string | null; ids: Set<string> }>({
+    runId: null,
+    ids: new Set(),
+  });
   const qc = useQueryClient();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
@@ -129,6 +134,7 @@ export function App() {
     setCollapsedLaneIds(new Set());
     setExpandedClosedLaneIds(new Set());
     setNewLaneName("");
+    setNewLaneSummary("");
     qc.invalidateQueries();
   };
 
@@ -151,9 +157,11 @@ export function App() {
   });
 
   const createLane = useMutation({
-    mutationFn: (name: string) => client.createLane({ name }),
+    mutationFn: ({ name, summary }: { name: string; summary: string }) =>
+      client.createLane({ name, summary }),
     onSuccess: () => {
       setNewLaneName("");
+      setNewLaneSummary("");
       invalidate();
     },
   });
@@ -174,6 +182,26 @@ export function App() {
     setLaneColorOverrides(readLaneColorOverrides(data.run_id));
     setLaneColorRunId(data.run_id);
   }, [data?.run_id]);
+
+  // Summary-first is the default: every lane starts collapsed. Preserve
+  // explicit expansions across polling, while newly discovered lanes also
+  // enter the canvas as collapsed overview cards.
+  useEffect(() => {
+    if (!data) return;
+    const ids = new Set((data.lanes ?? []).map((lane) => lane.lane_id));
+    const seen = seenLaneIdsRef.current;
+    if (seen.runId !== data.run_id) {
+      seenLaneIdsRef.current = { runId: data.run_id, ids };
+      setCollapsedLaneIds(ids);
+      setExpandedClosedLaneIds(new Set());
+      return;
+    }
+    const added = [...ids].filter((laneId) => !seen.ids.has(laneId));
+    seen.ids = ids;
+    if (added.length > 0) {
+      setCollapsedLaneIds((previous) => new Set([...previous, ...added]));
+    }
+  }, [data?.run_id, data?.lanes]);
 
   useEffect(() => {
     if (data?.current_lane_id && !activeLaneId) {
@@ -446,8 +474,9 @@ export function App() {
                       onSubmit={(event) => {
                         event.preventDefault();
                         const name = newLaneName.trim();
-                        if (name) {
-                          createLane.mutate(name, {
+                        const summary = newLaneSummary.trim();
+                        if (name && summary) {
+                          createLane.mutate({ name, summary }, {
                             onSuccess: (res) => {
                               if (res.lane?.lane_id) {
                                 setActiveLaneId(res.lane.lane_id);
@@ -463,7 +492,18 @@ export function App() {
                         value={newLaneName}
                         onChange={(event) => setNewLaneName(event.currentTarget.value)}
                       />
-                      <button disabled={createLane.isPending || !newLaneName.trim()} type="submit">
+                      <input
+                        aria-label="new lane summary"
+                        placeholder="current summary"
+                        value={newLaneSummary}
+                        onChange={(event) => setNewLaneSummary(event.currentTarget.value)}
+                      />
+                      <button
+                        disabled={
+                          createLane.isPending || !newLaneName.trim() || !newLaneSummary.trim()
+                        }
+                        type="submit"
+                      >
                         + lane
                       </button>
                     </form>

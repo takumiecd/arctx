@@ -23,7 +23,7 @@ arctx init my_task --run-id scd-dev      # create a run (recorded in <gitdir>/ar
 ## 2. Lane (the work context) — `source .venv` / `git switch` style
 
 ```bash
-arctx lane create geometry # create lane "geometry"; does not switch
+arctx lane create geometry --summary "starting geometry exploration"
 arctx lane switch geometry # switch to an existing lane; typo is an error
 arctx lane geometry        # shorthand for switch; missing names are not created
                            # switch records <gitdir>/arctx-lane → persists across shells. No eval.

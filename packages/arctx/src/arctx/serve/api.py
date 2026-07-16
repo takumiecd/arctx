@@ -8,6 +8,7 @@ from typing import Any
 from arctx.core.append import AppendBatch, GraphRecordEnvelope
 from arctx.core.lanes import format_lane_validation_errors, lane_membership, lane_validation_errors
 from arctx.core.run.export import ExportOptions, json_document
+from arctx.core.schema.payloads import LanePayload
 from arctx.payload_builder import build_payload
 
 
@@ -55,6 +56,10 @@ def dispatch(
             return 201, _post_reparent(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/lane"):
             return 201, _post_lane(store, run_id, body or {}, user_id)
+        if route == ("POST", "/lane/payload"):
+            return 201, _post_lane_payload(store, run_id, body or {}, user_id)
+        if route == ("POST", "/lane/link"):
+            return 201, _post_lane_link(store, run_id, body or {}, user_id)
         if route == ("POST", "/lane/adopt"):
             return 201, _post_lane_adopt(store, run_id, body or {}, user_id)
         if route == ("GET", "/ext"):
@@ -309,13 +314,96 @@ def _post_lane(store, run_id, body, user_id) -> dict:
     metadata = body.get("metadata")
     if metadata is not None and not isinstance(metadata, dict):
         raise ApiError(400, "metadata must be an object")
+    summary = body.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise ApiError(400, "summary is required")
+    purpose = body.get("purpose")
+    if purpose is not None and (not isinstance(purpose, str) or not purpose.strip()):
+        raise ApiError(400, "purpose must be a non-empty string")
 
     handle = _load(store, run_id)
     if any(lane.name == name.strip() for lane in handle.run_graph.lanes.values()):
         raise ApiError(400, f"lane already exists: {name.strip()!r}")
     lane = handle.ensure_lane(name=name.strip(), created_by=user_id, metadata=metadata)
+    handle.attach_lane(
+        lane.lane_id,
+        LanePayload(
+            payload_id=handle._next_id("pl"),
+            target_id=lane.lane_id,
+            type="summary",
+            content={"text": summary.strip()},
+            metadata={"format": "markdown", "based_on": []},
+        ),
+        user_id=user_id,
+    )
+    if isinstance(purpose, str):
+        handle.attach_lane(
+            lane.lane_id,
+            LanePayload(
+                payload_id=handle._next_id("pl"),
+                target_id=lane.lane_id,
+                type="purpose",
+                content={"text": purpose.strip()},
+            ),
+            user_id=user_id,
+        )
     store.save_run(handle)
     return {"lane": lane.to_dict()}
+
+
+def _resolve_lane(handle, lane_ref: object):
+    if not isinstance(lane_ref, str) or not lane_ref.strip():
+        raise ApiError(400, "lane_id or name is required")
+    lane = handle.run_graph.lanes.get(lane_ref)
+    if lane is None:
+        lane = next(
+            (
+                candidate
+                for candidate in handle.run_graph.lanes.values()
+                if candidate.name == lane_ref
+            ),
+            None,
+        )
+    if lane is None:
+        raise ApiError(404, f"unknown lane: {lane_ref}")
+    return lane
+
+
+def _post_lane_payload(store, run_id, body, user_id) -> dict:
+    handle = _load(store, run_id)
+    lane = _resolve_lane(handle, body.get("lane_id") or body.get("name"))
+    payload_type = body.get("type")
+    text = body.get("text")
+    if not isinstance(payload_type, str) or not payload_type.strip():
+        raise ApiError(400, "type is required")
+    if not isinstance(text, str) or not text.strip():
+        raise ApiError(400, "text is required")
+    payload = handle.attach_lane(
+        lane.lane_id,
+        LanePayload(
+            payload_id=handle._next_id("pl"),
+            target_id=lane.lane_id,
+            type=payload_type.strip(),
+            content={"text": text.strip()},
+            metadata=dict(body.get("metadata") or {}),
+        ),
+        user_id=user_id,
+    )
+    store.save_run(handle)
+    return {"payload": payload.to_dict()}
+
+
+def _post_lane_link(store, run_id, body, user_id) -> dict:
+    handle = _load(store, run_id)
+    parent = _resolve_lane(handle, body.get("parent_lane_id") or body.get("parent"))
+    child = _resolve_lane(handle, body.get("child_lane_id") or body.get("child"))
+    event = handle.link_lanes(parent.lane_id, child.lane_id, user_id=user_id)
+    store.save_run(handle)
+    return {
+        "parent_lane_id": parent.lane_id,
+        "child_lane_id": child.lane_id,
+        "event_id": event.event_id,
+    }
 
 
 def _post_lane_adopt(store, run_id, body, user_id) -> dict:

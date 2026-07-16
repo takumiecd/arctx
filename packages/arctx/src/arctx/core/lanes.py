@@ -11,9 +11,8 @@ from dataclasses import dataclass, field, replace
 
 from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.payloads import SummaryPayload
-from arctx.core.schema.work import WorkEvent, Lane
-
+from arctx.core.schema.payloads import LanePayload, SummaryPayload
+from arctx.core.schema.work import Lane, WorkEvent
 
 # Lane status is a PROJECTION of the append-only work-event log, not a mutable
 # field on the lane record. A lane opens at create (status "open") and toggles via
@@ -66,6 +65,7 @@ class LaneRecordProvenance:
     membership_kind: str = "created"
 
     def to_dict(self) -> dict:
+        """Return the export/API representation."""
         return {
             "record_id": self.record_id,
             "lane_id": self.lane_id,
@@ -149,6 +149,230 @@ class LaneValidationIssue:
             "record_id": self.record_id,
             "lane_id": self.lane_id,
         }
+
+
+@dataclass(frozen=True)
+class LaneLink:
+    """A projected parent-to-child edge in the Lane DAG."""
+
+    parent_lane_id: str
+    child_lane_id: str
+    event_id: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "parent_lane_id": self.parent_lane_id,
+            "child_lane_id": self.child_lane_id,
+            "event_id": self.event_id,
+        }
+
+
+@dataclass(frozen=True)
+class LaneOverview:
+    """Collapsed, exploration-oriented projection of one Lane."""
+
+    lane_id: str
+    name: str | None
+    status: str
+    parent_lane_ids: tuple[str, ...]
+    child_lane_ids: tuple[str, ...]
+    current_values: dict[str, LanePayload]
+    collections: dict[str, tuple[LanePayload, ...]]
+    stale_child_lane_ids: tuple[str, ...] = ()
+
+    @property
+    def summary(self) -> LanePayload | None:
+        """Return the current summary payload, if present."""
+        return self.current_values.get("summary")
+
+    @property
+    def purpose(self) -> LanePayload | None:
+        """Return the current purpose payload, if present."""
+        return self.current_values.get("purpose")
+
+    def to_dict(self) -> dict:
+        """Return the export/API representation."""
+        return {
+            "lane_id": self.lane_id,
+            "name": self.name,
+            "status": self.status,
+            "parent_lane_ids": list(self.parent_lane_ids),
+            "child_lane_ids": list(self.child_lane_ids),
+            "current_values": {
+                key: payload.to_dict()
+                for key, payload in sorted(self.current_values.items())
+            },
+            "collections": {
+                key: [payload.to_dict() for payload in payloads]
+                for key, payloads in sorted(self.collections.items())
+            },
+            "stale_child_lane_ids": list(self.stale_child_lane_ids),
+        }
+
+
+LANE_CURRENT_VALUE_TYPES = frozenset({"summary", "purpose"})
+
+
+def lane_links(graph: RunGraph) -> tuple[LaneLink, ...]:
+    """Project the current Lane DAG from legacy parents and link events."""
+    links: dict[tuple[str, str], LaneLink] = {}
+    for lane in graph.lanes.values():
+        if lane.parent_lane_id and lane.parent_lane_id in graph.lanes:
+            key = (lane.parent_lane_id, lane.lane_id)
+            links[key] = LaneLink(*key)
+
+    for event in graph.work_events:
+        if event.event_type not in ("lane_linked", "lane_unlinked"):
+            continue
+        parent = event.data.get("parent_lane_id")
+        child = event.data.get("child_lane_id")
+        if parent is None or child is None:
+            continue
+        key = (str(parent), str(child))
+        if event.event_type == "lane_unlinked":
+            links.pop(key, None)
+        else:
+            links[key] = LaneLink(key[0], key[1], event.event_id)
+    return tuple(links[key] for key in sorted(links))
+
+
+def lane_children(graph: RunGraph, lane_id: str) -> tuple[str, ...]:
+    """Return direct child Lane ids in the exploration DAG."""
+    return tuple(
+        link.child_lane_id
+        for link in lane_links(graph)
+        if link.parent_lane_id == lane_id
+    )
+
+
+def lane_parents(graph: RunGraph, lane_id: str) -> tuple[str, ...]:
+    """Return direct parent Lane ids in the exploration DAG."""
+    return tuple(
+        link.parent_lane_id
+        for link in lane_links(graph)
+        if link.child_lane_id == lane_id
+    )
+
+
+def lane_roots(graph: RunGraph) -> tuple[str, ...]:
+    """Return Lane ids with no incoming exploration links."""
+    children = {link.child_lane_id for link in lane_links(graph)}
+    return tuple(
+        lane.lane_id
+        for lane in sorted(
+            graph.lanes.values(), key=lambda item: (item.started_at or "", item.lane_id)
+        )
+        if lane.lane_id not in children
+    )
+
+
+def lane_descendants(graph: RunGraph, lane_id: str) -> set[str]:
+    """Return all descendants of one Lane without including itself."""
+    out: set[str] = set()
+    queue = list(lane_children(graph, lane_id))
+    while queue:
+        current = queue.pop(0)
+        if current in out:
+            continue
+        out.add(current)
+        queue.extend(lane_children(graph, current))
+    return out
+
+
+def _lane_payload_rank(graph: RunGraph) -> dict[str, int]:
+    rank: dict[str, int] = {}
+    for index, event in enumerate(graph.work_events):
+        if event.event_type != "lane_payload_attached":
+            continue
+        for payload_id in event.created_records:
+            rank[payload_id] = index
+    return rank
+
+
+def lane_payloads(
+    graph: RunGraph, lane_id: str, *, type: str | None = None
+) -> tuple[LanePayload, ...]:
+    """Return LanePayloads in durable event order."""
+    rank = _lane_payload_rank(graph)
+    insertion = {
+        payload_id: index
+        for index, payload_id in enumerate(graph.payloads_by_lane.get(lane_id, ()))
+    }
+    payloads = [
+        payload
+        for payload in graph.payloads_for_lane(lane_id)
+        if isinstance(payload, LanePayload) and (type is None or payload.type == type)
+    ]
+    payloads.sort(
+        key=lambda payload: (
+            rank.get(payload.payload_id, -1),
+            insertion.get(payload.payload_id, -1),
+        )
+    )
+    return tuple(payloads)
+
+
+def current_lane_payload(
+    graph: RunGraph, lane_id: str, type: str
+) -> LanePayload | None:
+    """Return the latest LanePayload of one semantic type."""
+    payloads = lane_payloads(graph, lane_id, type=type)
+    return payloads[-1] if payloads else None
+
+
+def lane_overview(graph: RunGraph, lane_id: str) -> LaneOverview:
+    """Fold LanePayloads and Lane DAG links into one collapsed overview."""
+    lane = graph.lanes.get(lane_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {lane_id}")
+    grouped: dict[str, list[LanePayload]] = {}
+    for payload in lane_payloads(graph, lane_id):
+        grouped.setdefault(payload.type, []).append(payload)
+    current_values = {
+        type: payloads[-1]
+        for type, payloads in grouped.items()
+        if type in LANE_CURRENT_VALUE_TYPES
+    }
+    collections = {
+        type: tuple(payloads)
+        for type, payloads in grouped.items()
+        if type not in LANE_CURRENT_VALUE_TYPES
+    }
+
+    rank = _lane_payload_rank(graph)
+    summary = current_values.get("summary")
+    summary_rank = rank.get(summary.payload_id, -1) if summary else -1
+    based_on: dict[str, str] | None = None
+    if summary is not None and isinstance(summary.metadata.get("based_on"), list):
+        based_on = {}
+        for item in summary.metadata["based_on"]:
+            if not isinstance(item, dict):
+                continue
+            child_id = item.get("lane_id")
+            payload_id = item.get("summary_payload_id")
+            if child_id is not None and payload_id is not None:
+                based_on[str(child_id)] = str(payload_id)
+    stale_children: list[str] = []
+    for child_id in lane_children(graph, lane_id):
+        child_summary = current_lane_payload(graph, child_id, "summary")
+        if child_summary is None:
+            stale_children.append(child_id)
+        elif based_on is not None:
+            if based_on.get(child_id) != child_summary.payload_id:
+                stale_children.append(child_id)
+        elif rank.get(child_summary.payload_id, -1) > summary_rank:
+            stale_children.append(child_id)
+
+    return LaneOverview(
+        lane_id=lane_id,
+        name=lane.name,
+        status=lane.status,
+        parent_lane_ids=lane_parents(graph, lane_id),
+        child_lane_ids=lane_children(graph, lane_id),
+        current_values=current_values,
+        collections=collections,
+        stale_child_lane_ids=tuple(stale_children),
+    )
 
 
 def lane_validation_errors(
@@ -761,6 +985,50 @@ def validate_lanes(
             )
         )
 
+    links = lane_links(graph)
+    for link in links:
+        for lane_id, role in (
+            (link.parent_lane_id, "parent"),
+            (link.child_lane_id, "child"),
+        ):
+            if lane_id not in graph.lanes:
+                issues.append(
+                    LaneValidationIssue(
+                        code="lane_link_unknown_target",
+                        severity="error",
+                        message=f"lane link {role} does not exist: {lane_id}",
+                        lane_id=lane_id,
+                    )
+                )
+
+    known_links = [
+        link
+        for link in links
+        if link.parent_lane_id in graph.lanes and link.child_lane_id in graph.lanes
+    ]
+    indegree = dict.fromkeys(graph.lanes, 0)
+    children: dict[str, list[str]] = {lane_id: [] for lane_id in graph.lanes}
+    for link in known_links:
+        children[link.parent_lane_id].append(link.child_lane_id)
+        indegree[link.child_lane_id] += 1
+    queue = [lane_id for lane_id, degree in indegree.items() if degree == 0]
+    visited = 0
+    while queue:
+        lane_id = queue.pop(0)
+        visited += 1
+        for child_id in children[lane_id]:
+            indegree[child_id] -= 1
+            if indegree[child_id] == 0:
+                queue.append(child_id)
+    if visited != len(graph.lanes):
+        issues.append(
+            LaneValidationIssue(
+                code="lane_dag_cycle",
+                severity="error",
+                message="lane links contain a cycle",
+            )
+        )
+
     return tuple(issues)
 
 
@@ -829,6 +1097,11 @@ def lane_export_view(
         root_node_id=root_node_id,
     )
     event_ids = set(membership.event_ids)
+    event_ids.update(
+        event.event_id
+        for event in graph.work_events
+        if event.target_kind == "lane"
+    )
     sessions = [
         session.to_dict()
         for session in sorted(
@@ -869,6 +1142,15 @@ def lane_export_view(
             for group in membership.groups
             for summary in lane_edge_summaries(graph, group.lane_id, membership)
             if summary.payload_id in payload_ids and summary.target_id in node_ids
+        ],
+        "lane_links": [link.to_dict() for link in lane_links(graph)],
+        "lane_overviews": [
+            lane_overview(graph, lane_id).to_dict()
+            for lane_id in lane_roots(graph)
+        ] + [
+            lane_overview(graph, lane_id).to_dict()
+            for lane_id in graph.lanes
+            if lane_id not in set(lane_roots(graph))
         ],
     }
 

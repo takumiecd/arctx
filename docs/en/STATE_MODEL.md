@@ -12,7 +12,16 @@ Each `Step` stores its `input_node_ids` and exactly one `output_node_id`.
 There is no persisted `Edge` record in the current schema.
 
 Payload indexes are derived by target: `payloads_by_node` and
-`payloads_by_step`.
+`payloads_by_step`, and `payloads_by_lane`.
+
+## Lane DAG and overviews
+
+Lanes form an exploration DAG separate from the Node/Step DAG. Append-only
+`lane_linked` events create parent-to-child drill-down links; a child may have
+multiple parents and cycle-producing links are rejected. `LanePayload`
+(`target_kind="lane"`) carries lane information. `summary` and `purpose` use
+the latest payload as their current value, while `question`, `decision`, and
+other types accumulate. `lane_overview()` is the collapsed read projection.
 
 Topology indexes are derived from step endpoints:
 `steps_by_input_node` and `step_by_output_node`.

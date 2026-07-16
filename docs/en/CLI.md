@@ -74,7 +74,13 @@ Core commands:
 - `arctx use <run_id>`: write the repo-scoped current run pointer.
 - `arctx use <run_id> --shell`: print an `ARCTX_RUN_ID` export for shell-local
   pinning.
-- `arctx lane create <name>`: create a lane without switching to it.
+- `arctx lane create <name> --summary "..." [--purpose "..."] [--parent LANE ...]`:
+  create an always-explorable lane without switching to it.
+- `arctx lane summarize <lane> --summary "..."`: append a new current summary.
+- `arctx lane attach <lane> --type TYPE --text "..."`: append arbitrary lane information.
+- `arctx lane link <parent> <child>`: add a cycle-safe Lane DAG link.
+- `arctx explore [lane] [--depth N] [--contents]`: traverse collapsed lane summaries,
+  expanding one child level by default.
 - `arctx lane switch <name-or-id>`: switch to an existing lane.
 - `arctx lane adopt <name-or-id> --record ID`: register existing records as
   current members of a lane without rewriting creation provenance. Use
