@@ -9,6 +9,7 @@ Built-in payload types defined here (core):
   - StepPayload: generic step payload with type + content dict
   - CutPayload: append-only inactivity marker (node or step)
   - SummaryPayload: descriptive context snapshot on a node (history truncation)
+  - AssetPayload: reference to a git object, ``(commit, path)``
 
 Extension-specific payload classes (e.g. GitChangePayload, BranchPayload,
 RevertPayload, CherryPickPayload, MergePayload) live with their owning
@@ -145,6 +146,40 @@ class JoinPayload(PayloadBase):
 
 
 @dataclass(frozen=True)
+class AssetPayload(PayloadBase):
+    """A reference to a git object: ``(commit, path)``.
+
+    ARCTX never copies asset bytes. An asset names a commit and a
+    repo-root-relative path, which may be a **file or a directory** (git has
+    trees, so both are addressable). The bytes are resolved at read time by the
+    serve layer via ``git cat-file`` / ``git ls-tree``.
+
+    Per the git-native "absent = self" convention there is no repo field: the
+    repository is the one enclosing the run data. Nothing derivable is stored —
+    no size, no mime type, no content hash — those come from git.
+
+    Target may be a Node (an artifact of the state reached) or a Step (an
+    artifact of the transition). ``title`` is an optional human label.
+
+    This record is deliberately free of git imports; resolution helpers live in
+    :mod:`arctx.core.gitref`.
+    """
+
+    payload_id: str
+    target_id: str
+    target_kind: Literal["node", "step"]
+    commit: str
+    path: str
+    title: str | None = None
+    metadata: dict[str, JSONValue] = field(default_factory=dict)
+
+    payload_type: str = field(default="asset", init=False)
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        return to_jsonable(self)  # type: ignore[return-value]
+
+
+@dataclass(frozen=True)
 class SummaryPayload(PayloadBase):
     """A context snapshot attached to a Node for history truncation / hand-off.
 
@@ -185,6 +220,7 @@ Payload = (
     | UncutPayload
     | JoinPayload
     | SummaryPayload
+    | AssetPayload
 )
 
 
@@ -270,6 +306,19 @@ def _summary_from_dict(data: dict[str, JSONValue]) -> SummaryPayload:
     )
 
 
+def _asset_from_dict(data: dict[str, JSONValue]) -> AssetPayload:
+    title = data.get("title")
+    return AssetPayload(
+        payload_id=str(data["payload_id"]),
+        target_id=str(data["target_id"]),
+        target_kind=data.get("target_kind", "node"),  # type: ignore[arg-type]
+        commit=str(data.get("commit", "")),
+        path=str(data.get("path", "")),
+        title=str(title) if title is not None else None,
+        metadata=dict(data.get("metadata") or {}),
+    )
+
+
 def _join_from_dict(data: dict[str, JSONValue]) -> JoinPayload:
     return JoinPayload(
         payload_id=str(data["payload_id"]),
@@ -300,6 +349,7 @@ register_payload_class(CutPayload)
 register_payload_class(UncutPayload)
 register_payload_class(SummaryPayload)
 register_payload_class(JoinPayload)
+register_payload_class(AssetPayload)
 
 register_payload_decoder("node_payload", _node_payload_from_dict)
 register_payload_decoder("step_payload", _step_payload_from_dict)
@@ -307,6 +357,7 @@ register_payload_decoder("cut", _cut_from_dict)
 register_payload_decoder("uncut", _uncut_from_dict)
 register_payload_decoder("summary", _summary_from_dict)
 register_payload_decoder("join", _join_from_dict)
+register_payload_decoder("asset", _asset_from_dict)
 
 
 # ---------------------------------------------------------------------------
