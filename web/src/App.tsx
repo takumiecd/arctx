@@ -296,12 +296,24 @@ export function App() {
     setFocusLane({ laneId, ts: Date.now() });
     setSelection({ kind: "lane", id: laneId });
   };
-  // Jumping from a search hit: select the record and pan to it.
+  // Jumping from a search hit: select the record, expand its lane if the canvas
+  // has it collapsed (otherwise the record has nothing to select), and pan.
   const focusRecordSelection = (sel: Selection) => {
-    setSelection(sel);
-    if (sel && (sel.kind === "node" || sel.kind === "step")) {
-      setFocusRecord({ kind: sel.kind, id: sel.id, ts: Date.now() });
+    if (!sel || (sel.kind !== "node" && sel.kind !== "step")) return;
+    const laneId = data.record_provenance?.[sel.id]?.lane_id;
+    if (laneId) {
+      setCollapsedLaneIds((prev) => {
+        if (!prev.has(laneId)) return prev;
+        const next = new Set(prev);
+        next.delete(laneId);
+        return next;
+      });
+      if (closedLaneIds.has(laneId)) {
+        setExpandedClosedLaneIds((prev) => new Set(prev).add(laneId));
+      }
     }
+    setSelection(sel);
+    setFocusRecord({ kind: sel.kind, id: sel.id, ts: Date.now() });
   };
 
   return (
