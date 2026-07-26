@@ -96,6 +96,38 @@ export interface AssetResolution {
   message?: string;
 }
 
+// GET /asset — the stored reference plus whether it resolves in this clone.
+export interface AssetView {
+  asset: {
+    payload_id: string;
+    target_kind: "node" | "step";
+    target_id: string;
+    commit: string;
+    path: string;
+    title?: string | null;
+  };
+  resolution: AssetResolution;
+}
+
+// GET /asset/entries — one level of a tree asset.
+export interface AssetEntriesResponse {
+  payload_id: string;
+  commit: string;
+  path: string;
+  entries: AssetTreeEntry[];
+}
+
+// GET /asset/content — a blob, inline as utf-8 text or base64 bytes.
+export interface AssetContentResponse {
+  payload_id: string;
+  commit: string;
+  path: string;
+  content_type: string;
+  size: number;
+  encoding: "utf-8" | "base64";
+  content: string;
+}
+
 export interface AssetTreeEntry {
   name: string;
   path: string;

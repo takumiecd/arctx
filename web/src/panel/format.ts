@@ -1,8 +1,6 @@
 // Pure value formatting / image-source safety / table-shape helpers shared
 // by payload rendering and markdown rendering.
 
-import { artifactSrc } from "../api";
-
 export function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
@@ -10,27 +8,15 @@ export function formatValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+// Inline images only. Copy-type artifacts (`artifact://…`, `/artifacts/…`) are
+// gone: an asset is a `(commit, path)` git reference now, rendered by
+// AssetCard through the serve asset endpoints.
 export function safeImageSrc(src: string): string | null {
   if (src.length > 7_000_000) return null;
-  if (/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) {
+  if (/^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,[a-z0-9+/=\s]+$/i.test(src)) {
     return src;
   }
-  if (src.startsWith("artifact://")) {
-    const path = src.slice("artifact://".length).replace(/^\/+/, "");
-    return artifactPath(path);
-  }
-  if (src.startsWith("/artifacts/")) {
-    return artifactPath(src.slice("/artifacts/".length));
-  }
   return null;
-}
-
-export function artifactPath(path: string): string | null {
-  const parts = path.split("/").filter(Boolean);
-  if (!parts.length || parts.some((part) => part === "." || part === "..")) return null;
-  // artifactSrc appends ?run= when the picker has switched runs, so the file
-  // resolves against the selected run rather than the server's bound run.
-  return artifactSrc(`/artifacts/${parts.map(encodeURIComponent).join("/")}`);
 }
 
 export function tableData(value: unknown): { columns: string[]; rows: Record<string, unknown>[] } | null {

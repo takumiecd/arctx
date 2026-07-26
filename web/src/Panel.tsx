@@ -21,7 +21,6 @@ import {
   detailUnitFor,
   parseJson,
 } from "./panel/helpers";
-import { ScopedPayloads } from "./panel/markdown";
 import { RecordEditForm } from "./panel/RecordEditForm";
 import { PanelResizeHandle, useResizablePanelWidth } from "./panel/resize";
 import { PAYLOAD_SCHEMAS } from "./panel/schemas";
@@ -357,47 +356,44 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
               <>
                 <h3>step payloads ({stepPayloads.length})</h3>
                 {stepPayloads.length === 0 && <p className="muted">none</p>}
-                <ScopedPayloads client={client} recordId={unit.stepId}>
-                  {stepPayloads.map((p) => (
-                    <PayloadCard
-                      key={p.payload_id}
-                      doc={doc}
-                      payload={p}
-                      display={payloadDisplayFor(p, doc)}
-                      onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                    />
-                  ))}
-                </ScopedPayloads>
+                {stepPayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    client={client}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
 
                 <h3>output node notes ({nodePayloads.length})</h3>
                 {nodePayloads.length === 0 && <p className="muted">none</p>}
-                <ScopedPayloads client={client} recordId={unit.outputNodeId}>
-                  {nodePayloads.map((p) => (
-                    <PayloadCard
-                      key={p.payload_id}
-                      doc={doc}
-                      payload={p}
-                      display={payloadDisplayFor(p, doc)}
-                      onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                    />
-                  ))}
-                </ScopedPayloads>
+                {nodePayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    client={client}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
               </>
             ) : (
               <>
                 <h3>node payloads ({nodePayloads.length})</h3>
                 {nodePayloads.length === 0 && <p className="muted">none</p>}
-                <ScopedPayloads client={client} recordId={unit.outputNodeId}>
-                  {nodePayloads.map((p) => (
-                    <PayloadCard
-                      key={p.payload_id}
-                      doc={doc}
-                      payload={p}
-                      display={payloadDisplayFor(p, doc)}
-                      onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                    />
-                  ))}
-                </ScopedPayloads>
+                {nodePayloads.map((p) => (
+                  <PayloadCard
+                    key={p.payload_id}
+                    doc={doc}
+                    payload={p}
+                    display={payloadDisplayFor(p, doc)}
+                    client={client}
+                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
+                  />
+                ))}
               </>
             )}
           </section>

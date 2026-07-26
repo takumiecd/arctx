@@ -19,6 +19,10 @@ API_PATHS = frozenset({
     "/run", "/runs", "/node", "/step", "/attach", "/cut", "/uncut",
     "/reparent", "/lane", "/health",
     "/ext", "/ext/enable", "/ext/disable",
+    # Asset reads resolve `(commit, path)` against git at request time. The
+    # JSON routes are enough for the GUI (`/asset/content` inlines bytes as
+    # base64), so the binary `/asset/raw` shell stays exclusive to `arctx serve`.
+    "/asset", "/asset/entries", "/asset/content",
 })
 WEB_API_PATHS = frozenset({"/web/layout"})
 

@@ -1,48 +1,13 @@
 // Markdown / sanitized-HTML rendering for note and summary payloads.
 
-import { createContext, useContext, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 
-import type { RunClient } from "../api";
 import { type PayloadMedia } from "../payloadExtensions";
 import { formatValue, safeImageSrc } from "./format";
-
-// Set of artifact URLs (e.g. "/artifacts/ast_xxx_file.png") that may be
-// referenced from the record currently being rendered. `null` means no
-// scoping (static/share mode, or still loading) — render everything.
-const ArtifactScopeContext = createContext<Set<string> | null>(null);
-
-export function artifactKey(src: string): string {
-  let s = src;
-  if (s.startsWith("artifact://")) s = `/artifacts/${s.slice("artifact://".length).replace(/^\/+/, "")}`;
-  try {
-    return decodeURI(s);
-  } catch {
-    return s;
-  }
-}
-
-export function isArtifactUrl(src: string): boolean {
-  return src.startsWith("/artifacts/") || src.startsWith("artifact://");
-}
-
-// Payload cards render without artifact scoping. Assets are being re-modelled
-// as (commit, path) git references; scoping will come back with them.
-export function ScopedPayloads({
-  client: _client,
-  recordId: _recordId,
-  children,
-}: {
-  client: RunClient;
-  recordId: string;
-  children: ReactNode;
-}) {
-  return <ArtifactScopeContext.Provider value={null}>{children}</ArtifactScopeContext.Provider>;
-}
 
 export function MarkdownView({ value }: { value: unknown }) {
   return (
@@ -50,7 +15,7 @@ export function MarkdownView({ value }: { value: unknown }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
-        components={{ img: ScopedMarkdownImg }}
+        components={{ img: MarkdownImg }}
       >
         {formatValue(value)}
       </ReactMarkdown>
@@ -175,13 +140,12 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function ScopedMarkdownImg({ src, alt }: { src?: string; alt?: string }) {
-  const scope = useContext(ArtifactScopeContext);
+// Inline `data:` images are decoded here; anything else is passed through to
+// the browser. Repository files are assets now — attach them with
+// `arctx asset attach` and they render through AssetCard.
+function MarkdownImg({ src, alt }: { src?: string; alt?: string }) {
   const raw = typeof src === "string" ? src : "";
-  if (isArtifactUrl(raw) && scope && !scope.has(artifactKey(raw))) {
-    return <span className="muted payload-media-blocked">⚠ asset not in scope</span>;
-  }
-  const safe = isArtifactUrl(raw) ? safeImageSrc(raw) : raw;
+  const safe = raw.startsWith("data:") ? safeImageSrc(raw) : raw;
   if (!safe) {
     return <span className="muted payload-media-blocked">blocked image source</span>;
   }

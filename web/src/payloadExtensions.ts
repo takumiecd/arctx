@@ -246,6 +246,22 @@ function gitChangeDisplay(payload: RunPayload): PayloadDisplay {
   };
 }
 
+function assetDisplay(payload: RunPayload): PayloadDisplay {
+  // The record is only the reference; the bytes come from git at view time
+  // (see AssetCard). Nothing here touches the network.
+  const path = stringValue(payload.path);
+  const title = stringValue(payload.title);
+  return {
+    title: "asset",
+    summary: title || path || "(repository root)",
+    graphLabel: title || path.split("/").pop() || "asset",
+    fields: [
+      { label: "path", value: path || "(repository root)" },
+      { label: "commit", value: shortSha(payload.commit) },
+    ],
+  };
+}
+
 function branchDisplay(payload: RunPayload): PayloadDisplay {
   const fields: PayloadField[] = [{ label: "branch", value: payload.branch }];
   return { title: "branch", summary: stringValue(payload.branch), fields };
@@ -348,6 +364,7 @@ function summaryFormat(value: unknown): "markdown" | "html" | "text" {
 registerPayloadRenderer("node_payload", genericPayloadDisplay);
 registerPayloadRenderer("step_payload", genericPayloadDisplay);
 registerPayloadRenderer("cut", cutDisplay);
+registerPayloadRenderer("asset", assetDisplay);
 registerPayloadRenderer("diagram", diagramDisplay);
 registerPayloadRenderer("git_change", gitChangeDisplay);
 registerPayloadRenderer("branch", branchDisplay);
