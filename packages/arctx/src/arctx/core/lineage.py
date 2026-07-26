@@ -21,7 +21,7 @@ Kind = Literal["node", "step"]
 Target = tuple[Kind, str]
 Relation = Literal["same", "ancestor", "descendant", "unrelated"]
 
-__all__ = ["Target", "Relation", "history_nodes", "relationship", "is_visible_from"]
+__all__ = ["Target", "Relation", "history_nodes", "relationship"]
 
 
 def _check(graph: "RunGraph", target: Target) -> None:
@@ -80,13 +80,3 @@ def relationship(graph: "RunGraph", a: Target, b: Target) -> Relation:
     if _effect_node(graph, b) in history_nodes(graph, a):
         return "descendant"
     return "unrelated"
-
-
-def is_visible_from(graph: "RunGraph", target: Target, viewer: Target) -> bool:
-    """Whether *target* may be referenced from *viewer*.
-
-    True when *target* is an ancestor of *viewer* or the same record:
-    a record can reference assets attached to its own history (parents), but
-    not assets attached to its descendants (children).
-    """
-    return relationship(graph, target, viewer) in ("ancestor", "same")

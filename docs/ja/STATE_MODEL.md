@@ -65,7 +65,7 @@ status は lane record 上の可変フィールドではなく、append-only な
 求めます（`arctx.core.lanes.apply_lane_status_events`）。cut/uncut と同じ
 「後勝ち（supersession）」の系譜で、close → open → close と繰り返しても全系列が残ります。
 `arctx lane close` が `lane_closed` を、`arctx lane open` が `lane_opened` を残します。
-**closed の lane への書き込み（add/attach/asset/git add）は拒否され**、`arctx lane open`
+**closed の lane への書き込み（add/attach/git add）は拒否され**、`arctx lane open`
 で開き直すか `--force` を渡すまで再開できません。
 
 コア payload は汎用の `NodePayload` / `StepPayload` に加えて `CutPayload` /
@@ -120,12 +120,12 @@ cut したりすると、*下流のレコードが前提にしていた「親の
 *前提改変的なものだけ* を別機構に通す。
 
 - **記述的・単調 (descriptive / monotonic)** — `SummaryPayload`,
-  `NodePayload(type="note")`, `AssetPayload` など。下流の前提を崩さない。子は
-  「生成時点の親」を前提に作られており、後から要約・メモ・asset が付いても子の
+  `NodePayload(type="note")` など。下流の前提を崩さない。子は
+  「生成時点の親」を前提に作られており、後から要約やメモが付いても子の
   妥当性は変わらない。→ 子があっても自由に attach してよい。
   `SummaryPayload` は core typed payload（`payload_type="summary"`, node-targeting）。
   注釈に過ぎないが、`trace(..., stop_at_summary=True)` が読み取り時にディスパッチ
-  するため typed クラスにする（`CutPayload` / `AssetPayload` と同じ基準）。活性には
+  するため typed クラスにする（`CutPayload` と同じ基準）。活性には
   一切影響しない点が `CutPayload` との違い。
 - **前提改変的 (premise-altering)** — cut / verify-NG / invalidate など、下流の
   妥当性そのものを変えるもの。→ 自由な attach にはせず、可逆な状態イベント列に通す。

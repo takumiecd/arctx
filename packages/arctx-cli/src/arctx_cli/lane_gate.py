@@ -2,7 +2,7 @@
 
 A lane's lifecycle is open → closed → (reopen) open. "Closed" only means
 something if writes respect it: once a lane is closed, ``add`` / ``attach`` /
-``asset attach`` / ``git add`` and friends refuse to append to it until it is
+``git add`` and friends refuse to append to it until it is
 explicitly reopened with ``arctx lane open`` (or the caller passes ``--force``).
 """
 

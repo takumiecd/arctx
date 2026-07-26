@@ -41,8 +41,6 @@ def dispatch(
             return 201, _post_runs(store, body or {})
         if route == ("GET", "/run"):
             return 200, _get_run(store, run_id, lane_id)
-        if route == ("GET", "/assets/visible"):
-            return 200, _get_visible_assets(store, run_id, query or {})
         if route == ("POST", "/step"):
             return 201, _post_step(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/attach"):
@@ -63,8 +61,6 @@ def dispatch(
             return 200, _post_ext_enable(store, run_id, body or {})
         if route == ("POST", "/ext/disable"):
             return 200, _post_ext_disable(store, run_id, body or {})
-        if route == ("POST", "/artifacts/upload"):
-            return 201, _post_artifacts_upload(store, run_id, body or {})
         return 404, {"error": f"no route for {method} {path}"}
     except ApiError as exc:
         return exc.status, {"error": exc.message}
@@ -126,39 +122,6 @@ def _get_run(store: Any, run_id: str, lane_id: str) -> dict:
     doc["current_lane_id"] = lane_id
     doc["current_lane_name"] = lane.name if lane is not None else lane_id
     return doc
-
-
-def _get_visible_assets(store: Any, run_id: str, query: dict) -> dict:
-    from arctx.core.lineage import is_visible_from
-
-    from_id = query.get("from")
-    if not from_id:
-        raise ApiError(400, "query parameter 'from' is required")
-    from_id = str(from_id)
-
-    handle = _load(store, run_id)
-    graph = handle.run_graph
-    if from_id in graph.nodes:
-        viewer = ("node", from_id)
-    elif from_id in graph.steps:
-        viewer = ("step", from_id)
-    else:
-        raise ApiError(404, f"unknown record: {from_id}")
-
-    assets: list[dict] = []
-    for payload in graph.payloads.values():
-        if getattr(payload, "payload_type", None) != "asset":
-            continue
-        target_kind = getattr(payload, "target_kind", None)
-        target_id = getattr(payload, "target_id", None)
-        if target_kind not in ("node", "step") or not target_id:
-            continue
-        try:
-            if is_visible_from(graph, (target_kind, target_id), viewer):
-                assets.append(payload.to_dict())
-        except KeyError:
-            continue
-    return {"from": from_id, "assets": assets}
 
 
 def _payload_fields(body: dict) -> dict:
@@ -515,46 +478,6 @@ def _post_ext_disable(store, run_id: str, body: dict) -> dict:
     kept = [item for item in current if item.name != ext_name]
     save_enabled(store.run_path(run_id), kept)
     return {"status": "disabled", "name": ext_name}
-
-
-def _post_artifacts_upload(store, run_id: str, body: dict) -> dict:
-    import base64
-    import mimetypes
-    import uuid
-    from pathlib import Path
-
-    filename = body.get("filename")
-    file_data = body.get("file_data")
-    if not isinstance(filename, str) or not filename:
-        raise ApiError(400, "filename is required")
-    if not isinstance(file_data, str) or not file_data:
-        raise ApiError(400, "file_data is required")
-
-    safe_name = Path(filename).name
-    if safe_name in ("", ".", ".."):
-        raise ApiError(400, "filename must be a plain file name")
-    try:
-        raw = base64.b64decode(file_data, validate=True)
-    except ValueError as exc:
-        raise ApiError(400, f"invalid base64 file_data: {exc}") from exc
-
-    if not store.run_path(run_id).exists():
-        raise ApiError(404, f"unknown run_id: {run_id}")
-
-    artifact_id = f"art_{uuid.uuid4().hex[:8]}"
-    stem = f"{artifact_id}_{safe_name}"
-    artifacts_dir = store.run_path(run_id) / "artifacts"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-    target = artifacts_dir / stem
-    target.write_bytes(raw)
-    mime_type, _ = mimetypes.guess_type(safe_name)
-    return {
-        "artifact_id": artifact_id,
-        "filename": safe_name,
-        "mime_type": mime_type or "application/octet-stream",
-        "size_bytes": len(raw),
-        "path": f"artifacts/{stem}",
-    }
 
 
 def _resolve_target_kind(handle, record_id: str) -> str:

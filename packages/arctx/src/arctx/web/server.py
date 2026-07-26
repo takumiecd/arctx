@@ -17,11 +17,10 @@ from arctx.web.layouts import get_layout, save_layout
 
 API_PATHS = frozenset({
     "/run", "/runs", "/node", "/step", "/attach", "/cut", "/uncut",
-    "/reparent", "/lane", "/lane/adopt", "/health", "/artifacts/upload",
-    "/ext", "/ext/enable", "/ext/disable", "/assets/visible",
+    "/reparent", "/lane", "/lane/adopt", "/health",
+    "/ext", "/ext/enable", "/ext/disable",
 })
 WEB_API_PATHS = frozenset({"/web/layout"})
-ARTIFACT_PREFIX = "/artifacts/"
 
 
 def build_handler(
@@ -88,9 +87,6 @@ def build_handler(
         def _is_web_api(self) -> bool:
             path = self._path()
             return path in WEB_API_PATHS or (self.command.upper(), path) in route_map
-
-        def _is_artifact(self) -> bool:
-            return self._path().startswith(ARTIFACT_PREFIX)
 
         def _read_body(self) -> dict | None:
             length = int(self.headers.get("Content-Length") or 0)
@@ -179,21 +175,11 @@ def build_handler(
                 data = _inject_extension_scripts(data, extension_scripts)
             self._send_bytes(200, data, ctype or "application/octet-stream")
 
-        def _serve_artifact(self) -> None:
-            target = _resolve_artifact(store.run_path(self._effective_run_id()), self._path())
-            if target is None or not target.is_file():
-                self._send_bytes(404, b"not found", "text/plain")
-                return
-            ctype, _ = mimetypes.guess_type(str(target))
-            self._send_bytes(200, target.read_bytes(), ctype or "application/octet-stream")
-
         def do_GET(self) -> None:
             if self._is_api():
                 self._api("GET")
             elif self._is_web_api():
                 self._web_api("GET")
-            elif self._is_artifact():
-                self._serve_artifact()
             else:
                 self._serve_static()
 
@@ -267,15 +253,3 @@ def _inject_extension_scripts(data: bytes, scripts: list[str] | tuple[str, ...])
 
 def _escape_script(script: str) -> str:
     return script.replace("</script", "<\\/script")
-
-
-def _resolve_artifact(run_dir: Path, url_path: str) -> Path | None:
-    raw = urllib.parse.unquote(url_path[len(ARTIFACT_PREFIX):])
-    rel = posixpath.normpath(raw).lstrip("/")
-    if rel in ("", ".") or rel.startswith("../"):
-        return None
-    root = (run_dir / "artifacts").resolve()
-    target = (root / rel).resolve()
-    if target == root or root not in target.parents:
-        return None
-    return target

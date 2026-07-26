@@ -27,7 +27,7 @@ def register_extension_cli(subparsers, names: Iterable[str]) -> None:
             ext = load_extension(name)
         except (KeyError, ImportError):
             # Unknown / uninstalled extension (e.g. a once-extension now folded
-            # into core like "asset"). Skip rather than crash CLI startup.
+            # into core). Skip rather than crash CLI startup.
             seen.add(name)
             continue
         register_cli_commands(subparsers, ext.cli_commands())

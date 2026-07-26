@@ -39,7 +39,7 @@ class ExtensionAwareStore:
             try:
                 load_extension(item.name).register_schema()
             except KeyError:
-                # Unknown extension name (e.g. "asset", now a core payload, or a
+                # Unknown extension name (e.g. a payload folded into core, or a
                 # third-party ext not installed). Skip rather than crash on load.
                 continue
         handle = self._store.load_run(run_id)
