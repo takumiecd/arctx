@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
-  laneOptions,
   payloadsForNode,
   payloadsForStep,
 } from "./model";
@@ -18,10 +17,8 @@ import { PayloadCard } from "./panel/PayloadCard";
 import { ProvenanceCard } from "./panel/ProvenanceCard";
 import { SelectionContext } from "./panel/SelectionContext";
 import {
-  adoptLaneRequest,
   attachTargetsFor,
   detailUnitFor,
-  laneAdoptionRecordIds,
   parseJson,
 } from "./panel/helpers";
 import { ScopedPayloads } from "./panel/markdown";
@@ -29,11 +26,8 @@ import { RecordEditForm } from "./panel/RecordEditForm";
 import { PanelResizeHandle, useResizablePanelWidth } from "./panel/resize";
 import { PAYLOAD_SCHEMAS } from "./panel/schemas";
 import type {
-  AdoptMode,
   AttachPreset,
   AttachTarget,
-  BulkSelection,
-  DetailUnit,
   Props,
   RecordSelection,
   Tab,
@@ -65,12 +59,6 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   // Custom preset states
   const [customType, setCustomType] = useState("custom_data");
   const [customContent, setCustomContent] = useState("{}");
-
-  // Asset preset state (upload a file as an AssetPayload)
-  const [assetFile, setAssetFile] = useState<File | null>(null);
-
-  const [adoptLaneId, setAdoptLaneId] = useState("");
-  const [adoptMode, setAdoptMode] = useState<AdoptMode>("explicit");
 
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,23 +107,6 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
 
   const attach = useMutation({
     mutationFn: async (target: AttachTarget) => {
-      // Asset is a core payload: upload the file, then attach an AssetPayload
-      // to the selected record (not a content-fields payload).
-      if (attachPreset === "asset") {
-        if (!assetFile) throw new Error("choose a file to attach");
-        const info = await client.uploadArtifact(assetFile);
-        await client.attachAsset({
-          target_id: target.selection.id,
-          target_kind: target.selection.kind,
-          asset_id: info.artifact_id,
-          filename: info.filename,
-          mime_type: info.mime_type,
-          size_bytes: info.size_bytes,
-          path: info.path,
-        });
-        return;
-      }
-
       let typeVal = "";
       let contentObj: Record<string, unknown> = {};
 
@@ -165,7 +136,6 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
       // Reset preset fields
       setFormValues({});
       setCustomContent("{}");
-      setAssetFile(null);
       invalidate();
     },
     onError: fail,
@@ -206,34 +176,9 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
     onError: fail,
   });
 
-  const adoptLane = useMutation({
-    mutationFn: (unit: DetailUnit) =>
-      client.adoptLane(adoptLaneRequest(unit, adoptLaneId, adoptMode)),
-    onSuccess: () => {
-      setError(null);
-      invalidate();
-    },
-    onError: fail,
-  });
-
-  const adoptBulkLane = useMutation({
-    mutationFn: (sel: BulkSelection) =>
-      client.adoptLane({
-        lane_id: adoptLaneId,
-        record_ids: laneAdoptionRecordIds(sel, doc),
-        reason: "web bulk lane adoption",
-      }),
-    onSuccess: () => {
-      setError(null);
-      invalidate();
-    },
-    onError: fail,
-  });
-
   // Automatically switch tab depending on whether selection has payloads
   useEffect(() => {
     setAttachTargetKey("step");
-    setAdoptMode("explicit");
 
     if (selection?.kind === "lane") {
       setActiveTab("content");
@@ -301,17 +246,6 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
     }
   }, [stepContent, stepRawJsonMode]);
 
-  const lanes = laneOptions(doc);
-  useEffect(() => {
-    if (!lanes.length) {
-      setAdoptLaneId("");
-      return;
-    }
-    if (!lanes.some((lane) => lane.lane_id === adoptLaneId)) {
-      const currentLane = lanes.find((lane) => lane.lane_id === doc.current_lane_id);
-      setAdoptLaneId(currentLane?.lane_id ?? lanes[0].lane_id ?? "");
-    }
-  }, [adoptLaneId, doc.current_lane_id, lanes]);
 
   if (!selection) {
     return (
@@ -346,13 +280,7 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   if (selection.kind === "records") {
     return (
       <BulkRecordsPanel
-        doc={doc}
         selection={selection}
-        lanes={lanes}
-        adoptLaneId={adoptLaneId}
-        setAdoptLaneId={setAdoptLaneId}
-        adoptBulkLane={() => adoptBulkLane.mutate(selection)}
-        isPending={adoptBulkLane.isPending}
         error={error}
         isFocused={isFocused}
         panelWidth={panelWidth}
@@ -487,7 +415,6 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
             doc={doc}
             unit={unit}
             selection={selection}
-            lanes={lanes}
             error={error}
             stepType={stepType}
             setStepType={setStepType}
@@ -502,20 +429,13 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
             reparentInputs={reparentInputs}
             setReparentInputs={setReparentInputs}
             reparent={reparent}
-            adoptLaneId={adoptLaneId}
-            setAdoptLaneId={setAdoptLaneId}
-            adoptMode={adoptMode}
-            setAdoptMode={setAdoptMode}
-            adoptLane={adoptLane}
-            attachTargets={attachTargets}
+                    attachTargets={attachTargets}
             attachTarget={attachTarget}
             setAttachTargetKey={setAttachTargetKey}
             attachPreset={attachPreset}
             setAttachPreset={setAttachPreset}
             formValues={formValues}
             setFormValues={setFormValues}
-            assetFile={assetFile}
-            setAssetFile={setAssetFile}
             customType={customType}
             setCustomType={setCustomType}
             customContent={customContent}

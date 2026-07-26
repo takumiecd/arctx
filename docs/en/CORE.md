@@ -30,7 +30,6 @@ arctx lane geometry        # shorthand for switch; missing names are not created
 arctx lane                 # show the current lane
 arctx lane list            # list lanes
 arctx lane summaries geometry # show summaries on terminal lane nodes
-arctx lane adopt geometry --history <tip> # adopt existing history into a lane without rewriting creation provenance
 ```
 
 A lane is **not** owned by one user: others may join the same lane (attribution is

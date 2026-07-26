@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from arctx.core.append import AppendBatch, GraphRecordEnvelope
-from arctx.core.lanes import format_lane_validation_errors, lane_membership, lane_validation_errors
+from arctx.core.lanes import format_lane_validation_errors, lane_validation_errors
 from arctx.core.run.export import ExportOptions, json_document
 from arctx.payload_builder import build_payload
 
@@ -53,8 +53,6 @@ def dispatch(
             return 201, _post_reparent(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/lane"):
             return 201, _post_lane(store, run_id, body or {}, user_id)
-        if route == ("POST", "/lane/adopt"):
-            return 201, _post_lane_adopt(store, run_id, body or {}, user_id)
         if route == ("GET", "/ext"):
             return 200, _get_ext(store, run_id)
         if route == ("POST", "/ext/enable"):
@@ -279,152 +277,6 @@ def _post_lane(store, run_id, body, user_id) -> dict:
     lane = handle.ensure_lane(name=name.strip(), created_by=user_id, metadata=metadata)
     store.save_run(handle)
     return {"lane": lane.to_dict()}
-
-
-def _post_lane_adopt(store, run_id, body, user_id) -> dict:
-    lane_ref = body.get("lane_id") or body.get("name")
-    if not isinstance(lane_ref, str) or not lane_ref.strip():
-        raise ApiError(400, "lane_id or name is required")
-
-    handle = _load(store, run_id)
-    lane = handle.run_graph.lanes.get(lane_ref)
-    if lane is None:
-        lane = next((candidate for candidate in handle.run_graph.lanes.values() if candidate.name == lane_ref), None)
-    if lane is None:
-        raise ApiError(404, f"unknown lane: {lane_ref}")
-
-    ids, mode, target_id = _adoption_record_ids(handle, body)
-    before = _graph_counts(handle)
-    event = handle.adopt_lane_records(
-        lane.lane_id,
-        ids,
-        user_id=user_id,
-        mode=mode,
-        target_id=target_id,
-        reason=body.get("reason") if isinstance(body.get("reason"), str) else None,
-    )
-    _maybe_append_or_save(store=store, handle=handle, user_id=user_id, lane_id=lane.lane_id, before=before)
-    return {
-        "lane_id": lane.lane_id,
-        "name": lane.name,
-        "adopted_record_ids": list(ids),
-        "count": len(ids),
-        "mode": mode,
-        "event_id": event.event_id,
-    }
-
-
-def _adoption_record_ids(handle, body: dict) -> tuple[tuple[str, ...], str, str]:
-    record_ids = body.get("record_ids")
-    history_node_id = body.get("history_node_id")
-    reachable_node_id = body.get("reachable_node_id")
-    lane_head_node_id = body.get("lane_head_node_id")
-    lane_tail_node_id = body.get("lane_tail_node_id")
-    sources = [
-        isinstance(record_ids, list) and bool(record_ids),
-        history_node_id is not None,
-        reachable_node_id is not None,
-        lane_head_node_id is not None,
-        lane_tail_node_id is not None,
-    ]
-    if sum(1 for enabled in sources if enabled) != 1:
-        raise ApiError(400, "choose exactly one of record_ids, history_node_id, reachable_node_id, lane_head_node_id, lane_tail_node_id")
-
-    if isinstance(record_ids, list) and record_ids:
-        ids = tuple(dict.fromkeys(str(record_id) for record_id in record_ids))
-        return ids, "explicit", ids[0]
-
-    if history_node_id is not None:
-        node_id = str(history_node_id)
-        if node_id not in handle.run_graph.nodes:
-            raise ApiError(404, f"unknown node_id: {node_id}")
-        trace = handle.trace(node_id)
-        ids = trace.past_node_ids + (trace.current_node_id,) + trace.step_ids + trace.payload_ids
-        return _without_run_root(handle, ids), "history", node_id
-
-    if lane_head_node_id is not None:
-        node_id = str(lane_head_node_id)
-        ids = _lane_local_head_record_ids(handle, node_id)
-        return _without_run_root(handle, ids), "lane_head", node_id
-
-    if lane_tail_node_id is not None:
-        node_id = str(lane_tail_node_id)
-        ids = _lane_local_tail_record_ids(handle, node_id)
-        return _without_run_root(handle, ids), "lane_tail", node_id
-
-    node_id = str(reachable_node_id)
-    if node_id not in handle.run_graph.nodes:
-        raise ApiError(404, f"unknown node_id: {node_id}")
-    reachable = handle.run_graph.reachable_from(node_id)
-    producer_step_id = handle.run_graph.step_to_node(node_id)
-    producer_step_ids = (producer_step_id,) if producer_step_id is not None else ()
-    ids = (
-        (node_id,)
-        + tuple(reachable["node_ids"])
-        + producer_step_ids
-        + tuple(reachable["step_ids"])
-        + tuple(reachable["payload_ids"])
-    )
-    return _without_run_root(handle, ids), "reachable", node_id
-
-
-def _lane_local_head_record_ids(handle, node_id: str) -> tuple[str, ...]:
-    if node_id not in handle.run_graph.nodes:
-        raise ApiError(404, f"unknown node_id: {node_id}")
-    membership = lane_membership(handle.run_graph)
-    lane_id = membership.node_to_lane.get(node_id)
-    if lane_id is None:
-        raise ApiError(400, f"node {node_id} is not lane-owned")
-    ids: list[str] = [node_id]
-    current = node_id
-    while True:
-        step_id = handle.run_graph.step_to_node(current)
-        if step_id is None:
-            break
-        if membership.step_to_lane.get(step_id) != lane_id:
-            break
-        ids.append(step_id)
-        step = handle.run_graph.steps[step_id]
-        if not step.input_node_ids:
-            break
-        parent = step.input_node_ids[0]
-        if membership.node_to_lane.get(parent) != lane_id:
-            break
-        ids.append(parent)
-        current = parent
-    return tuple(dict.fromkeys(ids))
-
-
-def _lane_local_tail_record_ids(handle, node_id: str) -> tuple[str, ...]:
-    if node_id not in handle.run_graph.nodes:
-        raise ApiError(404, f"unknown node_id: {node_id}")
-    membership = lane_membership(handle.run_graph)
-    lane_id = membership.node_to_lane.get(node_id)
-    if lane_id is None:
-        raise ApiError(400, f"node {node_id} is not lane-owned")
-    ids: list[str] = [node_id]
-    producer_step_id = handle.run_graph.step_to_node(node_id)
-    if producer_step_id is not None and membership.step_to_lane.get(producer_step_id) == lane_id:
-        ids.append(producer_step_id)
-    frontier = [node_id]
-    seen_nodes = {node_id}
-    while frontier:
-        current = frontier.pop()
-        for step_id in handle.run_graph.steps_from_node(current):
-            if membership.step_to_lane.get(step_id) != lane_id:
-                continue
-            ids.append(step_id)
-            child = handle.run_graph.steps[step_id].output_node_id
-            if child in seen_nodes or membership.node_to_lane.get(child) != lane_id:
-                continue
-            seen_nodes.add(child)
-            ids.append(child)
-            frontier.append(child)
-    return tuple(dict.fromkeys(ids))
-
-
-def _without_run_root(handle, ids: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(record_id for record_id in ids if record_id != handle.root_node_id)
 
 
 def _lane_error_baseline(handle) -> int:

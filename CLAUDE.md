@@ -65,12 +65,13 @@ Two-tier design. Core payloads live under `packages/arctx/src/arctx/core/schema/
 - `UncutPayload(payload_id, target_id, target_kind, reason=None)` — append-only reversal of a cut on the same target. Effective cut state is "last cut/uncut marker wins" (supersession), computed in `packages/arctx/src/arctx/core/cuts.py`. Cuts are never deleted.
 - `SummaryPayload(payload_id, target_id, text, metadata={})` — node-targeting context snapshot for history truncation / hand-off. Descriptive and monotonic (never changes node/descendant validity). `trace(..., stop_at_summary=True)` prunes the backward walk at the nearest summary.
 - `JoinPayload(payload_id, target_id, joined_views)` — step-targeting marker for a multi-input step that joins independent histories with no common ancestor (extension-agnostic; `target_kind="step"`)
-- `AssetPayload(payload_id, target_id, target_kind, asset_id, filename, mime_type, size_bytes, path)` — a file asset (image/video/document) attached to a Node or Step. The file lives under `<run_dir>/artifacts/`; `path` is run-relative. Asset is a **core payload, not an extension** (it depends on core lineage). Visibility — which records may reference an asset by URL — is computed at read time in `packages/arctx/src/arctx/core/lineage.py`: an asset is reachable from the record it is attached to and that record's descendants. Attach via `handle.attach_asset(...)` or `arctx asset attach`; files are uploaded through the generic `POST /artifacts/upload`. The visible set is served by `GET /assets/visible?from=<id>`.
+
+There is no asset payload: the copy-into-run asset mechanism was deleted in the git-native Phase 2. Assets will return as `(commit, path)` git references (Phase 3).
 
 **Git extension payloads** (`packages/arctx/src/arctx/ext/git/payloads.py`):
-- `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=(), repo_id="")` — git record on a Step
-- `BranchPayload(..., repo_id="")`, `MergePayload`, `RevertPayload`, `CherryPickPayload`
-- `RepoPayload(payload_id, target_id, repo_id, slug, remotes, canonical, local_path)` — run-scoped repo registry entry (the 対応表), attached to the run root node. `RemoteRef(kind, url)` holds each known remote URL form. git payloads reference a repo by `repo_id` only. `local_path` is environment-specific and is stripped on export/share (`RepoPayload.shareable()`). Registry/resolution helpers live in `packages/arctx/src/arctx/ext/git/registry.py` (`resolve_repo_id`, `list_repos`, `normalize_remote_url`). Branch tip events are keyed by `(repo_id, branch)`.
+- `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=())` — git record on a Step
+- `BranchPayload(...)`, `MergePayload`, `RevertPayload`, `CherryPickPayload`
+There is no repo registry and no `repo_id`. A run lives inside exactly one repository, so a git record with no repo qualifier means "the repo carrying this data" ("absent = self"). Branch tip events are keyed by branch alone.
 
 **User subclasses**: inherit `PayloadBase`, set `payload_type` as a class-level `field(default="...", init=False)`, register with `register_payload_class(MyClass)`.
 
@@ -86,7 +87,6 @@ Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`)
 
 - `add_step(input_node_ids, payload, *, user_id=None, lane_id=None) -> Step` — create one Step and one output Node from input nodes; `payload` must be step-targeting
 - `attach(node_id, payload, *, user_id=None, lane_id=None) -> PayloadBase` — attach a node-targeting payload to a node
-- `attach_asset(target_id, file_path, *, user_id=None, lane_id=None) -> AssetPayload` — copy a file into `<run_dir>/artifacts/` and attach an `AssetPayload` to a Node or Step
 - `cut(target_id, *, target_kind, reason=None, user_id=None, lane_id=None) -> CutPayload` — mark a Node or Step inactive
 - `uncut(target_id, *, target_kind, reason=None, user_id=None, lane_id=None) -> UncutPayload` — append-only reversal of a cut (supersession). Step uncut is guarded so a node never gets a second active producer.
 - `reparent(node_id, new_input_node_ids, payload, *, reason=None, user_id=None, lane_id=None) -> Step` — append a new producing Step (new inputs → `node_id`) and cut the previously-active producer, re-parenting a node while preserving its descendants. A node may have multiple producing Steps but at most one active (the active subgraph stays a tree); `payload` must be step-targeting.
@@ -119,11 +119,11 @@ Current commands:
 - Internal compatibility helpers remain in `commands.step`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add`, `show`, and `attach`.
 - `cut` — cut a Node or Step (`cut node NODE_ID` or `cut step T_ID`)
 - `claude-code` — Claude Code hooks adapter. `claude-code install` merges hook entries into `.claude/settings.json` (idempotent; `--command` overrides the hook command for non-PATH installs); `claude-code hook` consumes one hook event JSON from stdin and records it (session → Lane `ws_cc_<session_id>`, prompt/tool use → Step, Stop/SessionEnd → NodePayload on the session tip). Fail-safe: exits 0 on any error unless `--strict`. Two layers: recording semantics live in the harness-neutral `arctx.ext.agents.SessionRecorder` (neutral `agent.*` payload types, harness name in payload metadata — the cross-harness data contract); `arctx/ext/claude_code/adapter.py` only translates hook JSON into recorder calls. New harness adapters should follow the same shape.
-- `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, `git repo add/list/show`, plus `git add/list/show`). `git init` registers the cwd repo into the run and installs hooks (wraps `git repo add`). `git repo add` is the multi-repo "join an existing run" verb — distinct from `git add`, which attaches commit hashes to a Step.
+- `git` — canonical namespace for git extension commands (`git commit`, `git verify`, `git branch`, `git init`, plus `git add/list/show`). `git init` points this checkout at the run (`.arctx-id`) and installs hooks. `git add` attaches commit hashes to a Step.
 - `show` — inspect a node / step / payload as JSON
 - `graph` — dump / trace / reachable graph queries
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
-- `export` — render the run as a shareable document: `md` (default) / `tex` / `html` / `json`. `md/tex/html` emit the human-facing spanning-tree outline; `json` emits the machine-readable data contract for GUI surfaces (all nodes/steps/payloads in full, with a precomputed `inactive` flag per node/step). `--exclude-cut` drops cut records; `--include-local` keeps repo `local_path` (stripped by default). Renderer: `packages/arctx/src/arctx/core/run/export.py`.
+- `export` — render the run as a shareable document: `md` (default) / `tex` / `html` / `json`. `md/tex/html` emit the human-facing spanning-tree outline; `json` emits the machine-readable data contract for GUI surfaces (all nodes/steps/payloads in full, with a precomputed `inactive` flag per node/step). `--exclude-cut` drops cut records. Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `serve` — local read/write HTTP API for one run (live-mode backend for GUIs). `GET /run` returns the same JSON document as `export --format json`; `POST /step` / `POST /attach` (node or step) / `POST /cut` write through the same verbs as `add` / `attach` / `cut`; `GET /health` for liveness. Stdlib-only (`http.server`), CORS-enabled (`--cors-origin`), default bind `127.0.0.1:8787`. Two layers: harness-neutral pure dispatcher `arctx/serve/api.py` (`dispatch(...)`, socket-free and unit-tested) + thin `http.server` shell `arctx/serve/server.py`. The JSON shapes are the contract a future FastAPI port would expose unchanged.
 - `migrate` — convert a jsonl run dir to sqlite
 
@@ -184,6 +184,17 @@ Activity is computed at read time in `packages/arctx/src/arctx/core/cuts.py`:
 - A `CutPayload` on a Step makes that Step and its output Node (and descendants) inactive.
 
 Writers that extend observed history must reject cut nodes via `_ensure_active_node(node_id)`.
+
+## Lanes
+
+A lane is a **flat**, git-branch-like unit of work: name / purpose / status
+(open, closed) / a required summary on close. There is no declared parent-child
+relation between lanes — branching is already recorded by the DAG (a lane's
+first Step takes its input from another lane's node). There is no `lane link`
+/ `unlink` / `adopt`, no `parent_lane_id`, and no hierarchy validation.
+Membership is structural: a Step belongs to the lane current at creation time
+and its output Node inherits the Step's lane. Verbs: `lane create` / `switch` /
+`close --summary` / `open` / `list` / `show` / `summaries` / `validate`.
 
 ## Storage
 

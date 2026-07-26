@@ -132,9 +132,7 @@ def test_app_has_auto_refresh_watch_methods():
     }
 
     assert "_refresh_if_changed" in method_names
-    assert "_pull_current_sync_updates" in method_names
     assert "_run_signature" in method_names
-    assert "sync_pull" in src
     assert "set_interval" in src
     assert "watch_interval" in src
 

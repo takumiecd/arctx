@@ -56,7 +56,6 @@ class RunHandle:
         lane_id: str | None = None,
         user_id: str | None = None,
         created_by: str | None = None,
-        parent_lane_id: str | None = None,
         metadata: dict[str, JSONValue] | None = None,
     ) -> Lane:
         """Create or return a Lane — a solo-or-collaborative append-only unit.
@@ -73,7 +72,6 @@ class RunHandle:
             lane_id=lid,
             run_id=self.run_id,
             created_by=user_id or created_by or "",
-            parent_lane_id=parent_lane_id,
             started_at=datetime.now(timezone.utc).isoformat(),
             metadata=dict(metadata or {}),
             name=name,
@@ -137,7 +135,6 @@ def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
 from arctx.core.run.attach import attach_impl as _attach_impl  # noqa: E402
 from arctx.core.run.cut import cut_impl as _cut_impl  # noqa: E402
 from arctx.core.run.uncut import uncut_impl as _uncut_impl  # noqa: E402
-from arctx.core.run.lane import adopt_lane_records_impl as _adopt_lane_records_impl  # noqa: E402
 from arctx.core.run.lane import set_lane_status_impl as _set_lane_status_impl  # noqa: E402
 from arctx.core.run.outcomes import outcomes_impl as _outcomes_impl  # noqa: E402
 from arctx.core.run.trace import trace_impl as _trace_impl  # noqa: E402
@@ -149,7 +146,6 @@ RunHandle.attach = _attach_impl
 RunHandle.cut = _cut_impl
 RunHandle.uncut = _uncut_impl
 RunHandle.reparent = _reparent_impl
-RunHandle.adopt_lane_records = _adopt_lane_records_impl
 RunHandle.set_lane_status = _set_lane_status_impl
 RunHandle.trace = _trace_impl
 RunHandle.history = _trace_impl

@@ -92,9 +92,6 @@ arctx log --run demo
   `--summary` を省略すると、`arctx lane close <name-or-id> --summary "<your findings>"`
   という実行すべき正確なコマンドを添えたエラーになる。
 - `arctx lane open <name-or-id>`: 閉じた lane を開き直して作業を再開する。`close` と対称。
-- `arctx lane adopt <name-or-id> --record ID`: 既存 record を lane の現在所属として
-  登録する。作成 provenance は書き換えず、append-only な adoption event を残す。
-  `--history NODE` / `--reachable NODE` も使える。
 - `arctx lane list` / `arctx lane show <name-or-id>`: lane を検査する。
 - `arctx lane summaries <name-or-id>`: lane の active な末端 node に付いた
   `SummaryPayload` を列挙する。分岐した lane では複数返る。
@@ -329,7 +326,6 @@ GUI の live モード用バックエンドです（共有用の静的 JSON と�
 - `POST /uncut` — `{ "target_id": ..., "target_kind": "node"|"step", "reason": ... }` で cut を取り消す（append-only な反転）。
 - `POST /reparent` — `{ "node_id": ..., "input_node_ids": [...], "type": ..., "reason": ... }` で node を新しい入力へ付け替え（新 step を append ＋旧 producer を cut）。新しい step を返す。
 - `POST /lane` — `{ "name": ..., "metadata": {...} }` で lane を作成。
-- `POST /lane/adopt` — `{ "lane_id": ..., "record_ids": [...] }` で既存 record を lane に採用。`history_node_id` または `reachable_node_id` を指定すると node 履歴/到達部分グラフをまとめて採用する。
 - `GET /health` — 死活確認。
 
 書き込み系は `arctx add` / `arctx cut` / `arctx reparent` と同じ verb・同じ永続化経路を

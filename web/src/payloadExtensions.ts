@@ -222,19 +222,15 @@ function diagramDisplay(payload: RunPayload): PayloadDisplay {
   };
 }
 
-function gitChangeDisplay(payload: RunPayload, { doc }: PayloadRenderContext): PayloadDisplay {
+function gitChangeDisplay(payload: RunPayload): PayloadDisplay {
   const diff = objectValue(payload.diff_summary);
   const commits = Array.isArray(payload.commit_log) ? payload.commit_log : [];
-  const repoId = stringValue(payload.repo_id);
   const fields: PayloadField[] = [
     { label: "branch", value: payload.branch },
     { label: "head", value: shortSha(payload.head_commit) },
     { label: "files", value: diff.files_changed ?? 0 },
     { label: "+/-", value: `+${diff.insertions ?? 0} -${diff.deletions ?? 0}` },
   ];
-  if (repoId) {
-    fields.unshift({ label: "repo", value: repoLabel(doc, repoId) });
-  }
   return {
     title: "git change",
     summary: commitSubject(commits) ?? stringValue(payload.head_commit),
@@ -244,10 +240,8 @@ function gitChangeDisplay(payload: RunPayload, { doc }: PayloadRenderContext): P
   };
 }
 
-function branchDisplay(payload: RunPayload, { doc }: PayloadRenderContext): PayloadDisplay {
-  const repoId = stringValue(payload.repo_id);
+function branchDisplay(payload: RunPayload): PayloadDisplay {
   const fields: PayloadField[] = [{ label: "branch", value: payload.branch }];
-  if (repoId) fields.unshift({ label: "repo", value: repoLabel(doc, repoId) });
   return { title: "branch", summary: stringValue(payload.branch), fields };
 }
 
@@ -307,41 +301,6 @@ function commandRunDisplay(payload: RunPayload): PayloadDisplay {
   };
 }
 
-function assetDisplay(payload: RunPayload): PayloadDisplay {
-  const filename = stringValue(payload.filename) || "asset";
-  const mime = stringValue(payload.mime_type);
-  const src = artifactPathForPayload(payload);
-  const media: PayloadMedia[] = [];
-  const sections: PayloadSection[] = [];
-  if (src && mime.startsWith("image/")) {
-    media.push({ kind: "image", src, alt: filename, caption: filename });
-  } else if (src) {
-    // Non-image asset: render a markdown link (becomes a clickable anchor).
-    sections.push({ title: "file", kind: "markdown", value: `[${filename}](${src})` });
-  }
-  const fields: PayloadField[] = [
-    { label: "file", value: filename },
-    { label: "type", value: mime || "unknown" },
-  ];
-  if (typeof payload.size_bytes === "number") {
-    fields.push({ label: "size", value: formatBytes(payload.size_bytes) });
-  }
-  return { title: "asset", summary: filename, graphLabel: filename, media, fields, sections };
-}
-
-export function artifactPathForPayload(payload: RunPayload): string {
-  const rawPath = stringValue(payload.path).replace(/^\/+/, "");
-  if (!rawPath) return "";
-  const path = rawPath.startsWith("artifacts/") ? rawPath : `artifacts/${rawPath}`;
-  return `/${path}`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function objectValue(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
@@ -364,11 +323,6 @@ function genericContentLabel(payload: RunPayload): string | null {
 function shortSha(value: unknown): string {
   const sha = stringValue(value);
   return sha ? sha.slice(0, 12) : "";
-}
-
-function repoLabel(doc: RunDocument, repoId: string): string {
-  const repo = doc.repos.find((entry) => entry.repo_id === repoId);
-  return repo?.slug ?? repoId;
 }
 
 function commitSubject(commits: unknown[]): string | null {
@@ -401,7 +355,6 @@ function summaryFormat(value: unknown): "markdown" | "html" | "text" {
 registerPayloadRenderer("node_payload", genericPayloadDisplay);
 registerPayloadRenderer("step_payload", genericPayloadDisplay);
 registerPayloadRenderer("cut", cutDisplay);
-registerPayloadRenderer("asset", assetDisplay);
 registerPayloadRenderer("diagram", diagramDisplay);
 registerPayloadRenderer("git_change", gitChangeDisplay);
 registerPayloadRenderer("branch", branchDisplay);

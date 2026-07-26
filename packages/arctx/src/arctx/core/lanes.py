@@ -63,7 +63,6 @@ class LaneRecordProvenance:
     event_id: str
     event_type: str
     created_at: str | None
-    membership_kind: str = "created"
 
     def to_dict(self) -> dict:
         return {
@@ -74,7 +73,6 @@ class LaneRecordProvenance:
             "event_id": self.event_id,
             "event_type": self.event_type,
             "created_at": self.created_at,
-            "membership_kind": self.membership_kind,
         }
 
 
@@ -103,11 +101,9 @@ class LaneGroup:
 
 @dataclass(frozen=True)
 class LaneMembership:
-    # Current lane membership. Creation events set the initial membership;
-    # later lane_adopted events may move membership without rewriting creation
-    # provenance.
+    # Lane membership, derived purely from the event that created each record.
+    # A record never moves between lanes.
     provenance: dict[str, LaneRecordProvenance] = field(default_factory=dict)
-    created_provenance: dict[str, LaneRecordProvenance] = field(default_factory=dict)
     node_to_lane: dict[str, str] = field(default_factory=dict)
     step_to_lane: dict[str, str] = field(default_factory=dict)
     payload_to_lane: dict[str, str] = field(default_factory=dict)
@@ -288,7 +284,6 @@ def lane_membership(
     included_ids = node_ids | step_ids | payload_ids
 
     provenance: dict[str, LaneRecordProvenance] = {}
-    created_provenance: dict[str, LaneRecordProvenance] = {}
     node_to_lane: dict[str, str] = {}
     step_to_lane: dict[str, str] = {}
     payload_to_lane: dict[str, str] = {}
@@ -296,11 +291,7 @@ def lane_membership(
     lane_steps: dict[str, set[str]] = {}
     event_ids: list[str] = []
 
-    def provenance_for(
-        event: WorkEvent,
-        record_id: str,
-        membership_kind: str,
-    ) -> LaneRecordProvenance:
+    def provenance_for(event: WorkEvent, record_id: str) -> LaneRecordProvenance:
         session = graph.lanes.get(event.lane_id)
         lane_name = session.name if session is not None else None
         return LaneRecordProvenance(
@@ -311,52 +302,31 @@ def lane_membership(
             event_id=event.event_id,
             event_type=event.event_type,
             created_at=event.created_at,
-            membership_kind=membership_kind,
         )
 
-    def assign_membership(record_id: str, prov: LaneRecordProvenance, *, override: bool) -> None:
+    def assign_membership(record_id: str, prov: LaneRecordProvenance) -> None:
         if record_id in node_ids:
-            old_lane = node_to_lane.get(record_id)
-            if old_lane == prov.lane_id and record_id in provenance:
-                if override:
-                    provenance[record_id] = prov
-                return
-            if old_lane is not None:
-                lane_nodes.get(old_lane, set()).discard(record_id)
-            if override or record_id not in node_to_lane:
+            if record_id not in node_to_lane:
                 node_to_lane[record_id] = prov.lane_id
                 lane_nodes.setdefault(prov.lane_id, set()).add(record_id)
                 provenance[record_id] = prov
         elif record_id in step_ids:
-            old_lane = step_to_lane.get(record_id)
-            if old_lane == prov.lane_id and record_id in provenance:
-                if override:
-                    provenance[record_id] = prov
-                return
-            if old_lane is not None:
-                lane_steps.get(old_lane, set()).discard(record_id)
-            if override or record_id not in step_to_lane:
+            if record_id not in step_to_lane:
                 step_to_lane[record_id] = prov.lane_id
                 lane_steps.setdefault(prov.lane_id, set()).add(record_id)
                 provenance[record_id] = prov
         elif record_id in payload_ids:
-            if override or record_id not in payload_to_lane:
+            if record_id not in payload_to_lane:
                 payload_to_lane[record_id] = prov.lane_id
                 provenance[record_id] = prov
 
     for event in graph.work_events:
         created = [record_id for record_id in event.created_records if record_id in included_ids]
-        adopted = _adopted_record_ids(event, included_ids)
-        if not created and not adopted:
+        if not created:
             continue
         event_ids.append(event.event_id)
         for record_id in created:
-            prov = provenance_for(event, record_id, "created")
-            created_provenance.setdefault(record_id, prov)
-            assign_membership(record_id, prov, override=False)
-        for record_id in adopted:
-            prov = provenance_for(event, record_id, "adopted")
-            assign_membership(record_id, prov, override=True)
+            assign_membership(record_id, provenance_for(event, record_id))
 
     group_lane_ids = tuple(
         sorted(
@@ -377,7 +347,6 @@ def lane_membership(
 
     return LaneMembership(
         provenance=provenance,
-        created_provenance=created_provenance,
         node_to_lane=node_to_lane,
         step_to_lane=step_to_lane,
         payload_to_lane=payload_to_lane,
@@ -848,10 +817,6 @@ def lane_export_view(
             record_id: provenance.to_dict()
             for record_id, provenance in sorted(membership.provenance.items())
         },
-        "created_provenance": {
-            record_id: provenance.to_dict()
-            for record_id, provenance in sorted(membership.created_provenance.items())
-        },
         "groups": [group.to_dict() for group in membership.groups],
         "lane_boundaries": [
             boundary.to_dict()
@@ -871,19 +836,3 @@ def lane_export_view(
             if summary.payload_id in payload_ids and summary.target_id in node_ids
         ],
     }
-
-
-def _adopted_record_ids(event: WorkEvent, included_ids: set[str]) -> list[str]:
-    if event.event_type != "lane_adopted":
-        return []
-    raw = event.data.get("record_ids")
-    if not isinstance(raw, list):
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in raw:
-        record_id = str(value)
-        if record_id in included_ids and record_id not in seen:
-            seen.add(record_id)
-            out.append(record_id)
-    return out

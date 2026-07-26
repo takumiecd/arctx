@@ -40,7 +40,7 @@ export function ProvenanceCard({
   }
 
   const lane = provenance.lane_name || laneLabel(doc, provenance.lane_id);
-  const actorLabel = provenance.membership_kind === "adopted" ? "adopted by" : "created by";
+  const actorLabel = "created by";
   return (
     <section className="provenance-card" style={laneVars(doc, provenance.lane_id, laneColorOverrides, dark)}>
       <h3>provenance</h3>

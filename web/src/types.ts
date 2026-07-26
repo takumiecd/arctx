@@ -27,20 +27,6 @@ export interface RunPayload {
   content?: Record<string, unknown>;
   reason?: string | null;
   metadata?: Record<string, unknown>;
-  asset_id?: string;
-  filename?: string;
-  mime_type?: string;
-  size_bytes?: number;
-  path?: string;
-  [key: string]: unknown;
-}
-
-export interface RunRepo {
-  repo_id: string;
-  slug?: string;
-  canonical?: string;
-  remotes?: { kind: string; url: string }[];
-  local_path?: string;
   [key: string]: unknown;
 }
 
@@ -48,7 +34,6 @@ export interface RunLane {
   lane_id: string;
   run_id: string;
   created_by: string;
-  parent_lane_id?: string | null;
   started_at?: string | null;
   closed_at?: string | null;
   status?: string;
@@ -79,7 +64,6 @@ export interface RecordProvenance {
   event_id: string;
   event_type: string;
   created_at?: string | null;
-  membership_kind?: "created" | "adopted" | string;
 }
 
 export interface RunGroup {
@@ -119,11 +103,9 @@ export interface RunDocument {
   nodes: RunNode[];
   steps: RunStep[];
   payloads: RunPayload[];
-  repos: RunRepo[];
   lanes?: RunLane[];
   work_events?: RunWorkEvent[];
   record_provenance?: Record<string, RecordProvenance>;
-  created_provenance?: Record<string, RecordProvenance>;
   groups?: RunGroup[];
   lane_boundaries?: LaneBoundary[];
   lane_edge_summaries?: LaneEdgeSummary[];
@@ -193,29 +175,6 @@ export interface AttachRequest {
   payload_type?: string;
 }
 
-export interface UploadedArtifact {
-  artifact_id: string;
-  filename: string;
-  mime_type: string;
-  size_bytes: number;
-  path: string;
-}
-
-export interface AttachAssetRequest {
-  target_id: string;
-  target_kind: "node" | "step";
-  asset_id: string;
-  filename: string;
-  mime_type: string;
-  size_bytes: number;
-  path: string;
-}
-
-export interface VisibleAssetsResponse {
-  from: string;
-  assets: RunPayload[];
-}
-
 export interface CutRequest {
   target_id: string;
   target_kind: "node" | "step";
@@ -247,26 +206,6 @@ export interface CreateLaneRequest {
 
 export interface CreateLaneResponse {
   lane: RunLane;
-}
-
-export interface AdoptLaneRequest {
-  lane_id?: string;
-  name?: string;
-  record_ids?: string[];
-  history_node_id?: string;
-  reachable_node_id?: string;
-  lane_head_node_id?: string;
-  lane_tail_node_id?: string;
-  reason?: string;
-}
-
-export interface AdoptLaneResponse {
-  lane_id: string;
-  name?: string | null;
-  adopted_record_ids: string[];
-  count: number;
-  mode: "explicit" | "history" | "reachable" | string;
-  event_id: string;
 }
 
 export interface ExtensionItem {

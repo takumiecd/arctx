@@ -17,7 +17,7 @@ from arctx.web.layouts import get_layout, save_layout
 
 API_PATHS = frozenset({
     "/run", "/runs", "/node", "/step", "/attach", "/cut", "/uncut",
-    "/reparent", "/lane", "/lane/adopt", "/health",
+    "/reparent", "/lane", "/health",
     "/ext", "/ext/enable", "/ext/disable",
 })
 WEB_API_PATHS = frozenset({"/web/layout"})

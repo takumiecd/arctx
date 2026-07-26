@@ -1,9 +1,6 @@
-// Markdown / sanitized-HTML rendering for note and summary payloads, plus
-// asset-visibility scoping for embedded images: a record may only reference
-// artifacts that are visible from it (attached to itself or an ancestor).
+// Markdown / sanitized-HTML rendering for note and summary payloads.
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { createContext, useContext, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -11,7 +8,7 @@ import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 
 import type { RunClient } from "../api";
-import { artifactPathForPayload, type PayloadMedia } from "../payloadExtensions";
+import { type PayloadMedia } from "../payloadExtensions";
 import { formatValue, safeImageSrc } from "./format";
 
 // Set of artifact URLs (e.g. "/artifacts/ast_xxx_file.png") that may be
@@ -33,33 +30,18 @@ export function isArtifactUrl(src: string): boolean {
   return src.startsWith("/artifacts/") || src.startsWith("artifact://");
 }
 
-// Wraps a record's payload cards, providing the set of assets visible from
-// that record so embedded artifact URLs out of scope (descendants/unrelated)
-// are not rendered. Live mode only; static shares render everything.
+// Payload cards render without artifact scoping. Assets are being re-modelled
+// as (commit, path) git references; scoping will come back with them.
 export function ScopedPayloads({
-  client,
-  recordId,
+  client: _client,
+  recordId: _recordId,
   children,
 }: {
   client: RunClient;
   recordId: string;
   children: ReactNode;
 }) {
-  const { data } = useQuery({
-    queryKey: ["visibleAssets", recordId],
-    queryFn: () => client.visibleAssets(recordId),
-    enabled: client.writable && !!recordId,
-  });
-  const scope = useMemo(() => {
-    if (!client.writable || !data) return null;
-    const set = new Set<string>();
-    for (const a of data) {
-      const url = artifactPathForPayload(a);
-      if (url) set.add(artifactKey(url));
-    }
-    return set;
-  }, [client.writable, data]);
-  return <ArtifactScopeContext.Provider value={scope}>{children}</ArtifactScopeContext.Provider>;
+  return <ArtifactScopeContext.Provider value={null}>{children}</ArtifactScopeContext.Provider>;
 }
 
 export function MarkdownView({ value }: { value: unknown }) {

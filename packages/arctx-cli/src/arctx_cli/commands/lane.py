@@ -61,7 +61,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         metavar="COMMAND|NAME",
         help=(
             "No args = current lane. Commands: create NAME, switch NAME, "
-            "close NAME, open NAME, adopt NAME, validate, list, show LANE, summaries LANE."
+            "close NAME, open NAME, validate, list, show LANE, summaries LANE."
         ),
     )
     parser.add_argument("--list", action="store_true", dest="list_lanes",
@@ -70,27 +70,9 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
                         help="Print an export line for shell-local (parallel) use "
                              "instead of writing the persistent pointer")
     parser.add_argument(
-        "--record",
-        action="append",
-        default=None,
-        help="Record id to adopt into a lane (repeatable)",
-    )
-    parser.add_argument(
-        "--history",
-        default=None,
-        metavar="NODE_ID",
-        help="Adopt the history ending at NODE_ID into a lane",
-    )
-    parser.add_argument(
-        "--reachable",
-        default=None,
-        metavar="NODE_ID",
-        help="Adopt the active reachable subgraph from NODE_ID into a lane",
-    )
-    parser.add_argument(
         "--reason",
         default=None,
-        help="Reason recorded on a lane adoption / close / open event",
+        help="Reason recorded on a lane close / open event",
     )
     parser.add_argument(
         "--summary",
@@ -196,117 +178,6 @@ def run_lane_switch_command(
     return result
 
 
-def run_lane_adopt_command(
-    *,
-    name: str,
-    run_id: str,
-    user_id: str,
-    store_dir: str | None,
-    record_ids: list[str] | None = None,
-    history_node_id: str | None = None,
-    reachable_node_id: str | None = None,
-    reason: str | None = None,
-) -> dict:
-    """Adopt existing graph records into an existing lane.
-
-    Adoption records current lane membership as a new WorkEvent. It never
-    rewrites the original event that created a record.
-    """
-    store = resolve_store(store_dir)
-    if not store.run_path(run_id).exists():
-        raise KeyError(f"unknown run_id: {run_id}")
-    handle = store.load_run(run_id)
-
-    lane = _find_lane(handle, name)
-    if lane is None:
-        raise KeyError(f"unknown lane: {name!r}; create it with `arctx lane create {name}`")
-
-    ids, mode, target_id = _adoption_record_ids(
-        handle,
-        record_ids=record_ids or [],
-        history_node_id=history_node_id,
-        reachable_node_id=reachable_node_id,
-    )
-    before = graph_counts(handle)
-    event = handle.adopt_lane_records(
-        lane.lane_id,
-        ids,
-        user_id=user_id,
-        mode=mode,
-        target_id=target_id,
-        reason=reason,
-    )
-    maybe_append_or_save(
-        store=store,
-        handle=handle,
-        user_id=user_id,
-        lane_id=lane.lane_id,
-        before=before,
-    )
-    return {
-        "lane_id": lane.lane_id,
-        "name": lane.name,
-        "adopted_record_ids": list(ids),
-        "count": len(ids),
-        "mode": mode,
-        "event_id": event.event_id,
-    }
-
-
-def _adoption_record_ids(
-    handle,
-    *,
-    record_ids: list[str],
-    history_node_id: str | None,
-    reachable_node_id: str | None,
-) -> tuple[tuple[str, ...], str, str]:
-    sources = [
-        bool(record_ids),
-        history_node_id is not None,
-        reachable_node_id is not None,
-    ]
-    if sum(1 for enabled in sources if enabled) != 1:
-        raise ValueError("choose exactly one of --record, --history, or --reachable")
-
-    if record_ids:
-        ids = tuple(dict.fromkeys(str(record_id) for record_id in record_ids))
-        return ids, "explicit", ids[0]
-
-    if history_node_id is not None:
-        node_id = str(history_node_id)
-        if node_id not in handle.run_graph.nodes:
-            raise KeyError(f"unknown node_id: {node_id}")
-        trace = handle.trace(node_id)
-        ids = (
-            trace.past_node_ids
-            + (trace.current_node_id,)
-            + trace.step_ids
-            + trace.payload_ids
-        )
-        return _without_run_root(handle, ids), "history", node_id
-
-    node_id = str(reachable_node_id)
-    if node_id not in handle.run_graph.nodes:
-        raise KeyError(f"unknown node_id: {node_id}")
-    reachable = handle.run_graph.reachable_from(node_id)
-    ids = (
-        tuple(reachable["node_ids"])
-        + tuple(reachable["step_ids"])
-        + tuple(reachable["payload_ids"])
-    )
-    return _without_run_root(handle, ids), "reachable", node_id
-
-
-def _without_run_root(handle, ids) -> tuple[str, ...]:
-    return tuple(
-        dict.fromkeys(
-            str(record_id)
-            for record_id in ids
-            if str(record_id) != handle.root_node_id
-        )
-    )
-
-
 def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:
     """Resolve the active lane (env > file pointer) and return its id/name."""
     lane_id = os.environ.get("ARCTX_LANE_ID") or os.environ.get("ARCTX_LANE_ID")
@@ -343,7 +214,6 @@ def list_lanes(*, run_id: str, store_dir: str | None) -> list[dict]:
             "lane_id": s.lane_id,
             "name": s.name,
             "created_by": s.user_id,
-            "parent_lane_id": s.parent_lane_id,
             "status": s.status,
         }
         for s in sessions
@@ -600,25 +470,6 @@ def cli_lane(args) -> int:
                 print(result["name"])
             strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane create")
             return strict_rc or 0
-
-        if command == "adopt":
-            if len(argv) != 2:
-                raise ValueError(
-                    "usage: arctx lane adopt NAME "
-                    "(--record ID... | --history NODE_ID | --reachable NODE_ID)"
-                )
-            result = run_lane_adopt_command(
-                name=argv[1],
-                run_id=resolve_run_id_from_args(args),
-                user_id=resolve_user_id_from_args(args),
-                store_dir=args.store_dir,
-                record_ids=args.record,
-                history_node_id=args.history,
-                reachable_node_id=args.reachable,
-                reason=args.reason,
-            )
-            print(json.dumps(result, ensure_ascii=False, indent=2))
-            return 0
 
         if command in ("close", "join"):
             if command == "join":

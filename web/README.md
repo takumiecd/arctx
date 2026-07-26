@@ -7,8 +7,8 @@ One frontend, two data modes — the UI only talks to a `RunClient`, so the same
 components serve both:
 
 - **Live mode (read + write)** — talks to `arctx serve`'s HTTP API. Add nodes
-  and steps, create lanes, adopt existing records into lanes, attach payloads to
-  a node or step, and cut records from the canvas.
+  and steps, create lanes, attach payloads to a node or step, and cut records
+  from the canvas.
 - **Static / share mode (read-only)** — renders a run document embedded in the
   page (`<script id="arctx-run" type="application/json">…</script>`). No backend.
 
@@ -45,8 +45,7 @@ provide that endpoint, so the frontend simply uses automatic layout there.
 
 The detail panel on the right can be resized by dragging its left edge. The
 chosen width is saved in the browser for the next visit.
-Live mode also shows the current lane from `arctx serve` in the header and uses
-it as the default adoption target when possible.
+Live mode also shows the current lane from `arctx serve` in the header.
 
 ## Markdown notes
 

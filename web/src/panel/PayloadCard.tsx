@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 
 import type { RunDocument, RunPayload } from "../types";
-import { artifactPathForPayload, payloadElementFor, type PayloadDisplay, type PayloadSection } from "../payloadExtensions";
+import { payloadElementFor, type PayloadDisplay, type PayloadSection } from "../payloadExtensions";
 import { formatValue, tableData } from "./format";
 import { MarkdownView, PayloadMediaView, SanitizedHtmlView } from "./markdown";
 import type { PayloadMedia } from "../payloadExtensions";
@@ -27,23 +27,6 @@ export function PayloadCard({
       <div className="payload-card-head">
         <strong>{display.title}</strong>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {payload.payload_type === "asset" && (
-            <button
-              type="button"
-              className="payload-copy-btn"
-              title="copy a markdown reference (paste into a note on this record or a descendant)"
-              onClick={() => {
-                const url = artifactPathForPayload(payload);
-                const name = String(payload.filename ?? "asset");
-                const md = String(payload.mime_type ?? "").startsWith("image/")
-                  ? `![${name}](${url})`
-                  : `[${name}](${url})`;
-                void navigator.clipboard?.writeText(md);
-              }}
-            >
-              copy md
-            </button>
-          )}
           {onCopyToEdit && (
             <button
               type="button"

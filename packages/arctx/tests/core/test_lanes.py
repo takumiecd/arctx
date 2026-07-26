@@ -72,36 +72,6 @@ def test_lane_membership_groups_step_and_output_node():
     assert membership.groups[0].to_dict()["label"] == "math"
 
 
-def test_lane_adoption_sets_current_membership_without_rewriting_creation():
-    h = _handle()
-    h.ensure_lane(name="seed", lane_id="lane_seed", created_by="alice")
-    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
-    step = h.add_step(
-        [h.root_node_id],
-        _payload(h, "seed"),
-        user_id="alice",
-        lane_id="lane_seed",
-    )
-
-    h.adopt_lane_records(
-        "lane_math",
-        [step.step_id, step.output_node_id],
-        user_id="bob",
-        mode="explicit",
-        target_id=step.output_node_id,
-        reason="responsibility cleanup",
-    )
-
-    membership = lane_membership(h.run_graph)
-
-    assert membership.step_to_lane[step.step_id] == "lane_math"
-    assert membership.node_to_lane[step.output_node_id] == "lane_math"
-    assert membership.provenance[step.step_id].membership_kind == "adopted"
-    assert membership.provenance[step.step_id].user_id == "bob"
-    assert membership.created_provenance[step.step_id].lane_id == "lane_seed"
-    assert membership.created_provenance[step.step_id].membership_kind == "created"
-
-
 def test_lane_boundaries_are_derived_from_cross_lane_inputs():
     h = _handle()
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
@@ -322,15 +292,15 @@ def test_validate_lanes_reports_records_unreachable_from_explicit_root():
         created_by="alice",
         metadata={"root_node_id": root.node_id},
     )
-    h.record_work_event(
-        user_id="alice",
-        lane_id="lane_math",
-        event_type="lane_adopted",
-        target_kind="subgraph",
-        target_id=root.node_id,
-        created_records=(),
-        data={"record_ids": [root.node_id, stray.node_id], "mode": "fixture"},
-    )
+    for node in (root, stray):
+        h.record_work_event(
+            user_id="alice",
+            lane_id="lane_math",
+            event_type="node_added",
+            target_kind="node",
+            target_id=node.node_id,
+            created_records=(node.node_id,),
+        )
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
 
@@ -410,17 +380,16 @@ def test_validate_lanes_default_lane_membership_ignores_cut_records():
     )
 
 
-def test_run_root_is_not_a_lane_member_even_if_adopted():
+def test_run_root_is_not_a_lane_member_even_if_an_event_claims_it():
     h = _handle()
     h.ensure_lane(name="default", lane_id="default", created_by="alice")
     h.record_work_event(
         user_id="alice",
         lane_id="default",
-        event_type="lane_adopted",
-        target_kind="subgraph",
+        event_type="node_added",
+        target_kind="node",
         target_id=h.root_node_id,
-        created_records=(),
-        data={"record_ids": [h.root_node_id], "mode": "legacy"},
+        created_records=(h.root_node_id,),
     )
 
     membership = lane_membership(h.run_graph, root_node_id=h.root_node_id)
@@ -430,59 +399,6 @@ def test_run_root_is_not_a_lane_member_even_if_adopted():
     assert h.root_node_id not in membership.provenance
     assert not any(group.lane_id == "default" for group in membership.groups)
     assert not any(issue.code == "default_lane_membership" for issue in issues)
-
-
-def test_adopt_lane_records_rejects_run_root():
-    h = _handle()
-    h.ensure_lane(name="default", lane_id="default", created_by="alice")
-
-    with pytest.raises(ValueError, match="run root"):
-        h.adopt_lane_records(
-            "default",
-            [h.root_node_id],
-            user_id="alice",
-            mode="explicit",
-            target_id=h.root_node_id,
-        )
-
-
-def test_adopt_lane_records_rejects_invalid_lane_roots():
-    h = _handle()
-    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
-    h.ensure_lane(name="experiment", lane_id="lane_exp", created_by="alice")
-    math_root = h.add_step(
-        [h.root_node_id],
-        _payload(h, "math"),
-        user_id="alice",
-        lane_id="lane_math",
-    )
-    h.add_step(
-        [math_root.output_node_id],
-        _payload(h, "experiment"),
-        user_id="alice",
-        lane_id="lane_exp",
-    )
-    other = h.add_step(
-        [math_root.output_node_id],
-        _payload(h, "other"),
-        user_id="alice",
-        lane_id="lane_math",
-    )
-
-    before = tuple(event.event_id for event in h.run_graph.work_events)
-    with pytest.raises(ValueError, match="multiple_lane_roots"):
-        h.adopt_lane_records(
-            "lane_exp",
-            [other.step_id, other.output_node_id],
-            user_id="alice",
-            mode="explicit",
-            target_id=other.step_id,
-        )
-
-    assert tuple(event.event_id for event in h.run_graph.work_events) == before
-    membership = lane_membership(h.run_graph, root_node_id=h.root_node_id)
-    assert membership.step_to_lane[other.step_id] == "lane_math"
-    assert membership.node_to_lane[other.output_node_id] == "lane_math"
 
 
 def test_validate_lanes_errors_when_non_root_node_has_no_lane():
@@ -617,60 +533,6 @@ def test_lane_root_candidates_do_not_treat_join_continuation_as_new_root():
     assert not any(issue.severity == "error" for issue in issues)
 
 
-def test_adopt_lane_records_allows_repair_when_unrelated_errors_remain():
-    h = _handle()
-    h.ensure_lane(name="bad", lane_id="lane_bad", created_by="alice")
-    h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
-    h.ensure_lane(name="repair", lane_id="lane_repair", created_by="alice")
-    h.add_step(
-        [h.root_node_id],
-        _payload(h, "bad-a"),
-        user_id="alice",
-        lane_id="lane_bad",
-    )
-    h.add_step(
-        [h.root_node_id],
-        _payload(h, "bad-b"),
-        user_id="alice",
-        lane_id="lane_bad",
-    )
-    kept = h.add_step(
-        [h.root_node_id],
-        _payload(h, "math-a"),
-        user_id="alice",
-        lane_id="lane_math",
-    )
-    moved = h.add_step(
-        [h.root_node_id],
-        _payload(h, "math-b"),
-        user_id="alice",
-        lane_id="lane_math",
-    )
-    before = [
-        issue for issue in validate_lanes(h.run_graph, root_node_id=h.root_node_id)
-        if issue.severity == "error"
-    ]
-    assert len(before) == 2
-
-    h.adopt_lane_records(
-        "lane_repair",
-        [moved.step_id, moved.output_node_id],
-        user_id="alice",
-        reason="repair math lane root",
-    )
-
-    issues = [
-        issue for issue in validate_lanes(h.run_graph, root_node_id=h.root_node_id)
-        if issue.severity == "error"
-    ]
-    membership = lane_membership(h.run_graph, root_node_id=h.root_node_id)
-    assert len(issues) == 1
-    assert issues[0].lane_id == "lane_bad"
-    assert membership.step_to_lane[moved.step_id] == "lane_repair"
-    assert membership.node_to_lane[moved.output_node_id] == "lane_repair"
-    assert membership.step_to_lane[kept.step_id] == "lane_math"
-
-
 def test_lane_export_view_is_json_ready():
     h = _handle()
     h.ensure_lane(name="math", lane_id="lane_math", created_by="alice")
@@ -698,8 +560,6 @@ def test_lane_export_view_is_json_ready():
 
     assert view["groups"][0]["lane_id"] == "lane_math"
     assert view["record_provenance"][step.step_id]["lane_id"] == "lane_math"
-    assert view["record_provenance"][step.step_id]["membership_kind"] == "created"
-    assert view["created_provenance"][step.step_id]["lane_id"] == "lane_math"
     assert view["lanes"][0]["lane_id"] == "lane_math"
     assert view["lanes"][0]["lane_id"] == "lane_math"
     assert view["lane_edge_summaries"] == [

@@ -14,7 +14,6 @@ from arctx_cli.commands.init import run_init_command
 from arctx_cli.commands.lane import (
     lane_summaries,
     list_lanes,
-    run_lane_adopt_command,
     run_lane_create_command,
     run_lane_switch_command,
     validate_lane_run,
@@ -97,47 +96,6 @@ def test_switch_unknown_lane_errors():
             assert "unknown lane" in str(exc)
         else:  # pragma: no cover
             raise AssertionError("expected KeyError")
-
-
-def test_adopt_existing_record_into_lane():
-    with tempfile.TemporaryDirectory() as td:
-        init = _init(td)
-        sd = _store_dir(td)
-        lane = run_lane_create_command(
-            name="geometry",
-            run_id="run_lane",
-            user_id="alice",
-            store_dir=sd,
-        )
-        made = run_add_step_command(
-            run_id="run_lane",
-            input_node_ids=[init["root_node_id"]],
-            title="old work",
-            payload_kind=None,
-            payload_type="step_payload",
-            field_data={},
-            json_data={},
-            store_dir=sd,
-            user_id=None,
-            lane_id=None,
-        )
-        step_id = made["step"]["step_id"]
-        output_id = made["step"]["output_node_id"]
-
-        adopted = run_lane_adopt_command(
-            name="geometry",
-            run_id="run_lane",
-            user_id="bob",
-            store_dir=sd,
-            record_ids=[step_id, output_id],
-        )
-
-        assert adopted["lane_id"] == lane["lane_id"]
-        assert adopted["count"] == 2
-        handle = resolve_store(sd).load_run("run_lane")
-        event = handle.run_graph.work_events[-1]
-        assert event.event_type == "lane_adopted"
-        assert event.data["record_ids"] == [step_id, output_id]
 
 
 def test_lane_summaries_returns_terminal_node_summaries():
