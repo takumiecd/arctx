@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import arctx as arctx
 from arctx_cli.context import resolve_store
-from arctx_cli.paths import find_repo_root, resolve_store_dir, arctx_id_path, write_arctx_id
+from arctx_cli.paths import (
+    find_repo_root,
+    repo_runs_dir,
+    resolve_store_dir,
+    arctx_id_path,
+    write_arctx_id,
+    write_repo_git_metadata,
+)
 from arctx.core.schema.requirements import Requirement
 
 
@@ -32,7 +40,7 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument(
         "--store-dir",
         default=None,
-        help="Directory to save runs (default: <ARCTX_HOME>/runs)",
+        help="Directory to save runs (default: <repo_root>/.arctx/runs)",
     )
     parser.add_argument(
         "--no-hooks",
@@ -87,7 +95,8 @@ def run_init_command(
         Explicit run id. If None, one is generated automatically.
     store_dir:
         Directory under which run directories are created.
-        If None, defaults to ``<ARCTX_HOME>/runs``.
+        If None, defaults to ``<repo_root>/.arctx/runs`` (or
+        ``<ARCTX_HOME>/runs`` when ``ARCTX_HOME`` is set / outside a repo).
     no_hooks:
         If True, skip installing git hooks.
     extensions:
@@ -135,6 +144,12 @@ def run_init_command(
         repo_root = find_repo_root()
         write_arctx_id(repo_root, handle.run_id)
         written_arctx_id_path = str(arctx_id_path(repo_root))
+        # `.arctx/.gitattributes` (union merge for jsonl + linguist-generated)
+        # and `.arctx/.gitignore` (derived local files). Idempotent, and only
+        # when the run actually landed in this repo's `.arctx/` — a run stored
+        # elsewhere (ARCTX_HOME, explicit --store-dir) has nothing to merge here.
+        if Path(resolved_store_dir).resolve() == repo_runs_dir(repo_root).resolve():
+            write_repo_git_metadata(repo_root)
     except (OSError, RuntimeError):
         # Not inside a git repo, or the gitdir is read-only in the current
         # sandbox. The run itself is still valid without an active pointer.

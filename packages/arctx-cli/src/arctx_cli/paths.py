@@ -12,6 +12,9 @@ from arctx.paths import (  # noqa: F401
     resolve_arctx_home,
     resolve_store_dir,
     runs_dir,
+    repo_arctx_dir,
+    repo_runs_dir,
+    write_repo_git_metadata,
     arctx_id_path,
     arctx_lane_path,
     write_arctx_id,
@@ -20,6 +23,9 @@ from arctx.paths import (  # noqa: F401
 )
 
 __all__ = [
+    "repo_arctx_dir",
+    "repo_runs_dir",
+    "write_repo_git_metadata",
     "find_repo_root",
     "read_arctx_id",
     "read_arctx_lane",
