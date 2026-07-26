@@ -53,6 +53,30 @@ def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_o
                 raise ValueError("request body must be a JSON object")
             return parsed
 
+        def _serve_asset_raw(self, run_id_for_request: str, query: dict) -> None:
+            """Send an asset blob as raw bytes (the one binary route).
+
+            Everything else goes through the pure dispatcher; this exists so
+            ``<img src=...>`` works without a base64 round-trip. The resolution
+            logic itself is shared with ``GET /asset/content``.
+            """
+            from arctx.serve.assets import AssetError, asset_raw
+
+            payload_id = query.get("payload_id") or query.get("asset")
+            if not payload_id:
+                self._send(400, {"error": "payload_id is required"})
+                return
+            try:
+                handle = store.load_run(run_id_for_request)
+                raw = asset_raw(handle, store.run_path(run_id_for_request), str(payload_id), query.get("path"))
+            except AssetError as exc:
+                self._send(exc.status, {"error": exc.message, "code": exc.code})
+                return
+            except (KeyError, ValueError, OSError) as exc:
+                self._send(400, {"error": str(exc)})
+                return
+            self._send_bytes(200, raw.data, raw.content_type)
+
         def _handle(self, method: str) -> None:
             parsed = urlparse(self.path)
             path = parsed.path
@@ -68,6 +92,9 @@ def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_o
                 or lane_id
             )
             request_run_id = query.get("run") or self.headers.get("X-Arctx-Run-Id") or run_id
+            if method == "GET" and path.rstrip("/") == "/asset/raw":
+                self._serve_asset_raw(request_run_id, query)
+                return
             status, payload = dispatch(
                 store,
                 request_run_id,
@@ -104,6 +131,7 @@ def serve(
     print(f"arctx serve: http://{host}:{port}  (run {run_id})")
     print("  GET /run · POST /step · POST /attach · POST /cut")
     print("  POST /lane · GET /health")
+    print("  GET /asset · /asset/entries · /asset/content · /asset/raw")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

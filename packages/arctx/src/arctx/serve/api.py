@@ -53,6 +53,12 @@ def dispatch(
             return 201, _post_reparent(store, run_id, body or {}, user_id, lane_id)
         if route == ("POST", "/lane"):
             return 201, _post_lane(store, run_id, body or {}, user_id)
+        if route == ("GET", "/asset"):
+            return _get_asset(store, run_id, query or {})
+        if route == ("GET", "/asset/entries"):
+            return _get_asset_entries(store, run_id, query or {})
+        if route == ("GET", "/asset/content"):
+            return _get_asset_content(store, run_id, query or {})
         if route == ("GET", "/ext"):
             return 200, _get_ext(store, run_id)
         if route == ("POST", "/ext/enable"):
@@ -261,6 +267,49 @@ def _post_reparent(store, run_id, body, user_id, lane_id) -> dict:
     _ensure_lane_integrity(handle, baseline=baseline)
     _maybe_append_or_save(store=store, handle=handle, user_id=user_id, lane_id=lane_id, before=before)
     return {"step": _step_view(step)}
+
+
+# ---------------------------------------------------------------------------
+# Assets — git object references resolved at request time
+# ---------------------------------------------------------------------------
+
+
+def _asset_args(store: Any, run_id: str, query: dict) -> tuple[Any, Any, str, str | None]:
+    payload_id = query.get("payload_id") or query.get("asset")
+    if not payload_id:
+        raise ApiError(400, "payload_id is required")
+    handle = _load(store, run_id)
+    return handle, store.run_path(run_id), str(payload_id), query.get("path")
+
+
+def _get_asset(store: Any, run_id: str, query: dict) -> tuple[int, dict]:
+    from arctx.serve.assets import AssetError, asset_view
+
+    handle, run_path, payload_id, _ = _asset_args(store, run_id, query)
+    try:
+        return 200, asset_view(handle, run_path, payload_id)
+    except AssetError as exc:
+        return exc.status, {"error": exc.message, "code": exc.code}
+
+
+def _get_asset_entries(store: Any, run_id: str, query: dict) -> tuple[int, dict]:
+    from arctx.serve.assets import AssetError, asset_entries
+
+    handle, run_path, payload_id, sub_path = _asset_args(store, run_id, query)
+    try:
+        return 200, asset_entries(handle, run_path, payload_id, sub_path)
+    except AssetError as exc:
+        return exc.status, {"error": exc.message, "code": exc.code}
+
+
+def _get_asset_content(store: Any, run_id: str, query: dict) -> tuple[int, dict]:
+    from arctx.serve.assets import AssetError, asset_content
+
+    handle, run_path, payload_id, sub_path = _asset_args(store, run_id, query)
+    try:
+        return 200, asset_content(handle, run_path, payload_id, sub_path)
+    except AssetError as exc:
+        return exc.status, {"error": exc.message, "code": exc.code}
 
 
 def _post_lane(store, run_id, body, user_id) -> dict:
