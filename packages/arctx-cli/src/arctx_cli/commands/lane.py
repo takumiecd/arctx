@@ -61,8 +61,14 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         metavar="COMMAND|NAME",
         help=(
             "No args = current lane. Commands: create NAME, switch NAME, "
-            "close NAME, open NAME, validate, list, show LANE, summaries LANE."
+            "summarize NAME, close NAME, open NAME, validate, list, show LANE, "
+            "summaries LANE."
         ),
+    )
+    parser.add_argument(
+        "--purpose",
+        default=None,
+        help="Why this lane exists (lane create); shown by `arctx explore LANE`",
     )
     parser.add_argument("--list", action="store_true", dest="list_lanes",
                         help="List lanes in the run")
@@ -129,8 +135,13 @@ def _append_or_save_lane(store, handle, run_id: str, user_id: str, lane) -> None
 
 def run_lane_create_command(
     *, name: str, run_id: str, user_id: str, store_dir: str | None,
+    purpose: str | None = None,
 ) -> dict:
-    """Create a lane by name. Creation does not switch the active lane."""
+    """Create a lane by name. Creation does not switch the active lane.
+
+    ``purpose`` is recorded on the lane record and is what ``arctx explore``
+    and ``arctx guide --context`` report as the lane's reason to exist.
+    """
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
@@ -139,9 +150,15 @@ def run_lane_create_command(
     if _find_lane_by_name(handle, name) is not None:
         raise ValueError(f"lane already exists: {name!r}")
 
-    lane = handle.ensure_lane(name=name, created_by=user_id)
+    metadata = {"purpose": purpose.strip()} if purpose and purpose.strip() else None
+    lane = handle.ensure_lane(name=name, created_by=user_id, metadata=metadata)
     _append_or_save_lane(store, handle, run_id, user_id, lane)
-    return {"lane_id": lane.lane_id, "name": name, "created": True}
+    return {
+        "lane_id": lane.lane_id,
+        "name": name,
+        "purpose": lane.metadata.get("purpose"),
+        "created": True,
+    }
 
 
 def run_lane_switch_command(
@@ -402,6 +419,66 @@ def run_lane_close_command(
     }
 
 
+def run_lane_summarize_command(
+    *,
+    name_or_id: str,
+    summary: str | None,
+    node_ids: list[str] | None,
+    run_id: str,
+    user_id: str,
+    store_dir: str | None,
+    summary_format: str = "markdown",
+) -> dict:
+    """Refresh a lane's current summary *without* closing it.
+
+    Mid-work counterpart of ``lane close``: the lane stays open and writable,
+    but its current summary — what ``explore`` shows on the lane's one line and
+    what search matches against — is brought up to date. Summaries are
+    append-only; the latest one wins.
+    """
+    if summary is None or not summary.strip():
+        raise ValueError(
+            f"arctx lane summarize {name_or_id} requires --summary. Run: "
+            f'arctx lane summarize {name_or_id} --summary "<where this stands now>"'
+        )
+    normalized_format = _normalize_summary_format(summary_format)
+
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id!r}")
+    if lane.status == "closed":
+        raise ValueError(
+            f"lane is closed: {name_or_id!r}; "
+            f"reopen it with `arctx lane open {name_or_id}`"
+        )
+
+    summary_node, leaves = _attach_lane_summary(
+        handle,
+        lane=lane,
+        summary=summary,
+        summary_format=normalized_format,
+        node_ids=node_ids,
+        user_id=user_id,
+    )
+    if summary_node is None:
+        raise ValueError(
+            "lane summarize requires at least one active terminal node to summarize"
+        )
+    store.save_run(handle)
+    return {
+        "lane_id": lane.lane_id,
+        "name": lane.name,
+        "status": lane.status,
+        "summary_node": summary_node,
+        "joined_nodes": leaves,
+    }
+
+
 def run_lane_open_command(
     *,
     name_or_id: str,
@@ -463,6 +540,7 @@ def cli_lane(args) -> int:
                 run_id=run_id,
                 user_id=resolve_user_id_from_args(args),
                 store_dir=args.store_dir,
+                purpose=args.purpose,
             )
             if args.as_json:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -496,6 +574,28 @@ def cli_lane(args) -> int:
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane close")
+            return strict_rc or 0
+
+        if command == "summarize":
+            if len(argv) != 2:
+                raise ValueError(
+                    "usage: arctx lane summarize NAME_OR_ID --summary TEXT "
+                    "[--summary-format markdown|html|text] [--node ID...]"
+                )
+            run_id = resolve_run_id_from_args(args)
+            result = run_lane_summarize_command(
+                name_or_id=argv[1],
+                summary=args.summary,
+                summary_format=args.summary_format,
+                node_ids=args.node,
+                run_id=run_id,
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            strict_rc = warn_if_invalid(
+                run_id, args.store_dir, command_name="lane summarize"
+            )
             return strict_rc or 0
 
         if command == "open":
