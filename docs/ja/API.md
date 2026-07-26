@@ -52,6 +52,30 @@ run.attach(
 削除された API `plan`, `predict`, `observe`, `note` は `step(...)` と
 `attach(...)` で表現します。
 
+## Asset（git オブジェクト参照）
+
+`attach_asset(...)` は `(commit, path)` の参照を Node / Step に付けます。実体は
+コピーせず、閲覧時に git から解決します。
+
+```python
+result = run.attach_asset(node_id, "bench/plot.png")          # commit 省略 = HEAD
+result = run.attach_asset(step.step_id, "bench/out", commit="v0.3.1")  # ディレクトリも可
+
+result.payload   # AssetPayload(commit=<40桁 SHA>, path="bench/out", title=None)
+result.kind      # "blob" | "tree"
+result.warning   # push 済みでない場合の警告文（None なら remote に到達可能）
+```
+
+- `path` はリポジトリルート相対（cwd 相対・絶対パスも受理し正規化）。ファイルでも
+  ディレクトリでも構いません
+- attach 時に `<commit>:<path>` の実在を検証し、解決しなければ `MissingCommit` /
+  `MissingPath`（いずれも `GitRefError`）を送出します
+- repo 引数はありません。対象は run データを包むリポジトリ自身（absent = self）
+- `warning` は**レコードに保存しません**。push 状態は環境ローカルで時間とともに
+  変わるため、jsonl には事実（commit と path）だけを残します
+- 解決ヘルパは `arctx.core.gitref`（`resolve_commit` / `object_kind` / `read_blob` /
+  `list_tree` / `unpushed_warning`）にあります
+
 ## Git Extension API
 
 Git の verb は標準の `git` extension 名前空間にあります:

@@ -99,6 +99,74 @@ asset は `(commit, path)` による git オブジェクトへの参照のみと
   壊れた参照になる。attach 時に警告する程度とし、完全保証はしない
 - 巨大バイナリは git-lfs を README で案内（arctx 側では解決しない）
 
+### Phase 3 実装で確定した詳細
+
+**レコード**（`arctx.core.schema.payloads.AssetPayload`, `payload_type="asset"`）:
+
+```
+AssetPayload(payload_id, target_id, target_kind, commit, path, title=None, metadata={})
+```
+
+- 真実は `commit`（40 桁のフル SHA に正規化）と `path`（リポジトリルート相対、
+  `""` はルートツリー）だけ。size / mime_type / content_hash は git から導出
+  できるので**持たない**（「jsonl は事実、見た目は導出」）
+- `target_kind` は `"node"` / `"step"` 両対応。repo フィールドは無い（absent = self）
+- ペイロード定義自体は git 非依存。解決ヘルパは `arctx.core.gitref`
+  （stdlib subprocess のみ。`arctx.paths` と同じくコア層で git を知る）
+
+**verb**: `RunHandle.attach_asset(target_id, path, *, commit=None, target_kind=None,
+title=None, repo_root=None, user_id=None, lane_id=None)`
+（`arctx/core/run/asset.py`）
+
+- `commit` 省略時は包含リポジトリの HEAD。指定時は `rev-parse --verify` でフル SHA 化
+- attach 時に `git cat-file -t <commit>:<path>` で実在検証。blob / tree のみ許可し、
+  解決しない参照は `MissingCommit` / `MissingPath` で**拒否**する
+- リポジトリ外なら `GitRefError`（「asset は git オブジェクト参照なので repo が要る」）
+- path は絶対 / cwd 相対 / repo 相対のいずれでも受け取り、repo 相対に正規化する
+- 戻り値は `AssetAttachment(payload, warning, kind)`。`warning` は push 済み警告で、
+  **レコードには焼かない**（push 状態は環境ローカルかつ時間で変わるため）
+
+**push 済み警告のセマンティクス**（ブロックしない）:
+
+| 状態 | 挙動 |
+| --- | --- |
+| remote が 1 つも無い | 警告「他人の clone では解決できない」 |
+| `git branch -r --contains <commit>` が空 | 警告「push しないと壊れた参照になる」 |
+| いずれかの remote-tracking ref に含まれる | 警告なし |
+
+**CLI**:
+
+```
+arctx asset attach <TARGET_ID> <PATH> [--commit REF] [--title TEXT]
+arctx asset show <PAYLOAD_ID>
+```
+
+`attach` は `attach` / `cut` と同じく target 種別を ID から自動判定する。警告は
+stderr に `warning: ...` として出し、終了コードは 0。`show` は参照と、この clone で
+解決するか（`found` / `missing_commit` / `missing_path` / `no_repository`）を出す。
+
+**serve のエンドポイント形（安定契約）**:
+
+| ルート | 返すもの |
+| --- | --- |
+| `GET /asset?payload_id=pl_x` | 参照 ＋ `resolution{status,kind,content_type}` |
+| `GET /asset/entries?payload_id=pl_x[&path=sub]` | ツリーの直下エントリ一覧（JSON） |
+| `GET /asset/content?payload_id=pl_x[&path=sub]` | ファイル内容（`encoding` が `utf-8` か `base64`） |
+| `GET /asset/raw?payload_id=pl_x[&path=sub]` | ファイルの生バイト（HTTP シェルのみ） |
+
+- `path` は**asset の path からの相対**。ディレクトリ asset を payload を増やさずに
+  ブラウズするための引数で、`..` による脱出は 400 `bad_path` で拒否する
+- 解決失敗は crash させず構造化エラー：`{"error": ..., "code": ...}` と
+  404（`missing_commit` / `missing_path` / `unknown_payload` / `no_repository`）
+  ないし 400（`not_a_blob` / `not_a_tree` / `not_an_asset` / `bad_path`）
+- 二層構成は既存規約どおり。純関数は `arctx/serve/assets.py`（socket 非依存・単体
+  テスト対象）、`arctx/serve/api.py` がルーティング、`/asset/raw` だけはバイナリ
+  転送のため `http.server` シェルが同じ純関数を呼んで生バイトを返す
+- 対象リポジトリは run データを包む repo（`find_repo_root(run_path)`）
+
+`export --format json` は asset を他のペイロードと同様にそのまま出す（特別扱いなし）。
+`web/src/types.ts` に `RunAssetPayload` / `AssetResolution` / `AssetTreeEntry` を同期済み。
+
 ## repo_id の廃止と「absent = self」規約
 
 repo_id・repo registry・`RepoPayload`・`local_path` 除去処理は**全削除**。

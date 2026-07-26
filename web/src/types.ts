@@ -30,6 +30,48 @@ export interface RunPayload {
   [key: string]: unknown;
 }
 
+// An asset is a reference to a git object — `(commit, path)` where `path` is
+// repo-root-relative and may be a file or a directory. Nothing is copied: the
+// serve layer resolves content at request time via
+//   GET /asset?payload_id=…            reference + resolution status
+//   GET /asset/entries?payload_id=…&path=…   directory listing
+//   GET /asset/content?payload_id=…&path=…   file content (utf-8 or base64)
+//   GET /asset/raw?payload_id=…&path=…       file bytes
+// Per the "absent = self" convention there is no repo field.
+export interface RunAssetPayload extends RunPayload {
+  payload_type: "asset";
+  commit: string;
+  path: string;
+  title?: string | null;
+}
+
+export function isAssetPayload(payload: RunPayload): payload is RunAssetPayload {
+  return payload.payload_type === "asset";
+}
+
+export interface AssetResolution {
+  status:
+    | "ok"
+    | "missing_commit"
+    | "missing_path"
+    | "no_repository"
+    | "unknown_payload"
+    | "not_an_asset"
+    | "git_error";
+  kind: "blob" | "tree" | null;
+  content_type?: string | null;
+  message?: string;
+}
+
+export interface AssetTreeEntry {
+  name: string;
+  path: string;
+  kind: "blob" | "tree" | "commit";
+  mode: string;
+  oid: string;
+  size: number | null;
+}
+
 export interface RunLane {
   lane_id: string;
   run_id: string;

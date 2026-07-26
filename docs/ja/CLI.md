@@ -137,6 +137,30 @@ arctx log --run demo
 - `arctx lane summaries <lane>`: lane の現在の結論候補として、lane 末端 node 上の
   summary を見る。
 
+## Asset（git オブジェクト参照）
+
+- `arctx asset attach <TARGET_ID> <PATH> [--commit REF] [--title TEXT]`
+- `arctx asset show <PAYLOAD_ID>`
+
+asset は**コピーではなく参照**です。`(commit, path)` の組だけを記録し、実体は git が
+持ちます。`PATH` はリポジトリルート相対（cwd 相対・絶対パスも受理して正規化）で、
+**ファイルでもディレクトリでも構いません**（git には tree があるため）。`--commit`
+省略時は HEAD。repo 指定はありません — 対象は run データを包むリポジトリ自身です。
+
+```bash
+git add results/plot.png && git commit -m "add plot"   # 先に commit する
+arctx asset attach "$NODE" results/plot.png            # HEAD:results/plot.png
+arctx asset attach "$STEP" bench/out --commit v0.3.1   # ディレクトリ ＋ tag 指定
+```
+
+- 未 commit のパスや存在しない commit は attach 時に**拒否**されます
+  （`git cat-file` で実在検証するため、壊れた参照は最初から作れません）
+- commit がどの remote-tracking ref にも含まれない場合は stderr に `warning: ...` を
+  出しますが**ブロックはしません**（push し忘れ・remote 無しの検知）
+- `arctx asset show` は参照と、この clone で解決するか（`found` / `missing_commit` /
+  `missing_path` / `no_repository`）を返すので、壊れた参照を診断できます
+- 巨大バイナリは git-lfs を使ってください（arctx 側では扱いません）
+
 ## Reparent（付け替え）
 
 - `arctx reparent <node_id> --input NODE [--input NODE ...] --type TYPE [--reason ...]`
@@ -327,6 +351,19 @@ GUI の live モード用バックエンドです（共有用の静的 JSON と�
 - `POST /reparent` — `{ "node_id": ..., "input_node_ids": [...], "type": ..., "reason": ... }` で node を新しい入力へ付け替え（新 step を append ＋旧 producer を cut）。新しい step を返す。
 - `POST /lane` — `{ "name": ..., "metadata": {...} }` で lane を作成。
 - `GET /health` — 死活確認。
+
+Asset 読み出しはリクエスト時に git を叩いて解決します（いずれも `payload_id` 必須。
+`path` は asset 自身の path からの相対で、ディレクトリ asset のブラウズに使う）:
+
+- `GET /asset?payload_id=pl_x` — 参照 ＋ `resolution{status,kind,content_type}`。
+- `GET /asset/entries?payload_id=pl_x[&path=sub]` — tree の直下エントリ一覧。
+- `GET /asset/content?payload_id=pl_x[&path=sub]` — ファイル内容（`encoding` が
+  `utf-8` か `base64`。バイナリ安全）。
+- `GET /asset/raw?payload_id=pl_x[&path=sub]` — 生バイト（`<img src>` 用）。
+
+解決できない参照は crash せず `{"error": ..., "code": ...}` を返します
+（404: `missing_commit` / `missing_path` / `unknown_payload` / `no_repository`、
+400: `not_a_blob` / `not_a_tree` / `not_an_asset` / `bad_path`）。
 
 書き込み系は `arctx add` / `arctx cut` / `arctx reparent` と同じ verb・同じ永続化経路を
 通るため、CLI と API が記録方法でズレることはありません。
