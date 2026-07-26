@@ -25,25 +25,9 @@ export function AssetCard({ client, payload }: { client: RunClient; payload: Run
     retry: false,
   });
 
-  const reference = (
-    <dl className="payload-fields">
-      <div>
-        <dt>commit</dt>
-        <dd>
-          <code>{payload.commit.slice(0, 12)}</code>
-        </dd>
-      </div>
-      <div>
-        <dt>path</dt>
-        <dd>{payload.path || "(repository root)"}</dd>
-      </div>
-    </dl>
-  );
-
   if (!client.live) {
     return (
       <div className="asset-view">
-        {reference}
         <p className="muted">
           Assets are git references. Open this run with <code>arctx web</code> to resolve
           the file from the repository.
@@ -56,7 +40,6 @@ export function AssetCard({ client, payload }: { client: RunClient; payload: Run
   if (view.error) {
     return (
       <div className="asset-view">
-        {reference}
         <p className="error">{(view.error as Error).message}</p>
       </div>
     );
@@ -66,7 +49,6 @@ export function AssetCard({ client, payload }: { client: RunClient; payload: Run
   if (!resolution || resolution.status !== "ok") {
     return (
       <div className="asset-view">
-        {reference}
         <p className="error">
           {resolution?.message ?? "asset does not resolve here"}
           {resolution?.status ? ` (${resolution.status})` : ""}
@@ -84,7 +66,6 @@ export function AssetCard({ client, payload }: { client: RunClient; payload: Run
 
   return (
     <div className="asset-view">
-      {reference}
       {subPath && (
         <p className="asset-breadcrumb">
           <button type="button" className="asset-crumb" onClick={() => setSubPath("")}>

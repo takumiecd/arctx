@@ -288,10 +288,11 @@ export function App() {
   const setLaneColor = (laneId: string, color: string) => {
     setLaneColorOverrides((prev) => ({ ...prev, [laneId]: color }));
   };
-  // Picking a lane in the sidebar makes it the current lane, pans the canvas to
-  // it, and opens its detail in the panel.
+  // Picking a lane in the sidebar pans the canvas to it and opens its detail.
+  // Reading a closed lane must not make it current — writes into a closed lane
+  // are refused, so browsing history would leave the app unable to write.
   const focusLaneId = (laneId: string) => {
-    setActiveLaneId(laneId);
+    if (laneStatus(data, laneId) === "open") setActiveLaneId(laneId);
     setFocusLane({ laneId, ts: Date.now() });
     setSelection({ kind: "lane", id: laneId });
   };
