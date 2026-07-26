@@ -4,6 +4,7 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 
 import type { Selection } from "../Graph";
+import { laneOverview } from "../lanes";
 import {
   laneById,
   laneGroups,
@@ -43,6 +44,9 @@ export function LaneSummaryPanel({
   const lane = laneById(doc, laneId);
   const status = laneStatus(doc, laneId);
   const group = laneGroups(doc).find((lane) => lane.lane_id === laneId);
+  // The lane's own current summary (latest `lane summarize` / `lane close`),
+  // which is what `arctx explore <LANE>` prints.
+  const overview = lane ? laneOverview(doc, lane) : null;
   const summaries = laneEdgeSummariesFor(doc, laneId);
   const edgeNodeIds = new Set(summaries.map((summary) => summary.node_id));
   return (
@@ -75,6 +79,12 @@ export function LaneSummaryPanel({
               <time>{lane.closed_at}</time>
             </div>
           )}
+          {overview?.purpose && (
+            <div className="provenance-row">
+              <span>purpose</span>
+              <strong>{overview.purpose}</strong>
+            </div>
+          )}
           <div className="provenance-row">
             <span>opened by</span>
             <strong>{lane?.created_by ?? "unknown"}</strong>
@@ -89,6 +99,32 @@ export function LaneSummaryPanel({
             <span>summaries</span>
             <strong>{summaries.length}</strong>
           </div>
+        </section>
+
+        <section className="panel-view">
+          <h3>current summary</h3>
+          {overview?.summary_text ? (
+            <article className="lane-summary-card">
+              <div className="payload-card-head">
+                <strong>lane summary</strong>
+                {overview.summary_node_id && (
+                  <button
+                    type="button"
+                    className="summary-node-link"
+                    onClick={() => onSelect({ kind: "node", id: overview.summary_node_id! })}
+                  >
+                    {overview.summary_node_id.slice(0, 12)}
+                  </button>
+                )}
+              </div>
+              <SummaryBody text={overview.summary_text} format="markdown" />
+            </article>
+          ) : (
+            <p className="muted">
+              No summary yet — <code>arctx lane summarize</code> records one without closing
+              the lane.
+            </p>
+          )}
         </section>
 
         <section className="panel-view">

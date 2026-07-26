@@ -2,7 +2,8 @@ import { useEffect, useState, useRef, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { pickClient } from "./api";
-import { Graph, type LaneFocusRequest, type Selection } from "./Graph";
+import { Graph, type LaneFocusRequest, type RecordFocusRequest, type Selection } from "./Graph";
+import { LaneSidebar } from "./LaneSidebar";
 import type { LayoutDirection } from "./layout";
 import { Panel } from "./Panel";
 import { laneById, laneColors, laneOptions, laneStatus, type LaneColorOverrides } from "./model";
@@ -51,6 +52,7 @@ export function App() {
   const [showCuts, setShowCuts] = useState<boolean>(false);
   const [activeLaneId, setActiveLaneId] = useState<string | null>(null);
   const [focusLane, setFocusLane] = useState<LaneFocusRequest | null>(null);
+  const [focusRecord, setFocusRecord] = useState<RecordFocusRequest | null>(null);
   const [showLanesMenu, setShowLanesMenu] = useState<boolean>(false);
   const [showExtsMenu, setShowExtsMenu] = useState<boolean>(false);
   const [showRunsMenu, setShowRunsMenu] = useState<boolean>(false);
@@ -125,6 +127,7 @@ export function App() {
     client.activeRunId = runId;
     setActiveLaneId(null);
     setFocusLane(null);
+    setFocusRecord(null);
     setSelection(null);
     setCollapsedLaneIds(new Set());
     setExpandedClosedLaneIds(new Set());
@@ -284,6 +287,20 @@ export function App() {
   };
   const setLaneColor = (laneId: string, color: string) => {
     setLaneColorOverrides((prev) => ({ ...prev, [laneId]: color }));
+  };
+  // Picking a lane in the sidebar makes it the current lane, pans the canvas to
+  // it, and opens its detail in the panel.
+  const focusLaneId = (laneId: string) => {
+    setActiveLaneId(laneId);
+    setFocusLane({ laneId, ts: Date.now() });
+    setSelection({ kind: "lane", id: laneId });
+  };
+  // Jumping from a search hit: select the record and pan to it.
+  const focusRecordSelection = (sel: Selection) => {
+    setSelection(sel);
+    if (sel && (sel.kind === "node" || sel.kind === "step")) {
+      setFocusRecord({ kind: sel.kind, id: sel.id, ts: Date.now() });
+    }
   };
 
   return (
@@ -571,6 +588,15 @@ export function App() {
         {actionError && <span className="error"> {actionError.message}</span>}
       </header>
       <main>
+        <LaneSidebar
+          doc={data}
+          activeLaneId={currentLaneId ?? null}
+          selection={selection}
+          laneColorOverrides={laneColorOverrides}
+          dark={dark}
+          onSelectLane={focusLaneId}
+          onSelectRecord={focusRecordSelection}
+        />
         <div className="canvas">
           <Graph
             doc={data}
@@ -593,6 +619,7 @@ export function App() {
             dark={dark}
             layoutDirection={layoutDirection}
             focusLane={focusLane}
+            focusRecord={focusRecord}
           />
         </div>
         <Panel

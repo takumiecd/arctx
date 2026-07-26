@@ -1373,3 +1373,145 @@ code {
   stroke-linejoin: round;
   fill: none;
 }
+
+/* ── Flat lane sidebar (the web mirror of `arctx explore`) ───────────── */
+.lane-sidebar {
+  width: 264px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+.lane-sidebar-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+.lane-sidebar-search input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 12px;
+}
+.lane-sidebar-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+.lane-sidebar-heading {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-faint);
+}
+.lane-sidebar-empty {
+  font-size: 12px;
+}
+.lane-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--lane-color, var(--color-border-strong));
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.lane-row:hover {
+  background: var(--color-bg-subtle);
+}
+.lane-row.selected {
+  border-color: var(--color-accent);
+  border-left-color: var(--lane-color, var(--color-accent));
+  background: var(--color-bg-subtle);
+}
+.lane-row-closed {
+  opacity: 0.72;
+}
+.lane-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.lane-row-summary {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--color-text-faint);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.lane-closed-toggle {
+  width: 100%;
+  margin: 6px 0 4px;
+  padding: 5px 8px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-faint);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.lane-closed-toggle:hover {
+  color: var(--color-text);
+  background: var(--color-bg-subtle);
+}
+.lane-hit {
+  margin-bottom: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--lane-color, var(--color-border-strong));
+  border-radius: 6px;
+  background: var(--color-bg);
+}
+.lane-hit-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.lane-hit-snippet {
+  margin: 5px 0 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-faint);
+  overflow-wrap: anywhere;
+}
+.lane-hit-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-faint);
+}
+.lane-hit-target {
+  padding: 3px 6px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.lane-hit-target:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
