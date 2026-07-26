@@ -5,13 +5,16 @@ payload deserialization system at import time via register_payload_class and
 register_payload_decoder.
 
 Classes:
-  - CommitEntry: a single commit entry in a GitChangePayload
-  - DiffSummary: aggregate diff stats
-  - GitChangePayload: git commit/diff record on a Step
+  - GitChangePayload: git commit reference on a Step
   - BranchPayload: branch where a step was created
   - RevertPayload: marks a step as a revert
   - CherryPickPayload: marks a step as a cherry-pick
   - MergePayload: marks a step as a git merge
+
+These records hold *facts* only — commit hashes and a branch name. Diff stats,
+commit subjects, and patch text are derived from the repository at read time
+(:mod:`arctx.core.gitref`, :mod:`arctx.ext.git.derive`), never baked in. This
+module stays free of git imports.
 """
 
 from __future__ import annotations
@@ -28,109 +31,6 @@ from arctx.core.types import JSONValue, to_jsonable
 
 
 @dataclass(frozen=True)
-class CommitEntry:
-    """A single commit entry in a GitChangePayload commit_log."""
-
-    sha: str
-    subject: str
-    author: str
-    date: str  # ISO 8601 with timezone
-
-    def to_dict(self) -> dict[str, str]:
-        return {"sha": self.sha, "subject": self.subject, "author": self.author, "date": self.date}
-
-
-@dataclass(frozen=True)
-class DiffSummary:
-    """Aggregate diff stats from git --shortstat."""
-
-    files_changed: int
-    insertions: int
-    deletions: int
-
-    def to_dict(self) -> dict[str, int]:
-        return {
-            "files_changed": self.files_changed,
-            "insertions": self.insertions,
-            "deletions": self.deletions,
-        }
-
-
-@dataclass(frozen=True)
-class RemoteRef:
-    """One git remote in a repo registry entry.
-
-    A repo commonly exposes the same upstream as several URL forms (ssh vs
-    https). All known forms are kept so resolution can match on any of them;
-    ``canonical`` on the owning ``RepoPayload`` is the normalized key derived
-    from these.
-    """
-
-    kind: str  # "ssh" | "https" | "git" | ...
-    url: str
-
-    def to_dict(self) -> dict[str, str]:
-        return {"kind": self.kind, "url": self.url}
-
-
-@dataclass(frozen=True)
-class RepoPayload(PayloadBase):
-    """Registry entry mapping one git repo into the run (the repo 対応表).
-
-    Run-scoped: attached to the run root node. git payloads reference a repo
-    by ``repo_id`` only; this entry is the single source of truth for what
-    that repo is.
-
-    Identity (shared, environment-independent): ``repo_id`` (opaque primary
-    key), ``slug`` (USER/REPO display name), ``remotes`` (all known URL forms),
-    ``canonical`` (normalized key for same-repo matching).
-
-    ``local_path`` is this machine's checkout location. It is environment
-    specific and MUST be stripped before the run leaves this machine (export /
-    hub push); see ``to_shareable``.
-    """
-
-    payload_id: str
-    target_id: str
-    repo_id: str
-    slug: str | None = None
-    remotes: tuple[RemoteRef, ...] = ()
-    canonical: str | None = None
-    local_path: str | None = None
-    metadata: dict[str, JSONValue] = field(default_factory=dict)
-
-    target_kind: Literal["node"] = field(default="node", init=False)
-    payload_type: str = field(default="repo", init=False)
-
-    def to_dict(self) -> dict[str, JSONValue]:
-        return {
-            "payload_id": self.payload_id,
-            "payload_type": self.payload_type,
-            "target_kind": self.target_kind,
-            "target_id": self.target_id,
-            "repo_id": self.repo_id,
-            "slug": self.slug,
-            "remotes": [r.to_dict() for r in self.remotes],
-            "canonical": self.canonical,
-            "local_path": self.local_path,
-            "metadata": dict(self.metadata),
-        }
-
-    def shareable(self) -> "RepoPayload":
-        """Return a copy with environment-specific fields stripped."""
-        return RepoPayload(
-            payload_id=self.payload_id,
-            target_id=self.target_id,
-            repo_id=self.repo_id,
-            slug=self.slug,
-            remotes=self.remotes,
-            canonical=self.canonical,
-            local_path=None,
-            metadata=dict(self.metadata),
-        )
-
-
-@dataclass(frozen=True)
 class BranchPayload(PayloadBase):
     """Branch where a step was created. Historical, immutable.
 
@@ -141,7 +41,6 @@ class BranchPayload(PayloadBase):
     payload_id: str
     target_id: str
     branch: str
-    repo_id: str = ""
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     target_kind: Literal["step"] = field(default="step", init=False)
@@ -154,28 +53,45 @@ class BranchPayload(PayloadBase):
             "target_kind": self.target_kind,
             "target_id": self.target_id,
             "branch": self.branch,
-            "repo_id": self.repo_id,
             "metadata": dict(self.metadata),
         }
 
 
 @dataclass(frozen=True)
 class GitChangePayload(PayloadBase):
-    """Git repository change information attached to a Step."""
+    """A reference to the git commits a Step produced.
+
+    The record's truth is ``head_commit``, the optional full ``commits`` tuple
+    (when a step spans several commits), and ``branch``. Everything a reader
+    wants to *look at* — subjects, authors, dates, file lists, diff stats,
+    patch text — is derived from the repository by
+    :func:`arctx.ext.git.derive.derive_git_change`. If the commit is missing
+    from a clone, surfaces render an explicit "commit not available locally"
+    marker rather than showing stale baked text.
+    """
 
     payload_id: str
     target_id: str
     branch: str
     head_commit: str
-    diff_summary: DiffSummary = field(
-        default_factory=lambda: DiffSummary(files_changed=0, insertions=0, deletions=0)
-    )
-    commit_log: tuple[CommitEntry, ...] = ()
-    repo_id: str = ""
+    commits: tuple[str, ...] = ()
     metadata: dict[str, JSONValue] = field(default_factory=dict)
 
     target_kind: Literal["step"] = field(default="step", init=False)
     payload_type: str = field(default="git_change", init=False)
+
+    @property
+    def commit_shas(self) -> tuple[str, ...]:
+        """Return every commit this record points at, oldest-first."""
+        if self.commits:
+            return self.commits
+        return (self.head_commit,) if self.head_commit else ()
+
+    @property
+    def base_commit(self) -> str | None:
+        """Return the recorded base commit, if the writer knew one."""
+        base = self.metadata.get("base_commit")
+        return str(base) if base else None
 
     def to_dict(self) -> dict[str, JSONValue]:
         return {
@@ -185,9 +101,7 @@ class GitChangePayload(PayloadBase):
             "target_id": self.target_id,
             "branch": self.branch,
             "head_commit": self.head_commit,
-            "diff_summary": self.diff_summary.to_dict(),
-            "commit_log": [c.to_dict() for c in self.commit_log],
-            "repo_id": self.repo_id,
+            "commits": list(self.commits),
             "metadata": dict(self.metadata),
         }
 
@@ -281,30 +195,12 @@ class MergePayload(PayloadBase):
 
 
 def _git_change_from_dict(data: dict[str, JSONValue]) -> GitChangePayload:
-    raw_log = data.get("commit_log") or []
-    commit_log = tuple(
-        CommitEntry(
-            sha=str(e["sha"]),
-            subject=str(e["subject"]),
-            author=str(e["author"]),
-            date=str(e["date"]),
-        )
-        for e in raw_log
-    )
-    raw_summary = data.get("diff_summary") or {}
-    diff_summary = DiffSummary(
-        files_changed=int(raw_summary.get("files_changed", 0)),
-        insertions=int(raw_summary.get("insertions", 0)),
-        deletions=int(raw_summary.get("deletions", 0)),
-    )
     return GitChangePayload(
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
         branch=str(data.get("branch", "")),
         head_commit=str(data.get("head_commit", "")),
-        diff_summary=diff_summary,
-        commit_log=commit_log,
-        repo_id=str(data.get("repo_id", "")),
+        commits=tuple(str(sha) for sha in (data.get("commits") or [])),
         metadata=dict(data.get("metadata") or {}),
     )
 
@@ -314,28 +210,6 @@ def _branch_payload_from_dict(data: dict[str, JSONValue]) -> BranchPayload:
         payload_id=str(data["payload_id"]),
         target_id=str(data["target_id"]),
         branch=str(data.get("branch", "")),
-        repo_id=str(data.get("repo_id", "")),
-        metadata=dict(data.get("metadata") or {}),
-    )
-
-
-def _repo_payload_from_dict(data: dict[str, JSONValue]) -> RepoPayload:
-    raw_remotes = data.get("remotes") or []
-    remotes = tuple(
-        RemoteRef(kind=str(r.get("kind", "")), url=str(r.get("url", "")))
-        for r in raw_remotes
-    )
-    raw_slug = data.get("slug")
-    raw_canonical = data.get("canonical")
-    raw_local = data.get("local_path")
-    return RepoPayload(
-        payload_id=str(data["payload_id"]),
-        target_id=str(data["target_id"]),
-        repo_id=str(data["repo_id"]),
-        slug=str(raw_slug) if raw_slug is not None else None,
-        remotes=remotes,
-        canonical=str(raw_canonical) if raw_canonical is not None else None,
-        local_path=str(raw_local) if raw_local is not None else None,
         metadata=dict(data.get("metadata") or {}),
     )
 
@@ -378,14 +252,12 @@ def _merge_from_dict(data: dict[str, JSONValue]) -> MergePayload:
 
 register_payload_class(GitChangePayload)
 register_payload_class(BranchPayload)
-register_payload_class(RepoPayload)
 register_payload_class(RevertPayload)
 register_payload_class(CherryPickPayload)
 register_payload_class(MergePayload)
 
 register_payload_decoder("git_change", _git_change_from_dict)
 register_payload_decoder("branch", _branch_payload_from_dict)
-register_payload_decoder("repo", _repo_payload_from_dict)
 register_payload_decoder("revert", _revert_from_dict)
 register_payload_decoder("cherry_pick", _cherry_pick_from_dict)
 register_payload_decoder("merge", _merge_from_dict)

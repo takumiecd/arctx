@@ -4,9 +4,12 @@
 
 import { useEffect, useRef } from "react";
 
-import type { RunDocument, RunPayload } from "../types";
-import { artifactPathForPayload, payloadElementFor, type PayloadDisplay, type PayloadSection } from "../payloadExtensions";
+import type { RunClient } from "../api";
+import { isAssetPayload, isGitChangePayload, type RunDocument, type RunPayload } from "../types";
+import { payloadElementFor, type PayloadDisplay, type PayloadSection } from "../payloadExtensions";
+import { AssetCard } from "./AssetCard";
 import { formatValue, tableData } from "./format";
+import { GitChangeCard } from "./GitChangeCard";
 import { MarkdownView, PayloadMediaView, SanitizedHtmlView } from "./markdown";
 import type { PayloadMedia } from "../payloadExtensions";
 
@@ -14,11 +17,13 @@ export function PayloadCard({
   doc,
   payload,
   display,
+  client,
   onCopyToEdit,
 }: {
   doc: RunDocument;
   payload: RunPayload;
   display: PayloadDisplay;
+  client: RunClient;
   onCopyToEdit?: (text: string) => void;
 }) {
   const element = payloadElementFor(payload);
@@ -27,23 +32,6 @@ export function PayloadCard({
       <div className="payload-card-head">
         <strong>{display.title}</strong>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {payload.payload_type === "asset" && (
-            <button
-              type="button"
-              className="payload-copy-btn"
-              title="copy a markdown reference (paste into a note on this record or a descendant)"
-              onClick={() => {
-                const url = artifactPathForPayload(payload);
-                const name = String(payload.filename ?? "asset");
-                const md = String(payload.mime_type ?? "").startsWith("image/")
-                  ? `![${name}](${url})`
-                  : `[${name}](${url})`;
-                void navigator.clipboard?.writeText(md);
-              }}
-            >
-              copy md
-            </button>
-          )}
           {onCopyToEdit && (
             <button
               type="button"
@@ -72,6 +60,10 @@ export function PayloadCard({
             </div>
           ))}
         </dl>
+      )}
+      {isAssetPayload(payload) && <AssetCard client={client} payload={payload} />}
+      {isGitChangePayload(payload) && !element && (
+        <GitChangeCard client={client} payload={payload} />
       )}
       {element && (
         <PayloadCustomElement

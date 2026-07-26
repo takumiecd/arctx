@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from arctx import init
-from arctx.core.lineage import history_nodes, is_visible_from, relationship
+from arctx.core.lineage import history_nodes, relationship
 from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
 
@@ -68,26 +68,6 @@ class TestRelationshipSteps:
         assert relationship(g, ("step", t1), ("step", t3)) == "ancestor"
         assert relationship(g, ("step", t3), ("step", t1)) == "descendant"
         assert relationship(g, ("step", t1), ("step", t2)) == "unrelated"
-
-
-class TestVisibility:
-    def test_parents_visible_children_not(self):
-        run, root, n1, n2, n3, *_ = _build()
-        g = run.run_graph
-        # From n3: ancestor (n1, root) and self visible; sibling/child not.
-        assert is_visible_from(g, ("node", n1), ("node", n3)) is True
-        assert is_visible_from(g, ("node", root), ("node", n3)) is True
-        assert is_visible_from(g, ("node", n3), ("node", n3)) is True
-        assert is_visible_from(g, ("node", n3), ("node", n1)) is False  # child
-        assert is_visible_from(g, ("node", n2), ("node", n3)) is False  # sibling
-
-    def test_join_makes_both_parents_visible(self):
-        run, _root, n1, n2, _n3, *_ = _build()
-        join = run.add_step([n1, n2], _sp())
-        n_join = join.output_node_id
-        g = run.run_graph
-        assert is_visible_from(g, ("node", n1), ("node", n_join)) is True
-        assert is_visible_from(g, ("node", n2), ("node", n_join)) is True
 
 
 class TestHistoryNodes:

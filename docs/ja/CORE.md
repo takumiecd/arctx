@@ -32,7 +32,6 @@ arctx lane list            # レーン一覧
 arctx lane summaries geometry # レーン末端 node の summary（複数あり得る）を表示
 arctx lane close geometry --summary "結論..." # レーンを閉じる。必須要約を末端に刻む（閉じたら書込拒否、--summary-format html/text も可）
 arctx lane open geometry    # 閉じたレーンを開き直して再開
-arctx lane adopt geometry --history <tip> # 既存履歴をレーン所属として採用（作成履歴は書き換えない）
 ```
 
 レーンは**1ユーザー専有ではない**：別の人が同じレーンに参加してよい（属性は各操作の

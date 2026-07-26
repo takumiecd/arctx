@@ -15,13 +15,18 @@ arctx dump --format outline
 
 これらのセットアップコマンドの意味:
 
-- `arctx init <req_id>` は `<ARCTX_HOME>/runs` 配下に run を作成します。
+- `arctx init <req_id>` は `<repo_root>/.arctx/runs` 配下に run を作成します
+  (git-native ストレージ: run データはリポジトリの中に置き、共有は git に委ねます)。
+  同時に `<repo_root>/.arctx/.gitattributes`（`* linguist-generated=true` と
+  `*.jsonl merge=union`）と `.arctx/.gitignore`（`run.cache.pkl` / `run.db` などの
+  派生ファイルを除外）を冪等に書き込みます。
+  `ARCTX_HOME` が設定されている場合、または git repo の外で実行した場合は
+  従来どおり `<ARCTX_HOME>/runs` が使われます。`--store-dir` で明示指定も可能です。
 - `arctx init ... --extension git` はその run の git extension も有効化します。
   git repo 内で実行すると、この repo の `<gitdir>/arctx-id` を書き込み、
   `--no-hooks` / `--git-no-hooks` を指定しない限り hook をインストールします。
-- `arctx git init` は現在の repo を run の repo registry に登録し、repo pointer を
-  書き、`.arctx-repo` マーカーを書き、hook をインストールします。現在の run に
-  明示的に紐づけたい repo ごとに 1 回実行します。
+- `arctx git init` はこの checkout を run に紐づける repo pointer を書き、
+  hook をインストールします。
 - `arctx use <run_id>` は `<gitdir>/arctx-id` を書き込み、現在の repo を既存の run に
   切り替えます。
 - `eval "$(arctx use <run_id> --shell)"` は `ARCTX_RUN_ID` を export して現在の
@@ -73,7 +78,9 @@ arctx log --run demo
 - `arctx use <run_id>`: repo スコープの current run pointer を書き込む。
 - `arctx use <run_id> --shell`: shell ローカル固定用の `ARCTX_RUN_ID` export を
   出力する。
-- `arctx lane create <name>`: run に lane を作成する。切替はしない。
+- `arctx lane create <name> [--purpose "なぜこの lane があるか"]`: run に lane を
+  作成する。切替はしない。`--purpose` は lane record に記録され、
+  `arctx explore <LANE>` と `arctx guide --context` が表示する。
 - `arctx lane switch <name-or-id>`: 既存 lane に切り替え、repo スコープの
   current lane pointer を書き込む。存在しない名前はエラー。
 - `arctx lane <name-or-id>`: `switch` の省略形。typo 防止のため自動作成しない。
@@ -87,18 +94,52 @@ arctx log --run demo
   `--summary` を省略すると、`arctx lane close <name-or-id> --summary "<your findings>"`
   という実行すべき正確なコマンドを添えたエラーになる。
 - `arctx lane open <name-or-id>`: 閉じた lane を開き直して作業を再開する。`close` と対称。
-- `arctx lane adopt <name-or-id> --record ID`: 既存 record を lane の現在所属として
-  登録する。作成 provenance は書き換えず、append-only な adoption event を残す。
-  `--history NODE` / `--reachable NODE` も使える。
+- `arctx lane summarize <name-or-id> --summary "..." [--summary-format ...] [--node ID]`:
+  lane を閉じずに **current summary を更新**する。`lane close` の作業途中版で、
+  lane は open のまま書き込み可能。summary は append-only で、最新が勝つ。
 - `arctx lane list` / `arctx lane show <name-or-id>`: lane を検査する。
 - `arctx lane summaries <name-or-id>`: lane の active な末端 node に付いた
   `SummaryPayload` を列挙する。分岐した lane では複数返る。
 - `arctx export [--format md|tex|html]`: run を共有可能なドキュメントとして描画する。
 
+## arctx explore
+
+lane はフラット（木ではない）なので、explore に「降りる」操作はありません。
+取得系が答える 3 つの問いのうち 2 つを担当します。
+
+- `arctx explore`: lane を 1 行ずつ列挙する（status マーカー / 名前 /
+  current summary の 1 行折りたたみ、約 160 文字で切り詰め）。
+  **open な lane を先に**（`started_at` 順）並べ、closed は
+  `N closed lanes — use --all` の 1 行に畳む。`--all` で closed も表示する。
+  `git branch` がノイズを隠すのと同じ発想。
+- `arctx explore <LANE>`: その lane の overview。purpose / 完全な current summary /
+  status / 直接所有する record 数 / active frontier。名前でも id でも引ける。
+- `arctx explore --query "TERMS"`: **取得系の主役**。lane 名・lane の purpose・
+  その lane が所有する全 payload を対象に、空白区切りの語を
+  大文字小文字を無視した AND で検索する。ヒットごとに lane 名 + status、
+  最初の語の周辺約 180 文字の抜粋、そして `arctx show` で飛べる
+  record / payload id を出す。名前一致を先に並べる。
+  **位置非依存**: current lane も降下も不要で、closed lane も等しく見つかる。
+- `--json` は 3 モードすべてで使える。
+
+抜粋には opaque id（`pl_` / `n_` / `t_`）を含めない。id を既に持っているなら
+検索ではなく `arctx show <ID>` を使う。
+
+current summary の意味論: lane が所有する `SummaryPayload` のうち、
+`WorkEvent.created_records`（append-only 台帳）の順で**最後のものが勝つ**。
+jsonl の行順ではなくイベント順を使うのは、union マージ後も順序が壊れないため。
+
 ## arctx guide
 
+`arctx guide` の静的本文は「書き込みの 3 動詞」（lane を開く → `add` →
+summary 付きで close）と「取得の 3 つの問い」に絞ってあります。ガイドの長さは
+認知負荷の予算なので、削除済みサーフェス（lane 階層・独自 sync・コピー型 asset）
+への言及は持ちません。
+
 - `arctx guide`: 使い方の静的ガイドに加えて、動的な Current Context
-  （Run ID / Current Lane / Active Frontiers in Lane / 有効な extension 名）を表示する。
+  （Run ID / Run Purpose / Current Lane（status・purpose・current summary）/
+  Active Frontiers in Lane / 有効な extension 名）を表示する。
+  lane が木でなくなったので祖先チェーンは出さない。
   lane の解決順序は他の変更コマンドと同じ（`--lane` > `ARCTX_LANE_ID` > repo pointer）。
   context の解決に失敗しても exit code は常に 0 で、
   `## Current Context` の下に `(context unavailable: <例外型>: <メッセージ>)` という
@@ -134,6 +175,30 @@ arctx log --run demo
   に切り詰める（LLM 引き継ぎ用の context 圧縮）。
 - `arctx lane summaries <lane>`: lane の現在の結論候補として、lane 末端 node 上の
   summary を見る。
+
+## Asset（git オブジェクト参照）
+
+- `arctx asset attach <TARGET_ID> <PATH> [--commit REF] [--title TEXT]`
+- `arctx asset show <PAYLOAD_ID>`
+
+asset は**コピーではなく参照**です。`(commit, path)` の組だけを記録し、実体は git が
+持ちます。`PATH` はリポジトリルート相対（cwd 相対・絶対パスも受理して正規化）で、
+**ファイルでもディレクトリでも構いません**（git には tree があるため）。`--commit`
+省略時は HEAD。repo 指定はありません — 対象は run データを包むリポジトリ自身です。
+
+```bash
+git add results/plot.png && git commit -m "add plot"   # 先に commit する
+arctx asset attach "$NODE" results/plot.png            # HEAD:results/plot.png
+arctx asset attach "$STEP" bench/out --commit v0.3.1   # ディレクトリ ＋ tag 指定
+```
+
+- 未 commit のパスや存在しない commit は attach 時に**拒否**されます
+  （`git cat-file` で実在検証するため、壊れた参照は最初から作れません）
+- commit がどの remote-tracking ref にも含まれない場合は stderr に `warning: ...` を
+  出しますが**ブロックはしません**（push し忘れ・remote 無しの検知）
+- `arctx asset show` は参照と、この clone で解決するか（`found` / `missing_commit` /
+  `missing_path` / `no_repository`）を返すので、壊れた参照を診断できます
+- 巨大バイナリは git-lfs を使ってください（arctx 側では扱いません）
 
 ## Reparent（付け替え）
 
@@ -172,14 +237,9 @@ extension のコマンド名前空間は、解決された current run からロ
 セットアップコマンド:
 
 - `arctx init <req_id> --extension git`: run を作成し git extension を有効化する。
-  git repo 内では `<gitdir>/arctx-id` も書き hook をインストールするが、run registry に
-  repo を明示的に登録したい場合は `arctx git init` を使う。
-- `arctx git init [--repo-path P] [--slug USER/REPO] [--no-hooks]`: repo を現在の run に
-  登録し hook をインストールする。「この checkout をこの run に紐づける」推奨コマンド。
-- `arctx git repo add [--repo-path P] [--slug USER/REPO] [--no-hooks]`: 同じ登録
-  プリミティブ。既存の run に別の repo を join する際に有用。
-- `arctx git repo list`: 登録済み repo を JSON で一覧する。
-- `arctx git repo show [--repo-id ID | --repo-path P]`: registry エントリを 1 件表示する。
+  git repo 内では `<gitdir>/arctx-id` も書き hook をインストールする。
+- `arctx git init [--repo-path P] [--no-hooks]`: この checkout を現在の run に
+  紐づけ、hook をインストールする。
 
 日常の git verb:
 
@@ -199,9 +259,18 @@ extension のコマンド名前空間は、解決された current run からロ
 commit 添付コマンド:
 
 - `arctx git add --step T --commit SHA`: commit ハッシュを step に attach する。
-  これは `arctx git repo add` とは別物。
-- `arctx git list --step T`
-- `arctx git show --step T`
+- `arctx git list --step T`: attach 済み commit ハッシュを列挙する。
+- `arctx git show --step T`: git_change record と、その `derived` ブロック
+  （**閲覧時に git から導出**した subject / author / date / diff stat /
+  変更ファイル一覧）を出す。
+
+`GitChangePayload` が持つ事実は commit ハッシュ（`head_commit` と `commits`）と
+`branch` だけです（「jsonl は事実、見た目は導出」）。diff テキスト・commit log は
+記録せず、表示のたびに `arctx.ext.git.derive` が git から読み直します。
+参照先 commit がこの clone に無い場合（shallow clone / push 忘れ）は失敗せず、
+`available: false` と `(commit not available locally)` マーカーを返します。
+導出する diff は `.arctx/**` を除外します（commit N の記録は commit N+1 に乗る
+仕様なので、run データ自体は「レビュー対象の変更」ではないため）。
 
 Worktree ヘルパー:
 
@@ -210,37 +279,6 @@ Worktree ヘルパー:
   ブランチを作成する。
 - `arctx git worktree list`: `git worktree list --porcelain` を JSON parse する。
 - `arctx git worktree remove <path> [--force]`: `git worktree remove` のラッパー。
-
-## 複数 Repo
-
-1 つの ARCTX run は複数の git repo にまたがれます。run は repo registry
-(`RepoPayload`) を保持し、git payload は repo を `repo_id` で参照します。コアの
-グラフ record は repo 非依存のままです。
-
-典型的なフロー:
-
-```bash
-cd ~/dev/frontend
-arctx init "feature X" --run-id run_x --extension git
-arctx git init
-
-cd ~/dev/backend
-arctx git repo add --run run_x
-```
-
-これ以降、どちらの repo の commit も同じ run に入ります。branch tip は
-`(repo_id, branch)` をキーにするため、`frontend/main` と `backend/main` は衝突しません。
-
-registry エントリの field:
-
-- `repo_id`: run に保存される opaque な主キー。
-- `slug`: `USER/REPO` のような表示名。
-- `remotes`: 発見されたすべての remote URL 形式。
-- `canonical`: 正規化された remote キー。SSH と HTTPS 形式を一致させる。
-- `local_path`: このマシンの checkout パス。
-
-`local_path` は環境固有です。`arctx export` はデフォルトでこれを除去します。
-`arctx git repo list` と `arctx git repo show` はローカル検査コマンドなので保持します。
 
 ## arctx log
 
@@ -345,11 +383,8 @@ checkout を与えます。
   そのまま出力する（GUI 側が DAG を自前描画できる）。cut の伝播は core 側で事前計算され、
   各 node/step に `inactive` フラグとして付与される。
 - `--exclude-cut`: cut された node/step を除外する。
-- `--include-local`: repo の `local_path` 値を含める。
 - `--node` / `--depth` / `--full-payloads`: `dump` と共通の走査オプション。
 - `--output PATH` / `-o PATH`: stdout ではなくファイルに書く。
-
-repo が登録されている場合、export には Repos セクションが含まれます。
 
 ## Serve
 
@@ -364,8 +399,20 @@ GUI の live モード用バックエンドです（共有用の静的 JSON と�
 - `POST /uncut` — `{ "target_id": ..., "target_kind": "node"|"step", "reason": ... }` で cut を取り消す（append-only な反転）。
 - `POST /reparent` — `{ "node_id": ..., "input_node_ids": [...], "type": ..., "reason": ... }` で node を新しい入力へ付け替え（新 step を append ＋旧 producer を cut）。新しい step を返す。
 - `POST /lane` — `{ "name": ..., "metadata": {...} }` で lane を作成。
-- `POST /lane/adopt` — `{ "lane_id": ..., "record_ids": [...] }` で既存 record を lane に採用。`history_node_id` または `reachable_node_id` を指定すると node 履歴/到達部分グラフをまとめて採用する。
 - `GET /health` — 死活確認。
+
+Asset 読み出しはリクエスト時に git を叩いて解決します（いずれも `payload_id` 必須。
+`path` は asset 自身の path からの相対で、ディレクトリ asset のブラウズに使う）:
+
+- `GET /asset?payload_id=pl_x` — 参照 ＋ `resolution{status,kind,content_type}`。
+- `GET /asset/entries?payload_id=pl_x[&path=sub]` — tree の直下エントリ一覧。
+- `GET /asset/content?payload_id=pl_x[&path=sub]` — ファイル内容（`encoding` が
+  `utf-8` か `base64`。バイナリ安全）。
+- `GET /asset/raw?payload_id=pl_x[&path=sub]` — 生バイト（`<img src>` 用）。
+
+解決できない参照は crash せず `{"error": ..., "code": ...}` を返します
+（404: `missing_commit` / `missing_path` / `unknown_payload` / `no_repository`、
+400: `not_a_blob` / `not_a_tree` / `not_an_asset` / `bad_path`）。
 
 書き込み系は `arctx add` / `arctx cut` / `arctx reparent` と同じ verb・同じ永続化経路を
 通るため、CLI と API が記録方法でズレることはありません。

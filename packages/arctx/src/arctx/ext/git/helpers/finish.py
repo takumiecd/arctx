@@ -1,9 +1,14 @@
-"""arctx git finish implementation."""
+"""arctx git finish implementation.
+
+The GitChangePayload written here records only facts — the commit hashes
+between the session base and HEAD, plus the branch. Diff stats and patch text
+are read back out of git when a surface displays the payload
+(:mod:`arctx.ext.git.derive`), so nothing is baked into the run and nothing can
+go stale.
+"""
 
 from __future__ import annotations
 
-import os
-import tempfile
 from pathlib import Path
 
 from arctx.core.cuts import is_inactive_step
@@ -14,65 +19,24 @@ from arctx.ext.git.helpers.session import (
     load_session,
     save_session,
 )
-from arctx.ext.git.payloads import (
-    CommitEntry,
-    DiffSummary,
-    GitChangePayload,
-)
+from arctx.ext.git.payloads import GitChangePayload
 from arctx.core.schema.payloads import StepPayload
 from arctx.core.run.handle import RunHandle
 
 
-def _artifacts_dir(run_dir: Path) -> Path:
-    return run_dir / "artifacts" / "git"
-
-
-def _write_patch_artifact(patch_text: str, payload_id: str, run_dir: Path) -> str:
-    """Write *patch_text* atomically and return a relative path string."""
-    art_dir = _artifacts_dir(run_dir)
-    art_dir.mkdir(parents=True, exist_ok=True)
-    target = art_dir / f"{payload_id}.patch"
-    fd, tmp = tempfile.mkstemp(dir=art_dir, suffix=".tmp")
-    try:
-        os.write(fd, patch_text.encode("utf-8"))
-        os.close(fd)
-        os.replace(tmp, target)
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-    return str(target.relative_to(run_dir))
-
-
 def _collect_git_data(session: GitSession, repo_root: Path) -> dict:
+    """Return the facts to record plus the transient data the CLI reports.
+
+    ``commits`` and ``head_commit`` are recorded; ``changed_files`` is used only
+    for the "nothing changed" warning and the command's return value.
+    """
     head_commit = git_repo.current_commit(repo_root)
-    raw_log = git_repo.commit_log(repo_root, session.base_commit)
-    commit_log = tuple(
-        CommitEntry(
-            sha=e["sha"],
-            subject=e["subject"],
-            author=e["author"],
-            date=e["date"],
-        )
-        for e in raw_log
-    )
-    stat = git_repo.diff_shortstat(repo_root, session.base_commit)
-    diff_summary = DiffSummary(
-        files_changed=stat["files_changed"],
-        insertions=stat["insertions"],
-        deletions=stat["deletions"],
-    )
+    commits = tuple(e["sha"] for e in git_repo.commit_log(repo_root, session.base_commit))
     changed_files = tuple(git_repo.diff_name_only(repo_root, session.base_commit))
-    patch_text = git_repo.diff_patch(repo_root, session.base_commit)
     return {
         "head_commit": head_commit,
-        "commits": tuple(e.sha for e in commit_log),
-        "commit_log": commit_log,
-        "diff_summary": diff_summary,
+        "commits": commits,
         "changed_files": changed_files,
-        "patch_text": patch_text,
     }
 
 
@@ -143,7 +107,7 @@ def git_finish_form_a(
     head_commit = gdata["head_commit"]
 
     if head_commit == session.base_commit or (
-        not gdata["changed_files"] and not gdata["commit_log"]
+        not gdata["changed_files"] and not gdata["commits"]
     ):
         warnings.append(
             f"No commits or diff between base_commit {session.base_commit} and HEAD. "
@@ -158,18 +122,13 @@ def git_finish_form_a(
 
     # Attach GitChangePayload to the existing step.
     git_payload_id = handle._next_id("pl")
-    patch_artifact: str | None = None
-    if gdata["patch_text"]:
-        patch_artifact = _write_patch_artifact(gdata["patch_text"], git_payload_id, run_dir)
-
     gcp = GitChangePayload(
         payload_id=git_payload_id,
         target_id=step_id,
         branch=branch,
         head_commit=head_commit,
-        diff_summary=gdata["diff_summary"],
-        commit_log=gdata["commit_log"],
-        metadata={"base_commit": session.base_commit, "patch_artifact": patch_artifact or ""},
+        commits=gdata["commits"],
+        metadata={"base_commit": session.base_commit},
     )
     handle.run_graph.attach_payload(gcp)
     handle.record_work_event(
@@ -179,7 +138,7 @@ def git_finish_form_a(
         target_kind="step",
         target_id=step_id,
         created_records=(git_payload_id,),
-        summary=f"{len(gdata['commit_log'])} commit(s)",
+        summary=f"{len(gdata['commits'])} commit(s)",
         data={"head_commit": head_commit, "branch": branch},
     )
 
@@ -213,9 +172,7 @@ def git_finish_form_a(
             "base_commit": session.base_commit,
             "head_commit": head_commit,
             "branch": branch,
-            "commits": len(gdata["commit_log"]),
-            "files_changed": gdata["diff_summary"].files_changed,
-            "patch_artifact": patch_artifact,
+            "commits": len(gdata["commits"]),
         },
         "warnings": warnings,
         "next": [
@@ -281,25 +238,20 @@ def git_finish_form_b(
     head_commit = gdata["head_commit"]
 
     if head_commit == session.base_commit or (
-        not gdata["changed_files"] and not gdata["commit_log"]
+        not gdata["changed_files"] and not gdata["commits"]
     ):
         warnings.append(
             f"No commits or diff between base_commit {session.base_commit} and HEAD."
         )
 
     git_payload_id = handle._next_id("pl")
-    patch_artifact: str | None = None
-    if gdata["patch_text"]:
-        patch_artifact = _write_patch_artifact(gdata["patch_text"], git_payload_id, run_dir)
-
     gcp = GitChangePayload(
         payload_id=git_payload_id,
         target_id=step_id,
         branch=branch,
         head_commit=head_commit,
-        diff_summary=gdata["diff_summary"],
-        commit_log=gdata["commit_log"],
-        metadata={"base_commit": session.base_commit, "patch_artifact": patch_artifact or ""},
+        commits=gdata["commits"],
+        metadata={"base_commit": session.base_commit},
     )
     handle.run_graph.attach_payload(gcp)
     handle.record_work_event(
@@ -309,7 +261,7 @@ def git_finish_form_b(
         target_kind="step",
         target_id=step_id,
         created_records=(git_payload_id,),
-        summary=f"{len(gdata['commit_log'])} commit(s)",
+        summary=f"{len(gdata['commits'])} commit(s)",
         data={"head_commit": head_commit, "branch": branch},
     )
 
@@ -342,9 +294,7 @@ def git_finish_form_b(
             "base_commit": session.base_commit,
             "head_commit": head_commit,
             "branch": branch,
-            "commits": len(gdata["commit_log"]),
-            "files_changed": gdata["diff_summary"].files_changed,
-            "patch_artifact": patch_artifact,
+            "commits": len(gdata["commits"]),
         },
         "warnings": warnings,
         "next": [

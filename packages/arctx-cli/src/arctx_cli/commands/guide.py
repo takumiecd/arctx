@@ -31,38 +31,58 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 STATIC_GUIDE_TEXT = """\
 # arctx Guide
 
-`arctx` is a tool for recording optimization and problem-solving processes.
+`arctx` records the *process* of optimization and problem-solving as a DAG that
+lives in this repository. `Node` = a state reached, `Step` = a transition that
+produced it, `Payload` = the data attached to either. A `Lane` is a flat unit of
+work, like a git branch — lanes have no parents and no children.
 
-## Core Concepts
-* **Node & Step**: The Directed Acyclic Graph (DAG) that records history. `Node` = state, `Step` = transition.
-* **Payload**: Domain-specific data attached to Nodes/Steps.
-* **Lane**: A workspace/branch that isolates problem-solving steps.
+## Writing: three verbs
 
-## Recommended Workflow
-1. **Understand Context**: Use `arctx log` for a chronological read of the run (oldest first, like `git log --oneline`; add `--lanes` for a phase-level table of contents), `arctx dump` to view the graph structure, or `arctx guide --context` for a cheap dynamic-only snapshot. Check your **Current Lane** and **Active Frontiers** at the bottom of this guide to know where to resume work.
-2. **Isolate Approaches**: Use lanes to explore different solutions independently.
-3. **Record Everything**: Record progress with `arctx add --from NODE ...` or `arctx git commit`. `arctx add` creates a Step and its output Node; nodes are not created standalone. `--from` is optional: if omitted, it defaults to the current lane's single active frontier node. On a fresh run with zero frontiers, it falls back to the run root as long as the root hasn't been used yet (so the very first `add` needs no `--from`). Otherwise, zero or several frontiers errors with a corrective message.
-4. **Close & Summarize**: When a lane's work is done, close it with `arctx lane close NAME --summary "..."`. This is the *close* action — use it even for a single linear chain, not only when several paths must be merged. The summary is required and becomes the closing node's payload, so **put your full synthesis there** (one leaf → it stamps that leaf; several leaves → it merges them into one node). Use `--summary-format markdown|html|text` when Markdown is not the best fit. Do **not** write a separate synthesis step and then close on top of it — the close *is* your synthesis-and-close. A closed lane refuses further writes; reopen it with `arctx lane open NAME` to resume.
+1. **Open a lane.** `arctx lane create NAME --purpose "why"`, then
+   `arctx lane switch NAME`. One lane per line of attack; fan independent
+   approaches out from the same baseline Node instead of serializing them.
+2. **`arctx add`.** Every record of progress is one Step plus its output Node:
+   `arctx add --from <NODE> --type <TYPE> --field key=value`. Repeat `--from`
+   for a multi-input join. Omit `--from` to use the current lane's single active
+   frontier (on a fresh run it falls back to the untouched run root, so the very
+   first `add` needs no `--from`); zero or several frontiers is an error that
+   tells you what to pass. Nodes are never created standalone.
+3. **Close with a summary.** `arctx lane close NAME --summary "<synthesis>"`.
+   The summary is required and *is* the conclusion — do not write a separate
+   synthesis step and then close on top of it. One leaf → it stamps that leaf;
+   several leaves → it merges them into one node. A closed lane refuses writes
+   until `arctx lane open NAME`. Mid-work, refresh the lane's current summary
+   with `arctx lane summarize NAME --summary "..."` (stays open).
 
-## Parallel Experiment Strategy
+Corrections are append-only: `arctx cut <ID>` retires a Node or Step (`uncut`
+reverses it), and `arctx reparent <NODE> --from <NEW_INPUT>...` reconnects a
+node to new inputs by adding a new producing Step and cutting the old one —
+descendants are preserved. Nothing is ever deleted.
 
-When approaches are independent, fan them out from the same baseline Node instead of serializing them in one lane. Give each approach its own lane, and for code changes prefer a separate git worktree as well. This is different from ordinary git branching: ARCTX is recording the experiment relationship in the RunGraph, not just moving code refs.
+## Reading: three questions
 
-Record each branch's hypothesis, result, and evaluation signal. Do not discard a branch only because it is weak by itself; sometimes the best answer is a later multi-input join of ideas that were mediocre in isolation. After independent runs finish, combine promising terminal Nodes with repeated `--from` arguments and record the synthesis as one Step. Use `cut` for branches that should remain in history but no longer participate in the active solution.
+* **"What is happening now?"** → `arctx guide --context`. Run, current lane,
+  its purpose and current summary, active frontiers, enabled extensions. Cheap
+  enough to call at the start of every turn.
+* **"What has been tried about X?"** → `arctx explore --query "TERMS"`. This is
+  the primary retrieval path: case-insensitive AND search over lane names and
+  every payload a lane owns. Position-independent — no current lane needed, no
+  hierarchy to walk. Each hit prints a snippet and the ids to jump to.
+  `arctx explore` alone lists lanes one line each (closed ones folded; `--all`
+  to include them); `arctx explore LANE` shows one lane in full.
+* **"What happened here?"** → `arctx dump --format outline` for the graph
+  (`--lane` to narrow), `arctx log` for a chronological read, and
+  `arctx show <ID>` for one Node / Step / Payload.
 
-## Essential Core Commands
+## Other commands worth knowing
 
-* `arctx log` : Chronological, oldest-first listing of the run (`git log --oneline` style), built from work events.
-* `arctx log --lanes` : Phase-level table of contents — one line per lane, ordered by when it started.
-* `arctx dump --format outline` : View the entire history graph.
-* `arctx dump --format outline --lane` : View the history of the current lane.
-* `arctx guide --context` : Print only the dynamic context (Run ID / Current Lane / Active Frontiers / enabled extensions) — cheap to call every turn.
-* `arctx add --from <NODE> --type <TYPE> --field key=value` : Add a Step from one or more input Nodes and create its output Node. Repeat `--from` for a multi-input join. Omit `--from` to default to the current lane's single active frontier node.
-* `arctx attach <NODE_OR_STEP> --type <TYPE> --field key=value` : Attach a generic payload. Use `--payload-type summary` for typed summary payloads.
-* `arctx lane` : Show the currently active lane.
-* `arctx show <ID>` : Show details of a specific Node, Step, or Payload.
-* `arctx lane close <LANE> --summary "<your synthesis>" [--summary-format markdown|html|text]` : Close a lane. Attaches the required summary to its terminal (its one leaf, or a fresh node merging several leaves) and marks it closed; writes are then refused until reopened. Put your findings in `--summary` here — not in a separate preceding step. (`arctx lane join` is a deprecated alias.)
-* `arctx lane open <LANE>` : Reopen a closed lane to resume work.
+* `arctx attach <NODE_OR_STEP> --type <TYPE> --field key=value` : attach a
+  generic payload (`--payload-type summary` for a typed summary).
+* `arctx asset attach <NODE_OR_STEP> <PATH> [--commit REF]` : reference a
+  committed file or directory (default commit: HEAD). Assets are `(commit,
+  path)` references, never copies — commit the file first. `arctx asset show
+  <PAYLOAD>` reports whether the reference still resolves in this clone.
+* `arctx export --format json|md` : the shareable document / GUI data contract.
 """
 
 
@@ -99,15 +119,22 @@ def _extensions_text(run_dir):
 
 
 def build_current_context(args) -> str:
-    """Build the "## Current Context" block: Run ID / Current Lane / Active
-    Frontiers / enabled extension names.
+    """Build the "## Current Context" block — the answer to "what is happening
+    now": Run ID, run purpose, the current lane (name / status / purpose /
+    current summary), its active frontiers, and enabled extension names.
 
-    This is the single source of dynamic context, shared by the full guide
-    (``arctx guide``) and the dynamic-only mode (``arctx guide --context``) so
-    the two never drift. Never raises: any failure to resolve context is
-    folded into a visible ``(context unavailable: ...)`` note instead of being
-    silently swallowed, so an agent can tell when context is missing.
+    Lanes are flat, so there is no ancestor chain to print: everything an agent
+    needs to resume is either on this lane or one ``arctx explore --query``
+    away. This is the single source of dynamic context, shared by the full
+    guide (``arctx guide``) and the dynamic-only mode (``arctx guide
+    --context``) so the two never drift. Never raises: any failure to resolve
+    context is folded into a visible ``(context unavailable: ...)`` note
+    instead of being silently swallowed, so an agent can tell when context is
+    missing.
     """
+    from arctx.core.lanes import collapse_summary, lane_current_summary, lane_purpose
+
+    from arctx_cli.commands._lane_context import find_lane
     from arctx_cli.context import (
         resolve_run_id_from_args,
         resolve_store,
@@ -131,10 +158,27 @@ def build_current_context(args) -> str:
         text += f"* **Run ID**: `{run_id}`\n"
 
         handle = store.load_run(run_id)
+        run_purpose = handle.run_graph.metadata.get("purpose")
+        if run_purpose:
+            text += f"* **Run Purpose**: {run_purpose}\n"
+
         lane_id = resolve_lane_id_from_args(args)
         context = resolve_lane_frontiers(handle, lane_id)
         lane_label = context.lane_name or context.lane_id
-        text += f"* **Current Lane**: `{lane_label}`\n"
+        lane = find_lane(handle, lane_id)
+        # The implicit "default" lane has no Lane record, so there is no status
+        # to report for it — printing `[unknown]` would be noise, not context.
+        status = f" [{lane.status}]" if lane is not None else ""
+        text += f"* **Current Lane**: `{lane_label}`{status}\n"
+        if lane is not None:
+            purpose = lane_purpose(lane)
+            if purpose:
+                text += f"  - purpose: {purpose}\n"
+            summary = lane_current_summary(
+                handle.run_graph, lane.lane_id, root_node_id=handle.root_node_id
+            )
+            if summary is not None:
+                text += f"  - current summary: {collapse_summary(summary.text)}\n"
 
         frontiers = context.frontier_node_ids
         if frontiers:

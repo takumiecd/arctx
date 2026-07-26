@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import json
-import mimetypes
-import posixpath
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 from arctx.serve.api import dispatch
-
-ARTIFACT_PREFIX = "/artifacts/"
 
 
 def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_origin: str):
@@ -57,19 +53,29 @@ def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_o
                 raise ValueError("request body must be a JSON object")
             return parsed
 
-        def _request_run_id(self) -> str:
-            parsed = urlparse(self.path)
-            query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
-            return query.get("run") or self.headers.get("X-Arctx-Run-Id") or run_id
+        def _serve_asset_raw(self, run_id_for_request: str, query: dict) -> None:
+            """Send an asset blob as raw bytes (the one binary route).
 
-        def _serve_artifact(self) -> None:
-            parsed = urlparse(self.path)
-            target = _resolve_artifact(store.run_path(self._request_run_id()), parsed.path)
-            if target is None or not target.is_file():
-                self._send_bytes(404, b"not found", "text/plain; charset=utf-8")
+            Everything else goes through the pure dispatcher; this exists so
+            ``<img src=...>`` works without a base64 round-trip. The resolution
+            logic itself is shared with ``GET /asset/content``.
+            """
+            from arctx.serve.assets import AssetError, asset_raw
+
+            payload_id = query.get("payload_id") or query.get("asset")
+            if not payload_id:
+                self._send(400, {"error": "payload_id is required"})
                 return
-            ctype, _ = mimetypes.guess_type(str(target))
-            self._send_bytes(200, target.read_bytes(), ctype or "application/octet-stream")
+            try:
+                handle = store.load_run(run_id_for_request)
+                raw = asset_raw(handle, store.run_path(run_id_for_request), str(payload_id), query.get("path"))
+            except AssetError as exc:
+                self._send(exc.status, {"error": exc.message, "code": exc.code})
+                return
+            except (KeyError, ValueError, OSError) as exc:
+                self._send(400, {"error": str(exc)})
+                return
+            self._send_bytes(200, raw.data, raw.content_type)
 
         def _handle(self, method: str) -> None:
             parsed = urlparse(self.path)
@@ -86,6 +92,9 @@ def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_o
                 or lane_id
             )
             request_run_id = query.get("run") or self.headers.get("X-Arctx-Run-Id") or run_id
+            if method == "GET" and path.rstrip("/") == "/asset/raw":
+                self._serve_asset_raw(request_run_id, query)
+                return
             status, payload = dispatch(
                 store,
                 request_run_id,
@@ -99,27 +108,12 @@ def _make_handler(store: Any, run_id: str, *, user_id: str, lane_id: str, cors_o
             self._send(status, payload)
 
         def do_GET(self) -> None:
-            if urlparse(self.path).path.startswith(ARTIFACT_PREFIX):
-                self._serve_artifact()
-                return
             self._handle("GET")
 
         def do_POST(self) -> None:
             self._handle("POST")
 
     return _Handler
-
-
-def _resolve_artifact(run_dir: Path, url_path: str) -> Path | None:
-    raw = unquote(url_path[len(ARTIFACT_PREFIX):])
-    rel = posixpath.normpath(raw).lstrip("/")
-    if rel in ("", ".") or rel.startswith("../"):
-        return None
-    root = (run_dir / "artifacts").resolve()
-    target = (root / rel).resolve()
-    if target == root or root not in target.parents:
-        return None
-    return target
 
 
 def serve(
@@ -136,7 +130,8 @@ def serve(
     httpd = ThreadingHTTPServer((host, port), handler)
     print(f"arctx serve: http://{host}:{port}  (run {run_id})")
     print("  GET /run · POST /step · POST /attach · POST /cut")
-    print("  POST /lane · POST /lane/adopt · GET /health")
+    print("  POST /lane · GET /health")
+    print("  GET /asset · /asset/entries · /asset/content · /asset/raw")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

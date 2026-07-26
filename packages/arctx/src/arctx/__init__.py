@@ -16,6 +16,7 @@ from arctx.core.schema import (
     Step,
     StepPayload,
     SummaryPayload,
+    AssetPayload,
     UncutPayload,
     TraceContext,
     WorkEvent,
@@ -26,7 +27,7 @@ from arctx.core.types import (
     TargetKind,
 )
 
-__version__ = "0.3.1b4"
+__version__ = "0.4.0b1"
 
 
 def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
@@ -48,6 +49,7 @@ __all__ = [
     "Step",
     "StepPayload",
     "SummaryPayload",
+    "AssetPayload",
     "UncutPayload",
     "WorkEvent",
     "Lane",

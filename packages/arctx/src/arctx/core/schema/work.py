@@ -15,14 +15,14 @@ class Lane:
     or COLLABORATIVE (events from several). Membership is open: any actor may
     append to a shared lane. Per-action attribution lives on each
     :class:`WorkEvent`'s ``user_id``; ``created_by`` records who *opened*
-    the lane. Lanes nest/branch via ``parent_lane_id``
-    and are never deleted — closing is ``status``, rejection is a cut.
+    the lane. Lanes are flat (git-branch-like) work units with no declared
+    parent/child relation — branching is already recorded by the DAG. They are
+    never deleted — closing is ``status``, rejection is a cut.
     """
 
     lane_id: str
     run_id: str
     created_by: str
-    parent_lane_id: str | None = None
     started_at: str | None = None
     closed_at: str | None = None
     status: str = "open"
@@ -67,12 +67,10 @@ def lane_from_dict(data: dict[str, JSONValue]) -> Lane:
                 return data[k]
         return None
 
-    parent = pick("parent_lane_id", "parent_work_session_id")
     return Lane(
         lane_id=str(pick("lane_id", "work_session_id")),
         run_id=str(data["run_id"]),
         created_by=str(pick("created_by", "user_id")),
-        parent_lane_id=str(parent) if parent is not None else None,
         started_at=str(data["started_at"]) if data.get("started_at") is not None else None,
         closed_at=str(data["closed_at"]) if data.get("closed_at") is not None else None,
         status=str(data.get("status") or "open"),

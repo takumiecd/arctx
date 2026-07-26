@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, replace
 
 from arctx.core.cuts import inactive_node_ids, inactive_step_ids
 from arctx.core.run_graph import RunGraph
-from arctx.core.schema.payloads import SummaryPayload
+from arctx.core.schema.payloads import PayloadBase, SummaryPayload
 from arctx.core.schema.work import WorkEvent, Lane
 
 
@@ -63,7 +63,6 @@ class LaneRecordProvenance:
     event_id: str
     event_type: str
     created_at: str | None
-    membership_kind: str = "created"
 
     def to_dict(self) -> dict:
         return {
@@ -74,7 +73,6 @@ class LaneRecordProvenance:
             "event_id": self.event_id,
             "event_type": self.event_type,
             "created_at": self.created_at,
-            "membership_kind": self.membership_kind,
         }
 
 
@@ -103,11 +101,9 @@ class LaneGroup:
 
 @dataclass(frozen=True)
 class LaneMembership:
-    # Current lane membership. Creation events set the initial membership;
-    # later lane_adopted events may move membership without rewriting creation
-    # provenance.
+    # Lane membership, derived purely from the event that created each record.
+    # A record never moves between lanes.
     provenance: dict[str, LaneRecordProvenance] = field(default_factory=dict)
-    created_provenance: dict[str, LaneRecordProvenance] = field(default_factory=dict)
     node_to_lane: dict[str, str] = field(default_factory=dict)
     step_to_lane: dict[str, str] = field(default_factory=dict)
     payload_to_lane: dict[str, str] = field(default_factory=dict)
@@ -288,7 +284,6 @@ def lane_membership(
     included_ids = node_ids | step_ids | payload_ids
 
     provenance: dict[str, LaneRecordProvenance] = {}
-    created_provenance: dict[str, LaneRecordProvenance] = {}
     node_to_lane: dict[str, str] = {}
     step_to_lane: dict[str, str] = {}
     payload_to_lane: dict[str, str] = {}
@@ -296,11 +291,7 @@ def lane_membership(
     lane_steps: dict[str, set[str]] = {}
     event_ids: list[str] = []
 
-    def provenance_for(
-        event: WorkEvent,
-        record_id: str,
-        membership_kind: str,
-    ) -> LaneRecordProvenance:
+    def provenance_for(event: WorkEvent, record_id: str) -> LaneRecordProvenance:
         session = graph.lanes.get(event.lane_id)
         lane_name = session.name if session is not None else None
         return LaneRecordProvenance(
@@ -311,52 +302,31 @@ def lane_membership(
             event_id=event.event_id,
             event_type=event.event_type,
             created_at=event.created_at,
-            membership_kind=membership_kind,
         )
 
-    def assign_membership(record_id: str, prov: LaneRecordProvenance, *, override: bool) -> None:
+    def assign_membership(record_id: str, prov: LaneRecordProvenance) -> None:
         if record_id in node_ids:
-            old_lane = node_to_lane.get(record_id)
-            if old_lane == prov.lane_id and record_id in provenance:
-                if override:
-                    provenance[record_id] = prov
-                return
-            if old_lane is not None:
-                lane_nodes.get(old_lane, set()).discard(record_id)
-            if override or record_id not in node_to_lane:
+            if record_id not in node_to_lane:
                 node_to_lane[record_id] = prov.lane_id
                 lane_nodes.setdefault(prov.lane_id, set()).add(record_id)
                 provenance[record_id] = prov
         elif record_id in step_ids:
-            old_lane = step_to_lane.get(record_id)
-            if old_lane == prov.lane_id and record_id in provenance:
-                if override:
-                    provenance[record_id] = prov
-                return
-            if old_lane is not None:
-                lane_steps.get(old_lane, set()).discard(record_id)
-            if override or record_id not in step_to_lane:
+            if record_id not in step_to_lane:
                 step_to_lane[record_id] = prov.lane_id
                 lane_steps.setdefault(prov.lane_id, set()).add(record_id)
                 provenance[record_id] = prov
         elif record_id in payload_ids:
-            if override or record_id not in payload_to_lane:
+            if record_id not in payload_to_lane:
                 payload_to_lane[record_id] = prov.lane_id
                 provenance[record_id] = prov
 
     for event in graph.work_events:
         created = [record_id for record_id in event.created_records if record_id in included_ids]
-        adopted = _adopted_record_ids(event, included_ids)
-        if not created and not adopted:
+        if not created:
             continue
         event_ids.append(event.event_id)
         for record_id in created:
-            prov = provenance_for(event, record_id, "created")
-            created_provenance.setdefault(record_id, prov)
-            assign_membership(record_id, prov, override=False)
-        for record_id in adopted:
-            prov = provenance_for(event, record_id, "adopted")
-            assign_membership(record_id, prov, override=True)
+            assign_membership(record_id, provenance_for(event, record_id))
 
     group_lane_ids = tuple(
         sorted(
@@ -377,7 +347,6 @@ def lane_membership(
 
     return LaneMembership(
         provenance=provenance,
-        created_provenance=created_provenance,
         node_to_lane=node_to_lane,
         step_to_lane=step_to_lane,
         payload_to_lane=payload_to_lane,
@@ -812,6 +781,330 @@ def _membership_root_node_id(graph: RunGraph, root_node_id: str | None) -> str |
     return str(root_node_id) if root_node_id is not None else _run_root_node_id(graph)
 
 
+# ---------------------------------------------------------------------------
+# Retrieval: flat lane overviews and search
+#
+# Lanes are flat (git-branch-like). Retrieval answers exactly three questions:
+# "what is happening now" (guide --context), "what has been tried about X"
+# (search), "what happened here" (dump/show). Nothing below walks a hierarchy —
+# there is none.
+# ---------------------------------------------------------------------------
+
+
+def record_event_rank(graph: RunGraph) -> dict[str, int]:
+    """Return record_id → position in the append-only work-event log.
+
+    Record order is the durable ordering signal: jsonl line order is not
+    meaningful after a union merge, but ``WorkEvent.created_records`` is an
+    append-only ledger. Records with no event are absent from the mapping and
+    callers should treat them as rank ``-1`` (oldest).
+    """
+    rank: dict[str, int] = {}
+    for index, event in enumerate(graph.work_events):
+        for record_id in event.created_records:
+            rank.setdefault(record_id, index)
+    return rank
+
+
+def lane_summary_payloads(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
+) -> tuple[SummaryPayload, ...]:
+    """Return the lane's summary payloads oldest-first in work-event order.
+
+    A lane's summaries are the :class:`SummaryPayload` records the lane itself
+    created (``lane close`` / ``lane summarize`` both attach one). Ordering
+    comes from :func:`record_event_rank`, with the payload's own id as a stable
+    tie-break.
+    """
+    membership = membership or lane_membership(graph, root_node_id=root_node_id)
+    rank = record_event_rank(graph)
+    payloads = [
+        payload
+        for payload_id, payload in graph.payloads.items()
+        if isinstance(payload, SummaryPayload)
+        and membership.payload_to_lane.get(payload_id) == lane_id
+    ]
+    payloads.sort(key=lambda p: (rank.get(p.payload_id, -1), p.payload_id))
+    return tuple(payloads)
+
+
+def lane_current_summary(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
+) -> SummaryPayload | None:
+    """Return the lane's current summary — the latest one wins."""
+    payloads = lane_summary_payloads(
+        graph, lane_id, membership, root_node_id=root_node_id
+    )
+    return payloads[-1] if payloads else None
+
+
+def lane_purpose(lane: Lane) -> str | None:
+    """Return the lane's recorded purpose, if any."""
+    purpose = lane.metadata.get("purpose")
+    text = str(purpose).strip() if purpose is not None else ""
+    return text or None
+
+
+def collapse_summary(text: str | None, *, limit: int = 160) -> str:
+    """Collapse a summary to its first non-empty line, truncated to *limit*."""
+    if not text:
+        return ""
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    if len(first) > limit:
+        return first[: max(0, limit - 3)].rstrip() + "..."
+    return first
+
+
+@dataclass(frozen=True)
+class LaneOverview:
+    """Flat, retrieval-oriented projection of one lane."""
+
+    lane_id: str
+    name: str | None
+    status: str
+    purpose: str | None
+    started_at: str | None
+    closed_at: str | None
+    summary_text: str | None
+    summary_payload_id: str | None
+    summary_node_id: str | None
+    node_count: int
+    step_count: int
+    payload_count: int
+    active_frontier_node_ids: tuple[str, ...]
+
+    @property
+    def label(self) -> str:
+        return self.name or self.lane_id
+
+    @property
+    def summary_line(self) -> str:
+        return collapse_summary(self.summary_text)
+
+    def to_dict(self) -> dict:
+        return {
+            "lane_id": self.lane_id,
+            "name": self.name,
+            "label": self.label,
+            "status": self.status,
+            "purpose": self.purpose,
+            "started_at": self.started_at,
+            "closed_at": self.closed_at,
+            "summary": self.summary_text,
+            "summary_line": self.summary_line,
+            "summary_payload_id": self.summary_payload_id,
+            "summary_node_id": self.summary_node_id,
+            "counts": {
+                "nodes": self.node_count,
+                "steps": self.step_count,
+                "payloads": self.payload_count,
+            },
+            "active_frontier_node_ids": list(self.active_frontier_node_ids),
+        }
+
+
+def lane_overview(
+    graph: RunGraph,
+    lane_id: str,
+    membership: LaneMembership | None = None,
+    *,
+    root_node_id: str | None = None,
+) -> LaneOverview:
+    """Fold one lane's record into a flat overview."""
+    lane = graph.lanes.get(lane_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {lane_id}")
+    membership = membership or lane_membership(graph, root_node_id=root_node_id)
+    summary = lane_current_summary(graph, lane_id, membership)
+    return LaneOverview(
+        lane_id=lane_id,
+        name=lane.name,
+        status=lane.status,
+        purpose=lane_purpose(lane),
+        started_at=lane.started_at,
+        closed_at=lane.closed_at,
+        summary_text=summary.text if summary is not None else None,
+        summary_payload_id=summary.payload_id if summary is not None else None,
+        summary_node_id=summary.target_id if summary is not None else None,
+        node_count=sum(
+            1 for owner in membership.node_to_lane.values() if owner == lane_id
+        ),
+        step_count=sum(
+            1 for owner in membership.step_to_lane.values() if owner == lane_id
+        ),
+        payload_count=sum(
+            1 for owner in membership.payload_to_lane.values() if owner == lane_id
+        ),
+        active_frontier_node_ids=lane_active_frontiers(graph, lane_id, membership),
+    )
+
+
+def list_lane_overviews(
+    graph: RunGraph,
+    *,
+    root_node_id: str | None = None,
+) -> tuple[LaneOverview, ...]:
+    """Return every lane as a flat overview, open lanes first, then by start.
+
+    The ordering is the one ``explore`` renders: open lanes are the live work
+    surface (like ``git branch`` hiding merged noise), closed lanes are history.
+    """
+    membership = lane_membership(graph, root_node_id=root_node_id)
+    overviews = [
+        lane_overview(graph, lane_id, membership) for lane_id in graph.lanes
+    ]
+    overviews.sort(
+        key=lambda item: (
+            item.status != "open",
+            item.started_at or "",
+            item.lane_id,
+        )
+    )
+    return tuple(overviews)
+
+
+@dataclass(frozen=True)
+class LaneSearchHit:
+    """One lane matched by :func:`search_lanes`."""
+
+    lane_id: str
+    name: str | None
+    status: str
+    snippet: str
+    name_match: bool
+    matched_record_ids: tuple[str, ...]
+    matched_payload_ids: tuple[str, ...]
+
+    def to_dict(self) -> dict:
+        return {
+            "lane_id": self.lane_id,
+            "name": self.name,
+            "label": self.name or self.lane_id,
+            "status": self.status,
+            "snippet": self.snippet,
+            "name_match": self.name_match,
+            "matched_record_ids": list(self.matched_record_ids),
+            "matched_payload_ids": list(self.matched_payload_ids),
+        }
+
+
+# Opaque ids and record plumbing are never what a human searches for, and
+# leaking them into the haystack produces snippets full of UUID noise. Use
+# ``arctx show <ID>`` when you already have an id.
+_NON_SEARCHABLE_KEYS = frozenset(
+    {
+        "payload_id",
+        "target_id",
+        "target_kind",
+        "payload_type",
+        "step_id",
+        "node_id",
+        "input_node_ids",
+        "output_node_id",
+        "lane_id",
+    }
+)
+
+
+def _searchable_text(value: object) -> list[str]:
+    if isinstance(value, dict):
+        return [
+            text
+            for key, item in value.items()
+            if key not in _NON_SEARCHABLE_KEYS
+            for text in _searchable_text(item)
+        ]
+    if isinstance(value, (list, tuple)):
+        return [text for item in value for text in _searchable_text(item)]
+    return [str(value)] if value is not None else []
+
+
+def search_lanes(
+    graph: RunGraph,
+    query: str,
+    *,
+    root_node_id: str | None = None,
+    snippet_chars: int = 180,
+) -> tuple[LaneSearchHit, ...]:
+    """Search lane names and the payloads a lane owns.
+
+    Whitespace-separated terms match case-insensitively with AND semantics. The
+    haystack for a lane is its name plus every payload it created — both lane
+    summaries and payloads attached to the nodes/steps it owns. Search is
+    position-independent: there is no current lane and no descent, which is why
+    it is the primary retrieval path.
+
+    Hits rank name matches first, then alphabetically by label.
+    """
+    terms = tuple(term.casefold() for term in query.split() if term.strip())
+    if not terms:
+        return ()
+    membership = lane_membership(graph, root_node_id=root_node_id)
+    record_owner: dict[str, str] = {
+        **membership.node_to_lane,
+        **membership.step_to_lane,
+    }
+
+    # Group every payload under the lane that owns it: either the payload was
+    # created by the lane, or its target record belongs to the lane.
+    by_lane: dict[str, list[PayloadBase]] = {}
+    for payload_id, payload in graph.payloads.items():
+        owner = membership.payload_to_lane.get(payload_id) or record_owner.get(
+            payload.target_id
+        )
+        if owner is not None:
+            by_lane.setdefault(owner, []).append(payload)
+
+    hits: list[LaneSearchHit] = []
+    for lane in graph.lanes.values():
+        label = lane.name or lane.lane_id
+        parts = [label]
+        purpose = lane_purpose(lane)
+        if purpose:
+            parts.append(purpose)
+        payloads = by_lane.get(lane.lane_id, [])
+        matched_payload_ids: list[str] = []
+        matched_record_ids: list[str] = []
+        for payload in payloads:
+            texts = _searchable_text(payload.to_dict())
+            parts.extend(texts)
+            folded_payload = "\n".join(texts).casefold()
+            if any(term in folded_payload for term in terms):
+                matched_payload_ids.append(payload.payload_id)
+                matched_record_ids.append(payload.target_id)
+
+        haystack = "\n".join(parts)
+        folded = haystack.casefold()
+        if not all(term in folded for term in terms):
+            continue
+
+        index = folded.find(terms[0])
+        start = max(0, index - 45)
+        snippet = " ".join(haystack[start : start + snippet_chars].split())
+        hits.append(
+            LaneSearchHit(
+                lane_id=lane.lane_id,
+                name=lane.name,
+                status=lane.status,
+                snippet=snippet,
+                name_match=any(term in label.casefold() for term in terms),
+                matched_record_ids=tuple(dict.fromkeys(matched_record_ids)),
+                matched_payload_ids=tuple(dict.fromkeys(matched_payload_ids)),
+            )
+        )
+
+    hits.sort(key=lambda hit: (not hit.name_match, str(hit.name or hit.lane_id).casefold()))
+    return tuple(hits)
+
+
 def lane_export_view(
     graph: RunGraph,
     *,
@@ -848,10 +1141,6 @@ def lane_export_view(
             record_id: provenance.to_dict()
             for record_id, provenance in sorted(membership.provenance.items())
         },
-        "created_provenance": {
-            record_id: provenance.to_dict()
-            for record_id, provenance in sorted(membership.created_provenance.items())
-        },
         "groups": [group.to_dict() for group in membership.groups],
         "lane_boundaries": [
             boundary.to_dict()
@@ -871,19 +1160,3 @@ def lane_export_view(
             if summary.payload_id in payload_ids and summary.target_id in node_ids
         ],
     }
-
-
-def _adopted_record_ids(event: WorkEvent, included_ids: set[str]) -> list[str]:
-    if event.event_type != "lane_adopted":
-        return []
-    raw = event.data.get("record_ids")
-    if not isinstance(raw, list):
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in raw:
-        record_id = str(value)
-        if record_id in included_ids and record_id not in seen:
-            seen.add(record_id)
-            out.append(record_id)
-    return out

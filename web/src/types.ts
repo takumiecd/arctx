@@ -27,28 +27,120 @@ export interface RunPayload {
   content?: Record<string, unknown>;
   reason?: string | null;
   metadata?: Record<string, unknown>;
-  asset_id?: string;
-  filename?: string;
-  mime_type?: string;
-  size_bytes?: number;
-  path?: string;
   [key: string]: unknown;
 }
 
-export interface RunRepo {
-  repo_id: string;
-  slug?: string;
-  canonical?: string;
-  remotes?: { kind: string; url: string }[];
-  local_path?: string;
-  [key: string]: unknown;
+// An asset is a reference to a git object — `(commit, path)` where `path` is
+// repo-root-relative and may be a file or a directory. Nothing is copied: the
+// serve layer resolves content at request time via
+//   GET /asset?payload_id=…            reference + resolution status
+//   GET /asset/entries?payload_id=…&path=…   directory listing
+//   GET /asset/content?payload_id=…&path=…   file content (utf-8 or base64)
+//   GET /asset/raw?payload_id=…&path=…       file bytes
+// Per the "absent = self" convention there is no repo field.
+export interface RunAssetPayload extends RunPayload {
+  payload_type: "asset";
+  commit: string;
+  path: string;
+  title?: string | null;
+}
+
+export function isAssetPayload(payload: RunPayload): payload is RunAssetPayload {
+  return payload.payload_type === "asset";
+}
+
+// A git_change record stores facts only — the commit hashes it points at and
+// the branch it was made on. Diff stats, commit subjects, file lists, and patch
+// text are NOT in the export document: they are derived from the repository at
+// read time (POST /web/ext/git/diff). A commit missing from the reader's clone
+// comes back with `available: false` and a `note` marker rather than an error.
+export interface RunGitChangePayload extends RunPayload {
+  payload_type: "git_change";
+  target_kind: "step";
+  branch: string;
+  head_commit: string;
+  commits: string[];
+}
+
+export function isGitChangePayload(payload: RunPayload): payload is RunGitChangePayload {
+  return payload.payload_type === "git_change";
+}
+
+// Response shape of POST /web/ext/git/diff — entirely derived, never stored.
+export interface GitChangeDiff {
+  step_id: string;
+  repo_path: string;
+  head_commit: string;
+  branch: string;
+  available: boolean;
+  note: string | null;
+  subject: string;
+  files: string[];
+  diff_stat: { files_changed: number; insertions: number; deletions: number };
+  diff: string;
+  truncated: boolean;
+  byte_count: number;
+}
+
+export interface AssetResolution {
+  status:
+    | "ok"
+    | "missing_commit"
+    | "missing_path"
+    | "no_repository"
+    | "unknown_payload"
+    | "not_an_asset"
+    | "git_error";
+  kind: "blob" | "tree" | null;
+  content_type?: string | null;
+  message?: string;
+}
+
+// GET /asset — the stored reference plus whether it resolves in this clone.
+export interface AssetView {
+  asset: {
+    payload_id: string;
+    target_kind: "node" | "step";
+    target_id: string;
+    commit: string;
+    path: string;
+    title?: string | null;
+  };
+  resolution: AssetResolution;
+}
+
+// GET /asset/entries — one level of a tree asset.
+export interface AssetEntriesResponse {
+  payload_id: string;
+  commit: string;
+  path: string;
+  entries: AssetTreeEntry[];
+}
+
+// GET /asset/content — a blob, inline as utf-8 text or base64 bytes.
+export interface AssetContentResponse {
+  payload_id: string;
+  commit: string;
+  path: string;
+  content_type: string;
+  size: number;
+  encoding: "utf-8" | "base64";
+  content: string;
+}
+
+export interface AssetTreeEntry {
+  name: string;
+  path: string;
+  kind: "blob" | "tree" | "commit";
+  mode: string;
+  oid: string;
+  size: number | null;
 }
 
 export interface RunLane {
   lane_id: string;
   run_id: string;
   created_by: string;
-  parent_lane_id?: string | null;
   started_at?: string | null;
   closed_at?: string | null;
   status?: string;
@@ -79,7 +171,6 @@ export interface RecordProvenance {
   event_id: string;
   event_type: string;
   created_at?: string | null;
-  membership_kind?: "created" | "adopted" | string;
 }
 
 export interface RunGroup {
@@ -119,11 +210,9 @@ export interface RunDocument {
   nodes: RunNode[];
   steps: RunStep[];
   payloads: RunPayload[];
-  repos: RunRepo[];
   lanes?: RunLane[];
   work_events?: RunWorkEvent[];
   record_provenance?: Record<string, RecordProvenance>;
-  created_provenance?: Record<string, RecordProvenance>;
   groups?: RunGroup[];
   lane_boundaries?: LaneBoundary[];
   lane_edge_summaries?: LaneEdgeSummary[];
@@ -193,29 +282,6 @@ export interface AttachRequest {
   payload_type?: string;
 }
 
-export interface UploadedArtifact {
-  artifact_id: string;
-  filename: string;
-  mime_type: string;
-  size_bytes: number;
-  path: string;
-}
-
-export interface AttachAssetRequest {
-  target_id: string;
-  target_kind: "node" | "step";
-  asset_id: string;
-  filename: string;
-  mime_type: string;
-  size_bytes: number;
-  path: string;
-}
-
-export interface VisibleAssetsResponse {
-  from: string;
-  assets: RunPayload[];
-}
-
 export interface CutRequest {
   target_id: string;
   target_kind: "node" | "step";
@@ -247,26 +313,6 @@ export interface CreateLaneRequest {
 
 export interface CreateLaneResponse {
   lane: RunLane;
-}
-
-export interface AdoptLaneRequest {
-  lane_id?: string;
-  name?: string;
-  record_ids?: string[];
-  history_node_id?: string;
-  reachable_node_id?: string;
-  lane_head_node_id?: string;
-  lane_tail_node_id?: string;
-  reason?: string;
-}
-
-export interface AdoptLaneResponse {
-  lane_id: string;
-  name?: string | null;
-  adopted_record_ids: string[];
-  count: number;
-  mode: "explicit" | "history" | "reachable" | string;
-  event_id: string;
 }
 
 export interface ExtensionItem {

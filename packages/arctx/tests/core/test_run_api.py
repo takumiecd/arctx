@@ -14,7 +14,7 @@ from arctx.core.schema.payloads import (
     SummaryPayload,
     UncutPayload,
 )
-from arctx.ext.git.payloads import DiffSummary, GitChangePayload
+from arctx.ext.git.payloads import GitChangePayload
 from arctx.core.schema.requirements import Requirement
 
 
@@ -266,21 +266,12 @@ def test_uncut_step_guards_against_second_active_producer():
 def test_git_change_payload_on_step():
     run = init(_req())
     t = run.add_step([run.root_node_id], _tp())
-    diff = DiffSummary(files_changed=1, insertions=5, deletions=2)
-    git_p = GitChangePayload(
-        payload_id="_",
-        target_id=t.step_id,
-        branch="main",
-        head_commit="abc123",
-        diff_summary=diff,
-    )
     run.run_graph.attach_payload(
         GitChangePayload(
             payload_id=run._next_id("pl"),
             target_id=t.step_id,
             branch="main",
             head_commit="abc123",
-            diff_summary=diff,
         )
     )
     payloads = run.run_graph.payloads_for_step(t.step_id)

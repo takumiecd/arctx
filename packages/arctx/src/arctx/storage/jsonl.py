@@ -210,13 +210,38 @@ class JsonlRunStore:
             gdata = self._read_json(run_path / "graph.json")
             graph.metadata = dict(gdata.get("metadata") or {})
 
-        for row in self._read_jsonl(run_path / "nodes.jsonl"):
+        # `.arctx/` is committed and jsonl files use `merge=union`, so a merged
+        # working tree can contain duplicated lines in arbitrary order. Loading
+        # must therefore be idempotent and order-independent:
+        #   * duplicate rows sharing an id are deduped, FIRST occurrence wins
+        #     (records are immutable and append-only, so any copy is equivalent;
+        #     first-wins simply makes the result independent of line order);
+        #   * each collection is loaded in full before the collection that
+        #     references it (nodes -> steps -> payloads), so a step may appear
+        #     on a line before the node it consumes;
+        #   * work events are sorted by (seq, created_at, event_id) rather than
+        #     trusting file order;
+        #   * graph records are then re-ordered by the work event that created
+        #     them (`WorkEvent.created_records`), which is the append-only
+        #     ledger of *when* each record came into being. That restores the
+        #     recording order the in-memory graph relies on -- notably
+        #     cut/uncut supersession ("last marker wins") in core/cuts.py.
+        #     Records with no creating event (core-API writes that pass no
+        #     user/lane) keep their file order, after the ranked ones.
+        event_rows: list[dict[str, Any]] = []
+        for epath in [run_path / "lane_events.jsonl", run_path / "work_events.jsonl"]:
+            if epath.exists():
+                event_rows.extend(self._read_jsonl(epath))
+        event_rows = _sort_event_rows(_dedup_rows(event_rows, "event_id"))
+        rank = _record_rank(event_rows)
+
+        for row in _ordered_rows(self._read_jsonl(run_path / "nodes.jsonl"), "node_id", rank):
             graph.nodes[row["node_id"]] = Node(
                 node_id=row["node_id"],
                 metadata=dict(row.get("metadata") or {}),
             )
 
-        for row in self._read_jsonl(run_path / "steps.jsonl"):
+        for row in _ordered_rows(self._read_jsonl(run_path / "steps.jsonl"), "step_id", rank):
             step = Step(
                 step_id=row["step_id"],
                 input_node_ids=tuple(row.get("input_node_ids") or []),
@@ -225,7 +250,9 @@ class JsonlRunStore:
             )
             graph.add_step(step)
 
-        for row in self._read_jsonl(run_path / "payloads.jsonl"):
+        for row in _ordered_rows(
+            self._read_jsonl(run_path / "payloads.jsonl"), "payload_id", rank
+        ):
             payload = payload_from_dict(row)
             graph.payloads[payload.payload_id] = payload
             if payload.target_kind == "node":
@@ -235,16 +262,16 @@ class JsonlRunStore:
                     payload.payload_id
                 )
 
+        lane_rows: list[dict[str, Any]] = []
         for lpath in [run_path / "work_sessions.jsonl", run_path / "lanes.jsonl"]:
             if lpath.exists():
-                for row in self._read_jsonl(lpath):
-                    session = lane_from_dict(row)
-                    graph.lanes[session.lane_id] = session
+                lane_rows.extend(self._read_jsonl(lpath))
+        for row in _dedup_rows(lane_rows, "lane_id"):
+            session = lane_from_dict(row)
+            graph.lanes[session.lane_id] = session
 
-        for epath in [run_path / "lane_events.jsonl", run_path / "work_events.jsonl"]:
-            if epath.exists():
-                for row in self._read_jsonl(epath):
-                    graph.work_events.append(work_event_from_dict(row))
+        for row in event_rows:
+            graph.work_events.append(work_event_from_dict(row))
 
         # Fold lane open/close events into status before caching, so both the
         # full-load and cache fast paths report the current lifecycle state.
@@ -264,12 +291,14 @@ class JsonlRunStore:
         """Atomically rewrite *path* as the union (by ID) of disk rows and *records*.
 
         Rows already on disk are kept (including any a concurrent writer added);
-        only records whose ID is not present yet are appended. The whole file is
-        written via a temp file + fsync + os.replace, so a crash never leaves a
-        torn line. Callers must hold the run lock.
+        only records whose ID is not present yet are appended. Duplicate rows
+        left behind by a git ``merge=union`` are collapsed here, so any write
+        also normalises the file. The whole file is written via a temp file +
+        fsync + os.replace, so a crash never leaves a torn line. Callers must
+        hold the run lock.
         """
-        existing = JsonlRunStore._read_jsonl(path)
-        seen = {str(row[id_attr]) for row in existing if id_attr in row}
+        existing = _dedup_rows(JsonlRunStore._read_jsonl(path), id_attr)
+        seen = {str(row[id_attr]) for row in existing}
         merged = list(existing)
         for rec in records:
             rid = str(getattr(rec, id_attr))
@@ -299,6 +328,78 @@ class JsonlRunStore:
             for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
+
+
+def _dedup_rows(rows: list[dict[str, Any]], id_key: str) -> list[dict[str, Any]]:
+    """Drop rows repeating an already-seen *id_key*, keeping the first.
+
+    Constraint this relies on: records are immutable once written (append-only,
+    opaque ids), so two rows with the same id are byte-identical copies and
+    "first wins" is indistinguishable from "last wins". Rows missing *id_key*
+    are dropped — they cannot be addressed and are never valid records.
+    """
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if id_key not in row:
+            continue
+        rid = str(row[id_key])
+        if rid in seen:
+            continue
+        seen.add(rid)
+        out.append(row)
+    return out
+
+
+def _sort_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Order work-event rows deterministically, ignoring file order.
+
+    Mirrors ``arctx.core.lanes._event_order``: ``seq`` when present, then the
+    creation timestamp, then the opaque event id as a final tiebreak.
+    """
+
+    def key(row: dict[str, Any]) -> tuple[int, str, str]:
+        seq = row.get("seq")
+        return (
+            int(seq) if seq is not None else -1,
+            str(row.get("created_at") or ""),
+            str(row.get("event_id") or ""),
+        )
+
+    return sorted(rows, key=key)
+
+
+def _record_rank(event_rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Map record_id -> creation rank, from ordered work-event rows.
+
+    ``WorkEvent.created_records`` is the append-only ledger of which records a
+    given event brought into being, so walking the events in their canonical
+    order yields a total order over the records they created that does not
+    depend on jsonl line order at all.
+    """
+    rank: dict[str, int] = {}
+    for row in event_rows:
+        for record_id in row.get("created_records") or ():
+            rid = str(record_id)
+            if rid not in rank:
+                rank[rid] = len(rank)
+    return rank
+
+
+def _ordered_rows(
+    rows: list[dict[str, Any]], id_key: str, rank: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Dedupe *rows* by *id_key* and put them in canonical creation order.
+
+    Ranked records (those a work event claims to have created) follow the event
+    order. Unranked records sort ahead of them, keeping their relative file
+    order: the only unranked records a CLI-written run has are bootstrap ones
+    (the run root node), which do precede every event. A run written purely
+    through the core API passes no user/lane, records no events, and therefore
+    has an empty *rank* — every row is unranked and file order is preserved.
+    """
+    deduped = _dedup_rows(rows, id_key)
+    return sorted(deduped, key=lambda row: rank.get(str(row[id_key]), -1))
 
 
 def _atomic_write_text(path: Path, text: str) -> None:

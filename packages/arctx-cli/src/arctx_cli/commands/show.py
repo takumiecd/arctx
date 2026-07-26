@@ -30,6 +30,23 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     return parser
 
 
+def _git_change_view(payload) -> dict:
+    """Return a git_change record plus its derived-from-git view.
+
+    Diff stats and commit subjects are not stored on the record, so they are
+    read from the repository here. If the commit is missing from this clone the
+    ``derived`` block says so explicitly instead of the view silently emptying.
+    """
+    view = payload.to_dict()
+    try:
+        from arctx.ext.git.derive import derive_git_change  # noqa: PLC0415
+
+        view["derived"] = derive_git_change(payload).to_dict()
+    except Exception:  # noqa: BLE001 - display must never break `show`
+        pass
+    return view
+
+
 def run_show_record_command(
     *,
     run_id: str,
@@ -118,12 +135,16 @@ def run_show_command(
             result["output_nodes"] = [
                 g.nodes[node_id].to_dict() for node_id in g.step_outputs(step_id)
             ]
-        # GitChangePayload display: --history shows all; default shows latest only.
+        # GitChangePayload display: --history shows all; default shows latest
+        # only. Each record is shown with a `derived` block read from git now —
+        # the record itself stores nothing but hashes and a branch.
         git_payloads = g.payloads_for_step(step_id, payload_type="git_change")
         if history:
-            result["git_change_history"] = [p.to_dict() for p in git_payloads]
+            result["git_change_history"] = [_git_change_view(p) for p in git_payloads]
         else:
-            result["git_change"] = git_payloads[-1].to_dict() if git_payloads else None
+            result["git_change"] = (
+                _git_change_view(git_payloads[-1]) if git_payloads else None
+            )
         return result
 
     if payload_id is not None:

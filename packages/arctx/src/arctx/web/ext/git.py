@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -31,51 +30,58 @@ def _diff_route(req: WebRequest) -> tuple[int, dict[str, Any]]:
     if not git_payloads:
         return 404, {"error": f"step {step_id!r} has no git_change payload"}
 
-    payload = git_payloads[-1].to_dict()
-    head_commit = str(payload.get("head_commit") or "")
+    payload = git_payloads[-1]
+    head_commit = payload.head_commit
     if not head_commit:
         return 400, {"error": f"git_change payload on {step_id!r} has no head_commit"}
 
-    repo_id = str(payload.get("repo_id") or "")
-    repo_path, error = _repo_path_for_git_payload(handle.run_graph, repo_id)
+    repo_path, error = _repo_path_for_run(req.store, req.run_id)
     if error is not None:
         return 404, {"error": error}
 
+    # Everything below is derived from git at request time — the record holds
+    # only hashes and a branch. A commit missing from this clone is a normal
+    # outcome (shallow clone, never pushed), reported as an explicit marker
+    # rather than an error.
+    from arctx.ext.git.derive import derive_git_change, derive_patch
+
+    derived = derive_git_change(payload, repo_path)
     max_bytes = _max_bytes(req.body.get("max_bytes"))
-    patch, patch_error = _git_show_patch(repo_path, head_commit, max_bytes=max_bytes)
-    if patch_error is not None:
-        return 400, {"error": patch_error}
+    text, truncated, byte_count, note = derive_patch(
+        payload, repo_path, max_bytes=max_bytes
+    )
 
     return 200, {
         "step_id": step_id,
-        "repo_id": repo_id,
         "repo_path": str(repo_path),
         "head_commit": head_commit,
-        "subject": _git_show_subject(repo_path, head_commit),
-        "files": _git_show_files(repo_path, head_commit),
-        "diff": patch["text"],
-        "truncated": patch["truncated"],
-        "byte_count": patch["byte_count"],
+        "branch": payload.branch,
+        "available": derived.available,
+        "note": note or derived.note,
+        "subject": derived.commit_log[0].subject if derived.commit_log else "",
+        "files": list(derived.files),
+        "diff_stat": derived.diff_stat.to_dict(),
+        "diff": text,
+        "truncated": truncated,
+        "byte_count": byte_count,
     }
 
 
-def _repo_path_for_git_payload(graph: Any, repo_id: str) -> tuple[Path, str | None]:
-    repos = [p.to_dict() for p in graph.payloads.values() if p.payload_type == "repo"]
-    selected = None
-    if repo_id:
-        selected = next((repo for repo in repos if str(repo.get("repo_id") or "") == repo_id), None)
-    elif len(repos) == 1:
-        selected = repos[0]
-    if selected is None:
-        return Path(), f"cannot resolve local repo for repo_id {repo_id!r}; the run may not contain a repo registry entry"
+def _repo_path_for_run(store: Any, run_id: str) -> tuple[Path, str | None]:
+    """Resolve the repo holding this run.
 
-    local_path = selected.get("local_path")
-    if not isinstance(local_path, str) or not local_path:
-        return Path(), f"repo {repo_id!r} has no local_path; git diff is only available in live local runs"
-    path = Path(local_path).expanduser()
-    if not path.exists():
-        return Path(), f"repo local_path does not exist: {path}"
-    return path, None
+    There is no repo registry: a run lives inside exactly one repository
+    ("absent = self"), so the repo is the one containing the run's store dir,
+    falling back to the cwd repo when the store is kept outside a checkout.
+    """
+    from arctx.paths import find_repo_root
+
+    for start in (Path(store.run_path(run_id)), None):
+        try:
+            return find_repo_root(start), None
+        except RuntimeError:
+            continue
+    return Path(), "cannot resolve a git repo for this run; git diff is only available in live local runs"
 
 
 def _max_bytes(raw: object) -> int:
@@ -87,45 +93,6 @@ def _max_bytes(raw: object) -> int:
         return 300_000
     return max(8_000, min(value, 1_500_000))
 
-
-def _git_show_patch(repo_path: Path, commit: str, *, max_bytes: int) -> tuple[dict[str, Any], str | None]:
-    result = subprocess.run(
-        ["git", "show", "--format=", "--patch", "--find-renames", "--no-ext-diff", commit],
-        cwd=str(repo_path),
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        stderr = result.stderr.decode("utf-8", errors="replace").strip()
-        return {}, stderr or f"git show failed for {commit}"
-    raw = result.stdout
-    truncated = len(raw) > max_bytes
-    if truncated:
-        raw = raw[:max_bytes]
-    return {"text": raw.decode("utf-8", errors="replace"), "truncated": truncated, "byte_count": len(result.stdout)}, None
-
-
-def _git_show_files(repo_path: Path, commit: str) -> list[str]:
-    result = subprocess.run(
-        ["git", "show", "--format=", "--name-only", "--no-ext-diff", commit],
-        cwd=str(repo_path),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return []
-    return [line for line in result.stdout.splitlines() if line.strip()]
-
-
-def _git_show_subject(repo_path: Path, commit: str) -> str:
-    result = subprocess.run(
-        ["git", "show", "--no-patch", "--format=%s", commit],
-        cwd=str(repo_path),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return ""
-    return result.stdout.strip()
 
 
 _GIT_DIFF_ELEMENT_SCRIPT = r"""
@@ -183,11 +150,22 @@ _GIT_DIFF_ELEMENT_SCRIPT = r"""
     diffHtml(data) {
       const files = Array.isArray(data.files) ? data.files.map((file) => `<li>${escapeHtml(file)}</li>`).join("") : "";
       const truncated = data.truncated ? `<p class="muted">diff truncated at ${Number(data.byte_count || 0).toLocaleString()} bytes</p>` : "";
+      // The diff is derived from git, so a commit absent from this clone has
+      // nothing to render: say so instead of showing an empty diff.
+      if (data.available === false || data.note) {
+        return `
+          <div class="meta">
+            <span>commit<strong>${escapeHtml(data.head_commit || "")}</strong></span>
+          </div>
+          <p class="muted">${escapeHtml(data.note || "(commit not available locally)")}</p>
+        `;
+      }
+      const stat = data.diff_stat || {};
       return `
         <div class="meta">
           <span>commit<strong>${escapeHtml(data.head_commit || "")}</strong></span>
-          <span>repo<strong>${escapeHtml(data.repo_id || "")}</strong></span>
           <span>subject<strong>${escapeHtml(data.subject || "")}</strong></span>
+          <span>changes<strong>+${Number(stat.insertions || 0)} / -${Number(stat.deletions || 0)} in ${Number(stat.files_changed || 0)} files</strong></span>
         </div>
         <details ${files ? "open" : ""}>
           <summary>files</summary>

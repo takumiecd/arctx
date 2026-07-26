@@ -30,12 +30,6 @@ export const PAYLOAD_SCHEMAS: Record<string, PayloadSchema> = {
     type: "git_change",
     label: "Git Change (Git Integration)",
     fields: [
-      {
-        key: "repo_id",
-        label: "Repository",
-        type: "select",
-        options: (doc) => doc.repos.map((r) => ({ value: r.repo_id, label: r.slug || r.repo_id }))
-      },
       { key: "branch", label: "Branch", type: "text", defaultValue: "main" },
       { key: "head_commit", label: "Commit SHA", type: "text", placeholder: "Head commit hash..." }
     ]

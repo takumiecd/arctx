@@ -8,8 +8,9 @@ The `git` extension allows you to track Git activities (commits, branches, merge
 
 1. **Commit and Diff Tracking**:
    Links commit hashes, commit messages, and diff statistics to Steps as payloads.
-2. **Multi-Repository Management**:
-   Registers multiple local Git repositories to a single run (`repo add`) to track parallel histories.
+2. **One Run, One Repo**:
+   A run lives inside the repository that carries its data; git records refer to
+   that repo implicitly ("absent = self").
 3. **Git Hooks Integration**:
    Installs hooks like `post-commit` and `post-rewrite` to automatically capture Git actions as you work.
 4. **GUI Diff Preview**:
@@ -20,7 +21,7 @@ The `git` extension allows you to track Git activities (commits, branches, merge
 ## CLI Usage
 
 ### 1. Initialize Git Repo and Hooks
-Registers the current working directory's Git repository to the active run and installs hooks:
+Binds the current working directory's Git repository to the active run and installs hooks:
 
 ```bash
 arctx git init
@@ -34,21 +35,7 @@ Captures current working tree changes or a commit's metadata to record a new Ste
 arctx commit -m "Summary of changes"
 ```
 
-### 3. Manage Repositories
-Manages the list of repositories registered to this run:
-
-```bash
-# Add a repository to this run (defaults to cwd; use --repo-path to specify)
-arctx git repo add --repo-path <local_path> --slug <USER/REPO>
-
-# List all registered repositories
-arctx git repo list
-
-# Show details of a repository (defaults to resolving cwd; use --repo-id)
-arctx git repo show --repo-id <repo_id>
-```
-
-### 4. Record Merging and Reverting
+### 3. Record Merging and Reverting
 Records merges, reverts, and cherry-picks. Recorded branch tips can be inspected with `branch list` / `branch show`:
 
 ```bash

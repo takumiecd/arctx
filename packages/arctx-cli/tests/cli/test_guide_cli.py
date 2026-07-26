@@ -64,7 +64,103 @@ def test_guide_full_output_still_includes_context(tmp_path, monkeypatch, capsys)
     assert "# arctx Guide" in out
     assert "## Current Context" in out
     assert "guide --context" in out  # static text mentions the new flag
-    assert "current lane frontier" in out or "current lane's single active frontier" in out
+    # The guide teaches the three write verbs and the three retrieval questions.
+    assert "## Writing: three verbs" in out
+    assert "## Reading: three questions" in out
+    for command in ("arctx lane create", "arctx add", "arctx lane close"):
+        assert command in out
+    for command in ("arctx explore --query", "arctx dump", "arctx show"):
+        assert command in out
+    assert "arctx reparent" in out
+    assert "arctx lane summarize" in out
+
+
+def test_guide_does_not_mention_deleted_surface(tmp_path, monkeypatch, capsys):
+    """Hierarchy and custom sync are gone; the guide must not teach them."""
+    repo = _fake_git_repo(tmp_path)
+    monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
+    monkeypatch.chdir(repo)
+    _init(tmp_path)
+
+    rc = main(["guide", "--run", "run_guide", "--store-dir", _store_dir(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    for gone in (
+        "lane link",
+        "lane unlink",
+        "lane adopt",
+        "arctx sync",
+        "parent lane",
+        "copy-assets",
+        "ancestor",
+    ):
+        assert gone not in out, f"guide still references removed surface: {gone!r}"
+
+
+def test_guide_context_reports_lane_purpose_and_current_summary(
+    tmp_path, monkeypatch, capsys
+):
+    from arctx_cli.commands.lane import run_lane_summarize_command
+
+    repo = _fake_git_repo(tmp_path)
+    monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
+    monkeypatch.chdir(repo)
+    init = _init(tmp_path)
+    sd = _store_dir(tmp_path)
+
+    lane = run_lane_create_command(
+        name="work",
+        run_id="run_guide",
+        user_id="alice",
+        store_dir=sd,
+        purpose="find the slow kernel",
+    )
+    run_add_step_command(
+        run_id="run_guide",
+        input_node_ids=[init["root_node_id"]],
+        title="s1",
+        payload_kind=None,
+        payload_type="step_payload",
+        field_data={},
+        json_data={},
+        store_dir=sd,
+        user_id="alice",
+        lane_id=lane["lane_id"],
+    )
+    run_lane_summarize_command(
+        name_or_id="work",
+        summary="Narrowed it to the reduction.\nMore detail below.",
+        node_ids=None,
+        run_id="run_guide",
+        user_id="alice",
+        store_dir=sd,
+    )
+
+    rc = main(
+        ["guide", "--context", "--run", "run_guide", "--store-dir", sd, "--lane", "work"]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "`work` [open]" in out
+    assert "purpose: find the slow kernel" in out
+    # Collapsed to one line: the full text is one `arctx explore work` away.
+    assert "current summary: Narrowed it to the reduction." in out
+    assert "More detail below." not in out
+
+
+def test_guide_context_omits_status_for_the_implicit_default_lane(
+    tmp_path, monkeypatch, capsys
+):
+    repo = _fake_git_repo(tmp_path)
+    monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
+    monkeypatch.chdir(repo)
+    _init(tmp_path)
+
+    rc = main(["guide", "--context", "--run", "run_guide", "--store-dir", _store_dir(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "**Current Lane**: `default`" in out
+    assert "[unknown]" not in out
 
 
 def test_guide_honors_arctx_lane_id_env_over_repo_pointer(tmp_path, monkeypatch, capsys):

@@ -10,9 +10,7 @@ from arctx.core.schema.graph import Step
 from arctx.ext.git.events import latest_branch_tip
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.payloads import MergePayload
-from arctx.ext.git.registry import resolve_repo_id
 from arctx.ext.git.verbs._forward_step import (
-    capture_git_info,
     check_branch_tip_consistency,
     record_forward_step,
     resolve_current_branch,
@@ -29,7 +27,6 @@ def _resolve_other_node_id(
     other_node_id: str | None,
     other_branch: str | None,
     lane_id: str | None,
-    repo_id: str = "",
 ) -> str:
     if other_node_id is not None:
         return other_node_id
@@ -39,7 +36,7 @@ def _resolve_other_node_id(
             "merge_impl requires either other_node_id or other_branch"
         )
 
-    tip_event = latest_branch_tip(self.run_graph, other_branch, repo_id)
+    tip_event = latest_branch_tip(self.run_graph, other_branch)
     if tip_event is not None:
         tip_id = tip_event.data.get("tip_node_id")
         if tip_id:
@@ -67,7 +64,6 @@ def merge_impl(
     """Drive ``git merge <other>`` and record a multi-input Step."""
     resolved_repo_path: Path = resolve_worktree_path(repo_path)
 
-    repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
 
     current_node_ids = resolve_current_node_ids(self, lane_id)
 
@@ -79,7 +75,6 @@ def merge_impl(
         other_node_id=other_node_id,
         other_branch=other_branch,
         lane_id=lane_id,
-        repo_id=repo_id,
     )
     self._ensure_active_node(resolved_other_node_id)
 
@@ -99,7 +94,7 @@ def merge_impl(
 
     if lane_id is not None:
         check_branch_tip_consistency(
-            self.run_graph, current_branch, current_node_ids, repo_id
+            self.run_graph, current_branch, current_node_ids
         )
 
     if not dry_run:
@@ -130,12 +125,6 @@ def merge_impl(
             from arctx.ext.git.helpers import repo as git_repo  # noqa: PLC0415
             head_commit = git_repo.current_commit(resolved_repo_path)
 
-    diff_summary, commit_log = capture_git_info(
-        head_commit=head_commit,
-        dry_run=dry_run,
-        repo_path=resolved_repo_path,
-    )
-
     merged_from_label = other_branch or resolved_other_node_id
     merged_into_label = current_branch
 
@@ -144,8 +133,6 @@ def merge_impl(
         current_node_ids=multi_input_node_ids,
         current_branch=current_branch,
         head_commit=head_commit,
-        diff_summary=diff_summary,
-        commit_log=commit_log,
         extra_payloads=[],
         event_type="merge_created",
         event_summary=f"merge {merged_from_label} into {merged_into_label}",
@@ -156,7 +143,6 @@ def merge_impl(
         },
         user_id=user_id,
         lane_id=lane_id,
-        repo_id=repo_id,
     )
 
     typed_payload = MergePayload(

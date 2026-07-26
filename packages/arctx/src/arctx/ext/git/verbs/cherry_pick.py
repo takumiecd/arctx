@@ -11,9 +11,7 @@ from arctx.ext.git.events import make_branch_tip_event
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.payloads import BranchPayload, CherryPickPayload, GitChangePayload
 from arctx.ext.git.queries import step_by_sha
-from arctx.ext.git.registry import resolve_repo_id
 from arctx.ext.git.verbs._forward_step import (
-    capture_git_info,
     check_branch_tip_consistency,
     resolve_current_branch,
     resolve_current_node_ids,
@@ -50,11 +48,10 @@ def cherry_pick_impl(
         repo_path=resolved_repo_path,
     )
 
-    repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
 
     if lane_id is not None:
         check_branch_tip_consistency(
-            self.run_graph, current_branch, current_node_ids, repo_id
+            self.run_graph, current_branch, current_node_ids
         )
 
     source_step_id: str | None = step_by_sha(self.run_graph, source_sha)
@@ -82,12 +79,6 @@ def cherry_pick_impl(
             from arctx.ext.git.helpers import repo as git_repo  # noqa: PLC0415
             head_commit = git_repo.current_commit(resolved_repo_path)
 
-    diff_summary, commit_log = capture_git_info(
-        head_commit=head_commit,
-        dry_run=dry_run,
-        repo_path=resolved_repo_path,
-    )
-
     if user_id is not None and lane_id is not None:
         self.ensure_lane(user_id=user_id, lane_id=lane_id)
 
@@ -106,7 +97,6 @@ def cherry_pick_impl(
         payload_id=self._next_id("pl"),
         target_id=step_id,
         branch=current_branch,
-        repo_id=repo_id,
     )
     self.run_graph.attach_payload(branch_payload)
 
@@ -115,9 +105,6 @@ def cherry_pick_impl(
         target_id=step_id,
         branch=current_branch,
         head_commit=head_commit,
-        diff_summary=diff_summary,
-        commit_log=commit_log,
-        repo_id=repo_id,
     )
     self.run_graph.attach_payload(git_payload)
 
@@ -137,7 +124,6 @@ def cherry_pick_impl(
             user_id=user_id,
             branch=current_branch,
             tip_node_id=output_node.node_id,
-            repo_id=repo_id,
         )
         self.run_graph.add_work_event(tip_event)
 

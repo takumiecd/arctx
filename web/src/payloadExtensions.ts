@@ -222,32 +222,48 @@ function diagramDisplay(payload: RunPayload): PayloadDisplay {
   };
 }
 
-function gitChangeDisplay(payload: RunPayload, { doc }: PayloadRenderContext): PayloadDisplay {
-  const diff = objectValue(payload.diff_summary);
-  const commits = Array.isArray(payload.commit_log) ? payload.commit_log : [];
-  const repoId = stringValue(payload.repo_id);
+function gitChangeDisplay(payload: RunPayload): PayloadDisplay {
+  // The record stores facts only: commit hashes and a branch. Subjects, file
+  // lists, and diff stats are derived from git by the server on demand
+  // (POST /web/ext/git/diff), not carried in the export document.
+  const commits = Array.isArray(payload.commits) ? (payload.commits as string[]) : [];
   const fields: PayloadField[] = [
     { label: "branch", value: payload.branch },
     { label: "head", value: shortSha(payload.head_commit) },
-    { label: "files", value: diff.files_changed ?? 0 },
-    { label: "+/-", value: `+${diff.insertions ?? 0} -${diff.deletions ?? 0}` },
   ];
-  if (repoId) {
-    fields.unshift({ label: "repo", value: repoLabel(doc, repoId) });
+  if (commits.length > 1) {
+    fields.push({ label: "commits", value: commits.length });
   }
   return {
     title: "git change",
-    summary: commitSubject(commits) ?? stringValue(payload.head_commit),
-    graphLabel: commitSubject(commits) ?? shortSha(payload.head_commit),
+    summary: stringValue(payload.head_commit),
+    graphLabel: shortSha(payload.head_commit),
     fields,
-    sections: commits.length > 0 ? [{ title: "commits", kind: "list", value: commits }] : [],
+    sections:
+      commits.length > 0
+        ? [{ title: "commits", kind: "list", value: commits.map((sha) => shortSha(sha)) }]
+        : [],
   };
 }
 
-function branchDisplay(payload: RunPayload, { doc }: PayloadRenderContext): PayloadDisplay {
-  const repoId = stringValue(payload.repo_id);
+function assetDisplay(payload: RunPayload): PayloadDisplay {
+  // The record is only the reference; the bytes come from git at view time
+  // (see AssetCard). Nothing here touches the network.
+  const path = stringValue(payload.path);
+  const title = stringValue(payload.title);
+  return {
+    title: "asset",
+    summary: title || path || "(repository root)",
+    graphLabel: title || path.split("/").pop() || "asset",
+    fields: [
+      { label: "path", value: path || "(repository root)" },
+      { label: "commit", value: shortSha(payload.commit) },
+    ],
+  };
+}
+
+function branchDisplay(payload: RunPayload): PayloadDisplay {
   const fields: PayloadField[] = [{ label: "branch", value: payload.branch }];
-  if (repoId) fields.unshift({ label: "repo", value: repoLabel(doc, repoId) });
   return { title: "branch", summary: stringValue(payload.branch), fields };
 }
 
@@ -307,46 +323,6 @@ function commandRunDisplay(payload: RunPayload): PayloadDisplay {
   };
 }
 
-function assetDisplay(payload: RunPayload): PayloadDisplay {
-  const filename = stringValue(payload.filename) || "asset";
-  const mime = stringValue(payload.mime_type);
-  const src = artifactPathForPayload(payload);
-  const media: PayloadMedia[] = [];
-  const sections: PayloadSection[] = [];
-  if (src && mime.startsWith("image/")) {
-    media.push({ kind: "image", src, alt: filename, caption: filename });
-  } else if (src) {
-    // Non-image asset: render a markdown link (becomes a clickable anchor).
-    sections.push({ title: "file", kind: "markdown", value: `[${filename}](${src})` });
-  }
-  const fields: PayloadField[] = [
-    { label: "file", value: filename },
-    { label: "type", value: mime || "unknown" },
-  ];
-  if (typeof payload.size_bytes === "number") {
-    fields.push({ label: "size", value: formatBytes(payload.size_bytes) });
-  }
-  return { title: "asset", summary: filename, graphLabel: filename, media, fields, sections };
-}
-
-export function artifactPathForPayload(payload: RunPayload): string {
-  const rawPath = stringValue(payload.path).replace(/^\/+/, "");
-  if (!rawPath) return "";
-  const path = rawPath.startsWith("artifacts/") ? rawPath : `artifacts/${rawPath}`;
-  return `/${path}`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function objectValue(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
-}
-
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -365,19 +341,6 @@ function shortSha(value: unknown): string {
   const sha = stringValue(value);
   return sha ? sha.slice(0, 12) : "";
 }
-
-function repoLabel(doc: RunDocument, repoId: string): string {
-  const repo = doc.repos.find((entry) => entry.repo_id === repoId);
-  return repo?.slug ?? repoId;
-}
-
-function commitSubject(commits: unknown[]): string | null {
-  const first = commits[0];
-  if (typeof first !== "object" || first === null || Array.isArray(first)) return null;
-  const subject = (first as Record<string, unknown>).subject;
-  return typeof subject === "string" && subject ? subject : null;
-}
-
 
 
 function summaryDisplay(payload: RunPayload): PayloadDisplay {

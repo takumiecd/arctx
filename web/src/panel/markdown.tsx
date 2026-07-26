@@ -1,66 +1,13 @@
-// Markdown / sanitized-HTML rendering for note and summary payloads, plus
-// asset-visibility scoping for embedded images: a record may only reference
-// artifacts that are visible from it (attached to itself or an ancestor).
+// Markdown / sanitized-HTML rendering for note and summary payloads.
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 
-import type { RunClient } from "../api";
-import { artifactPathForPayload, type PayloadMedia } from "../payloadExtensions";
+import { type PayloadMedia } from "../payloadExtensions";
 import { formatValue, safeImageSrc } from "./format";
-
-// Set of artifact URLs (e.g. "/artifacts/ast_xxx_file.png") that may be
-// referenced from the record currently being rendered. `null` means no
-// scoping (static/share mode, or still loading) — render everything.
-const ArtifactScopeContext = createContext<Set<string> | null>(null);
-
-export function artifactKey(src: string): string {
-  let s = src;
-  if (s.startsWith("artifact://")) s = `/artifacts/${s.slice("artifact://".length).replace(/^\/+/, "")}`;
-  try {
-    return decodeURI(s);
-  } catch {
-    return s;
-  }
-}
-
-export function isArtifactUrl(src: string): boolean {
-  return src.startsWith("/artifacts/") || src.startsWith("artifact://");
-}
-
-// Wraps a record's payload cards, providing the set of assets visible from
-// that record so embedded artifact URLs out of scope (descendants/unrelated)
-// are not rendered. Live mode only; static shares render everything.
-export function ScopedPayloads({
-  client,
-  recordId,
-  children,
-}: {
-  client: RunClient;
-  recordId: string;
-  children: ReactNode;
-}) {
-  const { data } = useQuery({
-    queryKey: ["visibleAssets", recordId],
-    queryFn: () => client.visibleAssets(recordId),
-    enabled: client.writable && !!recordId,
-  });
-  const scope = useMemo(() => {
-    if (!client.writable || !data) return null;
-    const set = new Set<string>();
-    for (const a of data) {
-      const url = artifactPathForPayload(a);
-      if (url) set.add(artifactKey(url));
-    }
-    return set;
-  }, [client.writable, data]);
-  return <ArtifactScopeContext.Provider value={scope}>{children}</ArtifactScopeContext.Provider>;
-}
 
 export function MarkdownView({ value }: { value: unknown }) {
   return (
@@ -68,7 +15,7 @@ export function MarkdownView({ value }: { value: unknown }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
-        components={{ img: ScopedMarkdownImg }}
+        components={{ img: MarkdownImg }}
       >
         {formatValue(value)}
       </ReactMarkdown>
@@ -193,13 +140,12 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function ScopedMarkdownImg({ src, alt }: { src?: string; alt?: string }) {
-  const scope = useContext(ArtifactScopeContext);
+// Inline `data:` images are decoded here; anything else is passed through to
+// the browser. Repository files are assets now — attach them with
+// `arctx asset attach` and they render through AssetCard.
+function MarkdownImg({ src, alt }: { src?: string; alt?: string }) {
   const raw = typeof src === "string" ? src : "";
-  if (isArtifactUrl(raw) && scope && !scope.has(artifactKey(raw))) {
-    return <span className="muted payload-media-blocked">⚠ asset not in scope</span>;
-  }
-  const safe = isArtifactUrl(raw) ? safeImageSrc(raw) : raw;
+  const safe = raw.startsWith("data:") ? safeImageSrc(raw) : raw;
   if (!safe) {
     return <span className="muted payload-media-blocked">blocked image source</span>;
   }

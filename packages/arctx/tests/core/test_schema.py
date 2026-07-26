@@ -14,7 +14,7 @@ from arctx.core.schema.payloads import (
     payload_from_dict,
     register_payload_class,
 )
-from arctx.ext.git.payloads import DiffSummary, GitChangePayload
+from arctx.ext.git.payloads import GitChangePayload
 
 # ---------------------------------------------------------------------------
 # Node
@@ -138,19 +138,24 @@ def test_cut_payload_step():
 
 
 def test_git_change_payload():
-    diff = DiffSummary(files_changed=2, insertions=10, deletions=3)
+    """The record carries facts only: commit hashes and a branch."""
     g = GitChangePayload(
         payload_id="pl_g",
         target_id="t_1",
         branch="main",
         head_commit="abc123",
-        diff_summary=diff,
+        commits=("abc123",),
     )
     assert g.target_kind == "step"
     assert g.payload_type == "git_change"
+    assert g.commit_shas == ("abc123",)
     d = g.to_dict()
     assert d["branch"] == "main"
-    assert d["diff_summary"]["insertions"] == 10
+    assert d["head_commit"] == "abc123"
+    assert d["commits"] == ["abc123"]
+    # Derived-on-read fields are never baked into the record.
+    assert "diff_summary" not in d
+    assert "commit_log" not in d
 
 
 # ---------------------------------------------------------------------------

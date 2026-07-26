@@ -61,8 +61,14 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         metavar="COMMAND|NAME",
         help=(
             "No args = current lane. Commands: create NAME, switch NAME, "
-            "close NAME, open NAME, adopt NAME, validate, list, show LANE, summaries LANE."
+            "summarize NAME, close NAME, open NAME, validate, list, show LANE, "
+            "summaries LANE."
         ),
+    )
+    parser.add_argument(
+        "--purpose",
+        default=None,
+        help="Why this lane exists (lane create); shown by `arctx explore LANE`",
     )
     parser.add_argument("--list", action="store_true", dest="list_lanes",
                         help="List lanes in the run")
@@ -70,27 +76,9 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
                         help="Print an export line for shell-local (parallel) use "
                              "instead of writing the persistent pointer")
     parser.add_argument(
-        "--record",
-        action="append",
-        default=None,
-        help="Record id to adopt into a lane (repeatable)",
-    )
-    parser.add_argument(
-        "--history",
-        default=None,
-        metavar="NODE_ID",
-        help="Adopt the history ending at NODE_ID into a lane",
-    )
-    parser.add_argument(
-        "--reachable",
-        default=None,
-        metavar="NODE_ID",
-        help="Adopt the active reachable subgraph from NODE_ID into a lane",
-    )
-    parser.add_argument(
         "--reason",
         default=None,
-        help="Reason recorded on a lane adoption / close / open event",
+        help="Reason recorded on a lane close / open event",
     )
     parser.add_argument(
         "--summary",
@@ -147,8 +135,13 @@ def _append_or_save_lane(store, handle, run_id: str, user_id: str, lane) -> None
 
 def run_lane_create_command(
     *, name: str, run_id: str, user_id: str, store_dir: str | None,
+    purpose: str | None = None,
 ) -> dict:
-    """Create a lane by name. Creation does not switch the active lane."""
+    """Create a lane by name. Creation does not switch the active lane.
+
+    ``purpose`` is recorded on the lane record and is what ``arctx explore``
+    and ``arctx guide --context`` report as the lane's reason to exist.
+    """
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
@@ -157,9 +150,15 @@ def run_lane_create_command(
     if _find_lane_by_name(handle, name) is not None:
         raise ValueError(f"lane already exists: {name!r}")
 
-    lane = handle.ensure_lane(name=name, created_by=user_id)
+    metadata = {"purpose": purpose.strip()} if purpose and purpose.strip() else None
+    lane = handle.ensure_lane(name=name, created_by=user_id, metadata=metadata)
     _append_or_save_lane(store, handle, run_id, user_id, lane)
-    return {"lane_id": lane.lane_id, "name": name, "created": True}
+    return {
+        "lane_id": lane.lane_id,
+        "name": name,
+        "purpose": lane.metadata.get("purpose"),
+        "created": True,
+    }
 
 
 def run_lane_switch_command(
@@ -194,117 +193,6 @@ def run_lane_switch_command(
         write_arctx_lane(repo_root, lane.lane_id, run_id=run_id)
         result["arctx_lane_path"] = str(arctx_lane_path(repo_root))
     return result
-
-
-def run_lane_adopt_command(
-    *,
-    name: str,
-    run_id: str,
-    user_id: str,
-    store_dir: str | None,
-    record_ids: list[str] | None = None,
-    history_node_id: str | None = None,
-    reachable_node_id: str | None = None,
-    reason: str | None = None,
-) -> dict:
-    """Adopt existing graph records into an existing lane.
-
-    Adoption records current lane membership as a new WorkEvent. It never
-    rewrites the original event that created a record.
-    """
-    store = resolve_store(store_dir)
-    if not store.run_path(run_id).exists():
-        raise KeyError(f"unknown run_id: {run_id}")
-    handle = store.load_run(run_id)
-
-    lane = _find_lane(handle, name)
-    if lane is None:
-        raise KeyError(f"unknown lane: {name!r}; create it with `arctx lane create {name}`")
-
-    ids, mode, target_id = _adoption_record_ids(
-        handle,
-        record_ids=record_ids or [],
-        history_node_id=history_node_id,
-        reachable_node_id=reachable_node_id,
-    )
-    before = graph_counts(handle)
-    event = handle.adopt_lane_records(
-        lane.lane_id,
-        ids,
-        user_id=user_id,
-        mode=mode,
-        target_id=target_id,
-        reason=reason,
-    )
-    maybe_append_or_save(
-        store=store,
-        handle=handle,
-        user_id=user_id,
-        lane_id=lane.lane_id,
-        before=before,
-    )
-    return {
-        "lane_id": lane.lane_id,
-        "name": lane.name,
-        "adopted_record_ids": list(ids),
-        "count": len(ids),
-        "mode": mode,
-        "event_id": event.event_id,
-    }
-
-
-def _adoption_record_ids(
-    handle,
-    *,
-    record_ids: list[str],
-    history_node_id: str | None,
-    reachable_node_id: str | None,
-) -> tuple[tuple[str, ...], str, str]:
-    sources = [
-        bool(record_ids),
-        history_node_id is not None,
-        reachable_node_id is not None,
-    ]
-    if sum(1 for enabled in sources if enabled) != 1:
-        raise ValueError("choose exactly one of --record, --history, or --reachable")
-
-    if record_ids:
-        ids = tuple(dict.fromkeys(str(record_id) for record_id in record_ids))
-        return ids, "explicit", ids[0]
-
-    if history_node_id is not None:
-        node_id = str(history_node_id)
-        if node_id not in handle.run_graph.nodes:
-            raise KeyError(f"unknown node_id: {node_id}")
-        trace = handle.trace(node_id)
-        ids = (
-            trace.past_node_ids
-            + (trace.current_node_id,)
-            + trace.step_ids
-            + trace.payload_ids
-        )
-        return _without_run_root(handle, ids), "history", node_id
-
-    node_id = str(reachable_node_id)
-    if node_id not in handle.run_graph.nodes:
-        raise KeyError(f"unknown node_id: {node_id}")
-    reachable = handle.run_graph.reachable_from(node_id)
-    ids = (
-        tuple(reachable["node_ids"])
-        + tuple(reachable["step_ids"])
-        + tuple(reachable["payload_ids"])
-    )
-    return _without_run_root(handle, ids), "reachable", node_id
-
-
-def _without_run_root(handle, ids) -> tuple[str, ...]:
-    return tuple(
-        dict.fromkeys(
-            str(record_id)
-            for record_id in ids
-            if str(record_id) != handle.root_node_id
-        )
-    )
 
 
 def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:
@@ -343,7 +231,6 @@ def list_lanes(*, run_id: str, store_dir: str | None) -> list[dict]:
             "lane_id": s.lane_id,
             "name": s.name,
             "created_by": s.user_id,
-            "parent_lane_id": s.parent_lane_id,
             "status": s.status,
         }
         for s in sessions
@@ -532,6 +419,66 @@ def run_lane_close_command(
     }
 
 
+def run_lane_summarize_command(
+    *,
+    name_or_id: str,
+    summary: str | None,
+    node_ids: list[str] | None,
+    run_id: str,
+    user_id: str,
+    store_dir: str | None,
+    summary_format: str = "markdown",
+) -> dict:
+    """Refresh a lane's current summary *without* closing it.
+
+    Mid-work counterpart of ``lane close``: the lane stays open and writable,
+    but its current summary — what ``explore`` shows on the lane's one line and
+    what search matches against — is brought up to date. Summaries are
+    append-only; the latest one wins.
+    """
+    if summary is None or not summary.strip():
+        raise ValueError(
+            f"arctx lane summarize {name_or_id} requires --summary. Run: "
+            f'arctx lane summarize {name_or_id} --summary "<where this stands now>"'
+        )
+    normalized_format = _normalize_summary_format(summary_format)
+
+    store = resolve_store(store_dir)
+    if not store.run_path(run_id).exists():
+        raise KeyError(f"unknown run_id: {run_id}")
+    handle = store.load_run(run_id)
+
+    lane = _find_lane(handle, name_or_id)
+    if lane is None:
+        raise KeyError(f"unknown lane: {name_or_id!r}")
+    if lane.status == "closed":
+        raise ValueError(
+            f"lane is closed: {name_or_id!r}; "
+            f"reopen it with `arctx lane open {name_or_id}`"
+        )
+
+    summary_node, leaves = _attach_lane_summary(
+        handle,
+        lane=lane,
+        summary=summary,
+        summary_format=normalized_format,
+        node_ids=node_ids,
+        user_id=user_id,
+    )
+    if summary_node is None:
+        raise ValueError(
+            "lane summarize requires at least one active terminal node to summarize"
+        )
+    store.save_run(handle)
+    return {
+        "lane_id": lane.lane_id,
+        "name": lane.name,
+        "status": lane.status,
+        "summary_node": summary_node,
+        "joined_nodes": leaves,
+    }
+
+
 def run_lane_open_command(
     *,
     name_or_id: str,
@@ -593,6 +540,7 @@ def cli_lane(args) -> int:
                 run_id=run_id,
                 user_id=resolve_user_id_from_args(args),
                 store_dir=args.store_dir,
+                purpose=args.purpose,
             )
             if args.as_json:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -600,25 +548,6 @@ def cli_lane(args) -> int:
                 print(result["name"])
             strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane create")
             return strict_rc or 0
-
-        if command == "adopt":
-            if len(argv) != 2:
-                raise ValueError(
-                    "usage: arctx lane adopt NAME "
-                    "(--record ID... | --history NODE_ID | --reachable NODE_ID)"
-                )
-            result = run_lane_adopt_command(
-                name=argv[1],
-                run_id=resolve_run_id_from_args(args),
-                user_id=resolve_user_id_from_args(args),
-                store_dir=args.store_dir,
-                record_ids=args.record,
-                history_node_id=args.history,
-                reachable_node_id=args.reachable,
-                reason=args.reason,
-            )
-            print(json.dumps(result, ensure_ascii=False, indent=2))
-            return 0
 
         if command in ("close", "join"):
             if command == "join":
@@ -645,6 +574,28 @@ def cli_lane(args) -> int:
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane close")
+            return strict_rc or 0
+
+        if command == "summarize":
+            if len(argv) != 2:
+                raise ValueError(
+                    "usage: arctx lane summarize NAME_OR_ID --summary TEXT "
+                    "[--summary-format markdown|html|text] [--node ID...]"
+                )
+            run_id = resolve_run_id_from_args(args)
+            result = run_lane_summarize_command(
+                name_or_id=argv[1],
+                summary=args.summary,
+                summary_format=args.summary_format,
+                node_ids=args.node,
+                run_id=run_id,
+                user_id=resolve_user_id_from_args(args),
+                store_dir=args.store_dir,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            strict_rc = warn_if_invalid(
+                run_id, args.store_dir, command_name="lane summarize"
+            )
             return strict_rc or 0
 
         if command == "open":

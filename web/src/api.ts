@@ -7,32 +7,29 @@
 // `pickClient()` chooses based on what the page provides.
 
 import type {
-  AdoptLaneRequest,
-  AdoptLaneResponse,
   AddStepRequest,
   AddStepResponse,
+  AssetContentResponse,
+  AssetEntriesResponse,
+  AssetView,
   AttachRequest,
-  AttachAssetRequest,
   CreateLaneRequest,
   CreateLaneResponse,
   CreateRunRequest,
   CreateRunResponse,
   CutRequest,
+  GitChangeDiff,
   ReparentRequest,
   RunDocument,
-  RunPayload,
   RunSummary,
   RunsResponse,
   UncutRequest,
-  UploadedArtifact,
-  VisibleAssetsResponse,
   WebLayout,
   ExtensionsResponse,
 } from "./types";
 
 // The run the live API should target, overriding the server's bound run. Set
-// by the run picker. Kept module-level (not just on the client) so artifact
-// <img>/link URLs — which can't send request headers — can append `?run=`.
+// by the run picker.
 let activeRunId: string | null = null;
 export function setActiveRunId(id: string | null): void {
   activeRunId = id;
@@ -41,16 +38,12 @@ export function getActiveRunId(): string | null {
   return activeRunId;
 }
 
-// Append the active run override to an artifact URL so it resolves against the
-// run currently selected in the picker rather than the server's bound run.
-export function artifactSrc(url: string): string {
-  if (!activeRunId) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}run=${encodeURIComponent(activeRunId)}`;
-}
-
 export interface RunClient {
   readonly writable: boolean;
+  // Whether a serve backend is reachable. Assets are `(commit, path)` git
+  // references resolved by the server at request time, so their content is
+  // only viewable when this is true.
+  readonly live: boolean;
   activeLaneId: string | null;
   activeRunId: string | null;
   listRuns(): Promise<RunSummary[]>;
@@ -60,17 +53,19 @@ export interface RunClient {
   saveLayout(layout: WebLayout): Promise<WebLayout>;
   addStep(req: AddStepRequest): Promise<AddStepResponse>;
   attach(req: AttachRequest): Promise<void>;
-  attachAsset(req: AttachAssetRequest): Promise<void>;
-  visibleAssets(fromId: string): Promise<RunPayload[]>;
   cut(req: CutRequest): Promise<void>;
   uncut(req: UncutRequest): Promise<void>;
   reparent(req: ReparentRequest): Promise<AddStepResponse>;
   createLane(req: CreateLaneRequest): Promise<CreateLaneResponse>;
-  adoptLane(req: AdoptLaneRequest): Promise<AdoptLaneResponse>;
+  // Derived git view for a step's git_change payload. Only `arctx web` mounts
+  // this route (it is a web extension), so callers must tolerate a 404.
+  getGitChangeDiff(stepId: string): Promise<GitChangeDiff>;
+  getAsset(payloadId: string): Promise<AssetView>;
+  getAssetEntries(payloadId: string, path?: string): Promise<AssetEntriesResponse>;
+  getAssetContent(payloadId: string, path?: string): Promise<AssetContentResponse>;
   getExtensions(): Promise<ExtensionsResponse>;
   enableExtension(name: string): Promise<void>;
   disableExtension(name: string): Promise<void>;
-  uploadArtifact(file: File): Promise<UploadedArtifact>;
 }
 
 class ReadOnlyError extends Error {
@@ -81,8 +76,9 @@ class ReadOnlyError extends Error {
 
 export class LiveClient implements RunClient {
   readonly writable = true;
+  readonly live = true;
   activeLaneId: string | null = null;
-  // Mirror onto the module-level state so artifact URLs (no headers) agree.
+  // Mirror onto the module-level state so non-client callers agree on the run.
   get activeRunId(): string | null {
     return getActiveRunId();
   }
@@ -138,18 +134,6 @@ export class LiveClient implements RunClient {
   async attach(req: AttachRequest) {
     await this.req("/attach", { method: "POST", body: JSON.stringify(req) });
   }
-  async attachAsset(req: AttachAssetRequest) {
-    await this.req("/attach", {
-      method: "POST",
-      body: JSON.stringify({ ...req, payload_type: "asset" }),
-    });
-  }
-  async visibleAssets(fromId: string) {
-    const res = await this.req<VisibleAssetsResponse>(
-      `/assets/visible?from=${encodeURIComponent(fromId)}`,
-    );
-    return res.assets;
-  }
   async cut(req: CutRequest) {
     await this.req("/cut", { method: "POST", body: JSON.stringify(req) });
   }
@@ -162,11 +146,22 @@ export class LiveClient implements RunClient {
   async createLane(req: CreateLaneRequest) {
     return this.req<CreateLaneResponse>("/lane", { method: "POST", body: JSON.stringify(req) });
   }
-  async adoptLane(req: AdoptLaneRequest) {
-    return this.req<AdoptLaneResponse>("/lane/adopt", {
+  getGitChangeDiff(stepId: string) {
+    return this.req<GitChangeDiff>("/web/ext/git/diff", {
       method: "POST",
-      body: JSON.stringify(req),
+      body: JSON.stringify({ step_id: stepId }),
     });
+  }
+  // Asset reads. `path` is relative to the asset's own path, which is how a
+  // directory asset is browsed without minting more payloads.
+  getAsset(payloadId: string) {
+    return this.req<AssetView>(`/asset${assetQuery(payloadId)}`);
+  }
+  getAssetEntries(payloadId: string, path?: string) {
+    return this.req<AssetEntriesResponse>(`/asset/entries${assetQuery(payloadId, path)}`);
+  }
+  getAssetContent(payloadId: string, path?: string) {
+    return this.req<AssetContentResponse>(`/asset/content${assetQuery(payloadId, path)}`);
   }
   getExtensions() {
     return this.req<ExtensionsResponse>("/ext");
@@ -177,31 +172,23 @@ export class LiveClient implements RunClient {
   async disableExtension(name: string) {
     await this.req("/ext/disable", { method: "POST", body: JSON.stringify({ name }) });
   }
-  async uploadArtifact(file: File) {
-    const fileLoaded = new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64Data = result.split(",")[1] || result;
-        resolve(base64Data);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    const base64Data = await fileLoaded;
+}
 
-    return this.req<UploadedArtifact>("/artifacts/upload", {
-      method: "POST",
-      body: JSON.stringify({
-        filename: file.name,
-        file_data: base64Data,
-      }),
-    });
+function assetQuery(payloadId: string, path?: string): string {
+  const params = new URLSearchParams({ payload_id: payloadId });
+  if (path) params.set("path", path);
+  return `?${params.toString()}`;
+}
+
+class NoServerError extends Error {
+  constructor() {
+    super("asset content needs a live server (arctx web / arctx serve)");
   }
 }
 
 export class StaticClient implements RunClient {
   readonly writable = false;
+  readonly live = false;
   activeLaneId: string | null = null;
   activeRunId: string | null = null;
   constructor(private readonly doc: RunDocument) {}
@@ -226,12 +213,6 @@ export class StaticClient implements RunClient {
   async attach(): Promise<void> {
     throw new ReadOnlyError();
   }
-  async attachAsset(): Promise<void> {
-    throw new ReadOnlyError();
-  }
-  async visibleAssets(): Promise<RunPayload[]> {
-    return [];
-  }
   async cut(): Promise<void> {
     throw new ReadOnlyError();
   }
@@ -244,8 +225,17 @@ export class StaticClient implements RunClient {
   async createLane(): Promise<CreateLaneResponse> {
     throw new ReadOnlyError();
   }
-  async adoptLane(): Promise<AdoptLaneResponse> {
-    throw new ReadOnlyError();
+  async getGitChangeDiff(): Promise<GitChangeDiff> {
+    throw new NoServerError();
+  }
+  async getAsset(): Promise<AssetView> {
+    throw new NoServerError();
+  }
+  async getAssetEntries(): Promise<AssetEntriesResponse> {
+    throw new NoServerError();
+  }
+  async getAssetContent(): Promise<AssetContentResponse> {
+    throw new NoServerError();
   }
   async getExtensions() {
     return { extensions: [] };
@@ -254,9 +244,6 @@ export class StaticClient implements RunClient {
     throw new ReadOnlyError();
   }
   async disableExtension(): Promise<void> {
-    throw new ReadOnlyError();
-  }
-  async uploadArtifact(): Promise<any> {
     throw new ReadOnlyError();
   }
 }

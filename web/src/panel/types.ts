@@ -29,7 +29,6 @@ export interface DetailUnit {
   selected: RecordSelection;
 }
 
-export type AdoptMode = "explicit" | "history" | "reachable" | "lane_head" | "lane_tail";
 
 export type Tab = "content" | "flow" | "edit";
-export type AttachPreset = "note" | "asset" | "git_change" | "diagram" | "command_run" | "custom";
+export type AttachPreset = "note" | "git_change" | "diagram" | "command_run" | "custom";

@@ -7,10 +7,12 @@ One frontend, two data modes — the UI only talks to a `RunClient`, so the same
 components serve both:
 
 - **Live mode (read + write)** — talks to `arctx serve`'s HTTP API. Add nodes
-  and steps, create lanes, adopt existing records into lanes, attach payloads to
-  a node or step, and cut records from the canvas.
+  and steps, create lanes, attach payloads to a node or step, and cut records
+  from the canvas. Asset content and git diffs are resolved from the repository
+  by the server on demand, so they are only available here.
 - **Static / share mode (read-only)** — renders a run document embedded in the
-  page (`<script id="arctx-run" type="application/json">…</script>`). No backend.
+  page (`<script id="arctx-run" type="application/json">…</script>`). No backend,
+  so assets show their `(commit, path)` reference rather than their content.
 
 The data contract is exactly `arctx export --format json`
 (`arctx.core.run.export.json_document`), mirrored in `src/types.ts`.
@@ -45,8 +47,35 @@ provide that endpoint, so the frontend simply uses automatic layout there.
 
 The detail panel on the right can be resized by dragging its left edge. The
 chosen width is saved in the browser for the next visit.
-Live mode also shows the current lane from `arctx serve` in the header and uses
-it as the default adoption target when possible.
+Live mode also shows the current lane from `arctx serve` in the header.
+
+## Lanes and search
+
+Lanes are flat, git-branch-like work units — there is no lane hierarchy. The
+left sidebar is the GUI form of `arctx explore`: open lanes first with their
+one-line current summary (the latest `arctx lane summarize` / `lane close`
+summary), closed lanes folded behind a toggle. Selecting a lane makes it
+current, pans the canvas to it, and shows its purpose, status, and full current
+summary in the detail panel.
+
+The search box is `explore --query`: whitespace-separated terms matched
+case-insensitively with AND semantics across lane names, lane purposes, and the
+payloads each lane owns. It runs entirely against the loaded run document — no
+server round-trip — and each hit links to the records it matched.
+
+## Assets and git changes
+
+An asset is a reference to a git object, `(commit, path)`, not a copied file.
+Attach one with `arctx asset attach <TARGET_ID> <PATH>` after committing the
+file. In live mode the panel resolves it through `GET /asset`,
+`/asset/entries`, and `/asset/content`: images render inline, text files show a
+preview, and a directory asset can be browsed one level at a time. A commit
+missing from the local clone reports that status instead of failing.
+
+`git_change` records carry only the branch and commit hashes; the subject, file
+list, diff stat, and patch are derived from the repository at view time through
+`POST /web/ext/git/diff` (mounted by `arctx web`). Commits absent from this
+clone show `(commit not available locally)`.
 
 ## Markdown notes
 
@@ -126,9 +155,9 @@ script loaded by the page:
 If the app has already loaded, call `window.arctxWeb.registerPayloadRenderer`
 directly.
 
-Image sources are intentionally restricted to `data:image/png|jpeg|webp` and
-run artifacts (`artifact://plots/loss.png`, served as `/artifacts/plots/loss.png`
-by `arctx web`). Sections support `json`, `list`, `text`, `table`, `markdown`,
+Inline image sources are restricted to `data:` image URIs. Repository files are
+assets: commit them and use `arctx asset attach`, which renders through the
+asset viewer above. Sections support `json`, `list`, `text`, `table`, `markdown`,
 `diff`, and `image`; markdown is rendered as safe text, not raw HTML.
 
 For trusted local extensions that need richer UI, register a custom element.

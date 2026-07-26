@@ -23,6 +23,8 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.dump import cli_dump
     from arctx_cli.commands.export import add_parser as add_export_parser
     from arctx_cli.commands.export import cli_export
+    from arctx_cli.commands.explore import add_parser as add_explore_parser
+    from arctx_cli.commands.explore import cli_explore
     from arctx_cli.commands.ext import add_parser as add_ext_parser
     from arctx_cli.commands.ext import cli_ext
     from arctx_cli.commands.graph import add_parser as add_graph_parser
@@ -53,14 +55,6 @@ def core_cli_commands() -> list[CliCommand]:
     )
     from arctx_cli.commands.serve import add_parser as add_serve_parser
     from arctx_cli.commands.serve import cli_serve
-    from arctx_cli.commands.sync_cmd import (
-        add_pull_parser,
-        add_push_parser,
-        add_remote_parser,
-        cli_pull,
-        cli_push,
-        cli_remote,
-    )
     from arctx_cli.commands.show import add_parser as add_show_parser
     from arctx_cli.commands.show import cli_show
     from arctx_cli.commands.use import add_parser as add_use_parser
@@ -74,6 +68,7 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("asset", add_asset_parser, cli_asset),
         CliCommand("attach", add_attach_parser, cli_attach),
         CliCommand("current", add_current_parser, cli_current),
+        CliCommand("explore", add_explore_parser, cli_explore),
         CliCommand("ext", add_ext_parser, cli_ext),
         CliCommand("dump", add_dump_parser, cli_dump),
         CliCommand("export", add_export_parser, cli_export),
@@ -90,8 +85,6 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("propose", add_propose_parser, cli_propose),
         CliCommand("accept", add_accept_parser, cli_accept),
         CliCommand("reject", add_reject_parser, cli_reject),
-        CliCommand("remote", add_remote_parser, cli_remote),
-        CliCommand("push", add_push_parser, cli_push),
         CliCommand("serve", add_serve_parser, cli_serve),
         CliCommand("show", add_show_parser, cli_show),
         CliCommand("use", add_use_parser, cli_use),

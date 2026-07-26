@@ -12,8 +12,6 @@ from typing import TYPE_CHECKING
 from arctx.core.schema.graph import Node, Step
 from arctx.ext.git.payloads import (
     BranchPayload,
-    CommitEntry,
-    DiffSummary,
     GitChangePayload,
 )
 from arctx.core.schema.payloads import PayloadBase
@@ -41,7 +39,7 @@ class ParallelSessionConflict(RuntimeError):
         super().__init__(
             f"non-fast-forward: branch {branch!r} tip is {expected_tip!r} "
             f"but session current is {list(current)!r}. "
-            f"Pull or rebase before committing (arctx pull is planned)."
+            f"Pull or rebase before committing."
         )
 
 
@@ -49,14 +47,9 @@ def check_branch_tip_consistency(
     graph: "RunGraph",
     branch: str,
     current_node_ids: tuple[str, ...],
-    repo_id: str = "",
 ) -> None:
-    """Raise ParallelSessionConflict if branch's latest tip is not in current_node_ids.
-
-    Keyed by ``(repo_id, branch)`` so a ``main`` in one repo does not gate
-    commits to a ``main`` in another repo sharing the run.
-    """
-    tip_event = latest_branch_tip(graph, branch, repo_id)
+    """Raise ParallelSessionConflict if branch's latest tip is not in current_node_ids."""
+    tip_event = latest_branch_tip(graph, branch)
     if tip_event is None:
         return
 
@@ -103,75 +96,19 @@ def resolve_current_branch(
     return "unknown"
 
 
-def capture_git_info(
-    *,
-    head_commit: str,
-    dry_run: bool,
-    repo_path: Path,
-) -> tuple[DiffSummary, tuple[CommitEntry, ...]]:
-    """Return (diff_summary, commit_log) for *head_commit* after a git operation."""
-    if dry_run:
-        return DiffSummary(files_changed=0, insertions=0, deletions=0), ()
-
-    import re  # noqa: PLC0415
-    import subprocess  # noqa: PLC0415
-
-    diff_summary = DiffSummary(files_changed=0, insertions=0, deletions=0)
-    commit_log: tuple[CommitEntry, ...] = ()
-
-    try:
-        from arctx.ext.git.helpers import repo as git_repo  # noqa: PLC0415
-        raw_log = git_repo.commit_log_for_commits(repo_path, [head_commit])
-        commit_log = tuple(
-            CommitEntry(
-                sha=e["sha"],
-                subject=e["subject"],
-                author=e["author"],
-                date=e["date"],
-            )
-            for e in raw_log
-        )
-    except Exception:  # noqa: BLE001
-        pass
-
-    try:
-        stat_result = subprocess.run(
-            ["git", "diff", "--shortstat", "HEAD~1", "HEAD"],
-            cwd=str(repo_path),
-            capture_output=True,
-            text=True,
-        )
-        if stat_result.returncode == 0 and stat_result.stdout.strip():
-            raw = stat_result.stdout.strip()
-            fc = re.search(r"(\d+) files? changed", raw)
-            ins = re.search(r"(\d+) insertion", raw)
-            dls = re.search(r"(\d+) deletion", raw)
-            diff_summary = DiffSummary(
-                files_changed=int(fc.group(1)) if fc else 0,
-                insertions=int(ins.group(1)) if ins else 0,
-                deletions=int(dls.group(1)) if dls else 0,
-            )
-    except Exception:  # noqa: BLE001
-        pass
-
-    return diff_summary, commit_log
-
-
 def record_forward_step(
     self: "RunHandle",
     *,
     current_node_ids: tuple[str, ...],
     current_branch: str,
     head_commit: str,
-    diff_summary: DiffSummary,
-    commit_log: tuple[CommitEntry, ...],
+    commits: tuple[str, ...] = (),
     extra_payloads: list[PayloadBase],
     event_type: str,
     event_summary: str,
     event_data: dict,
     user_id: str | None,
     lane_id: str | None,
-    repo_id: str = "",
 ) -> Step:
     """Append node, step, standard payloads + extra payloads, and work events."""
     if user_id is not None and lane_id is not None:
@@ -192,7 +129,6 @@ def record_forward_step(
         payload_id=self._next_id("pl"),
         target_id=step_id,
         branch=current_branch,
-        repo_id=repo_id,
     )
     self.run_graph.attach_payload(branch_payload)
 
@@ -201,9 +137,7 @@ def record_forward_step(
         target_id=step_id,
         branch=current_branch,
         head_commit=head_commit,
-        diff_summary=diff_summary,
-        commit_log=commit_log,
-        repo_id=repo_id,
+        commits=commits,
     )
     self.run_graph.attach_payload(git_payload)
 
@@ -218,7 +152,6 @@ def record_forward_step(
             user_id=user_id,
             branch=current_branch,
             tip_node_id=output_node.node_id,
-            repo_id=repo_id,
         )
         self.run_graph.add_work_event(tip_event)
 

@@ -397,7 +397,7 @@ PYTHONPATH=src python3 -m arctx_cli.main ...
   lane_events.jsonl
 ```
 
-`SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<ARCTX_HOME>/runs`.
+`SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<repo_root>/.arctx/runs` (git-native in-repo storage); `ARCTX_HOME` overrides it, and it is the fallback outside a git repo. Only the json/jsonl canon is committed — `run.cache.pkl` / `run.db` are excluded by the `.arctx/.gitignore` that `arctx init` generates.
 
 `GraphView` / `views.jsonl` were removed during the 0.3 beta redesign. Old view records are ignored by the new core graph model.
 

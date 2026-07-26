@@ -15,13 +15,17 @@ arctx dump --format outline
 
 What those setup commands do:
 
-- `arctx init <req_id>` creates a run under `<ARCTX_HOME>/runs`.
+- `arctx init <req_id>` creates a run under `<repo_root>/.arctx/runs` (git-native
+  storage: run data lives inside the repository and sharing is just git). It also
+  writes `<repo_root>/.arctx/.gitattributes` (`* linguist-generated=true`,
+  `*.jsonl merge=union`) and `.arctx/.gitignore` (derived files such as
+  `run.cache.pkl` / `run.db`), idempotently. When `ARCTX_HOME` is set, or when run
+  outside a git repo, `<ARCTX_HOME>/runs` is used instead.
 - `arctx init ... --extension git` also enables the git extension for that run.
   When run inside a git repo, it writes this repo's `<gitdir>/arctx-id` and
   installs hooks unless `--no-hooks` / `--git-no-hooks` is used.
-- `arctx git init` registers the current repo in the run's repo registry,
-  writes the repo pointer, writes the `.arctx-repo` marker, and installs hooks.
-  Run it once per repo you want to bind explicitly to the current run.
+- `arctx git init` binds this checkout to the run (writes the repo pointer) and
+  installs hooks.
 - `arctx use <run_id>` switches the current repo to an existing run by writing
   `<gitdir>/arctx-id`.
 - `eval "$(arctx use <run_id> --shell)"` switches only the current terminal by
@@ -74,14 +78,50 @@ Core commands:
 - `arctx use <run_id>`: write the repo-scoped current run pointer.
 - `arctx use <run_id> --shell`: print an `ARCTX_RUN_ID` export for shell-local
   pinning.
-- `arctx lane create <name>`: create a lane without switching to it.
+- `arctx lane create <name> [--purpose TEXT]`: create a lane without switching
+  to it. `--purpose` is recorded on the lane and shown by `arctx explore` and
+  `arctx guide --context`.
 - `arctx lane switch <name-or-id>`: switch to an existing lane.
-- `arctx lane adopt <name-or-id> --record ID`: register existing records as
-  current members of a lane without rewriting creation provenance. Use
-  `--history NODE` or `--reachable NODE` for subgraph adoption.
+- `arctx lane summarize <name-or-id> --summary "..."`: refresh the lane's
+  current summary *without* closing it — the mid-work counterpart of
+  `lane close`. Summaries are append-only; the latest wins.
 - `arctx lane summaries <name-or-id>`: list `SummaryPayload`s on active terminal
   nodes in the lane. Branched lanes can return multiple summaries.
 - `arctx export [--format md|tex|html]`: render a run as a shareable document.
+
+## arctx explore
+
+Lanes are flat, so there is nothing to descend. `explore` answers two of the
+three retrieval questions (`guide --context` answers the first).
+
+- `arctx explore`: one line per lane — status marker, name, and the current
+  summary collapsed to its first line (truncated to ~160 chars). Open lanes come
+  first (by `started_at`); closed lanes fold into `N closed lanes — use --all`,
+  the way `git branch` hides noise. `--all` shows them.
+- `arctx explore <LANE>`: that lane's overview — purpose, full current summary,
+  status, direct record counts, and active frontiers. Name or id.
+- `arctx explore --query "TERMS"`: **the primary retrieval path**. Whitespace
+  separated terms match case-insensitively with AND semantics across lane names,
+  lane purposes, and every payload a lane owns. Each hit prints the lane name and
+  status, a ~180-char snippet around the first term, and the record/payload ids
+  to jump to with `arctx show`. Name matches rank first. Position-independent:
+  no current lane, no descent, and closed lanes are equally findable.
+- `--json` works in all three modes.
+
+Snippets exclude opaque ids (`pl_`/`n_`/`t_`) — if you already have an id, use
+`arctx show <ID>` rather than search. A lane's *current summary* is the latest
+`SummaryPayload` it owns, ordered by the append-only work-event ledger rather
+than jsonl line order (which a union merge may reorder).
+
+## arctx guide
+
+- `arctx guide`: the static usage guide plus the dynamic Current Context. The
+  static text covers exactly the three write verbs (open a lane → `add` → close
+  with a summary, plus `reparent` and `lane summarize`) and the three retrieval
+  questions; its length is a cognitive-load budget.
+- `arctx guide --context`: only the dynamic block — Run ID, run purpose, current
+  lane (status, purpose, current summary), active frontiers, enabled extensions.
+  No ancestor chain: there is no lane tree. Cheap enough to call every turn.
 
 ## DAG Records
 
@@ -115,15 +155,9 @@ Setup commands:
 
 - `arctx init <req_id> --extension git`: create a run and enable the git
   extension. Inside a git repo, this also writes `<gitdir>/arctx-id` and
-  installs hooks, but use `arctx git init` when you want to explicitly register
-  the repo in the run registry.
-- `arctx git init [--repo-path P] [--slug USER/REPO] [--no-hooks]`: register a
-  repo into the current run and install hooks. This is the preferred "bind this
-  checkout to this run" command.
-- `arctx git repo add [--repo-path P] [--slug USER/REPO] [--no-hooks]`: same
-  registration primitive, useful when joining another repo to an existing run.
-- `arctx git repo list`: list registered repos as JSON.
-- `arctx git repo show [--repo-id ID | --repo-path P]`: show one registry entry.
+  installs hooks.
+- `arctx git init [--repo-path P] [--no-hooks]`: bind this checkout to the
+  current run and install hooks.
 
 Daily git verbs:
 
@@ -143,10 +177,20 @@ Daily git verbs:
 
 Commit attachment commands:
 
-- `arctx git add --step T --commit SHA`: attach commit hashes to a
-  step. This is different from `arctx git repo add`.
-- `arctx git list --step T`
-- `arctx git show --step T`
+- `arctx git add --step T --commit SHA`: attach commit hashes to a step.
+- `arctx git list --step T`: list the attached commit hashes.
+- `arctx git show --step T`: print each git_change record plus a `derived` block
+  — subject, author, date, diff stat, and changed files, **read from git at
+  display time**.
+
+A `GitChangePayload` stores facts only: the commit hashes (`head_commit` and
+`commits`) and the `branch`. Diff text and commit metadata are never recorded;
+`arctx.ext.git.derive` reads them back out of the repository on every display.
+If the commit is not in this clone (shallow clone, never pushed), derivation
+does not fail — it returns `available: false` with an explicit
+`(commit not available locally)` marker. Derived diffs exclude `.arctx/**`,
+since recording commit N necessarily lands in commit N+1 and the run data is not
+the change under review.
 
 Worktree helpers:
 
@@ -156,39 +200,6 @@ Worktree helpers:
 - `arctx git worktree list`: JSON-parsed `git worktree list --porcelain`.
 - `arctx git worktree remove <path> [--force]`: wrapper over
   `git worktree remove`.
-
-## Multiple Repos
-
-One ARCTX run can span several git repos. The run stores a repo registry
-(`RepoPayload`), and git payloads reference repos by `repo_id`. Core graph
-records remain repo-agnostic.
-
-Typical flow:
-
-```bash
-cd ~/dev/frontend
-arctx init "feature X" --run-id run_x --extension git
-arctx git init
-
-cd ~/dev/backend
-arctx git repo add --run run_x
-```
-
-After that, commits from either repo land in the same run. Branch tips are
-keyed by `(repo_id, branch)`, so `frontend/main` and `backend/main` do not
-collide.
-
-Registry entry fields:
-
-- `repo_id`: opaque primary key stored in the run.
-- `slug`: display name such as `USER/REPO`.
-- `remotes`: every discovered remote URL form.
-- `canonical`: normalized remote key, matching SSH and HTTPS forms.
-- `local_path`: this machine's checkout path.
-
-`local_path` is environment-specific. `arctx export` strips it by default;
-`arctx git repo list` and `arctx git repo show` keep it because they are local
-inspection commands.
 
 ## Work Sessions
 
@@ -247,12 +258,9 @@ context, while `export` produces an artifact to hand to people.
 
 - `--format md|tex|html` (default `md`)
 - `--exclude-cut`: drop cut nodes/steps.
-- `--include-local`: include repo `local_path` values.
 - `--node` / `--depth` / `--full-payloads`: traversal options shared with
   `dump`.
 - `--output PATH` / `-o PATH`: write to a file instead of stdout.
-
-When repos are registered, export includes a Repos section.
 
 ## Graph
 

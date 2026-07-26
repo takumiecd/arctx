@@ -8,8 +8,8 @@
 
 1. **Git コミットと履歴の自動追跡**:
    変更したコードのコミットハッシュや差分情報をステップに Payload として記録します。
-2. **複数リポジトリの統合管理**:
-   1つの run に対して複数の Git リポジトリを紐付け（`repo add`）、それぞれの履歴を並行して追跡できます。
+2. **1 Run = 1 Repo**:
+   run はデータを包むリポジトリ自身の中に存在し、git レコードは修飾子なしでその repo を指します（「absent = self」）。
 3. **Git フックの統合**:
    `post-commit` や `post-rewrite` などの Git フックをインストールし、Git コマンドの実行時に自動的に ARCTX 側へ履歴を記録させることができます。
 4. **GUI での Diff プレビュー**:
@@ -20,7 +20,7 @@
 ## 使い方 (CLI)
 
 ### 1. リポジトリの初期化とフック設定
-現在のワーキングディレクトリの Git リポジトリを active run に登録し、自動追跡用の Git フックをインストールします。
+現在のワーキングディレクトリの Git リポジトリを active run に紐づけ、自動追跡用の Git フックをインストールします。
 
 ```bash
 arctx git init
@@ -34,21 +34,7 @@ arctx git init
 arctx commit -m "修正内容のサマリー"
 ```
 
-### 3. リポジトリ設定の管理
-連携している Git リポジトリを管理します。
-
-```bash
-# 既存のリポジトリをこの run に登録する（デフォルトは cwd。--repo-path で明示指定）
-arctx git repo add --repo-path <local_path> --slug <USER/REPO>
-
-# 登録されているリポジトリの一覧を表示
-arctx git repo list
-
-# 特定のリポジトリの情報を表示（デフォルトは cwd を解決。--repo-id で明示指定）
-arctx git repo show --repo-id <repo_id>
-```
-
-### 4. ブランチ操作の記録
+### 3. ブランチ操作の記録
 マージ・リバート・チェリーピックなどの履歴を記録・追跡します。また、記録済みのブランチ情報は `branch list` / `branch show` で参照できます。
 
 ```bash

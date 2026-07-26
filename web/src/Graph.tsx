@@ -64,6 +64,15 @@ export interface LaneFocusRequest {
   ts: number;
 }
 
+// The same idea for a single record: search results ask the canvas to pan to
+// the record they matched. A step has no node of its own on the canvas, so it
+// focuses its output node.
+export interface RecordFocusRequest {
+  kind: "node" | "step";
+  id: string;
+  ts: number;
+}
+
 // Custom node with source/target handles on each side. ConnectionMode.Loose
 // keeps dragging ergonomic while fixed handle IDs let rendered edges enter the
 // side that matches graph direction.
@@ -222,6 +231,7 @@ interface Props {
   dark: boolean;
   layoutDirection: LayoutDirection;
   focusLane?: LaneFocusRequest | null;
+  focusRecord?: RecordFocusRequest | null;
 }
 
 type Side = "top" | "right" | "bottom" | "left";
@@ -376,6 +386,7 @@ function GraphCanvas({
   dark,
   layoutDirection,
   focusLane,
+  focusRecord,
 }: Props) {
   const reactFlow = useReactFlow<Node, Edge>();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -648,6 +659,32 @@ function GraphCanvas({
       maxZoom: 1.1,
     });
   }, [focusLane, collapsedLaneIds, doc, nodes, reactFlow, showCuts]);
+
+  // Pan/zoom to a single record (a search hit). Steps live on edges, so focus
+  // the step's output node instead.
+  const lastRecordFocusTsRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focusRecord) return;
+    if (lastRecordFocusTsRef.current === focusRecord.ts) return;
+    const nodeId =
+      focusRecord.kind === "node"
+        ? focusRecord.id
+        : doc.steps.find((step) => step.step_id === focusRecord.id)?.output_node_id;
+    if (!nodeId) {
+      lastRecordFocusTsRef.current = focusRecord.ts;
+      return;
+    }
+    // The node may not be on the canvas yet (lane still collapsed, cuts
+    // hidden); leave the ts unset so a later `nodes` update retries.
+    if (!nodes.some((node) => node.id === nodeId)) return;
+    lastRecordFocusTsRef.current = focusRecord.ts;
+    void reactFlow.fitView({
+      nodes: [{ id: nodeId }],
+      duration: 450,
+      padding: 0.6,
+      maxZoom: 1.1,
+    });
+  }, [focusRecord, doc, nodes, reactFlow]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

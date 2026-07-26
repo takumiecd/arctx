@@ -9,9 +9,7 @@ from arctx.core.schema.graph import Step
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.payloads import RevertPayload
 from arctx.ext.git.queries import current_sha, step_by_sha
-from arctx.ext.git.registry import resolve_repo_id
 from arctx.ext.git.verbs._forward_step import (
-    capture_git_info,
     check_branch_tip_consistency,
     resolve_current_branch,
     resolve_current_node_ids,
@@ -79,11 +77,10 @@ def revert_impl(
         repo_path=resolved_repo_path,
     )
 
-    repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
 
     if lane_id is not None:
         check_branch_tip_consistency(
-            self.run_graph, current_branch, current_node_ids, repo_id
+            self.run_graph, current_branch, current_node_ids
         )
 
     if not dry_run:
@@ -111,12 +108,6 @@ def revert_impl(
             from arctx.ext.git.helpers import repo as git_repo  # noqa: PLC0415
             head_commit = git_repo.current_commit(resolved_repo_path)
 
-    diff_summary, commit_log = capture_git_info(
-        head_commit=head_commit,
-        dry_run=dry_run,
-        repo_path=resolved_repo_path,
-    )
-
     from arctx.core.schema.graph import Node  # noqa: PLC0415
     from arctx.core.schema.work_helpers import make_lane_pointer_event  # noqa: PLC0415
     from arctx.ext.git.events import (  # noqa: PLC0415
@@ -143,7 +134,6 @@ def revert_impl(
         payload_id=self._next_id("pl"),
         target_id=step_id,
         branch=current_branch,
-        repo_id=repo_id,
     )
     self.run_graph.attach_payload(branch_payload)
 
@@ -152,9 +142,6 @@ def revert_impl(
         target_id=step_id,
         branch=current_branch,
         head_commit=head_commit,
-        diff_summary=diff_summary,
-        commit_log=commit_log,
-        repo_id=repo_id,
     )
     self.run_graph.attach_payload(git_payload)
 
@@ -174,7 +161,6 @@ def revert_impl(
             user_id=user_id,
             branch=current_branch,
             tip_node_id=output_node.node_id,
-            repo_id=repo_id,
         )
         self.run_graph.add_work_event(tip_event)
 
