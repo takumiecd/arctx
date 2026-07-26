@@ -68,7 +68,7 @@ Two-tier design. Core payloads live under `packages/arctx/src/arctx/core/schema/
 - `AssetPayload(payload_id, target_id, target_kind, commit, path, title=None)` — a **reference to a git object**, never a copy. `path` is repo-root-relative and may name a file *or a directory* (git has trees). Per "absent = self" there is no repo field: the repository is the one enclosing the run data. Nothing derivable is stored — no size, mime type, or bytes; those come from git at read time. Attach via `handle.attach_asset(...)` or `arctx asset attach`, which validates that `<commit>:<path>` resolves and warns (without blocking) when the commit is on no remote-tracking ref. The payload record itself is git-import-free; resolution plumbing lives in `packages/arctx/src/arctx/core/gitref.py` and the serve read path in `packages/arctx/src/arctx/serve/assets.py`.
 
 **Git extension payloads** (`packages/arctx/src/arctx/ext/git/payloads.py`):
-- `GitChangePayload(payload_id, target_id, branch, head_commit, diff_summary, commit_log=())` — git record on a Step
+- `GitChangePayload(payload_id, target_id, branch, head_commit, commits=())` — git commit reference on a Step. The record stores **facts only**: commit hashes and a branch. Diff stats, commit subjects, file lists, and patch text are derived at read time by `arctx.ext.git.derive.derive_git_change` / `derive_patch` over `arctx.core.gitref` plumbing ("jsonl は事実、見た目は導出"). Derivation never raises: a commit missing from the clone comes back with `available=False` and the explicit `(commit not available locally)` marker. Derived diffs exclude `.arctx/**`. Do not reintroduce `diff_summary`, `commit_log`, `CommitEntry`, `DiffSummary`, or baked `<run_dir>/artifacts/git/*.patch` files.
 - `BranchPayload(...)`, `MergePayload`, `RevertPayload`, `CherryPickPayload`
 There is no repo registry and no `repo_id`. A run lives inside exactly one repository, so a git record with no repo qualifier means "the repo carrying this data" ("absent = self"). Branch tip events are keyed by branch alone.
 
@@ -108,6 +108,7 @@ When adding a new RunHandle method, implement it in a focused `packages/arctx/sr
 
 Current commands:
 
+- `lane` — manage lanes (flat, git-branch-like). `lane create NAME [--purpose TEXT]`, `lane switch`, `lane summarize NAME --summary TEXT` (refresh the current summary mid-work, lane stays open), `lane close NAME --summary TEXT`, `lane open`. A lane's *current summary* is the latest `SummaryPayload` it owns, ordered by `record_event_rank` (the append-only work-event ledger, not jsonl line order).
 - `current` / `use` — manage the active run pointer. `use <run> --shell` prints
   `export ARCTX_RUN_ID=<run>` for `eval` (terminal-scoped) instead of writing the
   repo pointer.
@@ -115,7 +116,8 @@ Current commands:
 - `add` — DAG core surface. Adds one `Step` from one or more input nodes and creates its output node. Both the public CLI and internal storage use `Step` (the `Transition` rename is complete). Nodes are not created standalone; a Node is born only as a Step's output (or the run root). There is no `add node` / `add step` command, no `RunHandle.add_node` verb, and no `POST /node` endpoint.
 - `attach <id>` — attach a generic payload to a Node or Step by resolving the record id
 - `asset` — git-object assets. `asset attach <TARGET_ID> <PATH> [--commit REF] [--title TEXT]` records a `(commit, path)` reference on a Node or Step (target kind auto-resolved like `attach`/`cut`); the file must already be committed. `asset show <PAYLOAD_ID>` prints the reference and whether it resolves in this clone (`found` / `missing_commit` / `missing_path` / `no_repository`).
-- `guide` — print the agent-facing usage guide and current run/lane context
+- `explore` — flat, summary-first retrieval over lanes. No args: one line per lane (open first; closed folded into a count unless `--all`). `explore <LANE>`: that lane's purpose / full current summary / status / record counts / active frontiers. `explore --query "TERMS"`: case-insensitive AND search across lane names, purposes, and every payload a lane owns — the **primary** retrieval path, position-independent (no current lane, no descent), each hit carrying a snippet plus ids to jump to with `show`. `--json` in all modes. Core helpers live in `arctx.core.lanes` (`search_lanes`, `lane_overview`, `list_lane_overviews`, `lane_current_summary`, `record_event_rank`). Lanes are flat — never add breadcrumbs, ancestors, children, or stale detection.
+- `guide` — print the agent-facing usage guide and current run/lane context. The static text is deliberately short (it is a cognitive-load budget): three write verbs (open a lane → `add` → close with a summary, plus `reparent` and `lane summarize`) and three retrieval questions (`guide --context` / `explore --query` / `dump`+`show`). `--context` prints Run ID, run purpose, current lane (status/purpose/current summary), active frontiers, and enabled extensions — no ancestor chain, since there is no lane tree.
 - `log` — user-facing DAG history command; wraps outline dump / trace behavior
 - Internal compatibility helpers remain in `commands.step`, `commands.node`, and `commands.payload`, but the public DAG core surface should use `add`, `show`, and `attach`.
 - `cut` — cut a Node or Step (`cut node NODE_ID` or `cut step T_ID`)

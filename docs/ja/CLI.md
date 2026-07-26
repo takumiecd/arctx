@@ -78,7 +78,9 @@ arctx log --run demo
 - `arctx use <run_id>`: repo スコープの current run pointer を書き込む。
 - `arctx use <run_id> --shell`: shell ローカル固定用の `ARCTX_RUN_ID` export を
   出力する。
-- `arctx lane create <name>`: run に lane を作成する。切替はしない。
+- `arctx lane create <name> [--purpose "なぜこの lane があるか"]`: run に lane を
+  作成する。切替はしない。`--purpose` は lane record に記録され、
+  `arctx explore <LANE>` と `arctx guide --context` が表示する。
 - `arctx lane switch <name-or-id>`: 既存 lane に切り替え、repo スコープの
   current lane pointer を書き込む。存在しない名前はエラー。
 - `arctx lane <name-or-id>`: `switch` の省略形。typo 防止のため自動作成しない。
@@ -92,15 +94,52 @@ arctx log --run demo
   `--summary` を省略すると、`arctx lane close <name-or-id> --summary "<your findings>"`
   という実行すべき正確なコマンドを添えたエラーになる。
 - `arctx lane open <name-or-id>`: 閉じた lane を開き直して作業を再開する。`close` と対称。
+- `arctx lane summarize <name-or-id> --summary "..." [--summary-format ...] [--node ID]`:
+  lane を閉じずに **current summary を更新**する。`lane close` の作業途中版で、
+  lane は open のまま書き込み可能。summary は append-only で、最新が勝つ。
 - `arctx lane list` / `arctx lane show <name-or-id>`: lane を検査する。
 - `arctx lane summaries <name-or-id>`: lane の active な末端 node に付いた
   `SummaryPayload` を列挙する。分岐した lane では複数返る。
 - `arctx export [--format md|tex|html]`: run を共有可能なドキュメントとして描画する。
 
+## arctx explore
+
+lane はフラット（木ではない）なので、explore に「降りる」操作はありません。
+取得系が答える 3 つの問いのうち 2 つを担当します。
+
+- `arctx explore`: lane を 1 行ずつ列挙する（status マーカー / 名前 /
+  current summary の 1 行折りたたみ、約 160 文字で切り詰め）。
+  **open な lane を先に**（`started_at` 順）並べ、closed は
+  `N closed lanes — use --all` の 1 行に畳む。`--all` で closed も表示する。
+  `git branch` がノイズを隠すのと同じ発想。
+- `arctx explore <LANE>`: その lane の overview。purpose / 完全な current summary /
+  status / 直接所有する record 数 / active frontier。名前でも id でも引ける。
+- `arctx explore --query "TERMS"`: **取得系の主役**。lane 名・lane の purpose・
+  その lane が所有する全 payload を対象に、空白区切りの語を
+  大文字小文字を無視した AND で検索する。ヒットごとに lane 名 + status、
+  最初の語の周辺約 180 文字の抜粋、そして `arctx show` で飛べる
+  record / payload id を出す。名前一致を先に並べる。
+  **位置非依存**: current lane も降下も不要で、closed lane も等しく見つかる。
+- `--json` は 3 モードすべてで使える。
+
+抜粋には opaque id（`pl_` / `n_` / `t_`）を含めない。id を既に持っているなら
+検索ではなく `arctx show <ID>` を使う。
+
+current summary の意味論: lane が所有する `SummaryPayload` のうち、
+`WorkEvent.created_records`（append-only 台帳）の順で**最後のものが勝つ**。
+jsonl の行順ではなくイベント順を使うのは、union マージ後も順序が壊れないため。
+
 ## arctx guide
 
+`arctx guide` の静的本文は「書き込みの 3 動詞」（lane を開く → `add` →
+summary 付きで close）と「取得の 3 つの問い」に絞ってあります。ガイドの長さは
+認知負荷の予算なので、削除済みサーフェス（lane 階層・独自 sync・コピー型 asset）
+への言及は持ちません。
+
 - `arctx guide`: 使い方の静的ガイドに加えて、動的な Current Context
-  （Run ID / Current Lane / Active Frontiers in Lane / 有効な extension 名）を表示する。
+  （Run ID / Run Purpose / Current Lane（status・purpose・current summary）/
+  Active Frontiers in Lane / 有効な extension 名）を表示する。
+  lane が木でなくなったので祖先チェーンは出さない。
   lane の解決順序は他の変更コマンドと同じ（`--lane` > `ARCTX_LANE_ID` > repo pointer）。
   context の解決に失敗しても exit code は常に 0 で、
   `## Current Context` の下に `(context unavailable: <例外型>: <メッセージ>)` という
@@ -220,8 +259,18 @@ extension のコマンド名前空間は、解決された current run からロ
 commit 添付コマンド:
 
 - `arctx git add --step T --commit SHA`: commit ハッシュを step に attach する。
-- `arctx git list --step T`
-- `arctx git show --step T`
+- `arctx git list --step T`: attach 済み commit ハッシュを列挙する。
+- `arctx git show --step T`: git_change record と、その `derived` ブロック
+  （**閲覧時に git から導出**した subject / author / date / diff stat /
+  変更ファイル一覧）を出す。
+
+`GitChangePayload` が持つ事実は commit ハッシュ（`head_commit` と `commits`）と
+`branch` だけです（「jsonl は事実、見た目は導出」）。diff テキスト・commit log は
+記録せず、表示のたびに `arctx.ext.git.derive` が git から読み直します。
+参照先 commit がこの clone に無い場合（shallow clone / push 忘れ）は失敗せず、
+`available: false` と `(commit not available locally)` マーカーを返します。
+導出する diff は `.arctx/**` を除外します（commit N の記録は commit N+1 に乗る
+仕様なので、run データ自体は「レビュー対象の変更」ではないため）。
 
 Worktree ヘルパー:
 

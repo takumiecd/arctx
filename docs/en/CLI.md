@@ -78,11 +78,50 @@ Core commands:
 - `arctx use <run_id>`: write the repo-scoped current run pointer.
 - `arctx use <run_id> --shell`: print an `ARCTX_RUN_ID` export for shell-local
   pinning.
-- `arctx lane create <name>`: create a lane without switching to it.
+- `arctx lane create <name> [--purpose TEXT]`: create a lane without switching
+  to it. `--purpose` is recorded on the lane and shown by `arctx explore` and
+  `arctx guide --context`.
 - `arctx lane switch <name-or-id>`: switch to an existing lane.
+- `arctx lane summarize <name-or-id> --summary "..."`: refresh the lane's
+  current summary *without* closing it — the mid-work counterpart of
+  `lane close`. Summaries are append-only; the latest wins.
 - `arctx lane summaries <name-or-id>`: list `SummaryPayload`s on active terminal
   nodes in the lane. Branched lanes can return multiple summaries.
 - `arctx export [--format md|tex|html]`: render a run as a shareable document.
+
+## arctx explore
+
+Lanes are flat, so there is nothing to descend. `explore` answers two of the
+three retrieval questions (`guide --context` answers the first).
+
+- `arctx explore`: one line per lane — status marker, name, and the current
+  summary collapsed to its first line (truncated to ~160 chars). Open lanes come
+  first (by `started_at`); closed lanes fold into `N closed lanes — use --all`,
+  the way `git branch` hides noise. `--all` shows them.
+- `arctx explore <LANE>`: that lane's overview — purpose, full current summary,
+  status, direct record counts, and active frontiers. Name or id.
+- `arctx explore --query "TERMS"`: **the primary retrieval path**. Whitespace
+  separated terms match case-insensitively with AND semantics across lane names,
+  lane purposes, and every payload a lane owns. Each hit prints the lane name and
+  status, a ~180-char snippet around the first term, and the record/payload ids
+  to jump to with `arctx show`. Name matches rank first. Position-independent:
+  no current lane, no descent, and closed lanes are equally findable.
+- `--json` works in all three modes.
+
+Snippets exclude opaque ids (`pl_`/`n_`/`t_`) — if you already have an id, use
+`arctx show <ID>` rather than search. A lane's *current summary* is the latest
+`SummaryPayload` it owns, ordered by the append-only work-event ledger rather
+than jsonl line order (which a union merge may reorder).
+
+## arctx guide
+
+- `arctx guide`: the static usage guide plus the dynamic Current Context. The
+  static text covers exactly the three write verbs (open a lane → `add` → close
+  with a summary, plus `reparent` and `lane summarize`) and the three retrieval
+  questions; its length is a cognitive-load budget.
+- `arctx guide --context`: only the dynamic block — Run ID, run purpose, current
+  lane (status, purpose, current summary), active frontiers, enabled extensions.
+  No ancestor chain: there is no lane tree. Cheap enough to call every turn.
 
 ## DAG Records
 
@@ -139,8 +178,19 @@ Daily git verbs:
 Commit attachment commands:
 
 - `arctx git add --step T --commit SHA`: attach commit hashes to a step.
-- `arctx git list --step T`
-- `arctx git show --step T`
+- `arctx git list --step T`: list the attached commit hashes.
+- `arctx git show --step T`: print each git_change record plus a `derived` block
+  — subject, author, date, diff stat, and changed files, **read from git at
+  display time**.
+
+A `GitChangePayload` stores facts only: the commit hashes (`head_commit` and
+`commits`) and the `branch`. Diff text and commit metadata are never recorded;
+`arctx.ext.git.derive` reads them back out of the repository on every display.
+If the commit is not in this clone (shallow clone, never pushed), derivation
+does not fail — it returns `available: false` with an explicit
+`(commit not available locally)` marker. Derived diffs exclude `.arctx/**`,
+since recording commit N necessarily lands in commit N+1 and the run data is not
+the change under review.
 
 Worktree helpers:
 

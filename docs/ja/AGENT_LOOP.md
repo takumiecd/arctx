@@ -1,13 +1,30 @@
 # Agent Loop
 
+## 文脈取得の 3 つの問い
+
+エージェントが必要とする問いは 3 つだけで、それぞれに 1 コマンドが対応します。
+lane はフラットなので、階層を歩く操作はどこにもありません。
+
+| 問い | コマンド |
+| --- | --- |
+| いま何が起きているか | `arctx guide --context` |
+| X について何が試されたか | `arctx explore --query "TERMS"` |
+| ここで何が起きたか | `arctx dump` / `arctx log` / `arctx show <ID>` |
+
+**検索が主役**です。`explore --query` は位置非依存で、current lane も降下も
+不要、closed lane も等しく見つかります。ヒットには飛べる id が付くので、
+`arctx show <ID>` で詳細に降りられます。lane 一覧が見たいだけなら
+`arctx explore`（closed は畳まれる。`--all` で展開）。
+
 ## 推奨ループ
 
-1. `arctx guide --context` で Run ID / Current Lane / Active Frontiers を安価に
-   確認する（毎ターン呼んでよい）。詳しい使い方は `arctx log` や `arctx guide`
-   （静的ガイド + Current Context）で読む。`arctx log`（プレーン実行）は
-   work event を古い順に並べた時系列ビュー（`git log --oneline` 相当）で、
-   これまでの経緯を素早く読み返すのに向く。lane 単位の目次が欲しいときは
-   `arctx log --lanes` を使う。
+1. `arctx guide --context` で Run ID / Run Purpose / Current Lane
+   （status・purpose・current summary）/ Active Frontiers を安価に確認する
+   （毎ターン呼んでよい）。過去の試行を探すときは `arctx explore --query "..."`。
+   詳しい使い方は `arctx guide`（静的ガイド + Current Context）で読む。
+   `arctx log`（プレーン実行）は work event を古い順に並べた時系列ビュー
+   （`git log --oneline` 相当）で、これまでの経緯を素早く読み返すのに向く。
+   lane 単位の目次が欲しいときは `arctx log --lanes` を使う。
 2. `arctx add --from NODE_ID --type suggestion --field proposal="..."` で
    意図を append する。`--from` は省略可能で、その場合は現在の lane の
    active frontier（active かつ後続 step のない node）が唯一のときはそれを使う。
@@ -41,8 +58,16 @@ worktree も分けるのが基本です。これは通常の git branch とは�
 組み合わせになることがあります。独立実験が終わったら、有望な terminal node を
 `--from` の繰り返しでまとめ、合成結果を 1 つの step として記録します。
 
-active な解から外す枝は削除せず `cut` します。lane ごとの最終知見は
+active な解から外す枝は削除せず `cut` します。node を別の入力に繋ぎ直すときは
+`arctx reparent NODE --from NEW_INPUT`（新しい producer step を足し、旧
+producer を cut する）を使います。lane ごとの最終知見は
 `arctx lane close --summary "..."` に入れて閉じます。
+
+lane が長く続くときは、途中で `arctx lane summarize <LANE> --summary "..."` を
+呼んで current summary を更新してください。この summary が
+`arctx explore` の 1 行表示と `explore --query` の検索対象になるので、
+更新しておくほど後から見つけやすくなります。lane を作るときに
+`--purpose` を付けておくのも同じ理由で効きます。
 
 ## セットアップのメンタルモデル
 

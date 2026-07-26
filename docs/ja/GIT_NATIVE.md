@@ -185,6 +185,54 @@ payload に持つ真実は commit hash（と branch）のみ。diff テキスト
 焼き込み済みテキストはキャッシュ扱いに格下げする。
 「jsonl は事実、見た目は導出」を設計原則とする。
 
+### Phase 4 実装で確定した詳細
+
+**レコード**（`arctx.ext.git.payloads.GitChangePayload`）:
+
+```
+GitChangePayload(payload_id, target_id, branch, head_commit, commits=(), metadata={})
+```
+
+- `diff_summary` / `commit_log` フィールドは**削除**。`DiffSummary` /
+  `CommitEntry` クラスも payload モジュールから消え、導出側の値型
+  `arctx.core.gitref.DiffStat` / `CommitInfo` に移った
+- `commits` は step が複数 commit にまたがる場合の全 SHA。`commit_shas`
+  プロパティが `commits or (head_commit,)` を返す。`base_commit` は
+  従来どおり `metadata` に置く（`base_commit` プロパティで読む）
+- payloads モジュールは git 非依存のまま（asset と同じ規約）
+
+**導出プラミング**（`arctx.core.gitref`、stdlib subprocess のみ）:
+`commit_exists` / `commit_info` / `commit_infos` / `diff_stat` /
+`changed_files` / `commit_patch`。いずれも `exclude` 引数で negative pathspec
+を受け取る。
+
+**導出層**（`arctx.ext.git.derive`）: `derive_git_change(payload, repo_root=None)`
+→ `DerivedGitChange(available, note, commit_log, diff_stat, files)`、
+`derive_patch(...)` → `(text, truncated, byte_count, note)`。**例外を投げない**:
+解決できない参照は `available=False` と `note` で返す。
+
+| 状態 | note |
+| --- | --- |
+| commit がこの clone に無い / `head_commit` が空 | `(commit not available locally)` |
+| そもそも repo の外 | `(no git repository available here)` |
+
+**`.arctx/**` の除外**: 導出する diff / file 一覧 / patch は run データを除外する
+（`ARCTX_DATA_EXCLUDE`）。commit N の記録は commit N+1 に乗る仕様なので、
+run データ自体は「レビュー対象の変更」ではない。上の「ノイズ対策 2」の実装。
+
+**焼き込み patch の全廃**: `<run_dir>/artifacts/git/*.patch` と
+`metadata["patch_artifact"]` は削除した。これを書いていた 2 つの writer
+（`git finish` / `git add --commit`）はどちらも clean tree を要求し、
+**commit 済みの** diff しか書いていなかったため、git が既にバイトを持っている。
+未コミット変更の検証用に patch を焼いている箇所は存在しなかったので、
+キャッシュとして残す必要もなかった。
+
+**表示サーフェス**（すべて閲覧時導出）: `arctx git show --step`（record に
+`derived` ブロックを添える）、`arctx git list --step`、`arctx show --step`、
+TUI detail pane、web の `POST /web/ext/git/diff`（`branch` / `diff_stat` /
+`available` / `note` を追加し、diff element は marker を描画する）。
+`web/src/types.ts` に `RunGitChangePayload` / `GitChangeDiff` を同期済み。
+
 ## Lane: フラット化（木の廃止）
 
 lane は **git のブランチ相当のフラットな作業単位**。宣言的な親子関係は持たない。
@@ -217,6 +265,49 @@ lane は **git のブランチ相当のフラットな作業単位**。宣言的
 
 `explore`（引数なし）はフラットな lane 一覧＋1 行 summary。lane が大量になったら
 検索と closed の折りたたみで戦う（構造ではなく検索アルゴリズムに任せる）。
+
+### Phase 4 実装で確定した詳細
+
+**`arctx explore` の 3 モード**（すべて `--json` 対応）:
+
+| 形 | 出すもの |
+| --- | --- |
+| `arctx explore` | lane を 1 行ずつ。`* name  <summary 1 行>` / closed は `- ` |
+| `arctx explore <LANE>` | purpose / 完全な summary / status / record 数 / frontier |
+| `arctx explore --query "T1 T2"` | lane 名 + status、一致抜粋、飛べる id |
+
+- 引数なしは **open を先**（`started_at` 順）、closed は
+  `N closed lanes — use --all` の 1 行に畳む。`--all` で展開
+- 1 行 summary は「最初の非空行を約 160 文字で切り詰め」
+- 検索は空白区切りの語の **case-insensitive AND**。haystack は lane 名 +
+  purpose + その lane が所有する全 payload。**opaque id は haystack に含めない**
+  （抜粋が UUID だらけになるため。id を持っているなら `arctx show`）
+- ランキングは「名前一致が先、次にラベル辞書順」。位置非依存で、
+  current lane も `within_lane` も無い
+- `LaneOverview` / `LaneSearchHit` の `to_dict()` に階層キーは一切無い
+  （breadcrumb / ancestors / children / stale なし）
+
+**current summary の意味論**: lane が所有する `SummaryPayload` のうち
+`record_event_rank`（`WorkEvent.created_records` の append-only 台帳の順）で
+**最後のものが勝つ**。jsonl 行順は union マージ後に信用できないため。
+
+**core ヘルパ**（`arctx.core.lanes`）: `record_event_rank`、
+`lane_summary_payloads` / `lane_current_summary`、`lane_purpose`、
+`collapse_summary`、`lane_overview` / `list_lane_overviews`、`search_lanes`。
+封印ブランチ `refactor/lane-dag-overview` の `search_lanes` / `lane_overview`
+を移植ベースにし、階層を全て剥がした。
+
+**書き込み側の補完**: `arctx lane create --purpose TEXT`（lane record の
+metadata に入り、explore / guide が表示）と `arctx lane summarize <LANE>
+--summary "..."`（lane を閉じずに current summary を更新する作業途中版）を追加。
+
+**`arctx guide` の痩身**: 静的本文は「書き込みの 3 動詞」と「取得の 3 つの問い」
+だけにし、`reparent` と `lane summarize` を明記、削除済みサーフェス
+（lane 階層 / 独自 sync / コピー型 asset）への言及を全廃した。
+`--context` は Run ID / Run Purpose / Current Lane（status・purpose・
+current summary）/ Active Frontiers / 有効な extension を出す。祖先チェーンは
+木が無いので出さない。暗黙の `default` lane は Lane record を持たないため
+status 表示を省く。
 
 ## 書き込みプロトコル: 3 動詞
 
