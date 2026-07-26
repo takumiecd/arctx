@@ -24,9 +24,8 @@ What those setup commands do:
 - `arctx init ... --extension git` also enables the git extension for that run.
   When run inside a git repo, it writes this repo's `<gitdir>/arctx-id` and
   installs hooks unless `--no-hooks` / `--git-no-hooks` is used.
-- `arctx git init` registers the current repo in the run's repo registry,
-  writes the repo pointer, writes the `.arctx-repo` marker, and installs hooks.
-  Run it once per repo you want to bind explicitly to the current run.
+- `arctx git init` binds this checkout to the run (writes the repo pointer) and
+  installs hooks.
 - `arctx use <run_id>` switches the current repo to an existing run by writing
   `<gitdir>/arctx-id`.
 - `eval "$(arctx use <run_id> --shell)"` switches only the current terminal by
@@ -120,15 +119,9 @@ Setup commands:
 
 - `arctx init <req_id> --extension git`: create a run and enable the git
   extension. Inside a git repo, this also writes `<gitdir>/arctx-id` and
-  installs hooks, but use `arctx git init` when you want to explicitly register
-  the repo in the run registry.
-- `arctx git init [--repo-path P] [--slug USER/REPO] [--no-hooks]`: register a
-  repo into the current run and install hooks. This is the preferred "bind this
-  checkout to this run" command.
-- `arctx git repo add [--repo-path P] [--slug USER/REPO] [--no-hooks]`: same
-  registration primitive, useful when joining another repo to an existing run.
-- `arctx git repo list`: list registered repos as JSON.
-- `arctx git repo show [--repo-id ID | --repo-path P]`: show one registry entry.
+  installs hooks.
+- `arctx git init [--repo-path P] [--no-hooks]`: bind this checkout to the
+  current run and install hooks.
 
 Daily git verbs:
 
@@ -148,8 +141,7 @@ Daily git verbs:
 
 Commit attachment commands:
 
-- `arctx git add --step T --commit SHA`: attach commit hashes to a
-  step. This is different from `arctx git repo add`.
+- `arctx git add --step T --commit SHA`: attach commit hashes to a step.
 - `arctx git list --step T`
 - `arctx git show --step T`
 
@@ -161,39 +153,6 @@ Worktree helpers:
 - `arctx git worktree list`: JSON-parsed `git worktree list --porcelain`.
 - `arctx git worktree remove <path> [--force]`: wrapper over
   `git worktree remove`.
-
-## Multiple Repos
-
-One ARCTX run can span several git repos. The run stores a repo registry
-(`RepoPayload`), and git payloads reference repos by `repo_id`. Core graph
-records remain repo-agnostic.
-
-Typical flow:
-
-```bash
-cd ~/dev/frontend
-arctx init "feature X" --run-id run_x --extension git
-arctx git init
-
-cd ~/dev/backend
-arctx git repo add --run run_x
-```
-
-After that, commits from either repo land in the same run. Branch tips are
-keyed by `(repo_id, branch)`, so `frontend/main` and `backend/main` do not
-collide.
-
-Registry entry fields:
-
-- `repo_id`: opaque primary key stored in the run.
-- `slug`: display name such as `USER/REPO`.
-- `remotes`: every discovered remote URL form.
-- `canonical`: normalized remote key, matching SSH and HTTPS forms.
-- `local_path`: this machine's checkout path.
-
-`local_path` is environment-specific. `arctx export` strips it by default;
-`arctx git repo list` and `arctx git repo show` keep it because they are local
-inspection commands.
 
 ## Work Sessions
 
@@ -252,12 +211,9 @@ context, while `export` produces an artifact to hand to people.
 
 - `--format md|tex|html` (default `md`)
 - `--exclude-cut`: drop cut nodes/steps.
-- `--include-local`: include repo `local_path` values.
 - `--node` / `--depth` / `--full-payloads`: traversal options shared with
   `dump`.
 - `--output PATH` / `-o PATH`: write to a file instead of stdout.
-
-When repos are registered, export includes a Repos section.
 
 ## Graph
 

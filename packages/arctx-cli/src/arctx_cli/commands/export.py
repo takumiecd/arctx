@@ -1,8 +1,7 @@
 """arctx CLI export command: render a run as markdown, LaTeX, or HTML.
 
 Unlike ``dump`` (inspection / LLM), ``export`` produces a standalone document
-to share. By default it strips machine-local data (repo ``local_path``); pass
-``--include-local`` to keep it. ``--exclude-cut`` drops cut history.
+to share. ``--exclude-cut`` drops cut history.
 """
 
 from __future__ import annotations
@@ -33,8 +32,6 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
                         help="Include full payload content")
     parser.add_argument("--exclude-cut", action="store_true",
                         help="Drop cut (inactive) nodes and steps")
-    parser.add_argument("--include-local", action="store_true",
-                        help="Keep repo local_path in the output (off by default)")
     parser.add_argument("--output", "-o", default=None,
                         help="Write to this file instead of stdout")
     parser.add_argument("--run", default=None)
@@ -54,7 +51,6 @@ def cli_export(args) -> int:
         depth=args.depth,
         full_payloads=args.full_payloads,
         exclude_cut=args.exclude_cut,
-        include_local=args.include_local,
     )
     text = export(handle, args.fmt, opts)
     if args.output:

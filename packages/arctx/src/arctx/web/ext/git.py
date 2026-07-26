@@ -36,8 +36,7 @@ def _diff_route(req: WebRequest) -> tuple[int, dict[str, Any]]:
     if not head_commit:
         return 400, {"error": f"git_change payload on {step_id!r} has no head_commit"}
 
-    repo_id = str(payload.get("repo_id") or "")
-    repo_path, error = _repo_path_for_git_payload(handle.run_graph, repo_id)
+    repo_path, error = _repo_path_for_run(req.store, req.run_id)
     if error is not None:
         return 404, {"error": error}
 
@@ -48,7 +47,6 @@ def _diff_route(req: WebRequest) -> tuple[int, dict[str, Any]]:
 
     return 200, {
         "step_id": step_id,
-        "repo_id": repo_id,
         "repo_path": str(repo_path),
         "head_commit": head_commit,
         "subject": _git_show_subject(repo_path, head_commit),
@@ -59,23 +57,21 @@ def _diff_route(req: WebRequest) -> tuple[int, dict[str, Any]]:
     }
 
 
-def _repo_path_for_git_payload(graph: Any, repo_id: str) -> tuple[Path, str | None]:
-    repos = [p.to_dict() for p in graph.payloads.values() if p.payload_type == "repo"]
-    selected = None
-    if repo_id:
-        selected = next((repo for repo in repos if str(repo.get("repo_id") or "") == repo_id), None)
-    elif len(repos) == 1:
-        selected = repos[0]
-    if selected is None:
-        return Path(), f"cannot resolve local repo for repo_id {repo_id!r}; the run may not contain a repo registry entry"
+def _repo_path_for_run(store: Any, run_id: str) -> tuple[Path, str | None]:
+    """Resolve the repo holding this run.
 
-    local_path = selected.get("local_path")
-    if not isinstance(local_path, str) or not local_path:
-        return Path(), f"repo {repo_id!r} has no local_path; git diff is only available in live local runs"
-    path = Path(local_path).expanduser()
-    if not path.exists():
-        return Path(), f"repo local_path does not exist: {path}"
-    return path, None
+    There is no repo registry: a run lives inside exactly one repository
+    ("absent = self"), so the repo is the one containing the run's store dir,
+    falling back to the cwd repo when the store is kept outside a checkout.
+    """
+    from arctx.paths import find_repo_root
+
+    for start in (Path(store.run_path(run_id)), None):
+        try:
+            return find_repo_root(start), None
+        except RuntimeError:
+            continue
+    return Path(), "cannot resolve a git repo for this run; git diff is only available in live local runs"
 
 
 def _max_bytes(raw: object) -> int:
@@ -186,7 +182,6 @@ _GIT_DIFF_ELEMENT_SCRIPT = r"""
       return `
         <div class="meta">
           <span>commit<strong>${escapeHtml(data.head_commit || "")}</strong></span>
-          <span>repo<strong>${escapeHtml(data.repo_id || "")}</strong></span>
           <span>subject<strong>${escapeHtml(data.subject || "")}</strong></span>
         </div>
         <details ${files ? "open" : ""}>

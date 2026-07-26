@@ -25,9 +25,8 @@ arctx dump --format outline
 - `arctx init ... --extension git` はその run の git extension も有効化します。
   git repo 内で実行すると、この repo の `<gitdir>/arctx-id` を書き込み、
   `--no-hooks` / `--git-no-hooks` を指定しない限り hook をインストールします。
-- `arctx git init` は現在の repo を run の repo registry に登録し、repo pointer を
-  書き、`.arctx-repo` マーカーを書き、hook をインストールします。現在の run に
-  明示的に紐づけたい repo ごとに 1 回実行します。
+- `arctx git init` はこの checkout を run に紐づける repo pointer を書き、
+  hook をインストールします。
 - `arctx use <run_id>` は `<gitdir>/arctx-id` を書き込み、現在の repo を既存の run に
   切り替えます。
 - `eval "$(arctx use <run_id> --shell)"` は `ARCTX_RUN_ID` を export して現在の
@@ -178,14 +177,9 @@ extension のコマンド名前空間は、解決された current run からロ
 セットアップコマンド:
 
 - `arctx init <req_id> --extension git`: run を作成し git extension を有効化する。
-  git repo 内では `<gitdir>/arctx-id` も書き hook をインストールするが、run registry に
-  repo を明示的に登録したい場合は `arctx git init` を使う。
-- `arctx git init [--repo-path P] [--slug USER/REPO] [--no-hooks]`: repo を現在の run に
-  登録し hook をインストールする。「この checkout をこの run に紐づける」推奨コマンド。
-- `arctx git repo add [--repo-path P] [--slug USER/REPO] [--no-hooks]`: 同じ登録
-  プリミティブ。既存の run に別の repo を join する際に有用。
-- `arctx git repo list`: 登録済み repo を JSON で一覧する。
-- `arctx git repo show [--repo-id ID | --repo-path P]`: registry エントリを 1 件表示する。
+  git repo 内では `<gitdir>/arctx-id` も書き hook をインストールする。
+- `arctx git init [--repo-path P] [--no-hooks]`: この checkout を現在の run に
+  紐づけ、hook をインストールする。
 
 日常の git verb:
 
@@ -205,7 +199,6 @@ extension のコマンド名前空間は、解決された current run からロ
 commit 添付コマンド:
 
 - `arctx git add --step T --commit SHA`: commit ハッシュを step に attach する。
-  これは `arctx git repo add` とは別物。
 - `arctx git list --step T`
 - `arctx git show --step T`
 
@@ -216,37 +209,6 @@ Worktree ヘルパー:
   ブランチを作成する。
 - `arctx git worktree list`: `git worktree list --porcelain` を JSON parse する。
 - `arctx git worktree remove <path> [--force]`: `git worktree remove` のラッパー。
-
-## 複数 Repo
-
-1 つの ARCTX run は複数の git repo にまたがれます。run は repo registry
-(`RepoPayload`) を保持し、git payload は repo を `repo_id` で参照します。コアの
-グラフ record は repo 非依存のままです。
-
-典型的なフロー:
-
-```bash
-cd ~/dev/frontend
-arctx init "feature X" --run-id run_x --extension git
-arctx git init
-
-cd ~/dev/backend
-arctx git repo add --run run_x
-```
-
-これ以降、どちらの repo の commit も同じ run に入ります。branch tip は
-`(repo_id, branch)` をキーにするため、`frontend/main` と `backend/main` は衝突しません。
-
-registry エントリの field:
-
-- `repo_id`: run に保存される opaque な主キー。
-- `slug`: `USER/REPO` のような表示名。
-- `remotes`: 発見されたすべての remote URL 形式。
-- `canonical`: 正規化された remote キー。SSH と HTTPS 形式を一致させる。
-- `local_path`: このマシンの checkout パス。
-
-`local_path` は環境固有です。`arctx export` はデフォルトでこれを除去します。
-`arctx git repo list` と `arctx git repo show` はローカル検査コマンドなので保持します。
 
 ## arctx log
 
@@ -351,11 +313,8 @@ checkout を与えます。
   そのまま出力する（GUI 側が DAG を自前描画できる）。cut の伝播は core 側で事前計算され、
   各 node/step に `inactive` フラグとして付与される。
 - `--exclude-cut`: cut された node/step を除外する。
-- `--include-local`: repo の `local_path` 値を含める。
 - `--node` / `--depth` / `--full-payloads`: `dump` と共通の走査オプション。
 - `--output PATH` / `-o PATH`: stdout ではなくファイルに書く。
-
-repo が登録されている場合、export には Repos セクションが含まれます。
 
 ## Serve
 

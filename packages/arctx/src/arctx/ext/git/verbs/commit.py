@@ -7,7 +7,6 @@ from pathlib import Path
 
 from arctx.core.schema.graph import Step
 from arctx.ext.git.helpers.repo import resolve_worktree_path
-from arctx.ext.git.registry import resolve_repo_id
 from arctx.ext.git.verbs._forward_step import (
     capture_git_info,
     check_branch_tip_consistency,
@@ -53,13 +52,12 @@ def commit_impl(
         repo_path=resolved_repo_path,
     )
 
-    repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
 
     # When the caller explicitly branches from a chosen node, that intent
     # overrides the branch-tip fast-forward guard.
     if lane_id is not None and not explicit_from:
         check_branch_tip_consistency(
-            self.run_graph, current_branch, current_node_ids, repo_id
+            self.run_graph, current_branch, current_node_ids
         )
 
     if not dry_run:
@@ -107,5 +105,4 @@ def commit_impl(
         },
         user_id=user_id,
         lane_id=lane_id,
-        repo_id=repo_id,
     )

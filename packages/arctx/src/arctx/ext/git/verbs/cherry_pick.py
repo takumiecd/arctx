@@ -11,7 +11,6 @@ from arctx.ext.git.events import make_branch_tip_event
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.payloads import BranchPayload, CherryPickPayload, GitChangePayload
 from arctx.ext.git.queries import step_by_sha
-from arctx.ext.git.registry import resolve_repo_id
 from arctx.ext.git.verbs._forward_step import (
     capture_git_info,
     check_branch_tip_consistency,
@@ -50,11 +49,10 @@ def cherry_pick_impl(
         repo_path=resolved_repo_path,
     )
 
-    repo_id = "" if dry_run else resolve_repo_id(self, resolved_repo_path)
 
     if lane_id is not None:
         check_branch_tip_consistency(
-            self.run_graph, current_branch, current_node_ids, repo_id
+            self.run_graph, current_branch, current_node_ids
         )
 
     source_step_id: str | None = step_by_sha(self.run_graph, source_sha)
@@ -106,7 +104,6 @@ def cherry_pick_impl(
         payload_id=self._next_id("pl"),
         target_id=step_id,
         branch=current_branch,
-        repo_id=repo_id,
     )
     self.run_graph.attach_payload(branch_payload)
 
@@ -117,7 +114,6 @@ def cherry_pick_impl(
         head_commit=head_commit,
         diff_summary=diff_summary,
         commit_log=commit_log,
-        repo_id=repo_id,
     )
     self.run_graph.attach_payload(git_payload)
 
@@ -137,7 +133,6 @@ def cherry_pick_impl(
             user_id=user_id,
             branch=current_branch,
             tip_node_id=output_node.node_id,
-            repo_id=repo_id,
         )
         self.run_graph.add_work_event(tip_event)
 

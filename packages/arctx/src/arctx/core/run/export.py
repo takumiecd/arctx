@@ -2,21 +2,15 @@
 
 ``dump`` renders the run for inspection / LLM consumption; ``export`` produces
 a standalone artifact to hand to people. It reuses the same spanning-tree walk
-as ``dump`` but emits a document with a title, an optional repo registry
-section, and a nested outline of the run.
+as ``dump`` but emits a document with a title and a nested outline of the run.
 
-Two filters, both opt-in and with opposite defaults by intent:
+One filter, opt-in: ``exclude_cut`` (default False) drops cut (inactive)
+nodes/steps. Cut is just history noise, so it is kept unless asked to be
+removed.
 
-- ``exclude_cut`` (default False): drop cut (inactive) nodes/steps. Cut
-  is just history noise, so it is kept unless asked to be removed.
-- ``include_local`` (default False): include each repo's ``local_path`` in the
-  registry section. local paths are environment-specific (and can leak a
-  username), so they are stripped by default — this is the single outlet that
-  keeps shared/exported artifacts free of machine-local data.
-
-This module stays repo-agnostic: it never imports the git extension. Repo
-registry entries and per-step repo ids are read generically through
-``payload_type`` and ``to_dict()`` so a run with no git payloads exports fine.
+This module stays repo-agnostic: it never imports the git extension. Payloads
+are read generically through ``payload_type`` and ``to_dict()`` so a run with
+no git payloads exports fine.
 """
 
 from __future__ import annotations
@@ -36,7 +30,6 @@ class ExportOptions:
     depth: int | None = None
     full_payloads: bool = False
     exclude_cut: bool = False
-    include_local: bool = False
 
 
 @dataclass
@@ -83,9 +76,6 @@ def _cut_reason(payload: CutPayload) -> str:
 def _node_summary(graph: RunGraph, node_id: str, full: bool = False) -> str | None:
     parts: list[str] = []
     for payload in graph.payloads_for_node(node_id):
-        # Repo registry entries get their own section; don't echo them on nodes.
-        if payload.payload_type == "repo":
-            continue
         if isinstance(payload, CutPayload):
             parts.append(_cut_reason(payload))
         elif isinstance(payload, NodePayload):
@@ -115,22 +105,6 @@ def _step_summary(graph: RunGraph, step_id: str, full: bool) -> str:
         else:
             parts.append(payload.payload_type)
     return " ".join(parts) if parts else "step"
-
-
-# ---------------------------------------------------------------------------
-# Repo registry (read generically; no git import)
-# ---------------------------------------------------------------------------
-
-
-def _repo_entries(graph: RunGraph) -> list[dict]:
-    """Return RepoPayload entries as plain dicts, sorted by slug/repo_id."""
-    entries = [
-        p.to_dict()
-        for p in graph.payloads.values()
-        if p.payload_type == "repo"
-    ]
-    entries.sort(key=lambda e: str(e.get("slug") or e.get("repo_id") or ""))
-    return entries
 
 
 # ---------------------------------------------------------------------------
@@ -226,23 +200,6 @@ def _esc_tex(s: str) -> str:
     return s
 
 
-def _render_repos_md(entries: list[dict], include_local: bool) -> list[str]:
-    if not entries:
-        return []
-    out = ["## Repos", ""]
-    for e in entries:
-        slug = e.get("slug") or e.get("repo_id")
-        out.append(f"- **{slug}** (`{e.get('repo_id')}`)")
-        if e.get("canonical"):
-            out.append(f"  - canonical: `{e['canonical']}`")
-        for r in e.get("remotes") or []:
-            out.append(f"  - remote ({r.get('kind')}): `{r.get('url')}`")
-        if include_local and e.get("local_path"):
-            out.append(f"  - local: `{e['local_path']}`")
-    out.append("")
-    return out
-
-
 def render_markdown(handle: RunHandle, opts: ExportOptions) -> str:
     graph = handle.run_graph
     lines = [
@@ -252,7 +209,6 @@ def render_markdown(handle: RunHandle, opts: ExportOptions) -> str:
         f"- steps: {len(graph.steps)}",
         "",
     ]
-    lines += _render_repos_md(_repo_entries(graph), opts.include_local)
     lines += ["## Graph", ""]
     for row in _walk(handle, opts):
         indent = "  " * row.depth
@@ -272,23 +228,6 @@ def render_html(handle: RunHandle, opts: ExportOptions) -> str:
         f"<h1>Run <code>{_esc_html(handle.run_id)}</code></h1>",
         f"<p>nodes: {len(graph.nodes)} &middot; steps: {len(graph.steps)}</p>",
     ]
-    entries = _repo_entries(graph)
-    if entries:
-        parts.append("<h2>Repos</h2><ul>")
-        for e in entries:
-            slug = _esc_html(str(e.get("slug") or e.get("repo_id")))
-            parts.append(f"<li><strong>{slug}</strong> <code>{_esc_html(str(e.get('repo_id')))}</code><ul>")
-            if e.get("canonical"):
-                parts.append(f"<li>canonical: <code>{_esc_html(str(e['canonical']))}</code></li>")
-            for r in e.get("remotes") or []:
-                parts.append(
-                    f"<li>remote ({_esc_html(str(r.get('kind')))}): "
-                    f"<code>{_esc_html(str(r.get('url')))}</code></li>"
-                )
-            if opts.include_local and e.get("local_path"):
-                parts.append(f"<li>local: <code>{_esc_html(str(e['local_path']))}</code></li>")
-            parts.append("</ul></li>")
-        parts.append("</ul>")
     parts.append("<h2>Graph</h2>")
     prev_depth = -1
     for row in _walk(handle, opts):
@@ -317,28 +256,6 @@ def render_latex(handle: RunHandle, opts: ExportOptions) -> str:
         rf"nodes: {len(graph.nodes)}, steps: {len(graph.steps)}",
         "",
     ]
-    entries = _repo_entries(graph)
-    if entries:
-        lines.append(r"\subsection*{Repos}")
-        lines.append(r"\begin{itemize}")
-        for e in entries:
-            slug = _esc_tex(str(e.get("slug") or e.get("repo_id")))
-            lines.append(rf"\item \textbf{{{slug}}} (\texttt{{{_esc_tex(str(e.get('repo_id')))}}})")
-            sub = []
-            if e.get("canonical"):
-                sub.append(rf"\item canonical: \texttt{{{_esc_tex(str(e['canonical']))}}}")
-            for r in e.get("remotes") or []:
-                sub.append(
-                    rf"\item remote ({_esc_tex(str(r.get('kind')))}): "
-                    rf"\texttt{{{_esc_tex(str(r.get('url')))}}}"
-                )
-            if opts.include_local and e.get("local_path"):
-                sub.append(rf"\item local: \texttt{{{_esc_tex(str(e['local_path']))}}}")
-            if sub:
-                lines.append(r"\begin{itemize}")
-                lines += sub
-                lines.append(r"\end{itemize}")
-        lines.append(r"\end{itemize}")
     lines.append(r"\subsection*{Graph}")
     # Flat list with manual indentation keeps nesting depth unbounded-safe.
     lines.append(r"\begin{itemize}")
@@ -364,10 +281,6 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
     to reimplement cut semantics. ``--exclude-cut`` drops inactive records (and
     any payloads targeting them). ``--node``/``--depth`` restrict the export to
     the spanning subtree, reusing the same walk as the other formats.
-
-    This module stays repo-agnostic: repo entries are read generically and,
-    unless ``include_local`` is set, their environment-specific ``local_path``
-    is stripped (mirroring ``RepoPayload.shareable()``).
     """
     graph = handle.run_graph
     inactive_nodes = inactive_node_ids(graph)
@@ -407,9 +320,6 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
     payloads_out = []
     payload_ids = set()
     for p in graph.payloads.values():
-        # Repo registry entries are surfaced in ``repos``; don't duplicate them.
-        if p.payload_type == "repo":
-            continue
         if p.target_kind == "node" and p.target_id not in node_ids:
             continue
         if p.target_kind == "step" and p.target_id not in step_ids:
@@ -417,12 +327,6 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
         payload_ids.add(p.payload_id)
         payloads_out.append(p.to_dict())
     payloads_out.sort(key=lambda d: str(d.get("payload_id")))
-
-    repos_out = []
-    for e in _repo_entries(graph):
-        if not opts.include_local:
-            e = {k: v for k, v in e.items() if k != "local_path"}
-        repos_out.append(e)
 
     lanes = lane_export_view(
         graph,
@@ -444,7 +348,6 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
         "nodes": nodes_out,
         "steps": steps_out,
         "payloads": payloads_out,
-        "repos": repos_out,
         "lanes": lanes["lanes"],
         "work_events": lanes["work_events"],
         "record_provenance": lanes["record_provenance"],

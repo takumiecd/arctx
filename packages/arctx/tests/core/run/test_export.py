@@ -12,7 +12,6 @@ import arctx as arctx
 from arctx.core.run.export import ExportOptions, export
 from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
-from arctx.ext.git.payloads import RemoteRef, RepoPayload
 
 
 def _make_handle(run_id: str = "run_exp"):
@@ -77,45 +76,6 @@ class TestCutExclude:
         assert t.step_id not in excluded
 
 
-class TestRepoSection:
-    def _with_repo(self, h, *, local: str = "/Users/me/dev/proj"):
-        payload = RepoPayload(
-            payload_id=h._next_id("pl"),
-            target_id=h.root_node_id,
-            repo_id="repo_x",
-            slug="me/proj",
-            remotes=(RemoteRef(kind="ssh", url="git@github.com:me/proj.git"),),
-            canonical="github.com/me/proj",
-            local_path=local,
-        )
-        h.run_graph.attach_payload(payload)
-
-    def test_repo_section_present(self):
-        h = _make_handle()
-        self._with_repo(h)
-        out = export(h, "md", ExportOptions())
-        assert "## Repos" in out
-        assert "me/proj" in out
-        assert "github.com/me/proj" in out
-
-    def test_local_path_stripped_by_default(self):
-        h = _make_handle()
-        self._with_repo(h, local="/Users/secret/dev/proj")
-        out = export(h, "md", ExportOptions())
-        assert "/Users/secret/dev/proj" not in out
-
-    def test_local_path_included_on_demand(self):
-        h = _make_handle()
-        self._with_repo(h, local="/Users/secret/dev/proj")
-        out = export(h, "md", ExportOptions(include_local=True))
-        assert "/Users/secret/dev/proj" in out
-
-    def test_no_repo_section_without_repos(self):
-        h = _make_handle()
-        out = export(h, "md", ExportOptions())
-        assert "## Repos" not in out
-
-
 class TestJsonExport:
     def test_shape_and_metadata(self):
         h = _make_handle()
@@ -123,7 +83,7 @@ class TestJsonExport:
         assert doc["arctx_export_version"] == 1
         assert doc["run_id"] == "run_exp"
         assert doc["root_node_id"] == h.root_node_id
-        for key in ("nodes", "steps", "payloads", "repos"):
+        for key in ("nodes", "steps", "payloads"):
             assert isinstance(doc[key], list)
         for key in ("lanes", "lanes", "work_events", "groups", "lane_boundaries"):
             assert isinstance(doc[key], list)
@@ -156,29 +116,6 @@ class TestJsonExport:
 
         excluded = json.loads(export(h, "json", ExportOptions(exclude_cut=True)))
         assert all(s["step_id"] != t.step_id for s in excluded["steps"])
-
-    def test_repos_in_dedicated_array_local_stripped(self):
-        h = _make_handle()
-        payload = RepoPayload(
-            payload_id=h._next_id("pl"),
-            target_id=h.root_node_id,
-            repo_id="repo_x",
-            slug="me/proj",
-            remotes=(RemoteRef(kind="ssh", url="git@github.com:me/proj.git"),),
-            canonical="github.com/me/proj",
-            local_path="/Users/secret/dev/proj",
-        )
-        h.run_graph.attach_payload(payload)
-
-        doc = json.loads(export(h, "json", ExportOptions()))
-        assert len(doc["repos"]) == 1
-        assert doc["repos"][0]["repo_id"] == "repo_x"
-        assert "local_path" not in doc["repos"][0]
-        # Repo payloads are not duplicated into the generic payloads list.
-        assert all(p.get("payload_type") != "repo" for p in doc["payloads"])
-
-        with_local = json.loads(export(h, "json", ExportOptions(include_local=True)))
-        assert with_local["repos"][0]["local_path"] == "/Users/secret/dev/proj"
 
     def test_lane_groups_and_record_provenance(self):
         h = _make_handle()

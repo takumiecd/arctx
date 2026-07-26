@@ -51,7 +51,7 @@ ARCTX には独立した 3 つの状態があります:
 - **Run:** `<repo_root>/.arctx/runs/<run_id>` 配下のグラフ
   （`ARCTX_HOME` 指定時と git repo 外では `<ARCTX_HOME>/runs/<run_id>`）。
 - **Repo pointer:** `<gitdir>/arctx-id`。`arctx init`, `arctx use`,
-  `arctx git init`, `arctx git repo add` が書き込む。
+  `arctx git init` が書き込む。
 - **Shell pointer:** `ARCTX_RUN_ID`。通常は
   `eval "$(arctx use <run_id> --shell)"` または `arctx lane env` で設定する。
 
@@ -77,31 +77,18 @@ arctx git commit -m "first change"
 ```
 
 `arctx init --extension git` は run を作成し git 連携を有効化します。
-`arctx git init` はその run に repo を明示的に登録し、repo マーカーを書き、hook を
+`arctx git init` はこの checkout を run に紐づけ（repo pointer）、hook を
 インストールします。その後は通常の `arctx git ...` コマンドが repo pointer から
 run を解決できます。
 
-## 複数 Repo にまたがる 1 つの Run
+## 1 Run = 1 Repo
 
-run は git の上位に位置し、複数の repo にまたがれます。各 repo を registry に
-登録すれば、どの repo の commit も同じ run の履歴に入ります。
+run は 1 つのリポジトリの中に存在します。データはその repo の `.arctx/` にあり、
+すべての git レコードは修飾子なしでその repo 自身を指します（「absent = self」）。
+repo registry も `repo_id` もありません。
 
-```bash
-cd ~/dev/frontend
-arctx init "feature X" --run-id run_x --extension git
-arctx git init
-
-cd ~/dev/backend
-arctx git repo add --run run_x
-```
-
-- commit tip の一貫性は `(repo_id, branch)` をキーにするため、異なる repo の
-  同名ブランチ（2 つの `main` など）は衝突しません。
-- 1 つのターミナルで repo を移動しながら `run_x` を追うには、各 repo の pointer に
+- 1 つのターミナルで checkout を移動しながら `run_x` を追うには、各 repo の pointer に
   頼らずターミナルを固定します: `eval "$(arctx use run_x --shell)"`。
-- `arctx export` は登録済み repo を Repos セクションに列挙します。`local_path` は
-  マシン固有のパス漏洩を避けるためデフォルトで除去されます。ローカル診断には
-  `--include-local` を使います。
 
 ## Work Session 固定モード
 

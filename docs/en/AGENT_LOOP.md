@@ -41,7 +41,7 @@ ARCTX has three separate pieces of state:
 - **Run:** the graph under `<repo_root>/.arctx/runs/<run_id>` (or
   `<ARCTX_HOME>/runs/<run_id>` when `ARCTX_HOME` is set / outside a repo).
 - **Repo pointer:** `<gitdir>/arctx-id`, written by `arctx init`, `arctx use`,
-  `arctx git init`, and `arctx git repo add`.
+  and `arctx git init`.
 - **Shell pointer:** `ARCTX_RUN_ID`, usually set with
   `eval "$(arctx use <run_id> --shell)"` or `arctx lane env`.
 
@@ -67,32 +67,19 @@ arctx git commit -m "first change"
 ```
 
 `arctx init --extension git` creates the run and enables git integration.
-`arctx git init` explicitly registers the repo in that run, writes the repo
-marker, and installs hooks. After that, regular `arctx git ...` commands can
-resolve the run from the repo pointer.
+`arctx git init` binds this checkout to that run (repo pointer) and installs
+hooks. After that, regular `arctx git ...` commands can resolve the run from
+the repo pointer.
 
-## One Run Across Multiple Repos
+## One Run, One Repo
 
-A run sits above git and can span several repos. Register each repo in the
-registry and commits from any of them land in the same run's history.
+A run lives inside exactly one repository: its data sits in that repo's
+`.arctx/`, and every git record refers to that repo implicitly ("absent =
+self"). There is no repo registry and no `repo_id`.
 
-```bash
-cd ~/dev/frontend
-arctx init "feature X" --run-id run_x --extension git
-arctx git init
-
-cd ~/dev/backend
-arctx git repo add --run run_x
-```
-
-- Commit tip consistency is keyed by `(repo_id, branch)`, so same-named
-  branches in different repos, such as two `main` branches, do not collide.
-- To follow `run_x` from one terminal while moving between repos, pin the
+- To follow `run_x` from one terminal while moving between checkouts, pin the
   terminal instead of relying on each repo's pointer:
   `eval "$(arctx use run_x --shell)"`.
-- `arctx export` lists registered repos in a Repos section. `local_path` is
-  dropped by default to avoid leaking machine-specific paths; use
-  `--include-local` for local diagnostics.
 
 ## Work Session Fixed Mode
 
