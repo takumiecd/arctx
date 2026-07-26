@@ -59,6 +59,7 @@ Record each branch's hypothesis, result, and evaluation signal. Do not discard a
 * `arctx guide --context` : Print only the dynamic context (Run ID / Current Lane / Active Frontiers / enabled extensions) — cheap to call every turn.
 * `arctx add --from <NODE> --type <TYPE> --field key=value` : Add a Step from one or more input Nodes and create its output Node. Repeat `--from` for a multi-input join. Omit `--from` to default to the current lane's single active frontier node.
 * `arctx attach <NODE_OR_STEP> --type <TYPE> --field key=value` : Attach a generic payload. Use `--payload-type summary` for typed summary payloads.
+* `arctx asset attach <NODE_OR_STEP> <PATH> [--commit REF]` : Reference a committed file or directory from the enclosing repo (default commit: HEAD). Assets are `(commit, path)` references, never copies — commit the file first. `arctx asset show <PAYLOAD>` reports whether a reference still resolves.
 * `arctx lane` : Show the currently active lane.
 * `arctx show <ID>` : Show details of a specific Node, Step, or Payload.
 * `arctx lane close <LANE> --summary "<your synthesis>" [--summary-format markdown|html|text]` : Close a lane. Attaches the required summary to its terminal (its one leaf, or a fresh node merging several leaves) and marks it closed; writes are then refused until reopened. Put your findings in `--summary` here — not in a separate preceding step. (`arctx lane join` is a deprecated alias.)
