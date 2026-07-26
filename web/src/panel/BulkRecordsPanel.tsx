@@ -1,7 +1,7 @@
 // Detail panel shown when multiple nodes/steps are shift-selected: an
 // overview of the selection.
 
-import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { FocusButton } from "./FocusButton";
 import { selectedRecordIds, visibleRecordIds } from "./helpers";
@@ -23,7 +23,6 @@ export function BulkRecordsPanel({
   onFocusToggle: () => void;
   onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"selection">("selection");
   const recordIds = selectedRecordIds(selection);
   const previewRecordIds = visibleRecordIds(recordIds);
   const hiddenRecordCount = recordIds.length - previewRecordIds.length;
@@ -42,42 +41,29 @@ export function BulkRecordsPanel({
         </div>
         {error && <div className="error">{error}</div>}
 
-        <div className="panel-tabs">
-          <button
-            type="button"
-            className={`panel-tab-btn${activeTab === "selection" ? " active" : ""}`}
-            onClick={() => setActiveTab("selection")}
-          >
-            Selection
-          </button>
-        </div>
-
-        {activeTab === "selection" && (
-          <section className="panel-view">
-            <div className="edit-section">
-              <h3>overview</h3>
-              <p className="muted" style={{ marginTop: 0 }}>
-                {nodeCount} nodes · {stepCount} steps
+        <section className="panel-view">
+          <div className="edit-section">
+            <h3>overview</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              {nodeCount} nodes · {stepCount} steps
+            </p>
+          </div>
+          <div className="edit-section">
+            <h3>record ids ({recordIds.length})</h3>
+            <div className="record-id-list">
+              {previewRecordIds.map((id) => (
+                <code key={id} className="record-id-chip">
+                  {id}
+                </code>
+              ))}
+            </div>
+            {hiddenRecordCount > 0 && (
+              <p className="muted" style={{ marginBottom: 0 }}>
+                and {hiddenRecordCount} more selected records
               </p>
-            </div>
-            <div className="edit-section">
-              <h3>record ids ({recordIds.length})</h3>
-              <div className="record-id-list">
-                {previewRecordIds.map((id) => (
-                  <code key={id} className="record-id-chip">
-                    {id}
-                  </code>
-                ))}
-              </div>
-              {hiddenRecordCount > 0 && (
-                <p className="muted" style={{ marginBottom: 0 }}>
-                  and {hiddenRecordCount} more selected records
-                </p>
-              )}
-            </div>
-          </section>
-        )}
-
+            )}
+          </div>
+        </section>
       </div>
     </aside>
   );

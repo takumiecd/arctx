@@ -334,3 +334,31 @@ status 表示を省く。
    （旧ブランチ `refactor/lane-dag-overview` の `search_lanes` を移植ベースに）、
    `guide --context` 簡素化、GitChangePayload スリム化と閲覧時 diff 導出
 5. **Phase 5 — web 追随**: types.ts 同期、lane 木 UI の撤去、asset 閲覧の git 解決
+
+### Phase 5 実装で確定した詳細
+
+**lane サイドバー（`arctx explore` の GUI 版）**: `web/src/lanes.ts` は
+`arctx.core.lanes` のフラットヘルパの TS 移植（`recordEventRank` /
+`laneCurrentSummary` / `lanePurpose` / `collapseSummary` / `searchLanes`）。
+open を先に 1 行 summary 付きで並べ、closed はトグルに畳む。lane 詳細は
+purpose / status / 完全な current summary。**階層 UI は存在しない**。
+
+**検索はクライアント側**: 検索の haystack（lane 名 + purpose + lane が所有する
+payload、opaque id は除外）も AND セマンティクスも CLI と同じで、ロード済みの
+run document だけで完結する（サーバ往復なし）。ヒットは lane + 抜粋 ＋
+一致レコードへのジャンプ。
+
+**asset 閲覧**: `AssetCard` が `GET /asset` で解決状態を取り、画像は
+`/asset/content` の base64 を data URI で inline、テキストはプレビュー、tree は
+`path`（asset 相対）で 1 階層ずつブラウズ。解決失敗は構造化ステータスをそのまま
+表示。static/share モードは参照のみ（バイトは git にあるため）。
+`arctx web` の `API_PATHS` に `/asset` `/asset/entries` `/asset/content` を追加した
+（`/asset/raw` はバイナリ転送なので `arctx serve` 専用のまま）。
+
+**git_change**: record からは branch / commits のみ、それ以外は
+`POST /web/ext/git/diff` で導出。`arctx web` の git 拡張が custom element を
+出す場合はそちらに譲る。
+
+**削除**: コピー型 asset の URL 配管（`artifactSrc` / `artifactPath` /
+`artifact://` / artifact scope context と `ScopedPayloads`）、単一タブ化していた
+bulk records パネルのタブバー。
