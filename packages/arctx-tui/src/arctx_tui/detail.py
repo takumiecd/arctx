@@ -14,6 +14,36 @@ from arctx.core.schema.payloads import (
 from arctx.ext.git.payloads import GitChangePayload
 
 
+def _git_change_lines(payload: GitChangePayload) -> list[str]:
+    """Render a git_change record, deriving the diff view from git.
+
+    The record stores only commit hashes and a branch. When the commit is not
+    present in this clone there is nothing to show, so an explicit marker is
+    rendered rather than an empty or stale diff.
+    """
+    from arctx.ext.git.derive import derive_git_change
+
+    lines = [
+        f"**Branch:** {payload.branch}",
+        f"**Head:** `{payload.head_commit[:12]}`",
+    ]
+    derived = derive_git_change(payload)
+    if not derived.available:
+        lines.append(f"**Diff:** {derived.note}")
+        return lines
+
+    stat = derived.diff_stat
+    lines.append(
+        f"**Diff:** +{stat.insertions} / -{stat.deletions} "
+        f"in {stat.files_changed} files"
+    )
+    if derived.commit_log:
+        lines += ["", "**Commits:**"]
+        for entry in derived.commit_log[:5]:
+            lines.append(f"- `{entry.sha[:8]}` {entry.subject}")
+    return lines
+
+
 def build_detail_markdown(
     handle: RunHandle,
     node_data: dict | None,
@@ -114,19 +144,7 @@ def _node_detail(
                 if payload.reason:
                     lines.append(f"**Reason:** {payload.reason}")
             elif isinstance(payload, GitChangePayload):
-                diff = payload.diff_summary
-                lines += [
-                    "",
-                    "### Git Change",
-                    "",
-                    f"**Branch:** {payload.branch}",
-                    f"**Head:** `{payload.head_commit[:12]}`",
-                    f"**Diff:** +{diff.insertions} / -{diff.deletions} in {diff.files_changed} files",
-                ]
-                if payload.commit_log:
-                    lines += ["", "**Commits:**"]
-                    for c in payload.commit_log[:5]:
-                        lines.append(f"- `{c.sha[:8]}` {c.subject}")
+                lines += ["", "### Git Change", ""] + _git_change_lines(payload)
             elif isinstance(payload, StepPayload):
                 lines += ["", f"### {payload.type}"]
                 if payload.content:
@@ -167,19 +185,7 @@ def _step_detail(
             if payload.reason:
                 lines.append(f"**Reason:** {payload.reason}")
         elif isinstance(payload, GitChangePayload):
-            diff = payload.diff_summary
-            lines += [
-                "",
-                "## Git Change",
-                "",
-                f"**Branch:** {payload.branch}",
-                f"**Head:** `{payload.head_commit[:12]}`",
-                f"**Diff:** +{diff.insertions} / -{diff.deletions} in {diff.files_changed} files",
-            ]
-            if payload.commit_log:
-                lines += ["", "**Commits:**"]
-                for c in payload.commit_log[:5]:
-                    lines.append(f"- `{c.sha[:8]}` {c.subject}")
+            lines += ["", "## Git Change", ""] + _git_change_lines(payload)
         elif isinstance(payload, StepPayload):
             lines += ["", f"## {payload.type}"]
             if payload.content:

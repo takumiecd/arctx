@@ -341,8 +341,6 @@ class TestVerifyMissingInputSha:
             target_id=t_with_sha_id,
             branch="main",
             head_commit="sha_B",
-            diff_summary="",
-            commit_log=(),
         )
         graph.attach_payload(gcp)
 

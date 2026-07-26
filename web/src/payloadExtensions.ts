@@ -223,20 +223,26 @@ function diagramDisplay(payload: RunPayload): PayloadDisplay {
 }
 
 function gitChangeDisplay(payload: RunPayload): PayloadDisplay {
-  const diff = objectValue(payload.diff_summary);
-  const commits = Array.isArray(payload.commit_log) ? payload.commit_log : [];
+  // The record stores facts only: commit hashes and a branch. Subjects, file
+  // lists, and diff stats are derived from git by the server on demand
+  // (POST /web/ext/git/diff), not carried in the export document.
+  const commits = Array.isArray(payload.commits) ? (payload.commits as string[]) : [];
   const fields: PayloadField[] = [
     { label: "branch", value: payload.branch },
     { label: "head", value: shortSha(payload.head_commit) },
-    { label: "files", value: diff.files_changed ?? 0 },
-    { label: "+/-", value: `+${diff.insertions ?? 0} -${diff.deletions ?? 0}` },
   ];
+  if (commits.length > 1) {
+    fields.push({ label: "commits", value: commits.length });
+  }
   return {
     title: "git change",
-    summary: commitSubject(commits) ?? stringValue(payload.head_commit),
-    graphLabel: commitSubject(commits) ?? shortSha(payload.head_commit),
+    summary: stringValue(payload.head_commit),
+    graphLabel: shortSha(payload.head_commit),
     fields,
-    sections: commits.length > 0 ? [{ title: "commits", kind: "list", value: commits }] : [],
+    sections:
+      commits.length > 0
+        ? [{ title: "commits", kind: "list", value: commits.map((sha) => shortSha(sha)) }]
+        : [],
   };
 }
 
@@ -301,11 +307,6 @@ function commandRunDisplay(payload: RunPayload): PayloadDisplay {
   };
 }
 
-function objectValue(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
-}
-
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -324,14 +325,6 @@ function shortSha(value: unknown): string {
   const sha = stringValue(value);
   return sha ? sha.slice(0, 12) : "";
 }
-
-function commitSubject(commits: unknown[]): string | null {
-  const first = commits[0];
-  if (typeof first !== "object" || first === null || Array.isArray(first)) return null;
-  const subject = (first as Record<string, unknown>).subject;
-  return typeof subject === "string" && subject ? subject : null;
-}
-
 
 
 function summaryDisplay(payload: RunPayload): PayloadDisplay {

@@ -25,10 +25,18 @@ from pathlib import Path
 from arctx.paths import find_repo_root
 
 __all__ = [
+    "CommitInfo",
+    "DiffStat",
     "GitRefError",
     "MissingCommit",
     "MissingPath",
     "TreeEntry",
+    "changed_files",
+    "commit_exists",
+    "commit_info",
+    "commit_infos",
+    "commit_patch",
+    "diff_stat",
     "guess_content_type",
     "normalize_repo_path",
     "object_kind",
@@ -275,6 +283,225 @@ def list_tree(repo_root: str | Path, commit: str, path: str) -> list[TreeEntry]:
 def blob_size(repo_root: str | Path, commit: str, path: str) -> int:
     """Return the size in bytes of the blob at ``<commit>:<path>``."""
     return int(_git_text(["cat-file", "-s", _spec(commit, path)], repo_root))
+
+
+# ---------------------------------------------------------------------------
+# commit metadata and diffs (derived, never stored)
+#
+# "jsonl は事実、見た目は導出" — records keep commit hashes and a branch; the
+# subject/author/date and the diff are read back out of git on demand. Nothing
+# below is ever baked into a payload.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CommitInfo:
+    """Metadata for one commit, read from git at display time."""
+
+    sha: str
+    subject: str
+    author: str
+    date: str  # ISO 8601 with timezone
+
+    def to_dict(self) -> dict:
+        """Return a JSON-serializable representation."""
+        return {
+            "sha": self.sha,
+            "subject": self.subject,
+            "author": self.author,
+            "date": self.date,
+        }
+
+
+@dataclass(frozen=True)
+class DiffStat:
+    """Aggregate diff stats (``git diff --shortstat``), derived on read."""
+
+    files_changed: int = 0
+    insertions: int = 0
+    deletions: int = 0
+
+    def to_dict(self) -> dict:
+        """Return a JSON-serializable representation."""
+        return {
+            "files_changed": self.files_changed,
+            "insertions": self.insertions,
+            "deletions": self.deletions,
+        }
+
+
+_COMMIT_FORMAT = "%H%x1f%s%x1f%an <%ae>%x1f%aI"
+
+
+def commit_exists(repo_root: str | Path, commit: str) -> bool:
+    """Return True when *commit* resolves to a commit object in this clone."""
+    if not commit:
+        return False
+    return _git_ok(
+        ["rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}"], repo_root
+    )
+
+
+def _parse_commit_lines(raw: str) -> list[CommitInfo]:
+    out: list[CommitInfo] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split("\x1f")
+        if len(fields) < 4:
+            continue
+        out.append(
+            CommitInfo(
+                sha=fields[0], subject=fields[1], author=fields[2], date=fields[3]
+            )
+        )
+    return out
+
+
+def commit_info(repo_root: str | Path, commit: str) -> CommitInfo:
+    """Return metadata for one commit.
+
+    Raises
+    ------
+    MissingCommit
+        When the commit is absent from this clone.
+
+    """
+    if not commit_exists(repo_root, commit):
+        raise MissingCommit(f"commit not found in this repository: {commit}")
+    raw = _git_text(
+        ["show", "--no-patch", f"--format={_COMMIT_FORMAT}", commit], repo_root
+    )
+    parsed = _parse_commit_lines(raw)
+    if not parsed:  # pragma: no cover - defensive
+        raise MissingCommit(f"commit not found in this repository: {commit}")
+    return parsed[0]
+
+
+def commit_infos(
+    repo_root: str | Path, commits: list[str] | tuple[str, ...]
+) -> list[CommitInfo]:
+    """Return metadata for each of *commits*, skipping any absent locally."""
+    out: list[CommitInfo] = []
+    for commit in commits:
+        try:
+            out.append(commit_info(repo_root, commit))
+        except GitRefError:
+            continue
+    return out
+
+
+def _diff_args(
+    base: str | None,
+    head: str,
+    exclude: tuple[str, ...] = (),
+) -> list[str]:
+    """Return the revision (and pathspec) arguments comparing *head* to *base*.
+
+    With no base, a commit is compared to its own first parent — the natural
+    reading of "what this commit changed". *exclude* becomes negative
+    pathspecs, which is how a caller keeps its own bookkeeping out of a diff.
+    """
+    revs = [base, head] if base else [f"{head}^!"]
+    if not exclude:
+        return revs
+    return [*revs, "--", *(f":(exclude,glob){pattern}" for pattern in exclude)]
+
+
+def diff_stat(
+    repo_root: str | Path,
+    head: str,
+    base: str | None = None,
+    *,
+    exclude: tuple[str, ...] = (),
+) -> DiffStat:
+    """Return the aggregate diff stat for *head* (against *base* when given)."""
+    if not commit_exists(repo_root, head):
+        raise MissingCommit(f"commit not found in this repository: {head}")
+    try:
+        raw = _git_text(
+            [
+                "diff",
+                "--shortstat",
+                "--no-ext-diff",
+                *_diff_args(base, head, exclude),
+            ],
+            repo_root,
+        )
+    except GitRefError:
+        return DiffStat()
+    return _parse_shortstat(raw)
+
+
+def _parse_shortstat(raw: str) -> DiffStat:
+    import re
+
+    text = raw.strip()
+    if not text:
+        return DiffStat()
+    files = re.search(r"(\d+) files? changed", text)
+    insertions = re.search(r"(\d+) insertion", text)
+    deletions = re.search(r"(\d+) deletion", text)
+    return DiffStat(
+        files_changed=int(files.group(1)) if files else 0,
+        insertions=int(insertions.group(1)) if insertions else 0,
+        deletions=int(deletions.group(1)) if deletions else 0,
+    )
+
+
+def changed_files(
+    repo_root: str | Path,
+    head: str,
+    base: str | None = None,
+    *,
+    exclude: tuple[str, ...] = (),
+) -> list[str]:
+    """Return the paths touched by *head* (against *base* when given)."""
+    if not commit_exists(repo_root, head):
+        raise MissingCommit(f"commit not found in this repository: {head}")
+    try:
+        raw = _git_text(
+            [
+                "diff",
+                "--name-only",
+                "--no-ext-diff",
+                *_diff_args(base, head, exclude),
+            ],
+            repo_root,
+        )
+    except GitRefError:
+        return []
+    return [line for line in raw.splitlines() if line.strip()]
+
+
+def commit_patch(
+    repo_root: str | Path,
+    head: str,
+    base: str | None = None,
+    *,
+    max_bytes: int = 300_000,
+    exclude: tuple[str, ...] = (),
+) -> tuple[str, bool, int]:
+    """Return ``(patch_text, truncated, full_byte_count)`` for *head*.
+
+    Patch text for committed changes is always derived here, never read from a
+    stored artifact: git already holds the bytes, and a baked copy could drift.
+    """
+    if not commit_exists(repo_root, head):
+        raise MissingCommit(f"commit not found in this repository: {head}")
+    raw = _git_bytes(
+        [
+            "diff",
+            "--patch",
+            "--find-renames",
+            "--no-ext-diff",
+            *_diff_args(base, head, exclude),
+        ],
+        repo_root,
+    )
+    truncated = len(raw) > max_bytes
+    body = raw[:max_bytes] if truncated else raw
+    return body.decode("utf-8", errors="replace"), truncated, len(raw)
 
 
 # ---------------------------------------------------------------------------

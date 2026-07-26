@@ -12,8 +12,6 @@ from typing import TYPE_CHECKING
 from arctx.core.schema.graph import Node, Step
 from arctx.ext.git.payloads import (
     BranchPayload,
-    CommitEntry,
-    DiffSummary,
     GitChangePayload,
 )
 from arctx.core.schema.payloads import PayloadBase
@@ -98,68 +96,13 @@ def resolve_current_branch(
     return "unknown"
 
 
-def capture_git_info(
-    *,
-    head_commit: str,
-    dry_run: bool,
-    repo_path: Path,
-) -> tuple[DiffSummary, tuple[CommitEntry, ...]]:
-    """Return (diff_summary, commit_log) for *head_commit* after a git operation."""
-    if dry_run:
-        return DiffSummary(files_changed=0, insertions=0, deletions=0), ()
-
-    import re  # noqa: PLC0415
-    import subprocess  # noqa: PLC0415
-
-    diff_summary = DiffSummary(files_changed=0, insertions=0, deletions=0)
-    commit_log: tuple[CommitEntry, ...] = ()
-
-    try:
-        from arctx.ext.git.helpers import repo as git_repo  # noqa: PLC0415
-        raw_log = git_repo.commit_log_for_commits(repo_path, [head_commit])
-        commit_log = tuple(
-            CommitEntry(
-                sha=e["sha"],
-                subject=e["subject"],
-                author=e["author"],
-                date=e["date"],
-            )
-            for e in raw_log
-        )
-    except Exception:  # noqa: BLE001
-        pass
-
-    try:
-        stat_result = subprocess.run(
-            ["git", "diff", "--shortstat", "HEAD~1", "HEAD"],
-            cwd=str(repo_path),
-            capture_output=True,
-            text=True,
-        )
-        if stat_result.returncode == 0 and stat_result.stdout.strip():
-            raw = stat_result.stdout.strip()
-            fc = re.search(r"(\d+) files? changed", raw)
-            ins = re.search(r"(\d+) insertion", raw)
-            dls = re.search(r"(\d+) deletion", raw)
-            diff_summary = DiffSummary(
-                files_changed=int(fc.group(1)) if fc else 0,
-                insertions=int(ins.group(1)) if ins else 0,
-                deletions=int(dls.group(1)) if dls else 0,
-            )
-    except Exception:  # noqa: BLE001
-        pass
-
-    return diff_summary, commit_log
-
-
 def record_forward_step(
     self: "RunHandle",
     *,
     current_node_ids: tuple[str, ...],
     current_branch: str,
     head_commit: str,
-    diff_summary: DiffSummary,
-    commit_log: tuple[CommitEntry, ...],
+    commits: tuple[str, ...] = (),
     extra_payloads: list[PayloadBase],
     event_type: str,
     event_summary: str,
@@ -194,8 +137,7 @@ def record_forward_step(
         target_id=step_id,
         branch=current_branch,
         head_commit=head_commit,
-        diff_summary=diff_summary,
-        commit_log=commit_log,
+        commits=commits,
     )
     self.run_graph.attach_payload(git_payload)
 

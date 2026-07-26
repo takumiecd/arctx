@@ -63,9 +63,14 @@ def warn_if_invalid(handle_or_run_id, store_dir: str | None, *, command_name: st
     for issue in issues:
         print(f"  - {issue.code}: {issue.message}", file=sys.stderr)
     print(
-        "hint: run 'arctx lane validate' for details; "
-        "fix with 'arctx lane adopt <LANE>' (claim nodes into a lane) or "
-        "'arctx cut <ID>' (retire them); see 'arctx guide' for the data model.",
+        # `lane adopt` is gone: membership is constructive now (a record belongs
+        # to the lane that was current when it was created), so the fix is to
+        # switch lanes before writing, re-parent, or retire the record.
+        "hint: run 'arctx lane validate' for details; records join the lane "
+        "that is current when they are created, so switch with "
+        "'arctx lane switch <LANE>' before writing, reconnect with "
+        "'arctx reparent <NODE> --from <INPUT>', or retire with "
+        "'arctx cut <ID>'; see 'arctx guide' for the data model.",
         file=sys.stderr,
     )
 

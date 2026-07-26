@@ -8,7 +8,6 @@ from pathlib import Path
 from arctx.core.schema.graph import Step
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.verbs._forward_step import (
-    capture_git_info,
     check_branch_tip_consistency,
     record_forward_step,
     resolve_current_branch,
@@ -82,19 +81,11 @@ def commit_impl(
             from arctx.ext.git.helpers import repo as git_repo  # noqa: PLC0415
             head_commit = git_repo.current_commit(resolved_repo_path)
 
-    diff_summary, commit_log = capture_git_info(
-        head_commit=head_commit,
-        dry_run=dry_run,
-        repo_path=resolved_repo_path,
-    )
-
     return record_forward_step(
         self,
         current_node_ids=current_node_ids,
         current_branch=current_branch,
         head_commit=head_commit,
-        diff_summary=diff_summary,
-        commit_log=commit_log,
         extra_payloads=[],
         event_type="commit_created",
         event_summary=message,

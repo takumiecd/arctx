@@ -13,7 +13,7 @@ from arctx_cli.commands.show import run_show_command
 from arctx_cli.context import resolve_store
 from arctx.core.schema.graph import Node, Step
 from arctx.core.schema.payloads import StepPayload
-from arctx.ext.git.payloads import DiffSummary, GitChangePayload
+from arctx.ext.git.payloads import GitChangePayload
 from arctx.core.schema.requirements import Requirement
 
 
@@ -55,7 +55,6 @@ def _make_handle_with_two_git_payloads(td: str, run_id: str = "run_show"):
         target_id=t.step_id,
         branch="main",
         head_commit="sha_v2",
-        diff_summary=DiffSummary(1, 2, 0),
     )
     handle.run_graph.attach_payload(p2)
 

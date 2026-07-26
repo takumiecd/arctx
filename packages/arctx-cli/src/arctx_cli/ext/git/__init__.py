@@ -158,10 +158,7 @@ def _cli_git_list(args) -> int:
 
     commits: list[str] = []
     for payload in payloads:
-        for entry in getattr(payload, "commit_log", ()):
-            sha = getattr(entry, "sha", None)
-            if sha is not None:
-                commits.append(str(sha))
+        commits.extend(getattr(payload, "commit_shas", ()))
     print(
         json.dumps(
             {
@@ -176,12 +173,25 @@ def _cli_git_list(args) -> int:
 
 
 def _cli_git_show(args) -> int:
+    """Print each git_change record plus what git says about it right now.
+
+    The record holds hashes and a branch; the subject/diff view under
+    ``derived`` is read from the repository at this moment. When the commit is
+    not in this clone, ``derived.note`` carries the explicit marker instead.
+    """
+    from arctx.ext.git.derive import derive_git_change  # noqa: PLC0415
+
     try:
         _, payloads = _git_payloads_for_step(args)
     except KeyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps([p.to_dict() for p in payloads], ensure_ascii=False, indent=2))
+    rendered = []
+    for payload in payloads:
+        item = payload.to_dict()
+        item["derived"] = derive_git_change(payload).to_dict()
+        rendered.append(item)
+    print(json.dumps(rendered, ensure_ascii=False, indent=2))
     return 0
 
 

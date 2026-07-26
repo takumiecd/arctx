@@ -6,7 +6,7 @@ import pytest
 
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.graph import Node, Step
-from arctx.ext.git.payloads import DiffSummary, GitChangePayload
+from arctx.ext.git.payloads import GitChangePayload
 from arctx.ext.git.queries import current_sha, step_by_sha
 
 
@@ -32,7 +32,6 @@ def _git_payload(g: RunGraph, t_id: str, pl_id: str, sha: str) -> GitChangePaylo
         target_id=t_id,
         branch="main",
         head_commit=sha,
-        diff_summary=DiffSummary(0, 0, 0),
     )
     g.attach_payload(p)
     return p

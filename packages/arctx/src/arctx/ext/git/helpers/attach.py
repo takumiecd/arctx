@@ -6,9 +6,8 @@ from pathlib import Path
 
 from arctx.core.cuts import is_inactive_step
 from arctx.ext.git.helpers import repo as git_repo
-from arctx.ext.git.helpers.finish import _write_patch_artifact
 from arctx.core.run.handle import RunHandle
-from arctx.ext.git.payloads import CommitEntry, DiffSummary, GitChangePayload
+from arctx.ext.git.payloads import GitChangePayload
 
 
 def attach_commits_to_step(
@@ -20,7 +19,12 @@ def attach_commits_to_step(
     user_id: str = "user",
     lane_id: str | None = None,
 ) -> dict:
-    """Attach explicit Git commits as a GitChangePayload."""
+    """Attach explicit Git commits as a GitChangePayload.
+
+    Only the commit hashes and the branch are recorded. Subjects, diff stats,
+    and patch text are derived from the repository when something displays the
+    payload — see :mod:`arctx.ext.git.derive`.
+    """
     if not commits:
         raise ValueError("at least one --commit is required")
     if step_id not in handle.run_graph.steps:
@@ -31,36 +35,15 @@ def attach_commits_to_step(
     repo_root = git_repo.find_repo_root(Path("."))
     resolved = tuple(git_repo.resolve_commit(repo_root, c) for c in commits)
     branch = git_repo.current_branch(repo_root) or ""
-    commit_log = tuple(
-        CommitEntry(
-            sha=e["sha"],
-            subject=e["subject"],
-            author=e["author"],
-            date=e["date"],
-        )
-        for e in git_repo.commit_log_for_commits(repo_root, resolved)
-    )
-    stat = git_repo.diff_shortstat_for_commits(repo_root, resolved)
-    diff_summary = DiffSummary(
-        files_changed=stat["files_changed"],
-        insertions=stat["insertions"],
-        deletions=stat["deletions"],
-    )
-    patch_text = git_repo.diff_patch_for_commits(repo_root, resolved)
 
     payload_id = handle._next_id("pl")
-    patch_artifact = None
-    if patch_text:
-        patch_artifact = _write_patch_artifact(patch_text, payload_id, run_dir)
-
     gcp = GitChangePayload(
         payload_id=payload_id,
         target_id=step_id,
         branch=branch,
         head_commit=resolved[-1],
-        diff_summary=diff_summary,
-        commit_log=commit_log,
-        metadata={"attached_by": user_id, "patch_artifact": patch_artifact or ""},
+        commits=resolved,
+        metadata={"attached_by": user_id},
     )
     handle.run_graph.attach_payload(gcp)
     handle.record_work_event(
@@ -84,8 +67,6 @@ def attach_commits_to_step(
         "git": {
             "commits": list(resolved),
             "branch": branch,
-            "files_changed": diff_summary.files_changed,
-            "patch_artifact": patch_artifact,
         },
         "next": [
             f"arctx git diff --step {step_id}",

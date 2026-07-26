@@ -11,7 +11,6 @@ from arctx.ext.git.events import latest_branch_tip
 from arctx.ext.git.helpers.repo import resolve_worktree_path
 from arctx.ext.git.payloads import MergePayload
 from arctx.ext.git.verbs._forward_step import (
-    capture_git_info,
     check_branch_tip_consistency,
     record_forward_step,
     resolve_current_branch,
@@ -126,12 +125,6 @@ def merge_impl(
             from arctx.ext.git.helpers import repo as git_repo  # noqa: PLC0415
             head_commit = git_repo.current_commit(resolved_repo_path)
 
-    diff_summary, commit_log = capture_git_info(
-        head_commit=head_commit,
-        dry_run=dry_run,
-        repo_path=resolved_repo_path,
-    )
-
     merged_from_label = other_branch or resolved_other_node_id
     merged_into_label = current_branch
 
@@ -140,8 +133,6 @@ def merge_impl(
         current_node_ids=multi_input_node_ids,
         current_branch=current_branch,
         head_commit=head_commit,
-        diff_summary=diff_summary,
-        commit_log=commit_log,
         extra_payloads=[],
         event_type="merge_created",
         event_summary=f"merge {merged_from_label} into {merged_into_label}",

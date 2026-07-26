@@ -49,6 +49,39 @@ export function isAssetPayload(payload: RunPayload): payload is RunAssetPayload 
   return payload.payload_type === "asset";
 }
 
+// A git_change record stores facts only — the commit hashes it points at and
+// the branch it was made on. Diff stats, commit subjects, file lists, and patch
+// text are NOT in the export document: they are derived from the repository at
+// read time (POST /web/ext/git/diff). A commit missing from the reader's clone
+// comes back with `available: false` and a `note` marker rather than an error.
+export interface RunGitChangePayload extends RunPayload {
+  payload_type: "git_change";
+  target_kind: "step";
+  branch: string;
+  head_commit: string;
+  commits: string[];
+}
+
+export function isGitChangePayload(payload: RunPayload): payload is RunGitChangePayload {
+  return payload.payload_type === "git_change";
+}
+
+// Response shape of POST /web/ext/git/diff — entirely derived, never stored.
+export interface GitChangeDiff {
+  step_id: string;
+  repo_path: string;
+  head_commit: string;
+  branch: string;
+  available: boolean;
+  note: string | null;
+  subject: string;
+  files: string[];
+  diff_stat: { files_changed: number; insertions: number; deletions: number };
+  diff: string;
+  truncated: boolean;
+  byte_count: number;
+}
+
 export interface AssetResolution {
   status:
     | "ok"
