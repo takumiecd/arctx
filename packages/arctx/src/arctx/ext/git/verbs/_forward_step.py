@@ -41,7 +41,7 @@ class ParallelSessionConflict(RuntimeError):
         super().__init__(
             f"non-fast-forward: branch {branch!r} tip is {expected_tip!r} "
             f"but session current is {list(current)!r}. "
-            f"Pull or rebase before committing (arctx pull is planned)."
+            f"Pull or rebase before committing."
         )
 
 

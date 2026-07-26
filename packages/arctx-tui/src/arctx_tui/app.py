@@ -157,11 +157,6 @@ class ArctxApp(App):
 
     def _refresh_if_changed(self) -> None:
         """Reload list/current run when another writer changes the store."""
-        try:
-            pulled_records = self._pull_current_sync_updates()
-        except Exception as exc:
-            self.notify(f"Sync pull failed: {exc}", severity="error")
-            pulled_records = 0
         changed_runs = self._changed_run_ids()
         if not changed_runs:
             return
@@ -179,37 +174,7 @@ class ArctxApp(App):
         except Exception as exc:
             self.notify(f"Refresh failed: {exc}", severity="error")
             return
-        if pulled_records:
-            self.notify(f"Pulled {pulled_records} shared records into {run_id}")
-        else:
-            self.notify(f"Updated run {run_id}")
-
-    def _pull_current_sync_updates(self) -> int:
-        if self._current_handle is None:
-            return 0
-        try:
-            from arctx.core.sync import local as sync
-
-            run_path = self._store.run_path(self._current_handle.run_id)
-            cfg = sync.load_sync_config(run_path)
-            result = sync.sync_pull(
-                handle=self._current_handle,
-                remote=cfg["remote"],
-                shared_run_id=cfg["shared_run_id"],
-                remote_dir=cfg["remote_dir"],
-            )
-            pulled_records = int(result.get("pulled_records") or 0)
-            if pulled_records:
-                self._store.save_run(self._current_handle)
-            return pulled_records
-        except RuntimeError as exc:
-            if "sync is not initialized" in str(exc):
-                return 0
-            raise
-        except FileNotFoundError:
-            return 0
-        except KeyError:
-            return 0
+        self.notify(f"Updated run {run_id}")
 
     def _changed_run_ids(self) -> set[str]:
         current = {
