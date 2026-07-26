@@ -15,7 +15,12 @@ arctx dump --format outline
 
 What those setup commands do:
 
-- `arctx init <req_id>` creates a run under `<ARCTX_HOME>/runs`.
+- `arctx init <req_id>` creates a run under `<repo_root>/.arctx/runs` (git-native
+  storage: run data lives inside the repository and sharing is just git). It also
+  writes `<repo_root>/.arctx/.gitattributes` (`* linguist-generated=true`,
+  `*.jsonl merge=union`) and `.arctx/.gitignore` (derived files such as
+  `run.cache.pkl` / `run.db`), idempotently. When `ARCTX_HOME` is set, or when run
+  outside a git repo, `<ARCTX_HOME>/runs` is used instead.
 - `arctx init ... --extension git` also enables the git extension for that run.
   When run inside a git repo, it writes this repo's `<gitdir>/arctx-id` and
   installs hooks unless `--no-hooks` / `--git-no-hooks` is used.

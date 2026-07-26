@@ -402,7 +402,7 @@ PYTHONPATH=src python3 -m arctx_cli.main ...
 ```
 
 `SqliteRunStore` は同じデータを run ごとの単一 `run.db` に保存します。デフォルトの
-ストアディレクトリは `<ARCTX_HOME>/runs` です。
+ストアディレクトリは `<repo_root>/.arctx/runs` です（git-native な in-repo ストレージ）。`ARCTX_HOME` を設定した場合と git repo 外では `<ARCTX_HOME>/runs` です。リポジトリの正典は json / jsonl のみで、`run.cache.pkl` / `run.db` は `arctx init` が生成する `.arctx/.gitignore` で除外されます。
 
 `GraphView` / `views.jsonl` は 0.3 beta の再設計で削除されました。古い view record は
 新しいコアグラフモデルでは無視されます。

@@ -84,6 +84,20 @@ work event は `arctx.ext.git` が登録します。
 `lanes.jsonl`, `lane_events.jsonl` を、あるいは同等の SQLite テーブルを
 使います。
 
+これらはリポジトリ内の `<repo_root>/.arctx/runs/<run_id>/` に置かれます
+（git-native ストレージ。`ARCTX_HOME` を設定した場合と git repo 外では
+`<ARCTX_HOME>/runs` にフォールバック）。**リポジトリの正典は json / jsonl のみ**で、
+`run.cache.pkl` や `run.db` などの派生ファイルは `arctx init` が生成する
+`.arctx/.gitignore` で除外されます。
+
+`.arctx/.gitattributes` の `*.jsonl merge=union` により、ブランチ間のマージは
+行の和集合になります。全レコードが append-only、ID が opaque UUID、DAG なので
+行順に意味がない、という 3 点がこれを正しくします。union マージは行の重複と
+順序入れ替えを起こしうるため、ローダーは ID による冪等化（同一 ID の重複行は
+最初の 1 行のみ採用）と順序非依存化を行います。レコードの記録順（cut/uncut の
+supersession が依存する）は行順ではなく `WorkEvent.created_records` の台帳から
+復元されます。
+
 `GraphView` / `views` は 0.3 beta の再設計で削除されました。既存の run には
 古い `views.jsonl` が残る場合がありますが、新しいローダーはそれらをコアグラフへ
 読み込みません。

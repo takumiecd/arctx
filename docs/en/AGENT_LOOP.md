@@ -38,7 +38,8 @@ final finding for each lane.
 
 ARCTX has three separate pieces of state:
 
-- **Run:** the graph under `<ARCTX_HOME>/runs/<run_id>`.
+- **Run:** the graph under `<repo_root>/.arctx/runs/<run_id>` (or
+  `<ARCTX_HOME>/runs/<run_id>` when `ARCTX_HOME` is set / outside a repo).
 - **Repo pointer:** `<gitdir>/arctx-id`, written by `arctx init`, `arctx use`,
   `arctx git init`, and `arctx git repo add`.
 - **Shell pointer:** `ARCTX_RUN_ID`, usually set with

@@ -48,7 +48,8 @@ active な解から外す枝は削除せず `cut` します。lane ごとの最�
 
 ARCTX には独立した 3 つの状態があります:
 
-- **Run:** `<ARCTX_HOME>/runs/<run_id>` 配下のグラフ。
+- **Run:** `<repo_root>/.arctx/runs/<run_id>` 配下のグラフ
+  （`ARCTX_HOME` 指定時と git repo 外では `<ARCTX_HOME>/runs/<run_id>`）。
 - **Repo pointer:** `<gitdir>/arctx-id`。`arctx init`, `arctx use`,
   `arctx git init`, `arctx git repo add` が書き込む。
 - **Shell pointer:** `ARCTX_RUN_ID`。通常は

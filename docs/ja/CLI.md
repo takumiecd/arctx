@@ -15,7 +15,13 @@ arctx dump --format outline
 
 これらのセットアップコマンドの意味:
 
-- `arctx init <req_id>` は `<ARCTX_HOME>/runs` 配下に run を作成します。
+- `arctx init <req_id>` は `<repo_root>/.arctx/runs` 配下に run を作成します
+  (git-native ストレージ: run データはリポジトリの中に置き、共有は git に委ねます)。
+  同時に `<repo_root>/.arctx/.gitattributes`（`* linguist-generated=true` と
+  `*.jsonl merge=union`）と `.arctx/.gitignore`（`run.cache.pkl` / `run.db` などの
+  派生ファイルを除外）を冪等に書き込みます。
+  `ARCTX_HOME` が設定されている場合、または git repo の外で実行した場合は
+  従来どおり `<ARCTX_HOME>/runs` が使われます。`--store-dir` で明示指定も可能です。
 - `arctx init ... --extension git` はその run の git extension も有効化します。
   git repo 内で実行すると、この repo の `<gitdir>/arctx-id` を書き込み、
   `--no-hooks` / `--git-no-hooks` を指定しない限り hook をインストールします。

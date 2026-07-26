@@ -28,9 +28,28 @@ ARCTX は Obsidian 型のツールになる。**データはリポジトリの�
 ```
 
 - **リポジトリ内の正典は jsonl のみ。** sqlite / キャッシュはマージ不能なので
-  リポジトリに入れない（ローカルキャッシュのまま、または gitignore）
+  リポジトリに入れない
 - `arctx init` はデフォルトで in-repo にデータを作る。`ARCTX_HOME` 方式は廃止方向
 - active run ポインタ（`<gitdir>/arctx-id`）は現行のまま（worktree ごとの現在 run）
+
+### Phase 1 実装で確定した詳細
+
+- **store dir の解決順**: (1) `ARCTX_HOME` 環境変数 → `<ARCTX_HOME>/runs`（テストや
+  意図的に repo 外へ置くツール向けの明示オーバーライド）、(2) 内包する git repo →
+  `<repo_root>/.arctx/runs`（既定）、(3) repo 外なら `$XDG_DATA_HOME/arctx/runs` /
+  `~/.local/share/arctx/runs`。`resolve_arctx_home()` は run データではなく
+  ユーザ設定 `config.json` の場所という意味に純化した
+- **キャッシュの置き場所**: run dir 内に置いたまま、`arctx init` が生成する
+  `.arctx/.gitignore` で除外する（run dir の中に閉じるほうが単純で、キャッシュの
+  寿命が run dir の寿命と一致するため）。除外対象は `run.cache.pkl` / `run.db*` /
+  `.append.lock` / 一時ファイル
+- **重複の解決**: 同一 ID の重複行は**最初の 1 行が勝つ**。レコードは immutable
+  なので重複行は同一内容であり、first/last の選択は結果に影響しない（行順非依存に
+  なることだけが目的）
+- **記録順の復元**: cut/uncut の supersession は「後の marker が勝つ」ため
+  レコードの記録順に依存する。これは行順ではなく `WorkEvent.created_records`
+  （append-only の台帳）から復元する。イベントを持たないレコード（user/lane を
+  渡さないコア API 直叩き）はファイル順のまま先頭に置く
 
 ### マージ戦略: union マージ
 
