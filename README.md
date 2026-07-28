@@ -397,7 +397,9 @@ PYTHONPATH=src python3 -m arctx_cli.main ...
   lane_events.jsonl
 ```
 
-`SqliteRunStore` stores the same data in a single per-run `run.db`. The default store directory is `<repo_root>/.arctx/runs` (git-native in-repo storage); `ARCTX_HOME` overrides it, and it is the fallback outside a git repo. Only the json/jsonl canon is committed — `run.cache.pkl` / `run.db` are excluded by the `.arctx/.gitignore` that `arctx init` generates.
+This is the only store. The default store directory is `<repo_root>/.arctx/runs` (git-native in-repo storage); `ARCTX_HOME` overrides it, and it is the fallback outside a git repo. The json/jsonl canon is what gets committed; the derived `run.cache.pkl` is excluded by the `.arctx/.gitignore` that `arctx init` generates and is always safe to delete.
+
+A second backend (`SqliteRunStore`, `arctx migrate --to sqlite`) was removed in 0.4.1b1. It wrote to a per-run `run.db` that `.arctx/.gitignore` excluded, so once selected it accepted writes that reached no commit and no other clone while the committed jsonl silently stopped moving — and `migrate` only ran one way. Measured on a real 382-node run, the second store bought 14 ms of load time. `ARCTX_STORE=sqlite` and `storage.backend` in `config.json` now raise a `RuntimeError` that explains this rather than being silently ignored.
 
 `GraphView` / `views.jsonl` were removed during the 0.3 beta redesign. Old view records are ignored by the new core graph model.
 

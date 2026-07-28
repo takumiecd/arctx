@@ -41,8 +41,9 @@ ARCTX は Obsidian 型のツールになる。**データはリポジトリの�
   ユーザ設定 `config.json` の場所という意味に純化した
 - **キャッシュの置き場所**: run dir 内に置いたまま、`arctx init` が生成する
   `.arctx/.gitignore` で除外する（run dir の中に閉じるほうが単純で、キャッシュの
-  寿命が run dir の寿命と一致するため）。除外対象は `run.cache.pkl` / `run.db*` /
-  `.append.lock` / 一時ファイル
+  寿命が run dir の寿命と一致するため）。除外対象は `run.cache.pkl` /
+  `.append.lock` / 一時ファイル。**除外してよいのは「消しても再生成できるもの」だけ**
+  で、書き込み先を除外してはならない（この規則を破っていたのが `run.db*` = Phase 6 参照）
 - **重複の解決**: 同一 ID の重複行は**最初の 1 行が勝つ**。レコードは immutable
   なので重複行は同一内容であり、first/last の選択は結果に影響しない（行順非依存に
   なることだけが目的）
@@ -362,3 +363,36 @@ run document だけで完結する（サーバ往復なし）。ヒットは lan
 **削除**: コピー型 asset の URL 配管（`artifactSrc` / `artifactPath` /
 `artifact://` / artifact scope context と `ScopedPayloads`）、単一タブ化していた
 bulk records パネルのタブバー。
+
+---
+
+## Phase 6: SQLite バックエンドの削除（0.4.1b1）
+
+`SqliteRunStore` と `arctx migrate --to sqlite` を削除した。理由は性能ではなく
+**git-native と第二正典が両立しないから**である。
+
+- `run.db` は `.arctx/.gitignore` で除外されていた。つまり backend を sqlite に
+  すると、**書き込みは commit にも他のクローンにも届かない場所にだけ入り、
+  git に載る jsonl は無言で凍る**。実測（382 node の実 run を複製して検証）:
+  `migrate` 後に 1 step 書くと db 383 / jsonl 382 になり、jsonl 側からは
+  `explore --query` で見つからない。
+- `migrate` は `--to sqlite` の一方通行で、**db → jsonl に戻す経路が無かった**。
+- `run.db` が無い状態で backend だけ sqlite にすると、`sqlite3.connect` が
+  空ファイルを作るため**エラーにならず「0 lanes」と答える**（62 lane ある run で）。
+- 得ていたもの: 同 run の load が cold 34.3ms → 20.8ms、warm（`run.cache.pkl`）
+  12.2ms → 5.6ms。**14 ミリ秒**。しかも `run.db` 4.1M > `payloads.jsonl` 2.6M。
+
+文書側は以前から「正典は jsonl のみ」「`run.db` は派生ファイル」と書いていたが、
+実装はそう扱っていなかった（`SqliteRunStore` の docstring は "Store a run as..."、
+`append_batch` は db に権威として書き、pkl キャッシュの整合チェックは
+**db の行数に対して**行われ、jsonl と db を突き合わせる箇所は存在しなかった）。
+文書の主張を実装に守らせる方向で解消した。
+
+`ARCTX_STORE` と `config.json` の `storage.backend` は**読み続ける**。sqlite を
+設定済みのマシンを黙って jsonl に切り替えると、その run.db の中身が忘れられる
+だけなので、`RuntimeError` で「何が起きたか・データはどのファイルにあるか」を
+告げる（`packages/arctx/tests/storage/test_backend_resolution.py`）。
+
+**再導入しないこと。** 速度が要るなら派生キャッシュ（`run.cache.pkl` と同格＝
+消しても安全・整合チェック付き・jsonl から再生成可能）として作ること。
+書き込みを受け取るストアを増やしてはならない。

@@ -1,7 +1,7 @@
 """Pickle-based RunGraph load cache for run directories.
 
 The cache file ``run.cache.pkl`` lives inside the run directory alongside
-``run.json`` / ``run.db`` / ``nodes.jsonl`` etc.  It is a derived artefact:
+``run.json`` / ``nodes.jsonl`` etc.  It is a derived artefact:
 removing it is always safe — the only consequence is a slower ``load_run``.
 
 Cache structure (pickled dict)::

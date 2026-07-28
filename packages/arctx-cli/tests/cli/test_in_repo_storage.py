@@ -96,7 +96,10 @@ def test_init_writes_gitattributes_and_gitignore(in_repo):
     ignore = (in_repo / ".arctx" / ".gitignore").read_text(encoding="utf-8").splitlines()
     # Derived local files must never be committed.
     assert "run.cache.pkl" in ignore
-    assert "run.db" in ignore
+    assert ".append.lock" in ignore
+    # ...but nothing a *write* goes to may be excluded. run.db was, which is
+    # why the sqlite backend could take writes that reached no commit.
+    assert not any(line.startswith("run.db") for line in ignore)
 
 
 def test_git_metadata_is_idempotent(in_repo):

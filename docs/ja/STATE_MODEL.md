@@ -80,15 +80,16 @@ status は lane record 上の可変フィールドではなく、append-only な
 Git の状態は extension の状態です: `GitChangePayload`、branch payload、git の
 work event は `arctx.ext.git` が登録します。
 
-永続化は JSONL ストレージでは `nodes.jsonl`, `steps.jsonl`, `payloads.jsonl`,
-`lanes.jsonl`, `lane_events.jsonl` を、あるいは同等の SQLite テーブルを
-使います。
+永続化は `nodes.jsonl`, `steps.jsonl`, `payloads.jsonl`, `lanes.jsonl`,
+`lane_events.jsonl` です。**ストレージはこれ一つで、代替バックエンドはありません。**
+git-native である以上、git が運べないストアは正典の代わりになれないためです
+（0.4.1b1 で SQLite バックエンドを削除。詳細は GIT_NATIVE.md）。
 
 これらはリポジトリ内の `<repo_root>/.arctx/runs/<run_id>/` に置かれます
 （git-native ストレージ。`ARCTX_HOME` を設定した場合と git repo 外では
 `<ARCTX_HOME>/runs` にフォールバック）。**リポジトリの正典は json / jsonl のみ**で、
-`run.cache.pkl` や `run.db` などの派生ファイルは `arctx init` が生成する
-`.arctx/.gitignore` で除外されます。
+`run.cache.pkl` のような派生ファイルは `arctx init` が生成する
+`.arctx/.gitignore` で除外されます。除外してよいのは消しても再生成できるものだけです。
 
 `.arctx/.gitattributes` の `*.jsonl merge=union` により、ブランチ間のマージは
 行の和集合になります。全レコードが append-only、ID が opaque UUID、DAG なので
