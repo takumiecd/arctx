@@ -83,7 +83,7 @@ work event は `arctx.ext.git` が登録します。
 永続化は `nodes.jsonl`, `steps.jsonl`, `payloads.jsonl`, `lanes.jsonl`,
 `lane_events.jsonl` です。**ストレージはこれ一つで、代替バックエンドはありません。**
 git-native である以上、git が運べないストアは正典の代わりになれないためです
-（0.4.0b2 で SQLite バックエンドを削除。詳細は GIT_NATIVE.md）。
+（0.4.1b1 で SQLite バックエンドを削除。詳細は GIT_NATIVE.md）。
 
 これらはリポジトリ内の `<repo_root>/.arctx/runs/<run_id>/` に置かれます
 （git-native ストレージ。`ARCTX_HOME` を設定した場合と git repo 外では

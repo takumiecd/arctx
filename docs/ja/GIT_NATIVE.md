@@ -366,7 +366,7 @@ bulk records パネルのタブバー。
 
 ---
 
-## Phase 6: SQLite バックエンドの削除（0.4.0b2）
+## Phase 6: SQLite バックエンドの削除（0.4.1b1）
 
 `SqliteRunStore` と `arctx migrate --to sqlite` を削除した。理由は性能ではなく
 **git-native と第二正典が両立しないから**である。
