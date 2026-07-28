@@ -128,9 +128,8 @@ Current commands:
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
 - `export` — render the run as a shareable document: `md` (default) / `tex` / `html` / `json`. `md/tex/html` emit the human-facing spanning-tree outline; `json` emits the machine-readable data contract for GUI surfaces (all nodes/steps/payloads in full, with a precomputed `inactive` flag per node/step). `--exclude-cut` drops cut records. Renderer: `packages/arctx/src/arctx/core/run/export.py`.
 - `serve` — local read/write HTTP API for one run (live-mode backend for GUIs). `GET /run` returns the same JSON document as `export --format json`; `POST /step` / `POST /attach` (node or step) / `POST /cut` write through the same verbs as `add` / `attach` / `cut`; `GET /health` for liveness. Asset reads resolve git objects at request time: `GET /asset` (reference + resolution status), `GET /asset/entries` (directory listing), `GET /asset/content` (utf-8 or base64), and `GET /asset/raw` (raw bytes; the one binary route, served by the HTTP shell over the same pure resolver in `arctx/serve/assets.py`) — all take `payload_id` plus an optional `path` relative to the asset's own path. Stdlib-only (`http.server`), CORS-enabled (`--cors-origin`), default bind `127.0.0.1:8787`. Two layers: harness-neutral pure dispatcher `arctx/serve/api.py` (`dispatch(...)`, socket-free and unit-tested) + thin `http.server` shell `arctx/serve/server.py`. The JSON shapes are the contract a future FastAPI port would expose unchanged.
-- `migrate` — convert a jsonl run dir to sqlite
 
-Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
+Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `migrate` (the sqlite backend it converted to is gone), `tui` (moved to standalone `arctx-tui` command).
 
 Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
 `arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to
@@ -213,6 +212,10 @@ and its output Node inherits the Step's lane. Verbs: `lane create` / `switch` /
 
 Old files `edges.jsonl`, `input_transitions.jsonl`, `output_transitions.jsonl`, `dags.jsonl`, `states.jsonl` do not exist in the current schema.
 
-`SqliteRunStore` stores the same data in a per-run `run.db`.
+`JsonlRunStore` is the only store. Do not reintroduce a second backend: storage
+is git-native, so a store git cannot carry is not an alternative canon — the
+removed `SqliteRunStore` wrote to a gitignored `run.db`, which meant selecting it
+silently froze the committed jsonl. `resolve_store` refuses any backend other
+than `jsonl` with an error that says so.
 
 Payload deserialization uses `payload_from_dict(data)` which dispatches by `payload_type`. Fallback: unknown types become generic `NodePayload` / `StepPayload`.

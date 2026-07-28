@@ -27,8 +27,9 @@ Git state is extension state: `GitChangePayload`, branch payloads, and git work
 events are registered by `arctx.ext.git`.
 
 Persistence uses `nodes.jsonl`, `steps.jsonl`, `payloads.jsonl`,
-`lanes.jsonl`, and `lane_events.jsonl` for JSONL storage, or equivalent
-SQLite tables.
+`lanes.jsonl`, and `lane_events.jsonl`. This is the only storage: with
+git-native storage, a store git cannot carry cannot stand in for the canon
+(the SQLite backend was removed in 0.4.0b2 — see `docs/ja/GIT_NATIVE.md`).
 
 `GraphView` / `views` were removed during the 0.3 beta redesign. Old
 `views.jsonl` files may remain in existing runs, but new loaders do not import

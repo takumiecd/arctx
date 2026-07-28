@@ -141,39 +141,51 @@ def resolve_lane_id(
 
 
 def resolve_store(store_dir: str | None):
-    """Pick a RunStore implementation.
+    """Return the RunStore for *store_dir* (``<ARCTX_HOME>/runs`` when None).
 
-    Resolution chain:
-    1. ARCTX_STORE env var ("jsonl" | "sqlite")
-    2. <ARCTX_HOME>/config.json ``storage.backend``
-    3. default: "jsonl"
-
-    If *store_dir* is None, ``<ARCTX_HOME>/runs`` is used.
+    There is one backend. Storage is git-native: the run *is* the committed
+    jsonl canon, so a second store that git cannot carry is not an
+    alternative to it — writes through such a store are invisible to every
+    other clone. ``ARCTX_STORE`` and ``config.json``'s ``storage.backend``
+    are still read so that a machine configured for the removed sqlite
+    backend gets told what happened instead of silently changing meaning.
 
     Raises
     ------
     RuntimeError
-        If the resolved backend name is not "jsonl" or "sqlite".
+        If a backend other than "jsonl" is configured.
     """
     if store_dir is None:
         store_dir = resolve_store_dir()
 
     backend: str | None = os.environ.get("ARCTX_STORE")
+    source = "ARCTX_STORE"
     if not backend:
         config_path = _config_path()
         if config_path.exists():
             data = json.loads(config_path.read_text(encoding="utf-8"))
             backend = data.get("storage", {}).get("backend")
+            source = f"{config_path} storage.backend"
     if not backend:
         backend = "jsonl"
 
-    if backend == "jsonl":
-        from arctx.storage.jsonl import JsonlRunStore  # noqa: PLC0415
-        return ExtensionAwareStore(JsonlRunStore(store_dir))
-    if backend == "sqlite":
-        from arctx.storage.sqlite import SqliteRunStore  # noqa: PLC0415
-        return ExtensionAwareStore(SqliteRunStore(store_dir))
-    raise RuntimeError(f"unknown store backend: {backend!r}. Expected 'jsonl' or 'sqlite'.")
+    if backend != "jsonl":
+        detail = (
+            "the sqlite backend was removed: it wrote to a run.db that "
+            "`.arctx/.gitignore` excludes, so records written through it "
+            "reached no commit and no other clone, and there was no way "
+            "back to jsonl. "
+            if backend == "sqlite"
+            else ""
+        )
+        raise RuntimeError(
+            f"unknown store backend: {backend!r} (from {source}). "
+            f"{detail}Expected 'jsonl'. Unset it to use the jsonl canon."
+        )
+
+    from arctx.storage.jsonl import JsonlRunStore  # noqa: PLC0415
+
+    return ExtensionAwareStore(JsonlRunStore(store_dir))
 
 
 # Keep RunHandleProxy here for completeness — it wraps a RunHandle with lazy

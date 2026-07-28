@@ -19,8 +19,10 @@ What those setup commands do:
   storage: run data lives inside the repository and sharing is just git). It also
   writes `<repo_root>/.arctx/.gitattributes` (`* linguist-generated=true`,
   `*.jsonl merge=union`) and `.arctx/.gitignore` (derived files such as
-  `run.cache.pkl` / `run.db`), idempotently. When `ARCTX_HOME` is set, or when run
-  outside a git repo, `<ARCTX_HOME>/runs` is used instead.
+  `run.cache.pkl`), idempotently. Only files that can be regenerated may be
+  excluded — excluding something a write goes to keeps that record out of every
+  commit. When `ARCTX_HOME` is set, or when run outside a git repo,
+  `<ARCTX_HOME>/runs` is used instead.
 - `arctx init ... --extension git` also enables the git extension for that run.
   When run inside a git repo, it writes this repo's `<gitdir>/arctx-id` and
   installs hooks unless `--no-hooks` / `--git-no-hooks` is used.
