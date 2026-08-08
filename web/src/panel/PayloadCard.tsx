@@ -1,8 +1,14 @@
 // Renders one payload as a card: title/summary/fields from the registered
 // display renderer, optional media/sections/custom element, and a raw-JSON
 // fallback.
+//
+// In a list (the panel's Content tab) cards are collapsible and start closed,
+// so a node carrying several assets or diffs reads as an index instead of one
+// endless scroll. Collapsed means *unmounted*, not hidden: the bodies that
+// fetch from the server (AssetCard, GitChangeCard) issue no request until the
+// card is opened.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { RunClient } from "../api";
 import { isAssetPayload, isGitChangePayload, type RunDocument, type RunPayload } from "../types";
@@ -19,71 +25,119 @@ export function PayloadCard({
   display,
   client,
   onCopyToEdit,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   doc: RunDocument;
   payload: RunPayload;
   display: PayloadDisplay;
   client: RunClient;
   onCopyToEdit?: (text: string) => void;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
   const element = payloadElementFor(payload);
-  return (
-    <section className={`payload-card${display.raw ? " raw" : ""}`}>
-      <div className="payload-card-head">
+  const [open, setOpen] = useState(defaultOpen);
+  const expanded = !collapsible || open;
+
+  const copyButton = onCopyToEdit ? (
+    <button
+      type="button"
+      className="payload-copy-btn"
+      onClick={() => {
+        const text = typeof payload.content?.text === "string" ? payload.content.text : "";
+        onCopyToEdit(text);
+      }}
+    >
+      Copy to Edit
+    </button>
+  ) : null;
+
+  const head = collapsible ? (
+    <div className="payload-card-head">
+      <button
+        type="button"
+        className="payload-card-toggle"
+        aria-expanded={expanded}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span className="payload-card-chevron" aria-hidden="true">
+          {expanded ? "▾" : "▸"}
+        </span>
         <strong>{display.title}</strong>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {onCopyToEdit && (
-            <button
-              type="button"
-              className="payload-copy-btn"
-              onClick={() => {
-                const text = typeof payload.content?.text === "string" ? payload.content.text : "";
-                onCopyToEdit(text);
-              }}
-            >
-              Copy to Edit
-            </button>
-          )}
-          <code>{payload.payload_id.slice(0, 12)}</code>
-        </div>
+        {!expanded && display.summary && (
+          <span className="payload-card-peek">{oneLine(display.summary)}</span>
+        )}
+      </button>
+      <div className="payload-card-actions">
+        {expanded && copyButton}
+        <code>{payload.payload_id.slice(0, 12)}</code>
       </div>
-      {display.summary && <p className="payload-summary">{display.summary}</p>}
-      {display.media?.map((media, index) => (
-        <PayloadMediaView key={`${media.src}:${index}`} media={media} />
-      ))}
-      {display.fields && display.fields.length > 0 && (
-        <dl className="payload-fields">
-          {display.fields.map((field) => (
-            <div key={field.label}>
-              <dt>{field.label}</dt>
-              <dd>{formatValue(field.value)}</dd>
-            </div>
+    </div>
+  ) : (
+    <div className="payload-card-head">
+      <strong>{display.title}</strong>
+      <div className="payload-card-actions">
+        {copyButton}
+        <code>{payload.payload_id.slice(0, 12)}</code>
+      </div>
+    </div>
+  );
+
+  return (
+    <section
+      className={`payload-card${display.raw ? " raw" : ""}${collapsible ? " collapsible" : ""}${
+        expanded ? "" : " collapsed"
+      }`}
+    >
+      {head}
+      {expanded && (
+        <div className={collapsible ? "payload-card-body" : undefined}>
+          {display.summary && <p className="payload-summary">{display.summary}</p>}
+          {display.media?.map((media, index) => (
+            <PayloadMediaView key={`${media.src}:${index}`} media={media} />
           ))}
-        </dl>
-      )}
-      {isAssetPayload(payload) && <AssetCard client={client} payload={payload} />}
-      {isGitChangePayload(payload) && !element && (
-        <GitChangeCard client={client} payload={payload} />
-      )}
-      {element && (
-        <PayloadCustomElement
-          tagName={element.tagName}
-          doc={doc}
-          payload={payload}
-          display={display}
-        />
-      )}
-      {display.sections?.map((section, index) => (
-        <PayloadSectionView key={`${section.title}:${index}`} section={section} />
-      ))}
-      {!display.raw && (
-        <details className="payload-raw">
-          <summary>raw JSON</summary>
-          <pre className="payload">{JSON.stringify(payload, null, 2)}</pre>
-        </details>
+          {display.fields && display.fields.length > 0 && (
+            <dl className="payload-fields">
+              {display.fields.map((field) => (
+                <div key={field.label}>
+                  <dt>{field.label}</dt>
+                  <dd>{formatValue(field.value)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {isAssetPayload(payload) && <AssetCard client={client} payload={payload} />}
+          {isGitChangePayload(payload) && !element && (
+            <GitChangeCard client={client} payload={payload} />
+          )}
+          {element && (
+            <PayloadCustomElement
+              tagName={element.tagName}
+              doc={doc}
+              payload={payload}
+              display={display}
+            />
+          )}
+          {display.sections?.map((section, index) => (
+            <PayloadSectionView key={`${section.title}:${index}`} section={section} />
+          ))}
+          {!display.raw && (
+            <details className="payload-raw">
+              <summary>raw JSON</summary>
+              <pre className="payload">{JSON.stringify(payload, null, 2)}</pre>
+            </details>
+          )}
+        </div>
       )}
     </section>
   );
+}
+
+// One collapsed row is one line: newlines would otherwise make the index as
+// tall as the thing it is indexing.
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 function PayloadSectionView({ section }: { section: PayloadSection }) {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, useRef, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { pickClient } from "./api";
@@ -12,6 +12,23 @@ import type { RunDocument } from "./types";
 const client = pickClient();
 
 type ThemePreference = "light" | "dark" | "system";
+
+// Selections are compared by what they point at, never by object identity.
+function sameSelection(a: Selection, b: Selection): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.kind !== b.kind) return false;
+  if (a.kind === "records") {
+    const other = b as Extract<Selection, { kind: "records" }>;
+    return (
+      a.records.length === other.records.length &&
+      a.records.every(
+        (record, index) =>
+          record.kind === other.records[index].kind && record.id === other.records[index].id,
+      )
+    );
+  }
+  return a.id === (b as { id: string }).id;
+}
 
 function BrandMark() {
   return (
@@ -69,6 +86,14 @@ export function App() {
   const qc = useQueryClient();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["run"] });
+
+  // Re-selecting what is already selected must be a no-op: the canvas
+  // re-emits its selection whenever the polled document rebuilds the nodes,
+  // and a fresh object would re-run every `[selection]` effect (resetting the
+  // detail panel's tab, for one) for no reason.
+  const select = useCallback((sel: Selection) => {
+    setSelection((prev) => (sameSelection(prev, sel) ? prev : sel));
+  }, []);
 
   // ── Theme persistence ─────────────────────────────────────────
   useEffect(() => {
@@ -294,7 +319,7 @@ export function App() {
   const focusLaneId = (laneId: string) => {
     if (laneStatus(data, laneId) === "open") setActiveLaneId(laneId);
     setFocusLane({ laneId, ts: Date.now() });
-    setSelection({ kind: "lane", id: laneId });
+    select({ kind: "lane", id: laneId });
   };
   // Jumping from a search hit: select the record, expand its lane if the canvas
   // has it collapsed (otherwise the record has nothing to select), and pan.
@@ -312,7 +337,7 @@ export function App() {
         setExpandedClosedLaneIds((prev) => new Set(prev).add(laneId));
       }
     }
-    setSelection(sel);
+    select(sel);
     setFocusRecord({ kind: sel.kind, id: sel.id, ts: Date.now() });
   };
 
@@ -615,7 +640,7 @@ export function App() {
             doc={data}
             selection={selection}
             savedNodePositions={savedLayout?.nodes ?? {}}
-            onSelect={setSelection}
+            onSelect={select}
             onNodePositionsChanged={(positions) => {
               if (client.writable) saveLayout.mutate(positions);
             }}
@@ -639,7 +664,7 @@ export function App() {
           doc={data}
           selection={selection}
           client={client}
-          onSelect={setSelection}
+          onSelect={select}
           laneColorOverrides={laneColorOverrides}
           dark={dark}
         />

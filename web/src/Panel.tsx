@@ -5,6 +5,8 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import type { RunClient } from "./api";
+import type { RunDocument, RunPayload } from "./types";
 import {
   payloadsForNode,
   payloadsForStep,
@@ -294,6 +296,8 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
   const nodePayloads = payloadsForNode(doc, unit.outputNodeId);
   const attachTargets = attachTargetsFor(unit);
   const attachTarget = attachTargets.find((target) => target.key === attachTargetKey) ?? attachTargets[0];
+  // A single payload needs no index — open it and skip the extra click.
+  const soloPayload = stepPayloads.length + nodePayloads.length === 1;
 
   return (
     <aside className={`panel${isFocused ? " focused" : ""}`} style={{ width: isFocused ? "100%" : panelWidth }}>
@@ -355,45 +359,33 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
             {unit.stepId ? (
               <>
                 <h3>step payloads ({stepPayloads.length})</h3>
-                {stepPayloads.length === 0 && <p className="muted">none</p>}
-                {stepPayloads.map((p) => (
-                  <PayloadCard
-                    key={p.payload_id}
-                    doc={doc}
-                    payload={p}
-                    display={payloadDisplayFor(p, doc)}
-                    client={client}
-                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                  />
-                ))}
+                <PayloadList
+                  doc={doc}
+                  payloads={stepPayloads}
+                  client={client}
+                  openByDefault={soloPayload}
+                  onCopyToEdit={handleCopyToEdit}
+                />
 
                 <h3>output node notes ({nodePayloads.length})</h3>
-                {nodePayloads.length === 0 && <p className="muted">none</p>}
-                {nodePayloads.map((p) => (
-                  <PayloadCard
-                    key={p.payload_id}
-                    doc={doc}
-                    payload={p}
-                    display={payloadDisplayFor(p, doc)}
-                    client={client}
-                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                  />
-                ))}
+                <PayloadList
+                  doc={doc}
+                  payloads={nodePayloads}
+                  client={client}
+                  openByDefault={soloPayload}
+                  onCopyToEdit={handleCopyToEdit}
+                />
               </>
             ) : (
               <>
                 <h3>node payloads ({nodePayloads.length})</h3>
-                {nodePayloads.length === 0 && <p className="muted">none</p>}
-                {nodePayloads.map((p) => (
-                  <PayloadCard
-                    key={p.payload_id}
-                    doc={doc}
-                    payload={p}
-                    display={payloadDisplayFor(p, doc)}
-                    client={client}
-                    onCopyToEdit={p.payload_type === "note" ? handleCopyToEdit : undefined}
-                  />
-                ))}
+                <PayloadList
+                  doc={doc}
+                  payloads={nodePayloads}
+                  client={client}
+                  openByDefault={soloPayload}
+                  onCopyToEdit={handleCopyToEdit}
+                />
               </>
             )}
           </section>
@@ -445,5 +437,39 @@ export function Panel({ doc, selection, client, onSelect, laneColorOverrides, da
         )}
       </div>
     </aside>
+  );
+}
+
+// The payloads of one target, rendered as a collapsed index. Bodies mount only
+// when opened, so asset/diff fetches follow the click instead of the render.
+function PayloadList({
+  doc,
+  payloads,
+  client,
+  openByDefault,
+  onCopyToEdit,
+}: {
+  doc: RunDocument;
+  payloads: RunPayload[];
+  client: RunClient;
+  openByDefault: boolean;
+  onCopyToEdit: (text: string) => void;
+}) {
+  if (payloads.length === 0) return <p className="muted">none</p>;
+  return (
+    <div className="payload-list">
+      {payloads.map((p) => (
+        <PayloadCard
+          key={p.payload_id}
+          doc={doc}
+          payload={p}
+          display={payloadDisplayFor(p, doc)}
+          client={client}
+          collapsible
+          defaultOpen={openByDefault}
+          onCopyToEdit={p.payload_type === "note" ? onCopyToEdit : undefined}
+        />
+      ))}
+    </div>
   );
 }

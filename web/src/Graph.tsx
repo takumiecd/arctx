@@ -398,8 +398,14 @@ function GraphCanvas({
   // selection (used as step inputs when several nodes are selected).
   const dragSource = useRef<string | null>(null);
   const selectedNodeIds = useRef<string[]>([]);
-  const ignoreNextEmptySelection = useRef(false);
   const pendingNodePositions = useRef<Map<string, Pos>>(new Map());
+
+  // The canvas cannot represent every selection: steps live on edges that are
+  // `selectable: false`, and an expanded lane has no selectable pseudo-node
+  // (only a collapsed one does). React Flow reporting "nothing selected" for
+  // those is expected, not a user action — see `onSelectionChange`.
+  const selectionRef = useRef<Selection | null>(selection);
+  selectionRef.current = selection;
 
   // The serialized (collapsedLaneIds, showCuts) key from the last render.
   // `prevPos` (previous on-screen position) exists so polled refetches don't
@@ -707,8 +713,17 @@ function GraphCanvas({
 
   const onSelectionChange = useCallback(
     ({ nodes: ns, edges: es }: OnSelectionChangeParams) => {
-      if (ignoreNextEmptySelection.current && ns.length === 0 && es.length === 0) {
-        ignoreNextEmptySelection.current = false;
+      // Selecting a step or an expanded lane clears the canvas selection as a
+      // side effect (neither has a selectable element on it). Clearing the
+      // app selection here would immediately undo the selection that caused
+      // it — the detail panel would open and close again. Only the pane click
+      // means "the user cleared the selection".
+      const current = selectionRef.current;
+      if (
+        ns.length === 0 &&
+        es.length === 0 &&
+        (current?.kind === "step" || current?.kind === "lane")
+      ) {
         return;
       }
 
@@ -822,13 +837,11 @@ function GraphCanvas({
         }}
         onEdgeClick={(event, edge) => {
           event.stopPropagation();
-          ignoreNextEmptySelection.current = true;
           selectedNodeIds.current = [];
           const stepId = (edge.data as { stepId?: string })?.stepId;
           if (stepId) onSelect({ kind: "step", id: stepId });
         }}
         onPaneClick={() => {
-          ignoreNextEmptySelection.current = false;
           selectedNodeIds.current = [];
           onSelect(null);
         }}
