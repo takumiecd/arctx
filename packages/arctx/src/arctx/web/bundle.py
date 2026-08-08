@@ -35,3 +35,7 @@ def bundle() -> int:
     shutil.copytree(dist, PACKAGED_STATIC)
     print(f"copied {dist} -> {PACKAGED_STATIC}")
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(bundle())

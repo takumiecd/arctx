@@ -49,6 +49,14 @@ The detail panel on the right can be resized by dragging its left edge. The
 chosen width is saved in the browser for the next visit.
 Live mode also shows the current lane from `arctx serve` in the header.
 
+Its `Content` tab is an index: each payload is one collapsed line (type, a
+one-line preview, id) and clicking it expands that card in place, with several
+open at once if you want to compare. A card that is the target's only payload
+opens by default. An expanded card scrolls inside its own bounded box, so a
+long file or diff never stretches the panel — use the focus-mode button in the
+panel header to widen it to full width for real reading. Collapsed cards are not rendered at
+all, so asset content and git diffs are fetched on expand, not on selection.
+
 ## Lanes and search
 
 Lanes are flat, git-branch-like work units — there is no lane hierarchy. The
