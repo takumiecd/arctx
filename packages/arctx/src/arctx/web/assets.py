@@ -26,6 +26,14 @@ def find_static_dir() -> Path | None:
     if override:
         path = Path(override).expanduser()
         return path if _has_index(path) else None
+    # In a source checkout, prefer the freshly-built frontend. The packaged
+    # bundle also exists in the repository and may be older than ``web/dist``;
+    # choosing it first makes ``npm run build`` appear to have no effect when
+    # developers restart ``arctx web``. Installed wheels do not have a sibling
+    # source ``web/dist``, so they continue to fall back to PACKAGED_STATIC.
+    repo_dist = _repo_web_dist()
+    if repo_dist is not None:
+        return repo_dist
     if _has_index(PACKAGED_STATIC):
         return PACKAGED_STATIC
-    return _repo_web_dist()
+    return None

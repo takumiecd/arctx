@@ -22,6 +22,7 @@ export interface LaneOverview {
   node_count: number;
   step_count: number;
   payload_count: number;
+  active_frontier_node_ids: string[];
 }
 
 export interface LaneSearchHit {
@@ -95,6 +96,22 @@ export function laneOverview(doc: RunDocument, lane: RunLane): LaneOverview {
   const payloadCount = doc.payloads.filter(
     (payload) => laneOfRecord(doc, payload.payload_id) === lane.lane_id,
   ).length;
+  const inactiveSteps = new Set(
+    doc.steps.filter((step) => step.inactive).map((step) => step.step_id),
+  );
+  const inactiveNodes = new Set(
+    doc.nodes.filter((node) => node.inactive).map((node) => node.node_id),
+  );
+  const laneNodeIds = new Set(group?.node_ids ?? []);
+  const activeFrontiers = [...laneNodeIds]
+    .filter(
+      (nodeId) =>
+        !inactiveNodes.has(nodeId) &&
+        doc.steps.every(
+          (step) => !step.input_node_ids.includes(nodeId) || inactiveSteps.has(step.step_id),
+        ),
+    )
+    .sort();
   return {
     lane_id: lane.lane_id,
     label: lane.name || lane.lane_id,
@@ -109,6 +126,7 @@ export function laneOverview(doc: RunDocument, lane: RunLane): LaneOverview {
     node_count: group?.node_ids.length ?? 0,
     step_count: group?.step_ids.length ?? 0,
     payload_count: payloadCount,
+    active_frontier_node_ids: activeFrontiers,
   };
 }
 
