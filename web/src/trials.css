@@ -1,0 +1,263 @@
+/* Trials view — derived comparison tables (optimize extension). */
+
+.trials-view {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  gap: 16px;
+  padding: 16px;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  background: var(--color-bg-subtle);
+  overflow: auto;
+}
+
+.trials-empty {
+  flex: 1 1 auto;
+}
+
+/* ---- table list (left) ---- */
+
+.trials-list {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.trials-list > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 2px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.trials-list > header span {
+  color: var(--color-text-faint);
+  font-size: 12px;
+}
+
+.trials-list-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.trials-list-entry:hover {
+  border-color: var(--color-border-strong);
+}
+
+.trials-list-entry.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.trials-list-entry strong {
+  font-size: 14px;
+}
+
+.trials-list-entry span {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.trials-list-entry small {
+  font-size: 11px;
+  color: var(--color-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- main table ---- */
+
+.trials-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.trials-main-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.trials-main-header strong {
+  font-size: 18px;
+  margin-right: 10px;
+}
+
+.trials-main-header span {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.trials-best {
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+  background: transparent;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.trials-best:hover {
+  background: var(--color-bg-muted);
+}
+
+.trials-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+}
+
+.trials-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.trials-table th,
+.trials-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.trials-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.trials-table thead th button {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.trials-table thead th button:hover {
+  color: var(--color-accent);
+}
+
+.trials-table thead th.sorted button {
+  color: var(--color-accent);
+}
+
+.trials-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.trials-table tbody tr.cut {
+  opacity: 0.45;
+}
+
+.trials-table td.trials-col-metric {
+  font-variant-numeric: tabular-nums;
+}
+
+.trials-step-link {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--color-accent);
+}
+
+.trials-step-link:hover {
+  text-decoration: underline;
+}
+
+.trials-title {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trials-lane,
+.trials-status {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+/* ---- quarantine ---- */
+
+.trials-quarantine {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--color-danger-bg, var(--color-bg-muted));
+  font-size: 13px;
+}
+
+.trials-quarantine p {
+  margin: 4px 0 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.trials-quarantine-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+
+.trials-quarantine-row button {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--color-accent);
+}
+
+.trials-quarantine-row span {
+  color: var(--color-text-secondary);
+}
+
+/* ---- empty state ---- */
+
+.trials-empty {
+  max-width: 560px;
+  margin: 60px auto;
+  padding: 0 20px;
+  color: var(--color-text-secondary);
+}
+
+.trials-empty h2 {
+  color: var(--color-text);
+}
+
+.trials-empty pre {
+  background: var(--color-pre-bg);
+  color: var(--color-pre-text);
+  border: 1px solid var(--color-pre-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  overflow-x: auto;
+}

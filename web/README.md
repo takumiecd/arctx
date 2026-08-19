@@ -37,6 +37,17 @@ is a frontier or historical point, and the number of active lane frontiers.
 The graph remains the detailed history and editing surface rather than the first
 screen a human must interpret.
 
+The third view, **Trials**, renders the optimize extension's derived
+comparison tables (`web/src/trialTables.ts` mirrors
+`arctx/ext/optimize/tables.py` — keep the two in sync, like `types.ts`).
+A table is a name shared by `TrialPayload` rows; columns, column kinds, the
+best row, and quarantined rows are all computed from the export document in
+the browser — no table record, no extra API route. The sidebar lists every
+table with its columns; the selected table sorts by any column (sorting by a
+numeric metric surfaces a best-row chip), dims cut rows, and shows
+schema-conflicting rows in a quarantine section instead of corrupting the
+columns. Step ids jump to the record in the Graph view.
+
 The **Explorer** sidebar remains visible in both Overview and Graph. It mirrors
 `arctx explore --query`: case-insensitive AND search across lane names,
 purposes, and owned payload content, including closed lanes. Overview leads
