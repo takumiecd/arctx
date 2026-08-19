@@ -66,6 +66,24 @@ export function isGitChangePayload(payload: RunPayload): payload is RunGitChange
   return payload.payload_type === "git_change";
 }
 
+// A trial (optimize extension) is one scored attempt on a Step: the config
+// that was tried and the metric values that came out. `tables` are plain
+// shared names — there is no table record. Which tables exist, their columns,
+// column kinds, and best rows are all derived from the rows at read time
+// (see trials.ts), mirroring arctx/ext/optimize/tables.py.
+export interface RunTrialPayload extends RunPayload {
+  payload_type: "trial";
+  target_kind: "step";
+  tables: string[];
+  config: Record<string, unknown>;
+  metrics: Record<string, unknown>;
+  title?: string | null;
+}
+
+export function isTrialPayload(payload: RunPayload): payload is RunTrialPayload {
+  return payload.payload_type === "trial";
+}
+
 // Response shape of POST /web/ext/git/diff — entirely derived, never stored.
 export interface GitChangeDiff {
   step_id: string;

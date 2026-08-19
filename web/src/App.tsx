@@ -6,6 +6,7 @@ import { Graph, type LaneFocusRequest, type RecordFocusRequest, type Selection }
 import { LaneSidebar } from "./LaneSidebar";
 import type { LayoutDirection } from "./layout";
 import { Overview } from "./Overview";
+import { Trials } from "./Trials";
 import { Panel } from "./Panel";
 import { laneById, laneColors, laneOptions, laneStatus, type LaneColorOverrides } from "./model";
 import type { RunDocument } from "./types";
@@ -13,7 +14,7 @@ import type { RunDocument } from "./types";
 const client = pickClient();
 
 type ThemePreference = "light" | "dark" | "system";
-type AppView = "overview" | "graph";
+type AppView = "overview" | "graph" | "trials";
 
 // Selections are compared by what they point at, never by object identity.
 function sameSelection(a: Selection, b: Selection): boolean {
@@ -427,7 +428,7 @@ export function App() {
           {!client.writable && " · read-only"}
         </span>
         <nav className="view-switcher" aria-label="Run view">
-          {(["overview", "graph"] as const).map((candidate) => (
+          {(["overview", "graph", "trials"] as const).map((candidate) => (
             <button
               key={candidate}
               type="button"
@@ -666,6 +667,10 @@ export function App() {
             onSelectRecord={focusRecordSelection}
             onOpenGraph={() => setView("graph")}
           />
+        </main>
+      ) : view === "trials" ? (
+        <main>
+          <Trials doc={data} onSelectRecord={focusRecordSelection} />
         </main>
       ) : (
         <main>
