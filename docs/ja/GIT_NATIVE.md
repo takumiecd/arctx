@@ -10,8 +10,8 @@ ARCTX は Obsidian 型のツールになる。**データはリポジトリの�
 インストールするツールであり、同期機構を一切持たない。
 
 - 独自 sync（`arctx/core/sync/`、`arctx_cli/commands/sync_cmd.py`）は**全削除**
-- Doxygen 型の静的サイト書き出し（Pages 等）は**採用しない**。閲覧は `arctx-web` 一本
-- clone した人は `pipx install arctx-web` → リポジトリ内で起動、で閲覧できる
+- Doxygen 型の静的サイト書き出し（Pages 等）は**採用しない**。閲覧は `arctx web` 一本
+- clone した人は `pipx install arctx-cli` → リポジトリ内で `arctx web`、で閲覧できる
 
 ## ストレージ: `.arctx/` をリポジトリに同梱
 
