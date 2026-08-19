@@ -48,14 +48,25 @@ export function LaneSidebar({
 
   return (
     <aside className="lane-sidebar">
+      <div className="lane-sidebar-title">
+        <strong>Explorer</strong>
+        <span>Search every lane and record</span>
+      </div>
       <div className="lane-sidebar-search">
         <input
           type="search"
           aria-label="search lanes and records"
-          placeholder="search lanes + records"
+          placeholder="search this run…"
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
         />
+        <div className="lane-search-shortcuts" aria-label="Suggested searches">
+          {["blocker", "question", "failed"].map((term) => (
+            <button type="button" key={term} onClick={() => setQuery(term)}>
+              {term}
+            </button>
+          ))}
+        </div>
       </div>
 
       {searching ? (

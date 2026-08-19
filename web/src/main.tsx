@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { installGlobalPayloadExtensionApi } from "./payloadExtensions";
 import "./index.css";
+import "./overview.css";
 
 const queryClient = new QueryClient();
 installGlobalPayloadExtensionApi();

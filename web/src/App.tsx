@@ -5,6 +5,7 @@ import { pickClient } from "./api";
 import { Graph, type LaneFocusRequest, type RecordFocusRequest, type Selection } from "./Graph";
 import { LaneSidebar } from "./LaneSidebar";
 import type { LayoutDirection } from "./layout";
+import { Overview } from "./Overview";
 import { Panel } from "./Panel";
 import { laneById, laneColors, laneOptions, laneStatus, type LaneColorOverrides } from "./model";
 import type { RunDocument } from "./types";
@@ -12,6 +13,7 @@ import type { RunDocument } from "./types";
 const client = pickClient();
 
 type ThemePreference = "light" | "dark" | "system";
+type AppView = "overview" | "graph";
 
 // Selections are compared by what they point at, never by object identity.
 function sameSelection(a: Selection, b: Selection): boolean {
@@ -59,6 +61,7 @@ function resolveTheme(pref: ThemePreference): "light" | "dark" {
 }
 
 export function App() {
+  const [view, setView] = useState<AppView>("overview");
   const [selection, setSelection] = useState<Selection>(null);
   const [collapsedLaneIds, setCollapsedLaneIds] = useState<Set<string>>(() => new Set());
   const [expandedClosedLaneIds, setExpandedClosedLaneIds] = useState<Set<string>>(() => new Set());
@@ -317,6 +320,7 @@ export function App() {
   // Reading a closed lane must not make it current — writes into a closed lane
   // are refused, so browsing history would leave the app unable to write.
   const focusLaneId = (laneId: string) => {
+    setView("graph");
     if (laneStatus(data, laneId) === "open") setActiveLaneId(laneId);
     setFocusLane({ laneId, ts: Date.now() });
     select({ kind: "lane", id: laneId });
@@ -325,6 +329,7 @@ export function App() {
   // has it collapsed (otherwise the record has nothing to select), and pan.
   const focusRecordSelection = (sel: Selection) => {
     if (!sel || (sel.kind !== "node" && sel.kind !== "step")) return;
+    setView("graph");
     const laneId = data.record_provenance?.[sel.id]?.lane_id;
     if (laneId) {
       setCollapsedLaneIds((prev) => {
@@ -421,6 +426,19 @@ export function App() {
           · {data.counts.nodes} nodes · {data.counts.steps} steps
           {!client.writable && " · read-only"}
         </span>
+        <nav className="view-switcher" aria-label="Run view">
+          {(["overview", "graph"] as const).map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              className={view === candidate ? "active" : ""}
+              aria-current={view === candidate ? "page" : undefined}
+              onClick={() => setView(candidate)}
+            >
+              {candidate}
+            </button>
+          ))}
+        </nav>
         {client.writable && (
           <div className="lane-selector-popover" ref={popoverRef}>
             <button
@@ -574,30 +592,34 @@ export function App() {
             )}
           </div>
         )}
-        <label className="show-cuts-toggle" title="Show cut (inactive) nodes and steps">
-          <input
-            type="checkbox"
-            checked={showCuts}
-            onChange={(event) => setShowCuts(event.currentTarget.checked)}
-          />
-          <span>show cuts</span>
-        </label>
-        <span className="theme-switcher" role="radiogroup" aria-label="Layout direction">
-          {(["right", "down"] as const).map((direction) => (
-            <button
-              key={direction}
-              type="button"
-              className={`theme-switcher-btn${layoutDirection === direction ? " active" : ""}`}
-              onClick={() => setLayoutDirection(direction)}
-              title={direction === "right" ? "Root left to right" : "Root top to bottom"}
-              aria-label={direction === "right" ? "Root left to right" : "Root top to bottom"}
-              role="radio"
-              aria-checked={layoutDirection === direction}
-            >
-              {direction === "right" ? "→" : "↓"}
-            </button>
-          ))}
-        </span>
+        {view === "graph" && (
+          <>
+            <label className="show-cuts-toggle" title="Show cut (inactive) nodes and steps">
+              <input
+                type="checkbox"
+                checked={showCuts}
+                onChange={(event) => setShowCuts(event.currentTarget.checked)}
+              />
+              <span>show cuts</span>
+            </label>
+            <span className="theme-switcher" role="radiogroup" aria-label="Layout direction">
+              {(["right", "down"] as const).map((direction) => (
+                <button
+                  key={direction}
+                  type="button"
+                  className={`theme-switcher-btn${layoutDirection === direction ? " active" : ""}`}
+                  onClick={() => setLayoutDirection(direction)}
+                  title={direction === "right" ? "Root left to right" : "Root top to bottom"}
+                  aria-label={direction === "right" ? "Root left to right" : "Root top to bottom"}
+                  role="radio"
+                  aria-checked={layoutDirection === direction}
+                >
+                  {direction === "right" ? "→" : "↓"}
+                </button>
+              ))}
+            </span>
+          </>
+        )}
         <span className="theme-switcher" role="radiogroup" aria-label="Theme">
           {(["light", "system", "dark"] as const).map((opt) => (
             <button
@@ -620,55 +642,77 @@ export function App() {
             </button>
           ))}
         </span>
-        {client.writable && (
+        {client.writable && view === "graph" && (
           <span className="muted hint"> · drag from a node to make a step</span>
         )}
         {actionError && <span className="error"> {actionError.message}</span>}
       </header>
-      <main>
-        <LaneSidebar
-          doc={data}
-          activeLaneId={currentLaneId ?? null}
-          selection={selection}
-          laneColorOverrides={laneColorOverrides}
-          dark={dark}
-          onSelectLane={focusLaneId}
-          onSelectRecord={focusRecordSelection}
-        />
-        <div className="canvas">
-          <Graph
+      {view === "overview" ? (
+        <main>
+          <LaneSidebar
+            doc={data}
+            activeLaneId={currentLaneId ?? null}
+            selection={selection}
+            laneColorOverrides={laneColorOverrides}
+            dark={dark}
+            onSelectLane={focusLaneId}
+            onSelectRecord={focusRecordSelection}
+          />
+          <Overview
+            doc={data}
+            currentLaneId={currentLaneId ?? null}
+            laneColorOverrides={laneColorOverrides}
+            dark={dark}
+            onSelectRecord={focusRecordSelection}
+            onOpenGraph={() => setView("graph")}
+          />
+        </main>
+      ) : (
+        <main>
+          <LaneSidebar
+            doc={data}
+            activeLaneId={currentLaneId ?? null}
+            selection={selection}
+            laneColorOverrides={laneColorOverrides}
+            dark={dark}
+            onSelectLane={focusLaneId}
+            onSelectRecord={focusRecordSelection}
+          />
+          <div className="canvas">
+            <Graph
+              doc={data}
+              selection={selection}
+              savedNodePositions={savedLayout?.nodes ?? {}}
+              onSelect={select}
+              onNodePositionsChanged={(positions) => {
+                if (client.writable) saveLayout.mutate(positions);
+              }}
+              onCreateStep={async (inputs, output) => {
+                const res = await createStep.mutateAsync({ inputs, output });
+                return { outputNodeId: res.step.output_node_id };
+              }}
+              onRunChanged={invalidate}
+              collapsedLaneIds={visibleCollapsedLaneIds}
+              onToggleLane={toggleLane}
+              laneColorOverrides={laneColorOverrides}
+              writable={client.writable}
+              showCuts={showCuts}
+              dark={dark}
+              layoutDirection={layoutDirection}
+              focusLane={focusLane}
+              focusRecord={focusRecord}
+            />
+          </div>
+          <Panel
             doc={data}
             selection={selection}
-            savedNodePositions={savedLayout?.nodes ?? {}}
+            client={client}
             onSelect={select}
-            onNodePositionsChanged={(positions) => {
-              if (client.writable) saveLayout.mutate(positions);
-            }}
-            onCreateStep={async (inputs, output) => {
-              const res = await createStep.mutateAsync({ inputs, output });
-              return { outputNodeId: res.step.output_node_id };
-            }}
-            onRunChanged={invalidate}
-            collapsedLaneIds={visibleCollapsedLaneIds}
-            onToggleLane={toggleLane}
             laneColorOverrides={laneColorOverrides}
-            writable={client.writable}
-            showCuts={showCuts}
             dark={dark}
-            layoutDirection={layoutDirection}
-            focusLane={focusLane}
-            focusRecord={focusRecord}
           />
-        </div>
-        <Panel
-          doc={data}
-          selection={selection}
-          client={client}
-          onSelect={select}
-          laneColorOverrides={laneColorOverrides}
-          dark={dark}
-        />
-      </main>
+        </main>
+      )}
     </div>
   );
 }

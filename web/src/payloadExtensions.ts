@@ -330,7 +330,19 @@ function stringValue(value: unknown): string {
 function genericContentLabel(payload: RunPayload): string | null {
   const content = payload.content;
   if (!content) return null;
-  for (const key of ["message", "title", "summary", "text", "name", "proposal", "result"]) {
+  for (const key of [
+    "message",
+    "title",
+    "summary",
+    "text",
+    "question",
+    "request",
+    "description",
+    "reason",
+    "name",
+    "proposal",
+    "result",
+  ]) {
     const value = content[key];
     if (typeof value === "string" && value.trim()) return value.trim();
   }

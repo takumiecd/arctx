@@ -6,9 +6,9 @@ hypotheses, trials, results, lanes, and cut branches from an arctx run.
 One frontend, two data modes — the UI only talks to a `RunClient`, so the same
 components serve both:
 
-- **Live mode (read + write)** — talks to `arctx serve`'s HTTP API. Add nodes
-  and steps, create lanes, attach payloads to a node or step, and cut records
-  from the canvas. Asset content and git diffs are resolved from the repository
+- **Live mode (read + write)** — talks to `arctx serve`'s HTTP API. Add steps
+  (which create their output nodes), create lanes, attach payloads to a node or
+  step, and cut records from the graph. Asset content and git diffs are resolved from the repository
   by the server on demand, so they are only available here.
 - **Static / share mode (read-only)** — renders a run document embedded in the
   page (`<script id="arctx-run" type="application/json">…</script>`). No backend,
@@ -20,6 +20,39 @@ The data contract is exactly `arctx export --format json`
 ![arctx web GUI demo](../examples/demo_web.gif)
 
 *Click nodes to inspect git changes, benchmark payloads, and cut reasons. Toggle "show cuts" to reveal abandoned branches.*
+
+## Overview and graph
+
+The default screen is the human-facing **Overview**. It is a context navigator,
+not a metrics dashboard: the current lane frontier is the starting point, with
+its primary path from the root and its immediate inputs, sibling alternatives,
+and active children. Clicking a nearby node moves the overview focus by one hop;
+"Inspect in graph" opens the full graph at that node. When a lane has multiple
+frontiers, Overview shows each one instead of inventing a single current node.
+
+ARCTX does not own a plan or completion model, so Overview deliberately avoids
+a made-up progress percentage. It describes structural position instead: path
+depth from the root, steps since the nearest summary, whether the focused node
+is a frontier or historical point, and the number of active lane frontiers.
+The graph remains the detailed history and editing surface rather than the first
+screen a human must interpret.
+
+The **Explorer** sidebar remains visible in both Overview and Graph. It mirrors
+`arctx explore --query`: case-insensitive AND search across lane names,
+purposes, and owned payload content, including closed lanes. Overview leads
+with current endpoints, known issues/questions, and recent recorded work;
+the path and one-hop neighborhood are folded into an optional detail section.
+
+Overview derives its attention inbox from generic node or step payloads whose
+`type` is `request`, `question`, `blocker`, or `approval`. No new core payload
+class is required. An item with `content.status` set to `answered`, `closed`,
+`done`, or `resolved` is omitted, as are items on cut records or closed lanes.
+
+```sh
+arctx attach <NODE_ID> --type question \
+  --field 'question=Should this branch optimize latency or memory?' \
+  --field 'status=open'
+```
 
 ## Live mode
 
@@ -59,8 +92,8 @@ all, so asset content and git diffs are fetched on expand, not on selection.
 
 ## Lanes and search
 
-Lanes are flat, git-branch-like work units — there is no lane hierarchy. The
-left sidebar is the GUI form of `arctx explore`: open lanes first with their
+Lanes are flat, git-branch-like work units — there is no lane hierarchy. In the
+Graph view, the left sidebar is the GUI form of `arctx explore`: open lanes first with their
 one-line current summary (the latest `arctx lane summarize` / `lane close`
 summary), closed lanes folded behind a toggle. Selecting a lane makes it
 current, pans the canvas to it, and shows its purpose, status, and full current
