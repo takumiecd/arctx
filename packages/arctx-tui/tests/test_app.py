@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
 
 import pytest
@@ -88,6 +89,7 @@ def test_build_detail_markdown_node_includes_incoming_section():
 
 
 def test_editor_parse_json_object():
+    pytest.importorskip("textual")
     from arctx_tui.editor import _parse_json_object
 
     assert _parse_json_object('{"text":"hello"}') == {"text": "hello"}
@@ -95,6 +97,7 @@ def test_editor_parse_json_object():
 
 
 def test_editor_parse_json_object_rejects_non_object():
+    pytest.importorskip("textual")
     from arctx_tui.editor import _parse_json_object
 
     with pytest.raises(ValueError):
@@ -147,6 +150,7 @@ def test_tui_main_exposes_watch_flags():
 
 
 def test_editor_payload_type_options_are_target_compatible():
+    pytest.importorskip("textual")
     from arctx_tui.editor import _payload_type_options
 
     node_values = {value for _, value in _payload_type_options("node", include_cut=True)}
@@ -165,6 +169,7 @@ def test_editor_payload_type_options_are_target_compatible():
 
 
 def test_git_payload_form_data():
+    pytest.importorskip("textual")
     from arctx_tui.editor import GitPayloadFormData
 
     data = GitPayloadFormData(step_id="t_1", commits=("HEAD", "abc123"))
@@ -172,8 +177,14 @@ def test_git_payload_form_data():
     assert data.commits == ("HEAD", "abc123")
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("pytest_asyncio") is None
+    or importlib.util.find_spec("textual") is None,
+    reason="needs pytest-asyncio and textual",
+)
 @pytest.mark.asyncio
 async def test_git_payload_shortcut_uses_uppercase_g_key():
+    pytest.importorskip("textual")
     from arctx_tui.app import ArctxApp
 
     class EmptyStore:
