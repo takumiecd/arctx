@@ -11,6 +11,7 @@ _BUILTIN: dict[str, str] = {
     "command": "arctx.ext.command:CommandExtension",
     "diagram": "arctx.ext.diagram:DiagramExtension",
     "git": "arctx.ext.git:GitExtension",
+    "optimize": "arctx.ext.optimize:OptimizeExtension",
 }
 
 def _get_entry_points() -> dict[str, importlib.metadata.EntryPoint]:

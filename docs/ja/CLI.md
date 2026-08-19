@@ -201,6 +201,38 @@ arctx asset attach "$STEP" bench/out --commit v0.3.1   # ディレクトリ ＋ 
   `missing_path` / `no_repository`）を返すので、壊れた参照を診断できます
 - 巨大バイナリは git-lfs を使ってください（arctx 側では扱いません）
 
+## Trial テーブル（optimize 拡張）
+
+スコア付き試行の記録と比較。`arctx ext enable optimize`（または
+`arctx init --extension optimize`）で有効化します。
+
+- `arctx trial add --table NAME [--table NAME ...] [--col K=V ...] --metric K=V [--metric K=V ...] [--from NODE] [--title TEXT]`
+- `arctx trials` — run 内のテーブル一覧（名前・行数・列と型）
+- `arctx trials NAME [--sort COL] [--desc] [--best [min:|max:]COL] [--json]`
+
+trial は「試した config + 出てきた metrics」を持つ 1 Step です（`--from` 省略時は
+`add` と同じく current lane の単一 active frontier）。**テーブルの record は存在しません**
+— テーブルとは行たちが共有する名前で（lane 名や git の branch 名と同じ扱い）、
+どんなテーブルがあるか・列・列の型・best はすべて読み取り時に行から導出します
+（「jsonl は事実、見た目は導出」）。
+
+- 初めての名前を `--table` に書くとテーブルが誕生し、新しいキーを書くと列が育ちます
+  （どちらも `notice:` で通知）。事前のスキーマ宣言は不要です
+- ただし**列の型（number / bool / str）は最初に書いた行が固定**します。以後の型違いは
+  書き込み前にエラーで拒否されるので、表のソートや `--best` は壊れません
+- 型を汚した行は `arctx cut step <id>` で inactive にすれば列の型が解放されます
+  （append-only な消しゴム）
+- 1 つの trial は複数テーブルに所属できます（`--table` を繰り返す）。所属は各行が
+  自分で持つので、後から行を足しても他の record には触れません
+- CLI を通らず書かれた不適合行は表示時に隔離されます（黙って列に混ぜません）
+
+```
+$ arctx trial add --table tile-sweep --col tile=32 --metric latency_ms=1.87
+notice: new table "tile-sweep" (columns: tile, latency_ms)
+$ arctx trials tile-sweep --best min:latency_ms
+best (min latency_ms = 1.87): t_xxx  trial tile=32
+```
+
 ## Reparent（付け替え）
 
 - `arctx reparent <node_id> --input NODE [--input NODE ...] --type TYPE [--reason ...]`

@@ -165,22 +165,19 @@ def run_ext_disable_command(
 
 
 def _resolve_run_dir(args) -> str | None:
-    """Best-effort: resolve run_dir from args."""
-    from pathlib import Path
+    """Best-effort: resolve run_dir with the standard command resolution.
 
-    store_dir = getattr(args, "store_dir", None)
-    run_id_arg = getattr(args, "run", None)
-    if run_id_arg is None:
-        import os
+    Same order as every other command: ``--run`` → ``ARCTX_RUN_ID`` → the
+    enclosing repository's run pointer, over the resolved store directory.
+    """
+    from arctx_cli.context import resolve_run_id_from_args, resolve_store
 
-        run_id_arg = os.environ.get("ARCTX_RUN_ID")
-    if run_id_arg and store_dir:
-        return str(Path(store_dir) / run_id_arg)
-    if run_id_arg:
-        from arctx_cli.paths import resolve_store_dir
-
-        return str(Path(resolve_store_dir()) / run_id_arg)
-    return None
+    try:
+        run_id = resolve_run_id_from_args(args)
+        run_path = resolve_store(getattr(args, "store_dir", None)).run_path(run_id)
+    except Exception:
+        return None
+    return str(run_path) if run_path.exists() else None
 
 
 def cli_ext(args) -> int:
