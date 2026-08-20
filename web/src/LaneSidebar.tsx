@@ -32,6 +32,7 @@ export function LaneSidebar({
 }) {
   const [query, setQuery] = useState("");
   const [showClosed, setShowClosed] = useState(false);
+  const [showUndescribed, setShowUndescribed] = useState(false);
 
   const overviews = useMemo(() => laneOverviews(doc), [doc]);
   const hits = useMemo(() => searchLanes(doc, query), [doc, query]);
@@ -45,6 +46,17 @@ export function LaneSidebar({
   };
 
   const selectedLaneId = selection?.kind === "lane" ? selection.id : null;
+  // Lanes with a written summary or purpose read at a glance; the rest are
+  // structural noise in a large run, so they fold behind a count the same way
+  // closed lanes do. The current/selected lane always stays visible.
+  const described = open.filter(
+    (lane) =>
+      lane.summary_text ||
+      lane.purpose ||
+      lane.lane_id === activeLaneId ||
+      lane.lane_id === selectedLaneId,
+  );
+  const undescribed = open.filter((lane) => !described.includes(lane));
 
   return (
     <aside className="lane-sidebar">
@@ -115,7 +127,7 @@ export function LaneSidebar({
         <div className="lane-sidebar-body">
           <h3 className="lane-sidebar-heading">lanes ({overviews.length})</h3>
           {overviews.length === 0 && <p className="muted lane-sidebar-empty">no lanes yet</p>}
-          {open.map((lane) => (
+          {described.map((lane) => (
             <button
               key={lane.lane_id}
               type="button"
@@ -135,6 +147,38 @@ export function LaneSidebar({
               </span>
             </button>
           ))}
+
+          {undescribed.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="lane-closed-toggle"
+                onClick={() => setShowUndescribed(!showUndescribed)}
+              >
+                {showUndescribed ? "▾" : "▸"} {undescribed.length}{" "}
+                {undescribed.length === 1 ? "lane" : "lanes"} without a summary
+              </button>
+              {showUndescribed &&
+                undescribed.map((lane) => (
+                  <button
+                    key={lane.lane_id}
+                    type="button"
+                    className={`lane-row${lane.lane_id === selectedLaneId ? " selected" : ""}`}
+                    style={laneVars(lane.lane_id)}
+                    onClick={() => onSelectLane(lane.lane_id)}
+                  >
+                    <span className="lane-row-head">
+                      <span
+                        className="lane-color-dot"
+                        style={{ backgroundColor: "var(--lane-color)" }}
+                      />
+                      <span className="lane-name">{lane.label}</span>
+                    </span>
+                    <span className="lane-row-summary">(no summary yet)</span>
+                  </button>
+                ))}
+            </>
+          )}
 
           {closed.length > 0 && (
             <>

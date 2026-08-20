@@ -1,4 +1,4 @@
-import type { RunDocument, RunPayload } from "./types";
+import { isTrialPayload, type RunDocument, type RunPayload } from "./types";
 
 export interface PayloadField {
   label: string;
@@ -355,6 +355,33 @@ function shortSha(value: unknown): string {
 }
 
 
+// A trial (optimize extension) is one scored attempt: the tried config and
+// the measured metrics. The title names the run in every label position
+// (graph nodes, overview endpoints, feeds); config/metrics become fields so
+// the detail panel shows the numbers without opening raw JSON.
+function trialDisplay(payload: RunPayload): PayloadDisplay | null {
+  if (!isTrialPayload(payload)) return null;
+  const tables = payload.tables ?? [];
+  const config = Object.entries(payload.config ?? {});
+  const metrics = Object.entries(payload.metrics ?? {});
+  const title = payload.title || (tables.length ? `trial (${tables.join(", ")})` : "trial");
+  const metricLine = metrics
+    .slice(0, 3)
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join(" · ");
+  const summaryParts = [tables.length ? `table ${tables.join(", ")}` : null, metricLine || null];
+  return {
+    title,
+    graphLabel: payload.title || null,
+    summary: summaryParts.filter(Boolean).join(" — ") || null,
+    fields: [
+      ...(tables.length ? [{ label: "tables", value: tables.join(", ") }] : []),
+      ...config.map(([key, value]) => ({ label: `col ${key}`, value })),
+      ...metrics.map(([key, value]) => ({ label: `metric ${key}`, value })),
+    ],
+  };
+}
+
 function summaryDisplay(payload: RunPayload): PayloadDisplay {
   const text = stringValue(payload.text);
   const format = summaryFormat(payload.metadata?.format);
@@ -385,3 +412,4 @@ registerPayloadRenderer("cherry_pick", cherryPickDisplay);
 registerPayloadRenderer("merge", mergeDisplay);
 registerPayloadRenderer("command_run", commandRunDisplay);
 registerPayloadRenderer("summary", summaryDisplay);
+registerPayloadRenderer("trial", trialDisplay);
