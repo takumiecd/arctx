@@ -244,8 +244,8 @@ node / step に topic 名を付けて、グラフ全体を横断する視点を�
 - `arctx topic summarize NAME --summary TEXT [--source ID ...]` — topic の現在の
   結論文（強いタグ）。同名は最新が勝ち、履歴は残る。`--source` は根拠 record
   （実在検証あり）。既定では current lane の frontier node に付く（`--on` で指定）
-- `arctx topic NAME` — 現在サマリ + tag 済み record を**島**（active グラフ上の
-  連結成分）ごとに表示。島が2つ以上 = 「同じ話なのに未結合」の合図で、繋ぐなら
+- `arctx topic NAME` — 現在サマリ + tag 済み record を**島**（系譜のまとまり:
+  一方が他方の子孫なら同じ島。兄弟ブランチは別の島）ごとに表示。島が2つ以上 = 「同じ話なのに未結合」の合図で、繋ぐなら
   `arctx add --from A --from B`（判断は人間/エージェントに残す）
 - `arctx topics` — 一覧（名前 / record 数 / 島数 / サマリ一行）
 - `arctx guide --context` に上位 topic の現在サマリが出るので、エージェントは

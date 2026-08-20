@@ -140,58 +140,72 @@ def topic_current_summary(graph: RunGraph, name: str) -> TopicSummary | None:
     )
 
 
-def _active_adjacency(graph: RunGraph) -> dict[str, list[str]]:
-    """Undirected adjacency over active nodes and steps.
-
-    A step links each of its input nodes and its output node; direction is
-    irrelevant for "are these regions part of one body of work".
-    """
+def _forward_adjacency(graph: RunGraph) -> dict[str, list[str]]:
+    """Directed adjacency over active records: input node → step → output."""
     inactive_n = inactive_node_ids(graph)
     inactive_s = inactive_step_ids(graph)
     adjacency: dict[str, list[str]] = {}
-
-    def link(a: str, b: str) -> None:
-        adjacency.setdefault(a, []).append(b)
-        adjacency.setdefault(b, []).append(a)
-
     for step in graph.steps.values():
         if step.step_id in inactive_s:
             continue
-        for node_id in (*step.input_node_ids, step.output_node_id):
+        for node_id in step.input_node_ids:
             if node_id not in inactive_n:
-                link(step.step_id, node_id)
+                adjacency.setdefault(node_id, []).append(step.step_id)
+        if step.output_node_id not in inactive_n:
+            adjacency.setdefault(step.step_id, []).append(step.output_node_id)
     return adjacency
+
+
+def _descendants(adjacency: dict[str, list[str]], start: str) -> set[str]:
+    seen: set[str] = set()
+    queue = deque([start])
+    while queue:
+        for child in adjacency.get(queue.popleft(), ()):
+            if child not in seen:
+                seen.add(child)
+                queue.append(child)
+    return seen
 
 
 def topic_islands(
     graph: RunGraph, records: list[TopicRecord]
 ) -> tuple[tuple[tuple[str, ...], ...], tuple[str, ...]]:
-    """Group the active tagged records by graph connectivity.
+    """Group the active tagged records by *lineage*.
 
-    Returns ``(islands, inactive)``: islands are tuples of tagged record ids
-    that reach each other through the active graph; cut records are reported
-    separately rather than pretending they form islands of their own.
+    Two tagged records belong to the same island when one derives from the
+    other (directed reachability over the active graph), transitively through
+    other tagged records. Sibling branches that merely share an ancestor are
+    different islands — that is exactly the "same subject, independent
+    lineages" signal the topic view exists to surface. Everything in a run
+    hangs off the root, so undirected connectivity would collapse every topic
+    into one island and say nothing.
+
+    Returns ``(islands, inactive)``; cut records are reported separately
+    rather than pretending they form islands of their own.
     """
-    adjacency = _active_adjacency(graph)
+    adjacency = _forward_adjacency(graph)
     active_ids = [r.record_id for r in records if r.active]
     inactive_ids = tuple(r.record_id for r in records if not r.active)
-    unassigned = set(active_ids)
-    islands: list[tuple[str, ...]] = []
-    while unassigned:
-        seed = next(iter(unassigned))
-        component: set[str] = set()
-        queue = deque([seed])
-        visited: set[str] = {seed}
-        while queue:
-            current = queue.popleft()
-            if current in unassigned:
-                component.add(current)
-            for neighbor in adjacency.get(current, ()):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append(neighbor)
-        unassigned -= component
-        islands.append(tuple(sorted(component, key=active_ids.index)))
+    descendants = {record_id: _descendants(adjacency, record_id) for record_id in active_ids}
+
+    # Union tagged records related by ancestry (either direction).
+    parent: dict[str, str] = {record_id: record_id for record_id in active_ids}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, a in enumerate(active_ids):
+        for b in active_ids[i + 1 :]:
+            if b in descendants[a] or a in descendants[b]:
+                parent[find(a)] = find(b)
+
+    groups: dict[str, list[str]] = {}
+    for record_id in active_ids:
+        groups.setdefault(find(record_id), []).append(record_id)
+    islands = [tuple(members) for members in groups.values()]
     islands.sort(key=lambda island: active_ids.index(island[0]))
     return tuple(islands), inactive_ids
 

@@ -42,25 +42,45 @@ def _tag(handle, record_id, topic, *, kind="node", note=None):
         )
 
 
-def test_topic_islands_split_and_merge():
+def test_topic_islands_follow_lineage_not_mere_connectivity():
     handle = _handle()
     root = handle.root_node_id
-    # Two independent branches from root: root is untagged, so the branches
-    # connect through it — tagging picks *records*, islands are computed over
-    # the full active graph, so both branches are one island via root.
+    # Two sibling branches from root: they share an ancestor but neither
+    # derives from the other — that is two islands ("same subject, independent
+    # lineages"), the join-candidate signal.
     a = _step(handle, root).output_node_id
     b = _step(handle, root).output_node_id
     _tag(handle, a, "gather")
     _tag(handle, b, "gather")
     view = topic_view(handle.run_graph, "gather")
-    assert len(view.islands) == 1  # connected through the shared root
+    assert len(view.islands) == 2
 
-    # Cutting one branch's producing step disconnects it from the active graph.
+    # A tagged descendant of `a` merges into a's island (lineage relation).
+    child = _step(handle, a).output_node_id
+    _tag(handle, child, "gather")
+    view = topic_view(handle.run_graph, "gather")
+    assert len(view.islands) == 2
+    assert {tuple(sorted(i)) for i in view.islands} == {
+        tuple(sorted((a, child))),
+        (b,),
+    }
+
+    # Joining both branches with a multi-input step and tagging the join
+    # merges everything into one island.
+    join = handle.add_step(
+        [a, b], StepPayload(payload_id="_", target_id="_", type="integration")
+    )
+    _tag(handle, join.output_node_id, "gather")
+    view = topic_view(handle.run_graph, "gather")
+    assert len(view.islands) == 1
+
+    # Cut records leave the islands and are reported separately.
+    handle.cut(join.step_id, target_kind="step", reason="undo the join")
     producer_b = handle.run_graph.producers_of(b)[0]
     handle.cut(producer_b, target_kind="step", reason="dead end")
     view = topic_view(handle.run_graph, "gather")
-    assert len(view.islands) == 1
-    assert view.inactive == (b,)
+    assert len(view.islands) == 1  # a + child (join output is inactive now)
+    assert set(view.inactive) == {b, join.output_node_id}
 
 
 def test_topic_summary_latest_wins():
