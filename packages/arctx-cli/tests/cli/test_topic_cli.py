@@ -65,8 +65,9 @@ def test_tag_records_and_view_islands(tmp_path):
     view = topic_view(_graph(tmp_path), "gather")
     assert {r.record_id for r in view.records} == {a["output_node_id"], b["id"]}
     assert {r.kind for r in view.records} == {"node", "step"}
-    # Both branches hang off the shared root, so they form one island.
-    assert len(view.islands) == 1
+    # Sibling branches share an ancestor but neither derives from the other:
+    # two islands — the join-candidate signal.
+    assert len(view.islands) == 2
 
 
 def test_tag_unknown_record_is_rejected(tmp_path):
