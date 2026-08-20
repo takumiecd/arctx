@@ -64,9 +64,10 @@ def test_guide_full_output_still_includes_context(tmp_path, monkeypatch, capsys)
     assert "# arctx Guide" in out
     assert "## Current Context" in out
     assert "guide --context" in out  # static text mentions the new flag
-    # The guide teaches the three write verbs and the three retrieval questions.
-    assert "## Writing: three verbs" in out
-    assert "## Reading: three questions" in out
+    # The guide teaches the shared grammar plus the writing and reading sides.
+    assert "One grammar, three bundles" in out
+    assert "## Writing" in out
+    assert "## Reading" in out
     for command in ("arctx lane create", "arctx add", "arctx lane close"):
         assert command in out
     for command in ("arctx explore --query", "arctx dump", "arctx show"):
