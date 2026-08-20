@@ -9,6 +9,7 @@ Cache structure (pickled dict)::
     {
         "schema_version": CACHE_SCHEMA_VERSION,  # int
         "row_counts": (n_nodes, n_its, n_ots, n_payloads, n_views),  # tuple[int,...]
+        "payload_types": <registered_payload_types() of the writer>,  # tuple[str,...]
         "run_graph": <RunGraph instance>,
     }
 
@@ -32,13 +33,19 @@ import tempfile
 from pathlib import Path
 
 from arctx.core.run_graph import RunGraph
+from arctx.core.schema.payloads import registered_payload_types
 
 # Bump this whenever RunGraph or any Payload dataclass changes its fields in a
 # backward-incompatible way.
 #
 # v6: WorkEvent.work_session_id renamed to WorkEvent.lane_id. Pickles from v5
 #     restore the old attribute and lack ``lane_id``, crashing lane membership.
-CACHE_SCHEMA_VERSION: int = 6
+# v7: the cache records the writer's registered payload types. A graph decoded
+#     by a process with a different registry is not interchangeable: unknown
+#     payload types degrade to generic Node/StepPayload on load, and an older
+#     process sharing the run directory would silently poison the cache for
+#     newer readers (observed with a pre-optimize server degrading trials).
+CACHE_SCHEMA_VERSION: int = 7
 
 _CACHE_FILENAME = "run.cache.pkl"
 
@@ -67,6 +74,8 @@ def load_cache(run_dir: Path, expected_row_counts: tuple[int, ...]) -> RunGraph 
             return None
         if data.get("row_counts") != expected_row_counts:
             return None
+        if data.get("payload_types") != registered_payload_types():
+            return None
         graph = data.get("run_graph")
         if not isinstance(graph, RunGraph):
             return None
@@ -85,6 +94,7 @@ def save_cache(run_dir: Path, row_counts: tuple[int, ...], graph: RunGraph) -> N
     payload = {
         "schema_version": CACHE_SCHEMA_VERSION,
         "row_counts": row_counts,
+        "payload_types": registered_payload_types(),
         "run_graph": graph,
     }
     try:
