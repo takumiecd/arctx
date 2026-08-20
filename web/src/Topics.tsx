@@ -103,6 +103,7 @@ function TopicDetail({
   topic: TopicView;
   onSelectRecord: (selection: RecordSelection) => void;
 }) {
+  const [showHistory, setShowHistory] = useState(false);
   const kinds = new Map(topic.records.map((r) => [r.recordId, r.kind]));
   const notes = new Map(topic.records.map((r) => [r.recordId, r.note]));
   const jump = (recordId: string) =>
@@ -136,6 +137,23 @@ function TopicDetail({
           <p className="topics-no-statement">
             No statement yet — <code>arctx topic summarize {topic.name} --summary …</code>
           </p>
+        )}
+        {topic.history.length > 1 && (
+          <div className="topics-history">
+            <button type="button" onClick={() => setShowHistory((prev) => !prev)}>
+              {showHistory ? "▾" : "▸"} history ({topic.history.length} statements)
+            </button>
+            {showHistory &&
+              [...topic.history]
+                .reverse()
+                .slice(1)
+                .map((entry) => (
+                  <div key={entry.payloadId} className="topics-history-entry">
+                    <span>{(entry.createdAt ?? "").slice(0, 16).replace("T", " ") || "–"}</span>
+                    <p>{entry.text}</p>
+                  </div>
+                ))}
+          </div>
         )}
       </div>
 

@@ -41,8 +41,9 @@ def add_topic_parser(subparsers) -> argparse.ArgumentParser:
         nargs="*",
         metavar="COMMAND|NAME",
         help=(
-            "tag NAME ID [ID ...] · summarize NAME · show NAME · list. "
-            "`arctx topic NAME` is show shorthand."
+            "tag NAME ID [ID ...] · summarize NAME · show NAME · log NAME · list. "
+            "`arctx topic NAME` is show shorthand; `log` walks the statement "
+            "history (latest is the current belief, nothing is deleted)."
         ),
     )
     parser.add_argument("--note", default=None, help="tag: short note on the mark")
@@ -188,12 +189,17 @@ def _view_dict(view: core_topics.TopicView) -> dict:
     }
 
 
-def _print_view(view: core_topics.TopicView) -> None:
+def _print_view(view: core_topics.TopicView, history_count: int = 0) -> None:
     print(f"topic: {view.name}")
     if view.summary:
         print(f"  summary: {view.summary.text}")
         if view.summary.sources:
             print(f"  sources: {', '.join(view.summary.sources)}")
+        if history_count > 1:
+            print(
+                f"  history: {history_count} statements — "
+                f"arctx topic log {view.name}"
+            )
     else:
         print("  summary: (none yet — arctx topic summarize NAME --summary ...)")
     active_count = sum(len(island) for island in view.islands)
@@ -249,6 +255,39 @@ def cli_topic(args) -> int:
             )
             print(f"topic \"{positional[1]}\" summarized")
             return 0
+        if command == "log":
+            if len(positional) < 2:
+                raise ValueError("usage: arctx topic log NAME")
+            graph = resolve_store(args.store_dir).load_run(run_id).run_graph
+            history = core_topics.topic_summary_history(graph, positional[1])
+            if args.as_json:
+                print(json.dumps({
+                    "topic": positional[1],
+                    "history": [
+                        {
+                            "text": entry.text,
+                            "sources": list(entry.sources),
+                            "created_at": entry.created_at,
+                            "user_id": entry.user_id,
+                            "payload_id": entry.payload_id,
+                            "current": index == len(history) - 1,
+                        }
+                        for index, entry in enumerate(history)
+                    ],
+                }, ensure_ascii=False, indent=2))
+                return 0
+            if not history:
+                print(f'topic "{positional[1]}" has no statements yet')
+                return 0
+            for index, entry in enumerate(reversed(history)):
+                marker = "● current" if index == 0 else "○"
+                stamp = (entry.created_at or "")[:16].replace("T", " ")
+                who = f" by {entry.user_id}" if entry.user_id else ""
+                print(f"{marker}  {stamp}{who}")
+                print(f"   {entry.text}")
+                if entry.sources:
+                    print(f"   sources: {', '.join(entry.sources)}")
+            return 0
         name = positional[1] if command in ("show",) and len(positional) > 1 else (
             None if command in ("list", "show") else command
         )
@@ -267,7 +306,7 @@ def cli_topic(args) -> int:
         if args.as_json:
             print(json.dumps(_view_dict(view), ensure_ascii=False, indent=2))
         else:
-            _print_view(view)
+            _print_view(view, len(core_topics.topic_summary_history(graph, name)))
         return 0
     except (KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

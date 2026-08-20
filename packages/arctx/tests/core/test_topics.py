@@ -135,3 +135,29 @@ def test_tagging_a_step_counts_too():
     assert view.islands == ((step.step_id,),)
     assert view.records[0].kind == "step"
     assert view.records[0].note == "works well"
+
+
+def test_topic_summary_history_walks_oldest_to_current():
+    from arctx.core.topics import topic_summary_history
+
+    handle = _handle()
+    root = handle.root_node_id
+    node = _step(handle, root).output_node_id
+    for text in ("first belief", "second belief", "third belief"):
+        handle.attach(
+            node,
+            NodePayload(
+                payload_id="_", target_id="_", type="topic_summary",
+                content={"topic": "evolve", "text": text},
+            ),
+            user_id="u",
+            lane_id="lane_x",
+        )
+    history = topic_summary_history(handle.run_graph, "evolve")
+    assert [entry.text for entry in history] == [
+        "first belief", "second belief", "third belief",
+    ]
+    assert history[-1].created_at is not None
+    assert history[-1].user_id == "u"
+    view = topic_view(handle.run_graph, "evolve")
+    assert view.summary.text == "third belief"

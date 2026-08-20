@@ -309,3 +309,43 @@
 .overview-topics small {
   color: var(--color-text-faint);
 }
+
+/* ---- statement history (older beliefs, superseded but never deleted) ---- */
+
+.topics-history {
+  margin-top: 10px;
+  border-top: 1px dashed var(--color-border);
+  padding-top: 8px;
+}
+
+.topics-history > button {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.topics-history > button:hover {
+  color: var(--color-accent);
+}
+
+.topics-history-entry {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0 0;
+  opacity: 0.7;
+}
+
+.topics-history-entry span {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--color-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.topics-history-entry p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}

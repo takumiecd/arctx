@@ -60,6 +60,8 @@ class TopicSummary:
     target_id: str
     text: str
     sources: tuple[str, ...]
+    created_at: str | None = None
+    user_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -114,30 +116,51 @@ def _tag_records(graph: RunGraph, name: str) -> list[TopicRecord]:
     return records
 
 
-def topic_current_summary(graph: RunGraph, name: str) -> TopicSummary | None:
-    """The latest topic_summary payload for *name*, by record_event_rank."""
+def topic_summary_history(graph: RunGraph, name: str) -> tuple[TopicSummary, ...]:
+    """Every statement ever written about *name*, oldest first.
+
+    The current belief is the last entry; the rest is how the belief evolved —
+    supersession never deletes, so the whole trajectory stays readable.
+    Ordering is record_event_rank with append order as the tie-break (payloads
+    written without a lane/user carry no work event and all rank -1).
+    """
     rank = record_event_rank(graph)
-    best: tuple[int, PayloadBase] | None = None
-    for payload in graph.payloads.values():
+    event_by_record: dict[str, tuple[str | None, str | None]] = {}
+    for event in graph.work_events:
+        for record_id in event.created_records:
+            event_by_record.setdefault(record_id, (event.created_at, event.user_id))
+
+    entries: list[tuple[int, int, TopicSummary]] = []
+    for order, payload in enumerate(graph.payloads.values()):
         if getattr(payload, "type", None) != SUMMARY_TYPE:
             continue
         if _payload_topic(payload) != name:
             continue
-        payload_rank = rank.get(payload.payload_id, -1)
-        # >= so equal ranks fall back to append order: payloads written
-        # without a lane/user carry no work event and all rank -1.
-        if best is None or payload_rank >= best[0]:
-            best = (payload_rank, payload)
-    if best is None:
-        return None
-    content = getattr(best[1], "content", None) or {}
-    sources = content.get("sources") or ()
-    return TopicSummary(
-        payload_id=best[1].payload_id,
-        target_id=best[1].target_id,
-        text=str(content.get("text", "")),
-        sources=tuple(str(s) for s in sources),
-    )
+        content = getattr(payload, "content", None) or {}
+        sources = content.get("sources") or ()
+        created_at, user_id = event_by_record.get(payload.payload_id, (None, None))
+        entries.append(
+            (
+                rank.get(payload.payload_id, -1),
+                order,
+                TopicSummary(
+                    payload_id=payload.payload_id,
+                    target_id=payload.target_id,
+                    text=str(content.get("text", "")),
+                    sources=tuple(str(s) for s in sources),
+                    created_at=created_at,
+                    user_id=user_id,
+                ),
+            )
+        )
+    entries.sort(key=lambda item: (item[0], item[1]))
+    return tuple(entry for _, _, entry in entries)
+
+
+def topic_current_summary(graph: RunGraph, name: str) -> TopicSummary | None:
+    """The latest topic_summary payload for *name* — last of the history."""
+    history = topic_summary_history(graph, name)
+    return history[-1] if history else None
 
 
 def _forward_adjacency(graph: RunGraph) -> dict[str, list[str]]:
@@ -234,6 +257,7 @@ __all__ = [
     "TopicView",
     "list_topics",
     "topic_current_summary",
+    "topic_summary_history",
     "topic_islands",
     "topic_names",
     "topic_view",
