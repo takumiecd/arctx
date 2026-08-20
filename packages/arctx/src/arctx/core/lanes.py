@@ -924,6 +924,16 @@ def lane_overview(
         raise KeyError(f"unknown lane: {lane_id}")
     membership = membership or lane_membership(graph, root_node_id=root_node_id)
     summary = lane_current_summary(graph, lane_id, membership)
+    # A lane closed while owning no records has no SummaryPayload to carry its
+    # conclusion — the close event's reason is the durable fallback text.
+    fallback_text = None
+    if summary is None and lane.status == "closed":
+        for event in reversed(graph.work_events):
+            if event.lane_id == lane_id and event.event_type == "lane_closed":
+                reason = event.data.get("reason") if event.data else None
+                if isinstance(reason, str) and reason.strip():
+                    fallback_text = reason
+                break
     return LaneOverview(
         lane_id=lane_id,
         name=lane.name,
@@ -931,7 +941,7 @@ def lane_overview(
         purpose=lane_purpose(lane),
         started_at=lane.started_at,
         closed_at=lane.closed_at,
-        summary_text=summary.text if summary is not None else None,
+        summary_text=summary.text if summary is not None else fallback_text,
         summary_payload_id=summary.payload_id if summary is not None else None,
         summary_node_id=summary.target_id if summary is not None else None,
         node_count=sum(
@@ -1160,3 +1170,52 @@ def lane_export_view(
             if summary.payload_id in payload_ids and summary.target_id in node_ids
         ],
     }
+
+
+def stale_open_lanes(
+    graph: RunGraph,
+    *,
+    now: "datetime | None" = None,
+    idle_days: int = 7,
+) -> list[tuple[Lane, str | None, int]]:
+    """Open lanes with no writes for *idle_days* or longer, oldest first.
+
+    Working past finished lanes without closing them erodes the record: the
+    conclusion never gets written, and ``explore`` fills up with open lanes
+    nobody is in. This is the derivation behind the "close your lanes" nudge
+    printed by ``lane create`` and shown in ``guide --context``.
+
+    Returns ``(lane, last_activity_iso, idle_days)`` triples. A lane with no
+    events at all falls back to ``started_at``; a lane with neither is treated
+    as infinitely idle (idle count ``10**6``). The implicit ``default`` lane
+    is skipped — it has no lifecycle to manage.
+    """
+    from datetime import datetime, timezone
+
+    current = now or datetime.now(timezone.utc)
+    last_by_lane: dict[str, str] = {}
+    for event in graph.work_events:
+        if event.created_at:
+            previous = last_by_lane.get(event.lane_id, "")
+            if event.created_at > previous:
+                last_by_lane[event.lane_id] = event.created_at
+
+    stale: list[tuple[Lane, str | None, int]] = []
+    for lane in graph.lanes.values():
+        if lane.status != "open" or lane.lane_id == "default":
+            continue
+        last = last_by_lane.get(lane.lane_id) or lane.started_at
+        if last:
+            try:
+                stamp = datetime.fromisoformat(last)
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                idle = (current - stamp).days
+            except ValueError:
+                idle = 10**6
+        else:
+            idle = 10**6
+        if idle >= idle_days:
+            stale.append((lane, last, idle))
+    stale.sort(key=lambda item: -item[2])
+    return stale

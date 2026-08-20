@@ -153,11 +153,23 @@ def run_lane_create_command(
     metadata = {"purpose": purpose.strip()} if purpose and purpose.strip() else None
     lane = handle.ensure_lane(name=name, created_by=user_id, metadata=metadata)
     _append_or_save_lane(store, handle, run_id, user_id, lane)
+
+    # Opening yet another lane is the moment lane debt compounds — nudge about
+    # open lanes that have not been written to in a while ("close your lanes"):
+    # the conclusion never gets recorded unless someone is told.
+    from arctx.core.lanes import stale_open_lanes
+
+    stale = [
+        {"name": item[0].name or item[0].lane_id, "idle_days": item[2]}
+        for item in stale_open_lanes(handle.run_graph)
+        if item[0].lane_id != lane.lane_id
+    ]
     return {
         "lane_id": lane.lane_id,
         "name": name,
         "purpose": lane.metadata.get("purpose"),
         "created": True,
+        "stale_open_lanes": stale,
     }
 
 
@@ -297,6 +309,25 @@ def _lane_active_leaves(handle, lane) -> list[str]:
     return list(lane_active_frontiers(handle.run_graph, lane.lane_id))
 
 
+def _lane_last_output(handle, lane) -> list[str]:
+    """The lane's chronologically last output node, preferring active ones."""
+    from arctx.core.cuts import inactive_node_ids
+    from arctx.core.lanes import lane_membership, record_event_rank
+
+    graph = handle.run_graph
+    membership = lane_membership(graph, root_node_id=handle.root_node_id)
+    step_ids = sorted(
+        (sid for sid, owner in membership.step_to_lane.items() if owner == lane.lane_id),
+        key=lambda sid: record_event_rank(graph).get(sid, -1),
+    )
+    outputs = [graph.steps[sid].output_node_id for sid in step_ids if sid in graph.steps]
+    if not outputs:
+        return []
+    inactive = inactive_node_ids(graph)
+    active_outputs = [node_id for node_id in outputs if node_id not in inactive]
+    return [(active_outputs or outputs)[-1]]
+
+
 def _normalize_summary_format(summary_format: str | None) -> str:
     if summary_format in (None, "", "markdown", "md"):
         return "markdown"
@@ -326,6 +357,13 @@ def _attach_lane_summary(
     from arctx.core.schema.payloads import JoinPayload, SummaryPayload
 
     leaves = list(dict.fromkeys(node_ids)) if node_ids else _lane_active_leaves(handle, lane)
+    if not leaves:
+        # A finished lane often has no active frontier left — its outputs were
+        # consumed by later lanes, or its branch was retired. The conclusion
+        # still deserves a home: fall back to the lane's chronologically last
+        # output node (preferring an active one). Only a lane that owns no
+        # steps at all has nothing to stamp.
+        leaves = _lane_last_output(handle, lane)
     if not leaves:
         return None, []
 
@@ -403,10 +441,14 @@ def run_lane_close_command(
         node_ids=node_ids,
         user_id=user_id,
     )
-    if summary_node is None:
-        raise ValueError("lane close requires at least one active terminal node to summarize")
+    # A lane that owns no steps has nowhere to stamp a SummaryPayload, but it
+    # must still be closable — otherwise empty lanes stay open forever. The
+    # summary rides the lane_closed event instead (lane_overview falls back to
+    # it), so the conclusion ("empty duplicate", "abandoned before work") is
+    # still durable and searchable.
+    close_reason = reason if summary_node is not None else (reason or summary)
     event = handle.set_lane_status(
-        lane.lane_id, status="closed", user_id=user_id, reason=reason
+        lane.lane_id, status="closed", user_id=user_id, reason=close_reason
     )
     store.save_run(handle)
     return {
@@ -546,6 +588,18 @@ def cli_lane(args) -> int:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             else:
                 print(result["name"])
+            stale = result.get("stale_open_lanes") or []
+            if stale:
+                names = ", ".join(
+                    f"{item['name']} ({item['idle_days']}d)" for item in stale[:3]
+                )
+                more = f" and {len(stale) - 3} more" if len(stale) > 3 else ""
+                print(
+                    f"warning: {len(stale)} open lane(s) have had no writes for 7+ days: "
+                    f"{names}{more}. Finished work deserves a conclusion — "
+                    'close them: arctx lane close NAME --summary "<findings>"',
+                    file=sys.stderr,
+                )
             strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="lane create")
             return strict_rc or 0
 

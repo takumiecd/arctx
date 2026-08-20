@@ -177,11 +177,17 @@ def test_open_when_open_and_close_when_closed_error():
                 name_or_id="work", summary=None, node_ids=None, reason=None,
                 run_id="run_lc", user_id="alice", store_dir=sd,
             )
-        with pytest.raises(ValueError, match="terminal node"):
-            run_lane_close_command(
-                name_or_id="work", summary="done", node_ids=None, reason=None,
-                run_id="run_lc", user_id="alice", store_dir=sd,
-            )
+        # An empty lane closes with the summary riding the lane_closed event
+        # (no terminal to stamp) — reopen it and give it real work below.
+        empty_close = run_lane_close_command(
+            name_or_id="work", summary="done", node_ids=None, reason=None,
+            run_id="run_lc", user_id="alice", store_dir=sd,
+        )
+        assert empty_close["summary_node"] is None
+        run_lane_open_command(
+            name_or_id="work", reason=None, run_id="run_lc",
+            user_id="alice", store_dir=sd,
+        )
         _add(sd, _root(sd), next(l["lane_id"] for l in list_lanes(run_id="run_lc", store_dir=sd)), title="s1")
         run_lane_close_command(
             name_or_id="work", summary="done", node_ids=None, reason=None,
@@ -277,3 +283,103 @@ def test_close_succeeds_without_explicit_node_after_cutting_only_child(
     assert res["status"] == "closed"
     assert res["summary_node"] == parent
     assert res["joined_nodes"] == [parent]
+
+
+def test_close_empty_lane_records_summary_on_event(tmp_path):
+    """A lane that owns no steps must still be closable; the conclusion rides
+    the lane_closed event and lane_overview falls back to it."""
+    from arctx.core.lanes import lane_overview
+    from arctx_cli.commands.lane import run_lane_close_command, run_lane_create_command
+    from arctx_cli.context import resolve_store
+
+    store_dir = str(tmp_path / "runs")
+    from arctx_cli.commands.init import run_init_command
+
+    run_init_command(
+        requirement_id="r", target_type="task", target_id="t",
+        run_id="run_hyg", store_dir=store_dir,
+    )
+    created = run_lane_create_command(
+        name="zombie", run_id="run_hyg", user_id="u", store_dir=store_dir
+    )
+    result = run_lane_close_command(
+        name_or_id="zombie", summary="empty duplicate; no work recorded",
+        node_ids=None, reason=None, run_id="run_hyg", user_id="u", store_dir=store_dir,
+    )
+    assert result["status"] == "closed"
+    assert result["summary_node"] is None
+
+    graph = resolve_store(store_dir).load_run("run_hyg").run_graph
+    overview = lane_overview(graph, created["lane_id"])
+    assert overview.status == "closed"
+    assert overview.summary_text == "empty duplicate; no work recorded"
+
+
+def test_close_falls_back_to_last_output_when_no_frontier(tmp_path):
+    """A lane whose outputs were consumed elsewhere has no frontier, but close
+    still stamps its last output node instead of refusing."""
+    from arctx_cli.commands.add import run_add_step_command
+    from arctx_cli.commands.init import run_init_command
+    from arctx_cli.commands.lane import run_lane_close_command, run_lane_create_command
+
+    store_dir = str(tmp_path / "runs")
+    init = run_init_command(
+        requirement_id="r", target_type="task", target_id="t",
+        run_id="run_hyg2", store_dir=store_dir,
+    )
+    lane_a = run_lane_create_command(
+        name="feeder", run_id="run_hyg2", user_id="u", store_dir=store_dir
+    )
+    run_lane_create_command(
+        name="consumer", run_id="run_hyg2", user_id="u", store_dir=store_dir
+    )
+    step = run_add_step_command(
+        run_id="run_hyg2", input_node_ids=[init["root_node_id"]], title="produce",
+        payload_kind=None, payload_type="step_payload", field_data={}, json_data={},
+        store_dir=store_dir, user_id="u", lane_id=lane_a["lane_id"],
+    )["step"]
+    # Consume feeder's output from another lane → feeder has no frontier left.
+    consumer_lane = [
+        l for l in __import__("arctx_cli.context", fromlist=["resolve_store"])
+        .resolve_store(store_dir).load_run("run_hyg2").run_graph.lanes.values()
+        if l.name == "consumer"
+    ][0]
+    run_add_step_command(
+        run_id="run_hyg2", input_node_ids=[step["output_node_id"]], title="consume",
+        payload_kind=None, payload_type="step_payload", field_data={}, json_data={},
+        store_dir=store_dir, user_id="u", lane_id=consumer_lane.lane_id,
+    )
+    result = run_lane_close_command(
+        name_or_id="feeder", summary="produced the baseline; consumed downstream",
+        node_ids=None, reason=None, run_id="run_hyg2", user_id="u", store_dir=store_dir,
+    )
+    assert result["status"] == "closed"
+    assert result["summary_node"] == step["output_node_id"]
+
+
+def test_lane_create_warns_about_stale_open_lanes(tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    from arctx.core.lanes import stale_open_lanes
+    from arctx_cli.commands.init import run_init_command
+    from arctx_cli.commands.lane import run_lane_create_command
+    from arctx_cli.context import resolve_store
+
+    store_dir = str(tmp_path / "runs")
+    run_init_command(
+        requirement_id="r", target_type="task", target_id="t",
+        run_id="run_hyg3", store_dir=store_dir,
+    )
+    run_lane_create_command(name="old", run_id="run_hyg3", user_id="u", store_dir=store_dir)
+
+    graph = resolve_store(store_dir).load_run("run_hyg3").run_graph
+    future = datetime.now(timezone.utc) + timedelta(days=30)
+    stale = stale_open_lanes(graph, now=future)
+    assert [lane.name for lane, _, _ in stale] == ["old"]
+    assert stale[0][2] >= 7
+
+    result = run_lane_create_command(
+        name="newer", run_id="run_hyg3", user_id="u", store_dir=store_dir
+    )
+    # Fresh lanes are not stale yet; the field exists and excludes itself.
+    assert result["stale_open_lanes"] == []

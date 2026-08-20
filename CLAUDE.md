@@ -111,7 +111,7 @@ When adding a new RunHandle method, implement it in a focused `packages/arctx/sr
 
 Current commands:
 
-- `lane` — manage lanes (flat, git-branch-like). `lane create NAME [--purpose TEXT]`, `lane switch`, `lane summarize NAME --summary TEXT` (refresh the current summary mid-work, lane stays open), `lane close NAME --summary TEXT`, `lane open`. A lane's *current summary* is the latest `SummaryPayload` it owns, ordered by `record_event_rank` (the append-only work-event ledger, not jsonl line order).
+- `lane` — manage lanes (flat, git-branch-like). `lane create NAME [--purpose TEXT]`, `lane switch`, `lane summarize NAME --summary TEXT` (refresh the current summary mid-work, lane stays open), `lane close NAME --summary TEXT`, `lane open`. Close always works: a lane with no active frontier stamps its chronologically last output node, and an *empty* lane closes with the summary riding the `lane_closed` event (`lane_overview` falls back to it). `lane create` warns on stderr about open lanes with no writes for 7+ days (`arctx.core.lanes.stale_open_lanes`), and `guide --context` lists them — the "close your lanes" nudge. A lane's *current summary* is the latest `SummaryPayload` it owns, ordered by `record_event_rank` (the append-only work-event ledger, not jsonl line order).
 - `current` / `use` — manage the active run pointer. `use <run> --shell` prints
   `export ARCTX_RUN_ID=<run>` for `eval` (terminal-scoped) instead of writing the
   repo pointer.
