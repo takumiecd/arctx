@@ -7,6 +7,7 @@ import { installGlobalPayloadExtensionApi } from "./payloadExtensions";
 import "./index.css";
 import "./overview.css";
 import "./trials.css";
+import "./topics.css";
 
 const queryClient = new QueryClient();
 installGlobalPayloadExtensionApi();

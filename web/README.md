@@ -48,6 +48,16 @@ numeric metric surfaces a best-row chip), dims cut rows, and shows
 schema-conflicting rows in a quarantine section instead of corrupting the
 columns. Step ids jump to the record in the Graph view.
 
+The fourth view, **Topics**, renders the flat bundles of meaning
+(`web/src/topicViews.ts` mirrors `arctx/core/topics.py` — keep the two in
+sync). A topic is a name carried by plain `tag` / `topic_summary` payloads:
+the view shows each subject's current statement (latest wins) with jumpable
+evidence sources, and groups the tagged records into lineage islands — two or
+more islands is the "same subject, not yet joined" join-candidate signal, so
+it is badged, never rejected. The Overview carries a topics strip with the
+same statements, so established knowledge is one glance from the entry
+screen.
+
 The **Explorer** sidebar remains visible in both Overview and Graph. It mirrors
 `arctx explore --query`: case-insensitive AND search across lane names,
 purposes, and owned payload content, including closed lanes. Overview leads

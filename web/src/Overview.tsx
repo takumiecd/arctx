@@ -11,6 +11,7 @@ import {
   type LaneColorOverrides,
 } from "./model";
 import { payloadDisplayFor } from "./payloadExtensions";
+import { listTopics } from "./topicViews";
 import type { RunDocument, RunPayload, RunStep, RunWorkEvent } from "./types";
 
 type RecordSelection = { kind: "node" | "step"; id: string };
@@ -45,6 +46,7 @@ export function Overview({
   dark,
   onSelectRecord,
   onOpenGraph,
+  onOpenTopics,
 }: {
   doc: RunDocument;
   currentLaneId: string | null;
@@ -52,6 +54,7 @@ export function Overview({
   dark: boolean;
   onSelectRecord: (selection: RecordSelection) => void;
   onOpenGraph: () => void;
+  onOpenTopics: () => void;
 }) {
   const lanes = useMemo(() => laneOverviews(doc), [doc]);
   const currentLane = lanes.find((lane) => lane.lane_id === currentLaneId) ?? null;
@@ -148,6 +151,8 @@ export function Overview({
             </div>
           </section>
         )}
+
+        <TopicsStrip doc={doc} onOpenTopics={onOpenTopics} />
 
         <div className="state-grid">
           <StateColumn title="Current endpoints" subtitle="where work can continue">
@@ -585,4 +590,24 @@ function formatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+
+// Current topic statements — the run's established knowledge, one chip per
+// topic (islands badge = unjoined lineages). Clicking opens the topics view.
+function TopicsStrip({ doc, onOpenTopics }: { doc: RunDocument; onOpenTopics: () => void }) {
+  const topics = listTopics(doc).filter((topic) => topic.summary || topic.islands.length > 0);
+  if (!topics.length) return null;
+  return (
+    <section className="overview-topics" aria-label="Topics">
+      <span>topics</span>
+      {topics.slice(0, 6).map((topic) => (
+        <button key={topic.name} type="button" onClick={onOpenTopics} title={topic.summary?.text ?? ""}>
+          <strong>{topic.name}</strong>
+          {topic.islands.length > 1 && <em>{topic.islands.length} islands</em>}
+        </button>
+      ))}
+      {topics.length > 6 && <small>+{topics.length - 6} more</small>}
+    </section>
+  );
 }
