@@ -115,3 +115,48 @@ def test_summarize_latest_wins_and_sources_checked(tmp_path):
             on_node=a["output_node_id"],
             store_dir=_store_dir(tmp_path),
         )
+
+
+def test_tag_attributes_to_the_tagged_records_own_lane(tmp_path):
+    """Without --lane, a tag lands in the lane that owns the tagged record —
+    tagging while browsing needs no lane switch and no bookkeeping lane."""
+    from arctx.core.lanes import lane_membership
+    from arctx_cli.commands.lane import run_lane_close_command, run_lane_create_command
+
+    init = _init(tmp_path)
+    lane = run_lane_create_command(
+        name="research", run_id="run_topic", user_id="u", store_dir=_store_dir(tmp_path)
+    )
+    ambient = run_lane_create_command(
+        name="ambient", run_id="run_topic", user_id="u", store_dir=_store_dir(tmp_path)
+    )
+    step = run_add_step_command(
+        run_id="run_topic", input_node_ids=[init["root_node_id"]], title="work",
+        payload_kind=None, payload_type="step_payload", field_data={}, json_data={},
+        store_dir=_store_dir(tmp_path), user_id="u", lane_id=lane["lane_id"],
+    )["step"]
+
+    result = run_topic_tag_command(
+        run_id="run_topic", name="gather", record_ids=[step["id"]], note=None,
+        store_dir=_store_dir(tmp_path), user_id="u",
+        lane_id=None, fallback_lane_id=ambient["lane_id"],
+    )
+    graph = _graph(tmp_path)
+    membership = lane_membership(graph)
+    tag_payload_id = result["payloads"][0]["payload"]["payload_id"]
+    assert membership.payload_to_lane[tag_payload_id] == lane["lane_id"]
+
+    # Once the record's lane closes, attribution falls back to the ambient lane.
+    run_lane_close_command(
+        name_or_id="research", summary="done", node_ids=None, reason=None,
+        run_id="run_topic", user_id="u", store_dir=_store_dir(tmp_path),
+    )
+    result = run_topic_tag_command(
+        run_id="run_topic", name="gather2", record_ids=[step["id"]], note=None,
+        store_dir=_store_dir(tmp_path), user_id="u",
+        lane_id=None, fallback_lane_id=ambient["lane_id"],
+    )
+    graph = _graph(tmp_path)
+    membership = lane_membership(graph)
+    tag_payload_id = result["payloads"][0]["payload"]["payload_id"]
+    assert membership.payload_to_lane[tag_payload_id] == ambient["lane_id"]

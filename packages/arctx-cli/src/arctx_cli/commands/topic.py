@@ -92,10 +92,35 @@ def run_topic_tag_command(
     store_dir: str | None,
     user_id: str | None = None,
     lane_id: str | None = None,
+    fallback_lane_id: str | None = None,
     force: bool = False,
 ) -> dict:
     if not record_ids:
         raise ValueError("topic tag needs at least one record id")
+
+    # A tag annotates the record where it lives, so by default the tag event
+    # is attributed to *that record's own lane* — tagging while browsing never
+    # requires switching lanes or inventing a bookkeeping lane. An explicit
+    # --lane still wins, and a record in a closed lane falls back to the
+    # caller's lane (writes to closed lanes stay refused).
+    from arctx.core.lanes import lane_membership
+
+    record_lane: dict[str, str | None] = {}
+    if lane_id is None:
+        store = resolve_store(store_dir)
+        if not store.run_path(run_id).exists():
+            raise KeyError(f"unknown run_id: {run_id}")
+        handle = store.load_run(run_id)
+        membership = lane_membership(handle.run_graph, root_node_id=handle.root_node_id)
+        for record_id in record_ids:
+            owner = membership.node_to_lane.get(record_id) or membership.step_to_lane.get(
+                record_id
+            )
+            owner_lane = handle.run_graph.lanes.get(owner) if owner else None
+            record_lane[record_id] = (
+                owner if owner_lane is not None and owner_lane.status == "open" else None
+            )
+
     results = []
     for record_id in record_ids:
         content: dict = {"topic": name}
@@ -110,7 +135,7 @@ def run_topic_tag_command(
             json_data=content,
             store_dir=store_dir,
             user_id=user_id,
-            lane_id=lane_id,
+            lane_id=lane_id or record_lane.get(record_id) or fallback_lane_id,
             force=force,
         )
         results.append(result)
@@ -234,7 +259,11 @@ def cli_topic(args) -> int:
                 note=args.note,
                 store_dir=args.store_dir,
                 user_id=resolve_user_id_from_args(args),
-                lane_id=resolve_lane_id_from_args(args),
+                # Explicit --lane wins; otherwise each tag is attributed to
+                # the tagged record's own (open) lane, and only records whose
+                # lane is closed fall back to the ambient current lane.
+                lane_id=args.lane,
+                fallback_lane_id=resolve_lane_id_from_args(args),
                 force=args.force,
             )
             print(f"tagged {len(result['tagged'])} records into topic \"{result['topic']}\"")
