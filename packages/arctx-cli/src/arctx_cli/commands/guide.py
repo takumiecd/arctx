@@ -33,55 +33,59 @@ STATIC_GUIDE_TEXT = """\
 
 `arctx` records the *process* of optimization and problem-solving as a DAG that
 lives in this repository. `Node` = a state reached, `Step` = a transition that
-produced it, `Payload` = the data attached to either. A `Lane` is a flat unit of
-work, like a git branch — lanes have no parents and no children.
+produced it, `Payload` = the data attached to either. Nodes are never created
+standalone — a node is born only as a step's output.
 
-## Writing: three verbs
+**One grammar, three bundles.** Everything that groups records is a flat name:
+a **lane** bundles work, a **table** bundles measured numbers (trials), a
+**topic** bundles meaning. Writing a new name creates the bundle, every view is
+derived at read time, the latest summary / best row is the current state, and
+`cut` is the append-only eraser. Learn the grammar once and all three behave
+the same.
 
-1. **Open a lane.** `arctx lane create NAME --purpose "why"`, then
-   `arctx lane switch NAME`. One lane per line of attack; fan independent
-   approaches out from the same baseline Node instead of serializing them.
-2. **`arctx add`.** Every record of progress is one Step plus its output Node:
-   `arctx add --from <NODE> --type <TYPE> --field key=value`. Repeat `--from`
-   for a multi-input join. Omit `--from` to use the current lane's single active
-   frontier (on a fresh run it falls back to the untouched run root, so the very
-   first `add` needs no `--from`); zero or several frontiers is an error that
-   tells you what to pass. Nodes are never created standalone.
-3. **Close with a summary.** `arctx lane close NAME --summary "<synthesis>"`.
-   The summary is required and *is* the conclusion — do not write a separate
-   synthesis step and then close on top of it. One leaf → it stamps that leaf;
-   several leaves → it merges them into one node. A closed lane refuses writes
-   until `arctx lane open NAME`. Mid-work, refresh the lane's current summary
-   with `arctx lane summarize NAME --summary "..."` (stays open).
+## Writing
 
-Corrections are append-only: `arctx cut <ID>` retires a Node or Step (`uncut`
-reverses it), and `arctx reparent <NODE> --from <NEW_INPUT>...` reconnects a
-node to new inputs by adding a new producing Step and cutting the old one —
-descendants are preserved. Nothing is ever deleted.
+1. **Open a lane and walk.** `arctx lane create NAME --purpose "why"` then
+   `arctx lane switch NAME`. Each record of progress is one step:
+   `arctx add --type <TYPE> --title "..." --field key=value` (omit `--from` to
+   continue from the lane's single frontier; repeat `--from` to join). When the
+   step is a *scored attempt*, record it as a trial instead so the numbers are
+   comparable: `arctx trial add --table NAME --col k=v --metric k=v`
+   (optimize extension; tables are born on first use, columns grow, only a
+   column's value kind is fixed by its first row).
+2. **Keep summaries current.** `arctx lane summarize NAME --summary "..."` is
+   the lane's position; `arctx topic summarize NAME --summary "..."` is what
+   the run currently believes about a subject (latest wins, history stays).
+   Closing a lane requires its conclusion: `arctx lane close NAME --summary`.
+3. **Tag meaning as you notice it.** `arctx topic tag NAME <ID> [<ID> ...]`
+   marks any nodes/steps as belonging to a subject — connectivity is *not*
+   required. When a topic's records sit in several unjoined regions, the topic
+   view shows them as islands: that is a join candidate, not an error, and
+   `arctx add --from A --from B` is how you join when the time comes.
 
-## Reading: three questions
+Corrections are append-only: `arctx cut <ID>` retires a record (`uncut`
+reverses), `arctx reparent <NODE>` swaps a node's producer. Nothing is deleted.
 
-* **"What is happening now?"** → `arctx guide --context`. Run, current lane,
-  its purpose and current summary, active frontiers, enabled extensions. Cheap
-  enough to call at the start of every turn.
-* **"What has been tried about X?"** → `arctx explore --query "TERMS"`. This is
-  the primary retrieval path: case-insensitive AND search over lane names and
-  every payload a lane owns. Position-independent — no current lane needed, no
-  hierarchy to walk. Each hit prints a snippet and the ids to jump to.
-  `arctx explore` alone lists lanes one line each (closed ones folded; `--all`
-  to include them); `arctx explore LANE` shows one lane in full.
-* **"What happened here?"** → `arctx dump --format outline` for the graph
-  (`--lane` to narrow), `arctx log` for a chronological read, and
-  `arctx show <ID>` for one Node / Step / Payload.
+## Reading
+
+* **"Where am I, what is known?"** → `arctx guide --context`: run, current
+  lane + summary, active frontiers, current topic statements. Cheap enough to
+  call at the start of every turn.
+* **"What has been tried about X?"** → `arctx explore --query "TERMS"` — the
+  primary retrieval path; position-independent AND search over lanes and every
+  payload (tags and summaries included). Hits print snippets and jumpable ids.
+* **"Which attempt was best?"** → `arctx trials [TABLE] [--sort COL |
+  --best min:COL]`; **"what do we believe about X?"** → `arctx topics` /
+  `arctx topic NAME`.
+* **"What happened here?"** → `arctx dump --format outline`, `arctx log`,
+  `arctx show <ID>`.
 
 ## Other commands worth knowing
 
-* `arctx attach <NODE_OR_STEP> --type <TYPE> --field key=value` : attach a
-  generic payload (`--payload-type summary` for a typed summary).
-* `arctx asset attach <NODE_OR_STEP> <PATH> [--commit REF]` : reference a
-  committed file or directory (default commit: HEAD). Assets are `(commit,
-  path)` references, never copies — commit the file first. `arctx asset show
-  <PAYLOAD>` reports whether the reference still resolves in this clone.
+* `arctx attach <ID> --type <TYPE> --field key=value` : attach a generic
+  payload to a node or step.
+* `arctx asset attach <ID> <PATH> [--commit REF]` : reference a committed file
+  or directory — `(commit, path)`, never a copy; commit the file first.
 * `arctx export --format json|md` : the shareable document / GUI data contract.
 """
 
@@ -187,6 +191,18 @@ def build_current_context(args) -> str:
                 text += f"  - `{line}`\n"
         else:
             text += "* **Active Frontiers in Lane**: (none)\n"
+
+        # Current knowledge: latest statement per topic, so an agent starts
+        # with the run's established findings instead of re-deriving them.
+        from arctx.core.topics import list_topics
+
+        views = [view for view in list_topics(handle.run_graph) if view.summary]
+        if views:
+            text += "* **Topics (current statements)**:\n"
+            for view in views[:5]:
+                text += f"  - `{view.name}`: {collapse_summary(view.summary.text)}\n"
+            if len(views) > 5:
+                text += f"  - … {len(views) - 5} more — `arctx topics`\n"
 
         enabled_names, _ext_guide_text, _available_exts_text = _extensions_text(run_dir)
         if enabled_names:

@@ -55,6 +55,12 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.serve import cli_serve
     from arctx_cli.commands.show import add_parser as add_show_parser
     from arctx_cli.commands.show import cli_show
+    from arctx_cli.commands.topic import (
+        add_topic_parser,
+        add_topics_parser,
+        cli_topic,
+        cli_topics,
+    )
     from arctx_cli.commands.use import add_parser as add_use_parser
     from arctx_cli.commands.use import cli_use
     from arctx_cli.commands.web import add_parser as add_web_parser
@@ -84,6 +90,8 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("reject", add_reject_parser, cli_reject),
         CliCommand("serve", add_serve_parser, cli_serve),
         CliCommand("show", add_show_parser, cli_show),
+        CliCommand("topic", add_topic_parser, cli_topic),
+        CliCommand("topics", add_topics_parser, cli_topics),
         CliCommand("use", add_use_parser, cli_use),
         CliCommand("web", add_web_parser, cli_web),
     ]
