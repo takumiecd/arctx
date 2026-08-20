@@ -28,11 +28,14 @@ export interface TopicSummary {
   targetId: string;
   text: string;
   sources: string[];
+  createdAt: string | null;
+  userId: string | null;
 }
 
 export interface TopicView {
   name: string;
   summary: TopicSummary | null;
+  history: TopicSummary[]; // oldest first; last entry is the current belief
   islands: string[][];
   inactive: string[];
   records: TopicRecord[];
@@ -77,25 +80,43 @@ function tagRecords(doc: RunDocument, name: string): TopicRecord[] {
   return records;
 }
 
-function currentSummary(doc: RunDocument, name: string): TopicSummary | null {
+// Every statement ever written about the topic, oldest first — the current
+// belief is the last entry, the rest is how the belief evolved (supersession
+// never deletes). Rank order with append order as the tie-break.
+function summaryHistory(doc: RunDocument, name: string): TopicSummary[] {
   const rank = recordEventRank(doc);
-  let best: { rank: number; payload: RunPayload } | null = null;
-  for (const payload of doc.payloads) {
-    if (payload.type !== SUMMARY_TYPE || payloadTopic(payload) !== name) continue;
-    const payloadRank = rank.get(payload.payload_id) ?? -1;
-    // >= so equal ranks fall back to append order (payloads written without
-    // a lane/user carry no work event and all rank -1).
-    if (best === null || payloadRank >= best.rank) best = { rank: payloadRank, payload };
+  const eventByRecord = new Map<string, { createdAt: string | null; userId: string | null }>();
+  for (const event of doc.work_events ?? []) {
+    for (const recordId of event.created_records ?? []) {
+      if (!eventByRecord.has(recordId)) {
+        eventByRecord.set(recordId, {
+          createdAt: event.created_at ?? null,
+          userId: event.user_id ?? null,
+        });
+      }
+    }
   }
-  if (!best) return null;
-  const content = best.payload.content ?? {};
-  const sources = Array.isArray(content.sources) ? content.sources.map(String) : [];
-  return {
-    payloadId: best.payload.payload_id,
-    targetId: best.payload.target_id,
-    text: String(content.text ?? ""),
-    sources,
-  };
+  const entries: { rank: number; order: number; summary: TopicSummary }[] = [];
+  doc.payloads.forEach((payload, order) => {
+    if (payload.type !== SUMMARY_TYPE || payloadTopic(payload) !== name) return;
+    const content = payload.content ?? {};
+    const sources = Array.isArray(content.sources) ? content.sources.map(String) : [];
+    const provenance = eventByRecord.get(payload.payload_id);
+    entries.push({
+      rank: rank.get(payload.payload_id) ?? -1,
+      order,
+      summary: {
+        payloadId: payload.payload_id,
+        targetId: payload.target_id,
+        text: String(content.text ?? ""),
+        sources,
+        createdAt: provenance?.createdAt ?? null,
+        userId: provenance?.userId ?? null,
+      },
+    });
+  });
+  entries.sort((a, b) => a.rank - b.rank || a.order - b.order);
+  return entries.map((entry) => entry.summary);
 }
 
 function forwardAdjacency(doc: RunDocument): Map<string, string[]> {
@@ -167,7 +188,15 @@ export function topicIslands(
 export function topicView(doc: RunDocument, name: string): TopicView {
   const records = tagRecords(doc, name);
   const { islands, inactive } = topicIslands(doc, records);
-  return { name, summary: currentSummary(doc, name), islands, inactive, records };
+  const history = summaryHistory(doc, name);
+  return {
+    name,
+    summary: history.length ? history[history.length - 1] : null,
+    history,
+    islands,
+    inactive,
+    records,
+  };
 }
 
 export function listTopics(doc: RunDocument): TopicView[] {

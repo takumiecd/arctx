@@ -247,6 +247,8 @@ node / step に topic 名を付けて、グラフ全体を横断する視点を�
 - `arctx topic NAME` — 現在サマリ + tag 済み record を**島**（系譜のまとまり:
   一方が他方の子孫なら同じ島。兄弟ブランチは別の島）ごとに表示。島が2つ以上 = 「同じ話なのに未結合」の合図で、繋ぐなら
   `arctx add --from A --from B`（判断は人間/エージェントに残す）
+- `arctx topic log NAME` — 結論文の変遷を遡る（最新が現在の理解、過去の理解も全部残る。
+  supersession は削除しないので「いつ何を信じていたか」がそのまま履歴になる）
 - `arctx topics` — 一覧（名前 / record 数 / 島数 / サマリ一行）
 - `arctx guide --context` に上位 topic の現在サマリが出るので、エージェントは
   確定知識を積んだ状態で作業を開始できる
