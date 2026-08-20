@@ -11,7 +11,7 @@
 // Cut/inactive records are dimmed. Selecting exactly one node or one edge
 // drives the detail panel.
 
-import { useCallback, useEffect, useRef, type CSSProperties, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, type CSSProperties, type RefObject } from "react";
 import {
   Background,
   ConnectionMode,
@@ -186,7 +186,13 @@ function LaneCollapsedNode({ data }: NodeProps) {
   );
 }
 
-const nodeTypes = { dag: DagNode, laneGroup: LaneGroupNode, laneCollapsed: LaneCollapsedNode };
+// memo(): React Flow re-renders every custom node when the parent renders;
+// with ~1000 nodes that is the difference between a snappy and a frozen canvas.
+const nodeTypes = {
+  dag: memo(DagNode),
+  laneGroup: memo(LaneGroupNode),
+  laneCollapsed: memo(LaneCollapsedNode),
+};
 const NODE_WIDTH = 150;
 const NODE_HEIGHT = 58;
 const LANE_GROUP_PADDING_X = 42;
@@ -417,8 +423,15 @@ function GraphCanvas({
 
   // Rebuild from the run document, preserving manual positions and selection
   // across polled refetches so the canvas doesn't jump.
+  // One auto-layout per (doc, visibility) — both the node and the edge
+  // effects need it, and it is the most expensive computation here.
+  const autoLayout = useMemo(
+    () => layout(doc, { collapsedLaneIds, showCuts, direction: layoutDirection }),
+    [doc, collapsedLaneIds, showCuts, layoutDirection],
+  );
+
   useEffect(() => {
-    const pos = layout(doc, { collapsedLaneIds, showCuts, direction: layoutDirection });
+    const pos = autoLayout;
     const visibilityKey = `${[...collapsedLaneIds].sort().join(",")}|${showCuts}|${layoutDirection}`;
     const visibilityChanged = lastVisibilityKeyRef.current !== null && lastVisibilityKeyRef.current !== visibilityKey;
     lastVisibilityKeyRef.current = visibilityKey;
@@ -541,8 +554,7 @@ function GraphCanvas({
   // drags nodes around. Use the nearest side instead of letting React Flow
   // default every target toward the top.
   useEffect(() => {
-    const fallbackPos = layout(doc, { collapsedLaneIds, showCuts, direction: layoutDirection });
-    const positions: Record<string, Pos> = { ...fallbackPos };
+    const positions: Record<string, Pos> = { ...autoLayout };
     for (const n of nodes) {
       positions[n.id] = n.position;
     }
@@ -818,6 +830,7 @@ function GraphCanvas({
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        onlyRenderVisibleElements
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={
