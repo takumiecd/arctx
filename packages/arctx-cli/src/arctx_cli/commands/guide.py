@@ -204,6 +204,22 @@ def build_current_context(args) -> str:
             if len(views) > 5:
                 text += f"  - … {len(views) - 5} more — `arctx topics`\n"
 
+        # Lane hygiene: finished work deserves a written conclusion. Surface
+        # open lanes nobody has written to in a while, so closing them is a
+        # visible chore instead of silent debt.
+        from arctx.core.lanes import stale_open_lanes
+
+        stale = stale_open_lanes(handle.run_graph)
+        if stale:
+            names = ", ".join(
+                f"`{lane.name or lane.lane_id}` ({idle}d)" for lane, _, idle in stale[:5]
+            )
+            more = f" +{len(stale) - 5} more" if len(stale) > 5 else ""
+            text += (
+                f"* **Stale open lanes (close them!)**: {names}{more} — "
+                'conclude with `arctx lane close NAME --summary "..."`\n'
+            )
+
         enabled_names, _ext_guide_text, _available_exts_text = _extensions_text(run_dir)
         if enabled_names:
             text += f"* **Enabled Extensions**: {', '.join(sorted(enabled_names))}\n"
