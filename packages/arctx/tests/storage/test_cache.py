@@ -67,3 +67,23 @@ def test_cache_used_on_load():
         # Second load should hit cache (no error expected).
         loaded2 = store.load_run("cache_use")
         assert len(loaded2.run_graph.nodes) == len(loaded1.run_graph.nodes)
+
+
+def test_cache_miss_when_payload_registry_differs(monkeypatch):
+    """A cache written by a process with a different decode capability is
+    ignored: an older install without an extension's payload types would
+    otherwise poison the cache with degraded generic payloads."""
+    from arctx.storage import _cache
+
+    with tempfile.TemporaryDirectory() as td:
+        run_dir = Path(td)
+        run = init(Requirement(requirement_id="r", target_type="task", target_id="t"))
+        row_counts = (1, 0, 0, 0, 0, 0)
+        save_cache(run_dir, row_counts, run.run_graph)
+        assert load_cache(run_dir, row_counts) is not None
+
+        # Simulate a reader whose registry differs from the writer's.
+        monkeypatch.setattr(
+            _cache, "registered_payload_types", lambda: ("something", "else")
+        )
+        assert load_cache(run_dir, row_counts) is None

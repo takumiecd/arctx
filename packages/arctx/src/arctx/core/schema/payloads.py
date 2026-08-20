@@ -257,6 +257,17 @@ def register_payload_decoder(
     _PAYLOAD_DECODERS[payload_type] = decoder
 
 
+def registered_payload_types() -> tuple[str, ...]:
+    """Sorted names of every payload_type this process can deserialize.
+
+    This is the process's decode capability, used as a cache fingerprint: a
+    RunGraph decoded by a process with a different registry (an older install,
+    or one without an extension's schema imported) is not interchangeable —
+    unknown types degrade to generic payloads and would poison a shared cache.
+    """
+    return tuple(sorted(set(_PAYLOAD_REGISTRY) | set(_PAYLOAD_DECODERS)))
+
+
 def _node_payload_from_dict(data: dict[str, JSONValue]) -> NodePayload:
     return NodePayload(
         payload_id=str(data["payload_id"]),
