@@ -167,11 +167,24 @@ def test_attach_node_payload():
     assert any(p.payload_id == returned.payload_id for p in payloads)
 
 
-def test_attach_rejects_step_targeting_payload():
+def test_attach_step_payload_to_step():
     run = init(_req())
-    tp = _tp()
-    with pytest.raises(ValueError, match="node-targeting"):
-        run.attach(run.root_node_id, tp)
+    step = run.add_step([run.root_node_id], _tp())
+    before = len(run.run_graph.steps), len(run.run_graph.nodes)
+
+    attached = run.attach(step.step_id, _tp())
+
+    # A payload attaches to the record; it never grows the graph, so one Step
+    # can carry any number of them (several trial rows, say).
+    assert attached.target_id == step.step_id
+    assert attached.payload_id != "pending"
+    assert (len(run.run_graph.steps), len(run.run_graph.nodes)) == before
+
+
+def test_attach_step_payload_to_a_node_is_an_error():
+    run = init(_req())
+    with pytest.raises(KeyError, match="unknown step_id"):
+        run.attach(run.root_node_id, _tp())
 
 
 def test_attach_rejects_unknown_node():

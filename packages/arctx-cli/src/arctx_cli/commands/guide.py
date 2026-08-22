@@ -52,7 +52,9 @@ the same.
    step is a *scored attempt*, record it as a trial instead so the numbers are
    comparable: `arctx trial add --table NAME --col k=v --metric k=v`
    (optimize extension; tables are born on first use, columns grow, only a
-   column's value kind is fixed by its first row).
+   column's value kind is fixed by its first row). A sweep is one step, not
+   one per attempt: add `--to <STEP_ID>` to hang another row on the step you
+   already made, or `--rows FILE.jsonl` to write the whole batch at once.
 2. **Keep summaries current.** `arctx lane summarize NAME --summary "..."` is
    the lane's position; `arctx topic summarize NAME --summary "..."` is what
    the run currently believes about a subject (latest wins, history stays).

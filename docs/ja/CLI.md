@@ -160,6 +160,11 @@ summary 付きで close）と「取得の 3 つの問い」に絞ってありま
   --context` / `arctx dump` で node を探す案内（0 個のとき）を添えてエラーに
   なる。
 - `arctx attach <node-or-step-id> --type TYPE --field key=value`: payload を attach する。
+  id は node / step のほか **payload id も可**で、その payload が付いている record に
+  解決されます（`arctx trials` や `arctx show` から拾った id をそのまま貼れる。
+  `arctx trial add --to` と同じ挙動）。cut 済み（または cut の下流）の record に
+  付けようとした場合は書き込みますが `notice:` を stderr に出します — cut は読み取り時の
+  判定なので、付いた payload も inactive として読まれます。
 - `arctx attach NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: `diagram` extension が有効な run で、循環可能な図・モデル artifact を attach する。
 - `arctx show <node-or-step-or-payload-id>`: 1 件の record を付随 payload とともに見る。
 
@@ -207,11 +212,14 @@ arctx asset attach "$STEP" bench/out --commit v0.3.1   # ディレクトリ ＋ 
 `arctx init --extension optimize`）で有効化します。
 
 - `arctx trial add --table NAME [--table NAME ...] [--col K=V ...] --metric K=V [--metric K=V ...] [--from NODE] [--title TEXT]`
+- `arctx trial add --to TARGET_ID ...` — **既存の Step に行を足す**（グラフは増えない）
+- `arctx trial add --rows PATH|- ...` — JSONL / JSON 配列から**複数行を一括**で書く
 - `arctx trials` — run 内のテーブル一覧（名前・行数・列と型）
 - `arctx trials NAME [--sort COL] [--desc] [--best [min:|max:]COL] [--json]`
 
-trial は「試した config + 出てきた metrics」を持つ 1 Step です（`--from` 省略時は
-`add` と同じく current lane の単一 active frontier）。**テーブルの record は存在しません**
+trial は **record ではなく payload** です。1 つの Step は行を何行でも持てるので、
+sweep は「N 個の Step」ではなく「**1 つの Step + N 行**」になります。グラフが
+増えるのは素の `trial add` だけです。**テーブルの record も存在しません**
 — テーブルとは行たちが共有する名前で（lane 名や git の branch 名と同じ扱い）、
 どんなテーブルがあるか・列・列の型・best はすべて読み取り時に行から導出します
 （「jsonl は事実、見た目は導出」）。
@@ -221,16 +229,37 @@ trial は「試した config + 出てきた metrics」を持つ 1 Step です（
 - ただし**列の型（number / bool / str）は最初に書いた行が固定**します。以後の型違いは
   書き込み前にエラーで拒否されるので、表のソートや `--best` は壊れません
 - 型を汚した行は `arctx cut step <id>` で inactive にすれば列の型が解放されます
-  （append-only な消しゴム）
+  （append-only な消しゴム）。ただし cut は Step 単位なので、**同じ Step の行は
+  まとめて inactive** になります
 - 1 つの trial は複数テーブルに所属できます（`--table` を繰り返す）。所属は各行が
   自分で持つので、後から行を足しても他の record には触れません
 - CLI を通らず書かれた不適合行は表示時に隔離されます（黙って列に混ぜません）
+- 行の id は payload id（`pl_...`）です。`arctx trials NAME` の 1 列目がそれで、
+  複数行が 1 つの Step を共有しているときだけ `step` 列も出ます
+- `notice:` は stderr に出ます（stdout は JSON のままなので
+  `arctx trial add ... | jq -r .step_id` がそのまま使えます）
+
+`--to` は step id / その Step が作った node id / 同じ Step の行の payload id の
+どれでも受け取ります。`--rows` の各行は `{"tables": [...], "title": ..., "config":
+{...}, "metrics": {...}}`（`#` 始まりの行と空行は無視）。コマンドラインの
+`--table` / `--col` / `--metric` / `--title` は各行の既定値で、行側の値が勝ちます。
+一括書き込みは**バッチ全体を検証してから**書くので、途中の行が型を壊すバッチは
+1 行も書かれません。
 
 ```
 $ arctx trial add --table tile-sweep --col tile=32 --metric latency_ms=1.87
 notice: new table "tile-sweep" (columns: tile, latency_ms)
+
+# 同じ Step に行を足す（node は増えない）
+$ STEP=$(arctx trial add --table tile-sweep --col tile=16 --metric latency_ms=2.41 | jq -r .step_id)
+$ arctx trial add --to $STEP --table tile-sweep --col tile=64 --metric latency_ms=2.03
+
+# sweep の結果をまとめて 1 Step に
+$ arctx trial add --table tile-sweep --title "tile sweep" --rows results.jsonl
+
 $ arctx trials tile-sweep --best min:latency_ms
-best (min latency_ms = 1.87): t_xxx  trial tile=32
+best (min latency_ms = 1.87): pl_xxx  trial tile=32
+  step t_xxx
 ```
 
 ## Topic（意味の束）

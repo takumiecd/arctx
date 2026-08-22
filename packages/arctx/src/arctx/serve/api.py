@@ -187,22 +187,10 @@ def _post_attach(store, run_id, body, user_id, lane_id) -> dict:
     )
 
     before = _graph_counts(handle)
-    if target_kind == "node":
+    try:
         attached = handle.attach(target_id, payload, user_id=user_id, lane_id=lane_id)
-    else:
-        if target_id not in handle.run_graph.steps:
-            raise ApiError(404, f"unknown step_id: {target_id}")
-        handle.run_graph.attach_payload(payload)
-        handle.record_work_event(
-            user_id=user_id,
-            lane_id=lane_id,
-            event_type="payload_attached",
-            target_kind="step",
-            target_id=target_id,
-            created_records=(payload.payload_id,),
-            summary=payload.payload_type,
-        )
-        attached = payload
+    except KeyError as exc:
+        raise ApiError(404, str(exc).strip("'")) from exc
 
     _maybe_append_or_save(store=store, handle=handle, user_id=user_id, lane_id=lane_id, before=before)
     return {"payload": attached.to_dict()}

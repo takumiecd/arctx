@@ -60,7 +60,23 @@ def _step_summary(graph: RunGraph, step_id: str, full: bool) -> str:
                 parts.append(json.dumps(payload.content)[:60])
         else:
             parts.append(payload.payload_type)
-    return " ".join(parts) if parts else "step"
+    return _collapse_repeats(parts) if parts else "step"
+
+
+def _collapse_repeats(parts: list[str]) -> str:
+    """Fold runs of identical labels into ``label ×n``.
+
+    A Step can carry many payloads of one kind (a sweep is one Step with N
+    trial rows), and repeating the same word N times says nothing the count
+    does not.
+    """
+    runs: list[list] = []
+    for part in parts:
+        if runs and runs[-1][0] == part:
+            runs[-1][1] += 1
+        else:
+            runs.append([part, 1])
+    return " ".join(label if n == 1 else f"{label} \u00d7{n}" for label, n in runs)
 
 
 def _summary_text(summaries: tuple[SummaryPayload, ...]) -> str:
