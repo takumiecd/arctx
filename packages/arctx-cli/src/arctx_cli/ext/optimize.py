@@ -5,6 +5,11 @@ the current lane's single active frontier) but writes a typed TrialPayload and
 validates it against the derived schema of every listed table before anything
 is written: new columns grow a table with a notice, type conflicts are errors.
 
+A trial is a *payload*, not a graph record: a Step can carry as many rows as
+you like. A sweep is therefore one Step with N rows, not N Steps — either
+written in one shot (``--rows FILE``) or appended one at a time to an existing
+Step (``--to STEP_ID``). Only a bare ``trial add`` grows the graph.
+
 ``trials`` is read-only: with no argument it lists every table with its
 columns; with a table name it prints the derived comparison table.
 """
@@ -14,13 +19,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
 import arctx.ext.optimize.payloads  # noqa: F401  (registers the trial decoder)
+from arctx.core.cuts import inactive_step_ids
 from arctx.ext.optimize import tables as trial_tables
 from arctx.ext.optimize.payloads import TrialPayload
 
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
-from arctx_cli.commands._targets import step_view
+from arctx_cli.commands._targets import resolve_target_kind, step_view
 from arctx_cli.commands.add import _default_input_node_ids
 from arctx_cli.context import (
     resolve_lane_id_from_args,
@@ -71,6 +79,143 @@ def _parse_best(spec: str) -> tuple[str, bool]:
 
 
 # ---------------------------------------------------------------------------
+# Rows
+# ---------------------------------------------------------------------------
+
+ROW_KEYS = ("tables", "title", "config", "metrics")
+
+
+@dataclass(frozen=True)
+class TrialRowSpec:
+    """One prospective trial row, before it is written."""
+
+    tables: tuple[str, ...]
+    config: dict
+    metrics: dict
+    title: str | None
+
+
+def _read_row_objects(source: str) -> list[dict]:
+    """Read batch rows from a JSONL / JSON-array file (``-`` = stdin)."""
+    text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+    stripped = text.strip()
+    if not stripped:
+        raise ValueError(f"no rows in {source!r}")
+    if stripped.startswith("["):
+        data = json.loads(stripped)
+        if not isinstance(data, list):
+            raise ValueError(f"{source}: expected a JSON array of rows")
+        return data
+    rows: list[dict] = []
+    for lineno, line in enumerate(stripped.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{source}:{lineno}: {exc}") from exc
+    if not rows:
+        raise ValueError(f"no rows in {source!r}")
+    return rows
+
+
+def _scalar_map(value, label: str) -> dict:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    out: dict = {}
+    for key, val in value.items():
+        if val is None or isinstance(val, (dict, list)):
+            raise ValueError(
+                f'{label}: value for "{key}" must be a scalar (number / bool / string)'
+            )
+        out[str(key)] = val
+    return out
+
+
+def _row_specs(
+    row_objects: list[dict] | None,
+    *,
+    tables: list[str],
+    config: dict,
+    metrics: dict,
+    title: str | None,
+) -> list[TrialRowSpec]:
+    """Normalize CLI input into the rows that will be written.
+
+    Without ``--rows`` this is the single row spelled with ``--col`` /
+    ``--metric``. With ``--rows`` each object contributes one row, and the
+    command-line ``--table`` / ``--col`` / ``--metric`` / ``--title`` act as
+    defaults every row inherits (a row's own values win).
+    """
+    if row_objects is None:
+        return [TrialRowSpec(tuple(tables), dict(config), dict(metrics), title)]
+
+    specs: list[TrialRowSpec] = []
+    for index, obj in enumerate(row_objects, 1):
+        if not isinstance(obj, dict):
+            raise ValueError(
+                f"row {index}: each row must be a JSON object, got {type(obj).__name__}"
+            )
+        unknown = sorted(set(obj) - set(ROW_KEYS))
+        if unknown:
+            raise ValueError(
+                f"row {index}: unknown key(s) {', '.join(unknown)} "
+                f"(expected: {', '.join(ROW_KEYS)})"
+            )
+        row_tables = obj.get("tables") or tables
+        if isinstance(row_tables, str):
+            row_tables = [row_tables]
+        names = [str(name).strip() for name in row_tables]
+        if not names or any(not name for name in names):
+            raise ValueError(f"row {index}: table names cannot be empty")
+        row_title = obj.get("title", title)
+        specs.append(
+            TrialRowSpec(
+                tables=tuple(names),
+                config={**config, **_scalar_map(obj.get("config"), f"row {index}: config")},
+                metrics={
+                    **metrics,
+                    **_scalar_map(obj.get("metrics"), f"row {index}: metrics"),
+                },
+                title=None if row_title is None else str(row_title),
+            )
+        )
+    return specs
+
+
+def _resolve_target_step(handle, target_id: str) -> str:
+    """Resolve ``--to`` (a step, a node, or a trial row id) to a Step id."""
+    graph = handle.run_graph
+    kind = resolve_target_kind(handle, target_id)
+    if kind == "node":
+        step_id = graph.step_to_node(target_id)
+        if step_id is None:
+            raise ValueError(
+                f"{target_id} has no producing step (it is the run root). "
+                f"Pass a step id, or drop --to to start a new trial step."
+            )
+    elif kind == "payload":
+        payload = graph.payloads[target_id]
+        if payload.target_kind != "step":
+            raise ValueError(
+                f"{target_id} is attached to a node; pass the node id itself "
+                f"or a step id to --to"
+            )
+        step_id = payload.target_id
+    else:
+        step_id = target_id
+    if step_id in inactive_step_ids(graph):
+        raise ValueError(
+            f"step {step_id} is cut — rows appended to it would be inactive. "
+            f"Uncut it (`arctx uncut {step_id}`) or drop --to."
+        )
+    return step_id
+
+
+# ---------------------------------------------------------------------------
 # trial add
 # ---------------------------------------------------------------------------
 
@@ -116,6 +261,27 @@ def add_trial_parser(subparsers) -> argparse.ArgumentParser:
             "lane's single active frontier node."
         ),
     )
+    add.add_argument(
+        "--to",
+        default=None,
+        dest="to_target",
+        metavar="TARGET_ID",
+        help=(
+            "Append the row(s) to an existing trial Step instead of creating "
+            "one. Takes a step id, the node it produced, or another row's "
+            "payload id. The graph does not grow."
+        ),
+    )
+    add.add_argument(
+        "--rows",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Read many rows from a JSONL file or a JSON array ('-' for stdin); "
+            "keys: tables / title / config / metrics. All rows land on one "
+            "Step, and --table/--col/--metric/--title act as per-row defaults."
+        ),
+    )
     add.add_argument("--title", default=None)
     add.add_argument("--run", default=None)
     add.add_argument("--store-dir", default=None)
@@ -125,6 +291,17 @@ def add_trial_parser(subparsers) -> argparse.ArgumentParser:
         "--force", action="store_true", help="Write even if the target lane is closed"
     )
     return parser
+
+
+def _trial_payload(spec: TrialRowSpec) -> TrialPayload:
+    return TrialPayload(
+        payload_id="pending",
+        target_id="pending",
+        tables=spec.tables,
+        config=spec.config,
+        metrics=spec.metrics,
+        title=spec.title,
+    )
 
 
 def run_trial_add_command(
@@ -139,45 +316,69 @@ def run_trial_add_command(
     user_id: str | None = None,
     lane_id: str | None = None,
     force: bool = False,
+    to_target: str | None = None,
+    rows: list[dict] | None = None,
 ) -> dict:
-    if not metrics:
-        raise ValueError(
-            "a trial needs at least one --metric KEY=VALUE (record results, "
-            "not intentions — use `arctx add` for unscored steps)"
-        )
     table_names = [name.strip() for name in tables]
     if any(not name for name in table_names):
         raise ValueError("--table NAME cannot be empty")
+    specs = _row_specs(
+        rows, tables=table_names, config=config, metrics=metrics, title=title
+    )
+    for index, spec in enumerate(specs, 1):
+        if not spec.metrics:
+            where = f"row {index}: " if len(specs) > 1 else ""
+            raise ValueError(
+                f"{where}a trial needs at least one --metric KEY=VALUE (record "
+                f"results, not intentions — use `arctx add` for unscored steps)"
+            )
 
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
     ensure_lane_open(handle, lane_id, force=force)
-    if not input_node_ids:
+
+    target_step_id: str | None = None
+    if to_target is not None:
+        target_step_id = _resolve_target_step(handle, to_target)
+    elif not input_node_ids:
         input_node_ids = _default_input_node_ids(handle, lane_id or "default")
 
-    errors, notices = trial_tables.validate_trial(
-        handle.run_graph, tables=table_names, config=config, metrics=metrics
+    errors, notices = trial_tables.validate_trials(
+        handle.run_graph,
+        [(spec.tables, spec.config, spec.metrics) for spec in specs],
     )
     if errors:
         raise ValueError("\n".join(errors))
 
-    payload = TrialPayload(
-        payload_id="pending",
-        target_id="pending",
-        tables=tuple(table_names),
-        config=config,
-        metrics=metrics,
-        title=title,
-    )
     before = graph_counts(handle)
-    step = handle.add_step(
-        input_node_ids,
-        payload,
-        user_id=user_id,
-        lane_id=lane_id,
-    )
+    pending = list(specs)
+    written: list[TrialPayload] = []
+    if target_step_id is None:
+        seen = set(handle.run_graph.payloads)
+        step = handle.add_step(
+            input_node_ids,
+            _trial_payload(pending.pop(0)),
+            user_id=user_id,
+            lane_id=lane_id,
+        )
+        target_step_id = step.step_id
+        written = [
+            payload
+            for payload_id, payload in handle.run_graph.payloads.items()
+            if payload_id not in seen and isinstance(payload, TrialPayload)
+        ]
+    for spec in pending:
+        written.append(
+            handle.attach(
+                target_step_id,
+                _trial_payload(spec),
+                user_id=user_id,
+                lane_id=lane_id,
+            )
+        )
+
     maybe_append_or_save(
         store=store,
         handle=handle,
@@ -185,13 +386,30 @@ def run_trial_add_command(
         lane_id=lane_id,
         before=before,
     )
-    return {"step": step_view(step), "notices": notices}
+    return {
+        "step": step_view(handle.run_graph.steps[target_step_id]),
+        "rows": [
+            {
+                "payload_id": payload.payload_id,
+                "title": payload.title,
+                "tables": list(payload.tables),
+            }
+            for payload in written
+        ],
+        "appended": to_target is not None,
+        "notices": notices,
+    }
 
 
 def cli_trial(args) -> int:
     try:
         if args.trial_command != "add":
             raise ValueError(f"unknown trial command: {args.trial_command!r}")
+        if args.to_target and args.input_nodes:
+            raise ValueError(
+                "--to and --from are exclusive: --to appends rows to an "
+                "existing step, --from starts a new one"
+            )
         run_id = resolve_run_id_from_args(args)
         result = run_trial_add_command(
             run_id=run_id,
@@ -204,13 +422,19 @@ def cli_trial(args) -> int:
             user_id=resolve_user_id_from_args(args),
             lane_id=resolve_lane_id_from_args(args),
             force=args.force,
+            to_target=args.to_target,
+            rows=None if args.rows is None else _read_row_objects(args.rows),
         )
         for notice in result["notices"]:
-            print(f"notice: {notice}")
-        print(json.dumps(result["step"], ensure_ascii=False, indent=2))
+            # stdout stays pure JSON so `trial add | jq -r .step_id` works.
+            print(f"notice: {notice}", file=sys.stderr)
+        view = dict(result["step"])
+        view["rows"] = [row["payload_id"] for row in result["rows"]]
+        view["appended"] = result["appended"]
+        print(json.dumps(view, ensure_ascii=False, indent=2))
         strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="trial add")
         return strict_rc or 0
-    except (KeyError, ValueError, json.JSONDecodeError) as exc:
+    except (KeyError, ValueError, OSError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
@@ -314,10 +538,25 @@ def _print_aligned(rows: list[list[str]]) -> None:
         print("  ".join(cell.ljust(width) for cell, width in zip(line, widths)).rstrip())
 
 
+def _shares_steps(table: trial_tables.TrialTable) -> bool:
+    """Report whether some Step in this table carries more than one row."""
+    seen: set[str] = set()
+    for row in table.rows:
+        if row.step_id in seen:
+            return True
+        seen.add(row.step_id)
+    return False
+
+
 def _print_table(table: trial_tables.TrialTable, *, sort: str | None, desc: bool) -> None:
     rows = trial_tables.sort_rows(table, sort, descending=desc) if sort else table.rows
     has_title = any(row.title for row in rows)
-    header = ["step"]
+    # A row's own id is its payload id; the step is shown only when it groups
+    # several rows, which is what makes a sweep one graph record instead of N.
+    show_step = _shares_steps(table)
+    header = ["row"]
+    if show_step:
+        header.append("step")
     if has_title:
         header.append("title")
     header += ["lane"]
@@ -325,7 +564,9 @@ def _print_table(table: trial_tables.TrialTable, *, sort: str | None, desc: bool
     header += ["status"]
     lines = [header]
     for row in rows:
-        line = [row.step_id[:10]]
+        line = [row.payload_id[:10]]
+        if show_step:
+            line.append(row.step_id[:10])
         if has_title:
             line.append(row.title or "-")
         line.append(row.lane_name or "-")
@@ -338,7 +579,7 @@ def _print_table(table: trial_tables.TrialTable, *, sort: str | None, desc: bool
     if table.invalid:
         print()
         for row, reason in table.invalid:
-            print(f"⚠ {row.step_id[:10]} quarantined: {reason}")
+            print(f"⚠ {row.payload_id[:10]} quarantined: {reason}")
 
 
 def _print_overview(tables: list[trial_tables.TrialTable]) -> None:
@@ -386,9 +627,10 @@ def cli_trials(args) -> int:
             label = "max" if maximize else "min"
             print(
                 f"best ({label} {column} = {_format_value(row.metrics.get(column))}): "
-                f"{row.step_id}"
+                f"{row.payload_id}"
                 + (f"  {row.title}" if row.title else "")
             )
+            print(f"  step {row.step_id}")
             for section, key, value in (
                 [("col", k, v) for k, v in row.config.items()]
                 + [("metric", k, v) for k, v in row.metrics.items()]

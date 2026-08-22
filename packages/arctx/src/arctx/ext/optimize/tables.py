@@ -18,7 +18,11 @@ Schema discipline is split between write and read:
 
 Cut rows keep their place in the display but leave the schema: cutting a
 step is the append-only eraser for a mistyped first row — the column's kind
-is freed for the next writer.
+is freed for the next writer. Cut is a *Step*-level eraser, so every row that
+shares the cut Step goes inactive together.
+
+Rows are payloads, not graph records: several rows can share one Step (a sweep
+is one Step with N rows), which is why a row's identity is its ``payload_id``.
 """
 
 from __future__ import annotations
@@ -209,40 +213,67 @@ def validate_trial(
     config: dict[str, JSONValue],
     metrics: dict[str, JSONValue],
 ) -> tuple[list[str], list[str]]:
-    """Write-time check of a prospective trial against every listed table.
+    """Write-time check of one prospective trial against every listed table.
 
     Returns ``(errors, notices)``. Errors block the write (type or section
     conflicts, non-scalar values). Notices report implicit growth: a table
     springing into existence, or a new column joining an existing table.
     """
+    return validate_trials(graph, [(tables, config, metrics)])
+
+
+def validate_trials(
+    graph: RunGraph,
+    rows: Iterable[tuple[Iterable[str], dict[str, JSONValue], dict[str, JSONValue]]],
+) -> tuple[list[str], list[str]]:
+    """Write-time check of a whole batch of prospective trials.
+
+    *rows* are ``(tables, config, metrics)`` triples in the order they would
+    be written. The batch is validated as if it were already appended: a
+    column introduced by row 1 fixes its kind for row 2, so a batch that
+    contradicts itself is rejected before any of it is written. Notices are
+    emitted once per table/column, not once per row.
+    """
     errors: list[str] = []
     notices: list[str] = []
-    candidate = TrialRow(
-        step_id="(new)",
-        payload_id="(new)",
-        title=None,
-        tables=tuple(tables),
-        config=dict(config),
-        metrics=dict(metrics),
-        active=True,
-        lane_name=None,
-    )
-    for name in candidate.tables:
-        table = derive_table(graph, name)
-        schema = {col.name: col for col in table.columns}
-        reason = _check_row(candidate, schema)
-        if reason is not None:
-            errors.append(f'table "{name}": {reason}')
-            continue
-        if not table.active_rows:
-            column_names = [key for _, key, _ in _row_items(candidate)]
-            notices.append(
-                f'new table "{name}" (columns: {", ".join(column_names)})'
-            )
-            continue
-        for _, key, _ in _row_items(candidate):
-            if key not in schema:
-                notices.append(f'new column "{key}" in table "{name}"')
+    schemas: dict[str, dict[str, TrialColumn]] = {}
+    populated: dict[str, bool] = {}
+    candidates = list(rows)
+    numbered = len(candidates) > 1
+
+    for index, (tables, config, metrics) in enumerate(candidates):
+        label = f"row {index + 1}: " if numbered else ""
+        candidate = TrialRow(
+            step_id="(new)",
+            payload_id="(new)",
+            title=None,
+            tables=tuple(tables),
+            config=dict(config),
+            metrics=dict(metrics),
+            active=True,
+            lane_name=None,
+        )
+        for name in candidate.tables:
+            if name not in schemas:
+                table = derive_table(graph, name)
+                schemas[name] = {col.name: col for col in table.columns}
+                populated[name] = bool(table.active_rows)
+            schema = schemas[name]
+            reason = _check_row(candidate, schema)
+            if reason is not None:
+                errors.append(f'{label}table "{name}": {reason}')
+                continue
+            if not populated[name]:
+                column_names = [key for _, key, _ in _row_items(candidate)]
+                notices.append(
+                    f'new table "{name}" (columns: {", ".join(column_names)})'
+                )
+                populated[name] = True
+            else:
+                for _, key, _ in _row_items(candidate):
+                    if key not in schema:
+                        notices.append(f'new column "{key}" in table "{name}"')
+            _extend_schema(candidate, schema)
     return errors, notices
 
 
@@ -293,5 +324,6 @@ __all__ = [
     "table_names",
     "trial_rows",
     "validate_trial",
+    "validate_trials",
     "value_kind",
 ]

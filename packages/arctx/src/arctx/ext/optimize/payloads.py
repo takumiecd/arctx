@@ -24,6 +24,10 @@ from arctx.core.types import JSONValue, to_jsonable
 class TrialPayload(PayloadBase):
     """One scored trial on a Step.
 
+    A trial is a payload, not a graph record: a Step carries as many trials as
+    are attached to it, so a sweep of 200 configurations is one Step with 200
+    rows rather than 200 Steps. The row's identity is its ``payload_id``.
+
     ``tables`` are plain shared names, like lane names or git branch names: a
     "table" is nothing but the set of trials that carry its name. A trial may
     belong to several tables; membership lives on each row, so appending a row

@@ -199,12 +199,16 @@ function TableGrid({
 }) {
   const rows = sort ? sortRows(table, sort.column, sort.descending) : table.rows;
   const hasTitle = rows.some((row) => row.title);
+  // A row's own id is its payload id; the step is shown only when it groups
+  // several rows (a sweep is one Step with N rows, not N Steps).
+  const showStep = new Set(table.rows.map((row) => row.stepId)).size !== table.rows.length;
   return (
     <div className="trials-table-scroll">
       <table className="trials-table">
         <thead>
           <tr>
-            <th>step</th>
+            <th>row</th>
+            {showStep && <th>step</th>}
             {hasTitle && <th>title</th>}
             <th>lane</th>
             {table.columns.map((col) => (
@@ -228,6 +232,7 @@ function TableGrid({
               row={row}
               columns={table.columns}
               hasTitle={hasTitle}
+              showStep={showStep}
               onSelectRecord={onSelectRecord}
             />
           ))}
@@ -241,11 +246,13 @@ function TrialRowView({
   row,
   columns,
   hasTitle,
+  showStep,
   onSelectRecord,
 }: {
   row: TrialRow;
   columns: TrialColumn[];
   hasTitle: boolean;
+  showStep: boolean;
   onSelectRecord: (selection: RecordSelection) => void;
 }) {
   return (
@@ -255,11 +262,23 @@ function TrialRowView({
           type="button"
           className="trials-step-link"
           onClick={() => onSelectRecord({ kind: "step", id: row.stepId })}
-          title={row.stepId}
+          title={row.payloadId}
         >
-          {row.stepId.slice(0, 10)}
+          {row.payloadId.slice(0, 10)}
         </button>
       </td>
+      {showStep && (
+        <td>
+          <button
+            type="button"
+            className="trials-step-link"
+            onClick={() => onSelectRecord({ kind: "step", id: row.stepId })}
+            title={row.stepId}
+          >
+            {row.stepId.slice(0, 10)}
+          </button>
+        </td>
+      )}
       {hasTitle && <td className="trials-title">{row.title ?? "–"}</td>}
       <td className="trials-lane">{row.laneName ?? "–"}</td>
       {columns.map((col) => {

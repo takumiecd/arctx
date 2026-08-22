@@ -12,6 +12,7 @@ from arctx.ext.optimize.tables import (
     sort_rows,
     table_names,
     validate_trial,
+    validate_trials,
 )
 
 
@@ -184,3 +185,49 @@ def test_trial_payload_roundtrip():
     decoded = payload_from_dict(payload.to_dict())
     assert isinstance(decoded, TrialPayload)
     assert decoded == payload
+
+
+def test_many_rows_can_share_one_step():
+    handle = _handle()
+    step = _add(handle, handle.root_node_id, ["sweep"], {"tile": 16}, {"latency_ms": 2.41})
+    handle.attach(step.step_id, _trial(["sweep"], {"tile": 32}, {"latency_ms": 1.87}))
+    handle.attach(step.step_id, _trial(["sweep"], {"tile": 64}, {"latency_ms": 2.03}))
+
+    table = derive_table(handle.run_graph, "sweep")
+    assert len(handle.run_graph.steps) == 1
+    assert [row.config["tile"] for row in table.rows] == [16, 32, 64]
+    assert len({row.payload_id for row in table.rows}) == 3
+    assert best_row(table, "latency_ms").config["tile"] == 32
+
+    # Cutting the shared Step retires every row it carries.
+    handle.cut(step.step_id, target_kind="step")
+    table = derive_table(handle.run_graph, "sweep")
+    assert [row.active for row in table.rows] == [False, False, False]
+
+
+def test_validate_trials_checks_a_batch_against_itself():
+    handle = _handle()
+    errors, notices = validate_trials(
+        handle.run_graph,
+        [
+            (["sweep"], {"tile": 16}, {"latency_ms": 2.41}),
+            (["sweep"], {"tile": 32}, {"latency_ms": 1.87, "occupancy": 0.6}),
+            (["sweep"], {"tile": 64}, {"latency_ms": 2.03}),
+        ],
+    )
+    assert errors == []
+    # One notice per table / column, not per row.
+    assert notices == [
+        'new table "sweep" (columns: tile, latency_ms)',
+        'new column "occupancy" in table "sweep"',
+    ]
+
+    errors, _ = validate_trials(
+        handle.run_graph,
+        [
+            (["sweep"], {}, {"latency_ms": 2.41}),
+            (["sweep"], {}, {"latency_ms": "fast"}),
+        ],
+    )
+    assert errors == ['row 2: table "sweep": "latency_ms" is number '
+                      "(first set by (new)), got 'fast' (str)"]
