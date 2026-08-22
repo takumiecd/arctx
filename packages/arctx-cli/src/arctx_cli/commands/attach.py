@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 
-from arctx_cli.commands._targets import resolve_target_kind
+from arctx_cli.commands._targets import resolve_attach_target
 from arctx_cli.append_batch import graph_counts, maybe_append_or_save
 from arctx_cli.context import (
     resolve_run_id_from_args,
@@ -53,9 +53,7 @@ def run_attach_command(
         raise KeyError(f"unknown run_id: {run_id}")
     handle = store.load_run(run_id)
     ensure_lane_open(handle, lane_id, force=force)
-    target_kind = resolve_target_kind(handle, target_id)
-    if target_kind == "payload":
-        raise ValueError("cannot attach a payload to another payload")
+    target_id, target_kind, notices = resolve_attach_target(handle, target_id)
 
     data = dict(json_data or {})
     data.update(field_data or {})
@@ -86,7 +84,7 @@ def run_attach_command(
         lane_id=lane_id,
         before=before,
     )
-    return {"payload": attached.to_dict()}
+    return {"payload": attached.to_dict(), "notices": notices}
 
 
 def cli_attach(args) -> int:
@@ -104,6 +102,9 @@ def cli_attach(args) -> int:
             lane_id=resolve_lane_id_from_args(args),
             force=args.force,
         )
+        for notice in result["notices"]:
+            # stdout stays pure JSON so `attach ... | jq -r .payload_id` works.
+            print(f"notice: {notice}", file=sys.stderr)
         print(json.dumps(result["payload"], ensure_ascii=False, indent=2))
         strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="attach")
         return strict_rc or 0

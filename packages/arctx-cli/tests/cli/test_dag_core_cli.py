@@ -308,3 +308,68 @@ def test_cut_then_uncut_command_roundtrip(tmp_path):
     assert result["uncut"]["payload_type"] == "uncut"
     handle = resolve_store(_store_dir(td)).load_run("run_dag_core")
     assert is_active_node(handle.run_graph, n)
+
+
+def test_attach_accepts_a_payload_id_and_lands_on_its_record(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+
+    note = run_attach_command(
+        run_id="run_dag_core",
+        target_id=init["root_node_id"],
+        payload_kind="note",
+        payload_type=None,
+        field_data={"text": "first"},
+        json_data={},
+        store_dir=_store_dir(td),
+    )["payload"]
+
+    # An id copied out of `arctx show` / `arctx trials` is a payload id; it
+    # resolves to the record that payload annotates.
+    result = run_attach_command(
+        run_id="run_dag_core",
+        target_id=note["payload_id"],
+        payload_kind="note",
+        payload_type=None,
+        field_data={"text": "second"},
+        json_data={},
+        store_dir=_store_dir(td),
+    )
+    assert result["payload"]["target_id"] == init["root_node_id"]
+    assert result["payload"]["target_kind"] == "node"
+    assert any("is a payload" in notice for notice in result["notices"])
+
+
+def test_attach_warns_when_the_target_is_cut(tmp_path):
+    td = str(tmp_path)
+    init = _init(td)
+    step = run_add_step_command(
+        run_id="run_dag_core",
+        input_node_ids=[init["root_node_id"]],
+        title="step",
+        payload_kind=None,
+        payload_type="step_payload",
+        field_data={},
+        json_data={},
+        store_dir=_store_dir(td),
+    )["step"]
+    run_cut_command(
+        run_id="run_dag_core",
+        target_id=step["id"],
+        target_kind="step",
+        reason=None,
+        store_dir=_store_dir(td),
+    )
+
+    result = run_attach_command(
+        run_id="run_dag_core",
+        target_id=step["output_node_id"],  # inactive because its producer is cut
+        payload_kind="note",
+        payload_type=None,
+        field_data={"text": "late note"},
+        json_data={},
+        store_dir=_store_dir(td),
+    )
+    # The write still happens — cut is a read-time verdict, not a lock.
+    assert result["payload"]["target_id"] == step["output_node_id"]
+    assert any("cut" in notice for notice in result["notices"])

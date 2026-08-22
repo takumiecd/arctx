@@ -160,6 +160,11 @@ summary 付きで close）と「取得の 3 つの問い」に絞ってありま
   --context` / `arctx dump` で node を探す案内（0 個のとき）を添えてエラーに
   なる。
 - `arctx attach <node-or-step-id> --type TYPE --field key=value`: payload を attach する。
+  id は node / step のほか **payload id も可**で、その payload が付いている record に
+  解決されます（`arctx trials` や `arctx show` から拾った id をそのまま貼れる。
+  `arctx trial add --to` と同じ挙動）。cut 済み（または cut の下流）の record に
+  付けようとした場合は書き込みますが `notice:` を stderr に出します — cut は読み取り時の
+  判定なので、付いた payload も inactive として読まれます。
 - `arctx attach NODE --payload-type diagram --json '{"title":"retry loop","format":"mermaid","source":"flowchart TD\n  fetch --> retry\n  retry --> fetch"}'`: `diagram` extension が有効な run で、循環可能な図・モデル artifact を attach する。
 - `arctx show <node-or-step-or-payload-id>`: 1 件の record を付随 payload とともに見る。
 
