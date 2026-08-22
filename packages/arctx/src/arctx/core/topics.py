@@ -318,6 +318,65 @@ def record_output_node(graph: RunGraph, record_id: str) -> str | None:
     return step.output_node_id if step is not None else None
 
 
+def statement_islands(
+    graph: RunGraph,
+    islands: tuple[tuple[str, ...], ...],
+    summary: TopicSummary,
+) -> frozenset[int]:
+    """Which islands a statement speaks for (0-based indices).
+
+    A statement is anchored by what it cites (``sources``) and by the node it
+    was written on. An island is covered when one of those anchors *is* one of
+    its members or descends from one — writing on the node a join produced
+    therefore covers both sides.
+
+    The size of the result is the interesting part:
+
+    - one island: the statement speaks for that lineage alone, so another
+      island's statement would silently supersede it (they are unrelated
+      histories, and "latest wins" cannot merge them).
+    - two or more: the author already reconciled the lineages in prose. The
+      graph has not caught up, and ``topic join`` can reuse this very text as
+      the verdict.
+    - none: unanchored — nothing can be said about which lineage it belongs to.
+    """
+    adjacency = _forward_adjacency(graph)
+    anchors = {str(source) for source in summary.sources}
+    if summary.target_id:
+        anchors.add(summary.target_id)
+    if not anchors:
+        return frozenset()
+    covered: set[int] = set()
+    for index, island in enumerate(islands):
+        for member in island:
+            if member in anchors or anchors & _descendants(adjacency, member):
+                covered.add(index)
+                break
+    return frozenset(covered)
+
+
+def island_statements(
+    graph: RunGraph, name: str
+) -> tuple[tuple[TopicSummary | None, ...], TopicSummary | None]:
+    """``(per_island_latest, reconciling)`` for *name*.
+
+    ``per_island_latest[i]`` is the newest statement that speaks for island
+    *i* alone — the belief that lineage arrived at. ``reconciling`` is the
+    newest statement that covers two or more islands: the prose in which the
+    subject was already settled.
+    """
+    view_islands = topic_view(graph, name).islands
+    per_island: list[TopicSummary | None] = [None] * len(view_islands)
+    reconciling: TopicSummary | None = None
+    for summary in topic_summary_history(graph, name):
+        covered = statement_islands(graph, view_islands, summary)
+        if len(covered) == 1:
+            per_island[next(iter(covered))] = summary
+        elif len(covered) > 1:
+            reconciling = summary
+    return tuple(per_island), reconciling
+
+
 def topic_view(graph: RunGraph, name: str) -> TopicView:
     records = _tag_records(graph, name)
     islands, inactive = topic_islands(graph, records)

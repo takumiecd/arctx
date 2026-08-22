@@ -222,6 +222,57 @@ export function islandTips(doc: RunDocument, island: string[]): string[] {
   );
 }
 
+// Which islands a statement speaks for. A statement is anchored by what it
+// cites (sources) and by the node it was written on; an island counts as
+// covered when one of those anchors is a member or descends from one. One
+// island means it speaks for that lineage alone (so another island's
+// statement would silently supersede it); two or more means the author
+// already reconciled them in prose. Mirrors
+// arctx.core.topics.statement_islands.
+export function statementIslands(
+  doc: RunDocument,
+  islands: string[][],
+  summary: TopicSummary,
+): Set<number> {
+  const adjacency = forwardAdjacency(doc);
+  const anchors = new Set<string>(summary.sources);
+  if (summary.targetId) anchors.add(summary.targetId);
+  const covered = new Set<number>();
+  if (!anchors.size) return covered;
+  islands.forEach((island, index) => {
+    for (const member of island) {
+      if (anchors.has(member)) {
+        covered.add(index);
+        return;
+      }
+      const reach = descendants(adjacency, member);
+      for (const anchor of anchors) {
+        if (reach.has(anchor)) {
+          covered.add(index);
+          return;
+        }
+      }
+    }
+  });
+  return covered;
+}
+
+// Per-island latest statement, plus the newest one that covers two or more
+// islands — the prose in which the subject was already settled.
+export function islandStatements(
+  doc: RunDocument,
+  view: TopicView,
+): { perIsland: (TopicSummary | null)[]; reconciling: TopicSummary | null } {
+  const perIsland: (TopicSummary | null)[] = view.islands.map(() => null);
+  let reconciling: TopicSummary | null = null;
+  for (const summary of view.history) {
+    const covered = statementIslands(doc, view.islands, summary);
+    if (covered.size === 1) perIsland[[...covered][0]] = summary;
+    else if (covered.size > 1) reconciling = summary;
+  }
+  return { perIsland, reconciling };
+}
+
 export function topicView(doc: RunDocument, name: string): TopicView {
   const records = tagRecords(doc, name);
   const { islands, inactive } = topicIslands(doc, records);

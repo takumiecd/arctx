@@ -56,6 +56,10 @@ const CHAIN_WRAP_LENGTH = 7;
 const CLUSTER_COLUMN_GAP = 220;
 const CLUSTER_ROW_GAP = 120;
 const UNLANED_CLUSTER_KEY = "__unlaned__";
+// How tall one stack of lane blocks may grow before a layer wraps into
+// another sub-column. Roughly a dozen lane blocks — past that, scrolling
+// replaces seeing.
+const MAX_STACK_HEIGHT = 3600;
 
 interface VisibleGraph {
   nodeIds: string[];
@@ -207,29 +211,73 @@ function placeClusterDag(
     layers[layerIndexOf.get(logicalDepth) ?? 0].push(cluster);
   }
 
-  const columnWidths = layers.map((layer) =>
-    Math.max(0, ...layer.map((cluster) => cluster.width)),
-  );
+  // A layer is a set of lanes at the same depth, and runs fan out: a real one
+  // had 69 lanes in a single layer, which as one column is a 23,000px hairline
+  // nothing can read. Pack each layer into as many sub-columns as it takes to
+  // stay near MAX_STACK_HEIGHT, so a wide layer becomes a block instead of a
+  // ribbon. One-lane layers are unaffected, so small runs look exactly as before.
+  for (const layer of layers) {
+    layer.sort((a, b) => compareClusterPlacement(a, b, parentsOf, new Map()));
+  }
+  const packed = layers.map((layer) => packLayer(layer));
+
   const columnX: number[] = [];
   let nextX = 0;
-  for (const width of columnWidths) {
+  for (const stacks of packed) {
     columnX.push(nextX);
-    nextX += width + CLUSTER_COLUMN_GAP;
+    nextX += stackedWidth(stacks) + CLUSTER_COLUMN_GAP;
   }
 
   const origins = new Map<string, Pos>();
-  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
-    const layer = layers[layerIndex];
-    layer.sort((a, b) => compareClusterPlacement(a, b, parentsOf, origins));
-
-    let nextY = 0;
-    for (const cluster of layer) {
-      origins.set(cluster.key, { x: columnX[layerIndex] ?? 0, y: nextY });
-      nextY += cluster.height + CLUSTER_ROW_GAP;
+  for (let layerIndex = 0; layerIndex < packed.length; layerIndex += 1) {
+    let stackX = columnX[layerIndex] ?? 0;
+    for (const stack of packed[layerIndex]) {
+      let nextY = 0;
+      for (const cluster of stack) {
+        origins.set(cluster.key, { x: stackX, y: nextY });
+        nextY += cluster.height + CLUSTER_ROW_GAP;
+      }
+      stackX += Math.max(0, ...stack.map((cluster) => cluster.width)) + CLUSTER_COLUMN_GAP;
     }
   }
 
   return origins;
+}
+
+// Split one layer into sub-columns ("stacks") of roughly equal height, in the
+// layer's existing order so lineage still reads top-to-bottom within a stack.
+function packLayer(layer: ClusterLayout[]): ClusterLayout[][] {
+  if (layer.length < 2) return [layer];
+  const total = layer.reduce(
+    (sum, cluster) => sum + cluster.height + CLUSTER_ROW_GAP,
+    0,
+  );
+  const stackCount = Math.max(1, Math.ceil(total / MAX_STACK_HEIGHT));
+  if (stackCount === 1) return [layer];
+
+  const budget = total / stackCount;
+  const stacks: ClusterLayout[][] = [[]];
+  let used = 0;
+  for (const cluster of layer) {
+    const size = cluster.height + CLUSTER_ROW_GAP;
+    if (used > 0 && used + size > budget && stacks.length < stackCount) {
+      stacks.push([]);
+      used = 0;
+    }
+    stacks[stacks.length - 1].push(cluster);
+    used += size;
+  }
+  return stacks;
+}
+
+function stackedWidth(stacks: ClusterLayout[][]): number {
+  return stacks.reduce(
+    (sum, stack, index) =>
+      sum +
+      Math.max(0, ...stack.map((cluster) => cluster.width)) +
+      (index > 0 ? CLUSTER_COLUMN_GAP : 0),
+    0,
+  );
 }
 
 function clusterDepths(
