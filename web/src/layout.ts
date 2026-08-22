@@ -43,20 +43,23 @@ export interface LayoutOpts {
   direction: LayoutDirection;
 }
 
-const LAYER_GAP = 200;
-const ROW_GAP = 86;
+// The grid this layout places on. Exported because they are the units every
+// assertion about the result is written in: a child sits one LAYER_GAP right
+// of its parent, a sibling one ROW_GAP below.
+export const LAYER_GAP = 200;
+export const ROW_GAP = 86;
 const MARGIN_X = 48;
 const MARGIN_Y = 42;
 
 // After this many consecutive layers, a purely linear chain wraps to the next
 // row instead of continuing to extend horizontally.
-const CHAIN_WRAP_LENGTH = 7;
+export const CHAIN_WRAP_LENGTH = 7;
 
 // A fan of leaf children (a sweep recorded as one step per row, a batch of
 // alternatives tried from one state) is stacked one per row up to this many;
 // past it the fan is packed into a block instead. One run had 387 leaves on a
 // single node, which as a column is 33,000px of nothing.
-const FAN_STACK_LIMIT = 6;
+export const FAN_STACK_LIMIT = 6;
 
 // A grid cell is LAYER_GAP wide and ROW_GAP tall, so a block with this ratio
 // of rows to columns comes out roughly square on screen.
@@ -74,7 +77,7 @@ const UNLANED_CLUSTER_KEY = "__unlaned__";
 // How tall one stack of lane blocks may grow before a layer wraps into
 // another sub-column. Roughly a dozen lane blocks — past that, scrolling
 // replaces seeing.
-const MAX_STACK_HEIGHT = 3600;
+export const MAX_STACK_HEIGHT = 3600;
 
 interface VisibleGraph {
   nodeIds: string[];
@@ -459,11 +462,17 @@ function layoutCluster(
         // a block first — a sweep fans hundreds of them off one node, and one
         // row each turns the lane into a column nothing can read. Branching
         // children keep the ordinary recursive placement below it.
+        //
+        // "Leaf" here means *childless*, not "one row tall": a linear chain
+        // also spans one row, and packing its head into a block would strand
+        // the rest of the chain — the block places cells directly and never
+        // recurses, so the tail would fall to the catch-all pass and land in
+        // its own row band far below its own head.
         const ordered = sortedChildren(nextChildren, span, nodeOrder).filter(
           (childId) => !visited.has(childId),
         );
-        const leaves = ordered.filter((childId) => span(childId) === 1);
-        const branches = ordered.filter((childId) => span(childId) !== 1);
+        const leaves = ordered.filter((childId) => isLeaf(primaryChildrenOf, childId));
+        const branches = ordered.filter((childId) => !isLeaf(primaryChildrenOf, childId));
 
         let childTop = topSlot;
         if (leaves.length) {
@@ -688,6 +697,12 @@ function rootedLayerDepths(
   return rootDepth;
 }
 
+// A childless node: nothing of its own hangs below it, so it can be placed
+// directly into a fan block instead of being recursed into.
+function isLeaf(primaryChildren: Map<string, string[]>, nodeId: string): boolean {
+  return (primaryChildren.get(nodeId) ?? []).length === 0;
+}
+
 function subtreeSpan(primaryChildren: Map<string, string[]>): (nodeId: string) => number {
   const memo = new Map<string, number>();
 
@@ -698,13 +713,15 @@ function subtreeSpan(primaryChildren: Map<string, string[]>): (nodeId: string) =
 
     visiting.add(nodeId);
     // Leaf children are packed into a block (see `fanShape`), so they reserve
-    // that block's rows rather than one row each; branching children keep
-    // their own vertical space.
+    // that block's rows rather than one row each; every other child keeps its
+    // own vertical space. The leaf test must be the same one placement uses —
+    // childless, not one-row-tall — or the rows reserved here do not match the
+    // rows placement consumes.
     let leaves = 0;
     let branches = 0;
     for (const childId of primaryChildren.get(nodeId) ?? []) {
       const childSpan = measure(childId, visiting);
-      if (childSpan === 1) leaves += 1;
+      if (isLeaf(primaryChildren, childId)) leaves += 1;
       else branches += childSpan;
     }
     const total = fanShape(leaves).rows + branches;

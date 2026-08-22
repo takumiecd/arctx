@@ -252,3 +252,20 @@ only renders the payload-specific body.
 - `npm run dev` — dev server
 - `npm run build` — typecheck + production build to `dist/`
 - `npm run typecheck` — types only
+- `npm test` — vitest, once (`npm run test:watch` to keep it running)
+
+## Tests
+
+`src/layout.test.ts` covers the graph layout (`src/layout.ts`). The layout has
+no visible failure mode — a wrong position is still a position — so a
+regression reads as "the canvas got hard to read" weeks later instead of as an
+error. The tests pin what the layout promises: a child sits one layer right of
+its parent, a long chain wraps instead of running off the canvas, a fan of
+leaves packs into a roughly square block rather than a column as tall as the
+fan, a chain stays attached to the head it fans from, a wide layer of lanes
+packs into sub-columns, and no two nodes land on the same point.
+
+Assertions are written in the layout's own units (`LAYER_GAP`, `ROW_GAP`), so
+tuning the grid does not break them — only changing what the layout *does*
+should. Fixtures are built from an edge list by `makeDoc`, so a new case is
+usually two lines.
