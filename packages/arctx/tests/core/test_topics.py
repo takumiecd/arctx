@@ -161,3 +161,86 @@ def test_topic_summary_history_walks_oldest_to_current():
     assert history[-1].user_id == "u"
     view = topic_view(handle.run_graph, "evolve")
     assert view.summary.text == "third belief"
+
+
+# ---------------------------------------------------------------------------
+# untag — append-only supersession on the (topic, record) pair
+# ---------------------------------------------------------------------------
+
+
+def _untag(handle, record_id, topic):
+    handle.attach(
+        record_id,
+        NodePayload(
+            payload_id="_", target_id="_", type="untag", content={"topic": topic}
+        ),
+    )
+
+
+def test_untag_removes_membership_and_retag_brings_it_back():
+    handle = _handle()
+    a = _step(handle, handle.root_node_id).output_node_id
+    b = _step(handle, a).output_node_id
+    _tag(handle, a, "tiling")
+    _tag(handle, b, "tiling")
+    assert len(topic_view(handle.run_graph, "tiling").records) == 2
+
+    _untag(handle, b, "tiling")
+    view = topic_view(handle.run_graph, "tiling")
+    assert [r.record_id for r in view.records] == [a]
+    # The record itself is untouched — untag is not cut.
+    assert b in handle.run_graph.nodes
+
+    _tag(handle, b, "tiling")
+    assert len(topic_view(handle.run_graph, "tiling").records) == 2
+
+
+def test_untag_is_scoped_to_one_topic():
+    handle = _handle()
+    a = _step(handle, handle.root_node_id).output_node_id
+    _tag(handle, a, "tiling")
+    _tag(handle, a, "bench")
+
+    _untag(handle, a, "tiling")
+
+    assert topic_view(handle.run_graph, "tiling").records == ()
+    assert [r.record_id for r in topic_view(handle.run_graph, "bench").records] == [a]
+
+
+def test_island_tips_are_the_frontier_of_each_island():
+    from arctx.core.topics import island_tips, record_output_node
+
+    handle = _handle()
+    root = handle.root_node_id
+    a1 = _step(handle, root).output_node_id
+    a2 = _step(handle, a1).output_node_id
+    b1 = _step(handle, root).output_node_id
+    for record_id in (a1, a2, b1):
+        _tag(handle, record_id, "tiling")
+
+    view = topic_view(handle.run_graph, "tiling")
+    assert len(view.islands) == 2
+    tips = [island_tips(handle.run_graph, island) for island in view.islands]
+    assert tips == [(a2,), (b1,)]
+    # A node stands for itself when used as a step input.
+    assert record_output_node(handle.run_graph, a2) == a2
+
+
+def test_joining_islands_requires_tagging_the_new_node():
+    """The rule `topic join` exists to encode: a Step alone does not merge."""
+    handle = _handle()
+    root = handle.root_node_id
+    a = _step(handle, root).output_node_id
+    b = _step(handle, root).output_node_id
+    _tag(handle, a, "tiling")
+    _tag(handle, b, "tiling")
+    assert len(topic_view(handle.run_graph, "tiling").islands) == 2
+
+    joined = handle.add_step(
+        [a, b], StepPayload(payload_id="_", target_id="_", type="topic_join")
+    )
+    # Still two islands: a and b remain mutually unreachable.
+    assert len(topic_view(handle.run_graph, "tiling").islands) == 2
+
+    _tag(handle, joined.output_node_id, "tiling")
+    assert len(topic_view(handle.run_graph, "tiling").islands) == 1

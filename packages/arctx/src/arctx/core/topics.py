@@ -12,6 +12,13 @@ payload class — old readers degrade gracefully):
   mark attached to the tagged record itself. Tagging never requires the
   tagged records to be connected: discovering that records in *different*
   regions share a topic is the point, not a violation.
+- ``type="untag"``, ``content={"topic": NAME}`` — append-only reversal of a
+  tag on the same ``(topic, record)`` pair. Membership is "the last marker
+  wins" (record_event_rank, append order as tie-break), the same supersession
+  as cut/uncut: tag → untag → tag brings the record back, and nothing is ever
+  deleted. Untagging says *the tag was wrong*, which is a different fact from
+  ``cut`` (*this branch died*) — reach for cut only when the record itself is
+  a dead end.
 - ``type="topic_summary"``, ``content={"topic": NAME, "text": ..., "sources":
   [ids]}`` — the current statement about the topic ("a strong tag"). Attached
   to the node where it was written (provenance). The effective statement is
@@ -34,11 +41,12 @@ from arctx.core.run_graph import RunGraph
 from arctx.core.schema.payloads import PayloadBase
 
 TAG_TYPE = "tag"
+UNTAG_TYPE = "untag"
 SUMMARY_TYPE = "topic_summary"
 
 
 def _payload_topic(payload: PayloadBase) -> str | None:
-    if getattr(payload, "type", None) not in (TAG_TYPE, SUMMARY_TYPE):
+    if getattr(payload, "type", None) not in (TAG_TYPE, UNTAG_TYPE, SUMMARY_TYPE):
         return None
     content = getattr(payload, "content", None) or {}
     topic = content.get("topic")
@@ -83,34 +91,61 @@ def topic_names(graph: RunGraph) -> list[str]:
     return seen
 
 
-def _tag_records(graph: RunGraph, name: str) -> list[TopicRecord]:
-    inactive_n = inactive_node_ids(graph)
-    inactive_s = inactive_step_ids(graph)
-    records: list[TopicRecord] = []
-    seen: set[str] = set()
-    for payload in graph.payloads.values():
-        if getattr(payload, "type", None) != TAG_TYPE:
+def _tag_state(graph: RunGraph, name: str) -> list[tuple[str, str, str | None]]:
+    """``(record_id, payload_id, note)`` for records currently tagged *name*.
+
+    Tag and untag are append-only markers on the ``(topic, record)`` pair and
+    the last one wins — record_event_rank first, append order as the
+    tie-break, the same supersession lane summaries and cut/uncut use. Records
+    keep their first-marked order so island order stays stable across a
+    re-tag.
+    """
+    rank = record_event_rank(graph)
+    latest: dict[str, tuple[int, int, bool, str, str | None]] = {}
+    for order, payload in enumerate(graph.payloads.values()):
+        payload_type = getattr(payload, "type", None)
+        if payload_type not in (TAG_TYPE, UNTAG_TYPE):
             continue
         if _payload_topic(payload) != name:
             continue
         record_id = payload.target_id
-        if record_id in seen:
+        key = (rank.get(payload.payload_id, -1), order)
+        previous = latest.get(record_id)
+        if previous is not None and key < previous[:2]:
             continue
-        seen.add(record_id)
+        note = (getattr(payload, "content", None) or {}).get("note")
+        latest[record_id] = (
+            key[0],
+            key[1],
+            payload_type == TAG_TYPE,
+            payload.payload_id,
+            note if isinstance(note, str) else None,
+        )
+    return [
+        (record_id, payload_id, note)
+        for record_id, (_, _, tagged, payload_id, note) in latest.items()
+        if tagged
+    ]
+
+
+def _tag_records(graph: RunGraph, name: str) -> list[TopicRecord]:
+    inactive_n = inactive_node_ids(graph)
+    inactive_s = inactive_step_ids(graph)
+    records: list[TopicRecord] = []
+    for record_id, payload_id, note in _tag_state(graph, name):
         kind = "node" if record_id in graph.nodes else "step"
         active = (
             record_id not in inactive_n
             if kind == "node"
             else record_id not in inactive_s
         )
-        note = (getattr(payload, "content", None) or {}).get("note")
         records.append(
             TopicRecord(
                 record_id=record_id,
                 kind=kind,
                 active=active,
-                note=note if isinstance(note, str) else None,
-                payload_id=payload.payload_id,
+                note=note,
+                payload_id=payload_id,
             )
         )
     return records
@@ -231,6 +266,36 @@ def topic_islands(
     islands = [tuple(members) for members in groups.values()]
     islands.sort(key=lambda island: active_ids.index(island[0]))
     return tuple(islands), inactive_ids
+
+
+def island_tips(graph: RunGraph, island: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    """Return an island's frontier: members no other member derives from.
+
+    These are the records a join should take as inputs — joining anything
+    upstream of them would fork the lineage instead of continuing it. An
+    island usually has exactly one tip; it has several when the subject
+    branched inside the island.
+    """
+    adjacency = _forward_adjacency(graph)
+    members = list(island)
+    descendants = {record_id: _descendants(adjacency, record_id) for record_id in members}
+    return tuple(
+        record_id
+        for record_id in members
+        if not any(other in descendants[record_id] for other in members if other != record_id)
+    )
+
+
+def record_output_node(graph: RunGraph, record_id: str) -> str | None:
+    """Return the node standing for *record_id* when used as a step input.
+
+    A node stands for itself; a step stands for the node it produced. Returns
+    None for an unknown id.
+    """
+    if record_id in graph.nodes:
+        return record_id
+    step = graph.steps.get(record_id)
+    return step.output_node_id if step is not None else None
 
 
 def topic_view(graph: RunGraph, name: str) -> TopicView:
