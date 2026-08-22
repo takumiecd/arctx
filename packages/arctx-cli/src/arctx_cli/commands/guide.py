@@ -62,8 +62,10 @@ the same.
 3. **Tag meaning as you notice it.** `arctx topic tag NAME <ID> [<ID> ...]`
    marks any nodes/steps as belonging to a subject — connectivity is *not*
    required. When a topic's records sit in several unjoined regions, the topic
-   view shows them as islands: that is a join candidate, not an error, and
-   `arctx add --from A --from B` is how you join when the time comes.
+   view shows them as islands: a candidate, not an error, with four ways out —
+   `topic join NAME --summary` (both right, verdict on the new node),
+   `topic split NAME --island N --into NEW` (two subjects all along),
+   `cut <ID>` (that one was a dead end), `topic untag NAME <ID>` (wrong tag).
 
 Corrections are append-only: `arctx cut <ID>` retires a record (`uncut`
 reverses), `arctx reparent <NODE>` swaps a node's producer. Nothing is deleted.
@@ -198,13 +200,27 @@ def build_current_context(args) -> str:
         # with the run's established findings instead of re-deriving them.
         from arctx.core.topics import list_topics
 
-        views = [view for view in list_topics(handle.run_graph) if view.summary]
+        all_views = list_topics(handle.run_graph)
+        views = [view for view in all_views if view.summary]
         if views:
             text += "* **Topics (current statements)**:\n"
             for view in views[:5]:
                 text += f"  - `{view.name}`: {collapse_summary(view.summary.text)}\n"
             if len(views) > 5:
                 text += f"  - … {len(views) - 5} more — `arctx topics`\n"
+
+        # A split subject is standing debt like an open lane: name it every
+        # time, so reconciling is a visible chore rather than a surprise.
+        split = [view for view in all_views if len(view.islands) > 1]
+        if split:
+            text += "* **Topics split across unjoined islands**:\n"
+            for view in split[:5]:
+                text += (
+                    f"  - `{view.name}`: {len(view.islands)} islands — "
+                    f"`arctx topic {view.name}` for the four ways out\n"
+                )
+            if len(split) > 5:
+                text += f"  - … {len(split) - 5} more — `arctx topics`\n"
 
         # Lane hygiene: finished work deserves a written conclusion. Surface
         # open lanes nobody has written to in a while, so closing them is a
