@@ -24,6 +24,11 @@
   --color-accent-hover: #1d4ed8;
   --color-success: #0f766e;
   --color-error: #dc2626;
+  /* A candidate needing a decision — never an error. Used by the topics view
+     for unjoined islands, which are a signal, not a mistake. */
+  --color-candidate: #b45309;
+  --color-candidate-bg: #fef3c7;
+  --color-candidate-border: #d9a441;
 
   /* Shadows */
   --shadow-sm: rgba(0, 0, 0, 0.04);
@@ -73,6 +78,9 @@
   --color-accent-hover: #2563eb;
   --color-success: #14b8a6;
   --color-error: #f87171;
+  --color-candidate: #f0b429;
+  --color-candidate-bg: #3b2f14;
+  --color-candidate-border: #8a6d2f;
 
   /* Shadows */
   --shadow-sm: rgba(0, 0, 0, 0.2);

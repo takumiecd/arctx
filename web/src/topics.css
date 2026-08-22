@@ -73,7 +73,7 @@
 
 .topics-islands-badge {
   font-size: 11px;
-  color: var(--color-error);
+  color: var(--color-candidate);
   border: 1px solid currentColor;
   border-radius: 999px;
   padding: 1px 8px;
@@ -166,19 +166,77 @@
   border-color: var(--color-accent);
 }
 
-.topics-join-hint {
-  margin: 0;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  border: 1px dashed var(--color-border-stronger);
+.topics-split {
+  border: 1px solid var(--color-candidate-border);
+  background: var(--color-candidate-bg);
   border-radius: 10px;
-  padding: 10px 14px;
+  padding: 11px 14px;
 }
 
-.topics-join-hint code {
-  background: var(--color-code-bg);
-  border-radius: 4px;
-  padding: 1px 5px;
+.topics-split-head {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.topics-split-head strong {
+  color: var(--color-candidate);
+}
+
+.topics-split ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.topics-split li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.topics-split li > span {
+  flex: 0 0 auto;
+  min-width: 15.5em;
+}
+
+.topics-split code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  color: var(--color-text-secondary);
+  overflow-x: auto;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.topics-split li button {
+  all: unset;
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--color-candidate);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.topics-split li button:hover {
+  border-color: var(--color-candidate-border);
+}
+
+.topics-source-kind {
+  color: var(--color-text-faint);
+  font-size: 10.5px;
+  margin-right: 5px;
 }
 
 .topics-islands {
@@ -189,52 +247,189 @@
 }
 
 .topics-island {
+  position: relative;
+  flex: 1 1 300px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-bg);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 200px;
+  gap: 8px;
+  min-width: 260px;
 }
 
 .topics-island > header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.topics-island > header b {
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
+/* The gap between islands is the message: these lineages never meet. */
+.topics-island-gap {
+  position: absolute;
+  left: -7px;
+  top: 8px;
+  bottom: 8px;
+  border-left: 2px dashed var(--color-candidate-border);
+}
+
 .topics-island-cut {
-  opacity: 0.55;
+  opacity: 0.62;
 }
 
-.topics-island button {
-  all: unset;
-  cursor: pointer;
+/* ---- a record, read as the work it stands for ---- */
+
+.topics-lineage {
   display: flex;
-  gap: 8px;
-  align-items: baseline;
-  font-size: 12.5px;
-  padding: 2px 0;
+  flex-direction: column;
 }
 
-.topics-island button code {
+.topics-record {
+  all: unset;
+  position: relative;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 9px;
+  align-items: start;
+  padding: 8px 10px 8px 8px;
+  margin-left: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-bg);
+}
+
+.topics-record:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-subtle);
+}
+
+.topics-record:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.topics-record.tip {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.topics-record.cut {
+  opacity: 0.65;
+}
+
+.topics-record.cut .topics-record-title {
+  text-decoration: line-through;
+}
+
+/* the lineage thread: these records descend from one another */
+.topics-lineage > .topics-record::before {
+  content: "";
+  position: absolute;
+  left: -11px;
+  top: -6px;
+  bottom: -6px;
+  width: 1.5px;
+  background: var(--color-border-stronger);
+}
+
+.topics-lineage > .topics-record:first-child::before {
+  top: 50%;
+}
+
+.topics-lineage > .topics-record:last-child::before {
+  bottom: 50%;
+}
+
+.topics-lineage > .topics-record:only-child::before {
+  display: none;
+}
+
+.topics-lineage > .topics-record::after {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: calc(50% - 3.5px);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-bg);
+  border: 1.5px solid var(--color-border-stronger);
+}
+
+.topics-lineage > .topics-record.tip::after {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.topics-lineage > .topics-record + .topics-record {
+  margin-top: 6px;
+}
+
+.topics-record-glyph {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  background: var(--color-bg-muted);
+  color: var(--color-text-muted);
+}
+
+.topics-record-glyph.step {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   color: var(--color-accent);
-  font-size: 12px;
 }
 
-.topics-island button:hover code {
-  text-decoration: underline;
+.topics-record-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
-.topics-record-kind {
-  color: var(--color-text-faint);
+.topics-record-title {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.topics-record-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
+  color: var(--color-text-faint);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.topics-lane-chip {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--color-bg-muted);
+  color: var(--color-text-muted);
+}
+
+.topics-tip-flag {
+  color: var(--color-accent);
+  letter-spacing: 0.06em;
 }
 
 .topics-record-note {
+  font-size: 11.5px;
   color: var(--color-text-muted);
+  border-left: 2px solid var(--color-border-strong);
+  padding-left: 7px;
 }
 
 /* ---- empty state ---- */
@@ -303,7 +498,7 @@
 .overview-topics button em {
   font-style: normal;
   font-size: 11px;
-  color: var(--color-error);
+  color: var(--color-candidate);
 }
 
 .overview-topics small {
@@ -327,6 +522,13 @@
 
 .topics-history > button:hover {
   color: var(--color-accent);
+}
+
+.topics-history-entry > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .topics-history-entry {
