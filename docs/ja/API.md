@@ -45,6 +45,12 @@ run.attach(
 `run.add_step(...)` は `Step` を 1 つと出力 `Node` を 1 つだけ生成します。
 同じ入力 Node ID で `run.add_step(...)` を複数回呼ぶと、兄弟となる代替を作れます。
 
+`run.attach(target_id, payload)` は **Node にも Step にも**付けられます（どちらに
+付くかは payload 側の `target_kind` が決めます）。attach はグラフを増やしません —
+1 つの record が payload を何枚でも持てるので、「1 回の作業に N 個の記録」は
+N 個の Step ではなく 1 つの Step + N 枚の payload で表します（trial の sweep が
+その代表例）。
+
 `cut(target_kind="node" | "step")` は `CutPayload` を append します。
 `diagram` extension は図・モデル用の `DiagramPayload` を提供します。中に持つ edge
 は ARCTX の `RunGraph` の edge ではないため、循環していても構いません。

@@ -88,7 +88,7 @@ Old payload types `PlanPayload`, `PredictionPayload`, `ResultPayload`, `NotePayl
 Public verbs (each implemented in `packages/arctx/src/arctx/core/run/<verb>.py`):
 
 - `add_step(input_node_ids, payload, *, user_id=None, lane_id=None) -> Step` — create one Step and one output Node from input nodes; `payload` must be step-targeting
-- `attach(node_id, payload, *, user_id=None, lane_id=None) -> PayloadBase` — attach a node-targeting payload to a node
+- `attach(target_id, payload, *, user_id=None, lane_id=None) -> PayloadBase` — attach a payload to an existing Node or Step; the payload's own `target_kind` picks which. Attaching never creates a Step or a Node, so one record can carry any number of payloads (a sweep is one Step with N trial rows)
 - `attach_asset(target_id, path, *, commit=None, target_kind=None, title=None, repo_root=None, user_id=None, lane_id=None) -> AssetAttachment` — reference a git object (`commit` defaults to the enclosing repo's HEAD; `path` may be a file or a directory). Validates the reference against git and returns `AssetAttachment(payload, warning, kind)`; `warning` carries the non-blocking "commit is not pushed" notice and is deliberately not stored on the record
 - `cut(target_id, *, target_kind, reason=None, user_id=None, lane_id=None) -> CutPayload` — mark a Node or Step inactive
 - `uncut(target_id, *, target_kind, reason=None, user_id=None, lane_id=None) -> UncutPayload` — append-only reversal of a cut (supersession). Step uncut is guarded so a node never gets a second active producer.

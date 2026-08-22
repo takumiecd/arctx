@@ -72,24 +72,12 @@ def run_attach_command(
         json_data={},
         field_data=data,
     )
-    if payload.target_kind == "node":
-        attached = handle.attach(
-            payload.target_id,
-            payload,
-            user_id=user_id,
-            lane_id=lane_id,
-        )
-    else:
-        handle.run_graph.attach_payload(payload)
-        handle.record_work_event(
-            user_id=user_id,
-            lane_id=lane_id,
-            event_type="payload_attached",
-            target_kind="step",
-            target_id=payload.target_id,
-            created_records=(payload.payload_id,),
-        )
-        attached = payload
+    attached = handle.attach(
+        payload.target_id,
+        payload,
+        user_id=user_id,
+        lane_id=lane_id,
+    )
 
     maybe_append_or_save(
         store=store,
