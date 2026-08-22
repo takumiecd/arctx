@@ -273,14 +273,70 @@ node / step に topic 名を付けて、グラフ全体を横断する視点を�
 - `arctx topic summarize NAME --summary TEXT [--source ID ...]` — topic の現在の
   結論文（強いタグ）。同名は最新が勝ち、履歴は残る。`--source` は根拠 record
   （実在検証あり）。既定では current lane の frontier node に付く（`--on` で指定）
+- `arctx topic untag NAME ID [ID ...]` — tag の取り消し。append-only の supersession で
+  `(topic, record)` ペア単位。**record 自体には触れない**（そこが `cut` との違い）。
+  `tag → untag → tag` で復活し、他の topic の tag は無傷
 - `arctx topic NAME` — 現在サマリ + tag 済み record を**島**（系譜のまとまり:
-  一方が他方の子孫なら同じ島。兄弟ブランチは別の島）ごとに表示。島が2つ以上 = 「同じ話なのに未結合」の合図で、繋ぐなら
-  `arctx add --from A --from B`（判断は人間/エージェントに残す）
+  一方が他方の子孫なら同じ島。兄弟ブランチは別の島）ごとに表示。島が 2 つ以上 =
+  「同じ話なのに未結合」の合図
+- `arctx topic join NAME --summary TEXT [--title TEXT] [--from NODE ...]` — 島を繋ぐ
+- `arctx topic split NAME --island N --into NEW --summary TEXT` — 島を別 topic に移す
 - `arctx topic log NAME` — 結論文の変遷を遡る（最新が現在の理解、過去の理解も全部残る。
   supersession は削除しないので「いつ何を信じていたか」がそのまま履歴になる）
 - `arctx topics` — 一覧（名前 / record 数 / 島数 / サマリ一行）
-- `arctx guide --context` に上位 topic の現在サマリが出るので、エージェントは
-  確定知識を積んだ状態で作業を開始できる
+- `arctx guide --context` に上位 topic の現在サマリと、**島が分かれている topic** が出る
+
+### 島が 2 つ以上あるときの 4 つの出口
+
+分かれる原因は 4 つしかなく、それぞれに verb が対応します。`topic tag` が島を
+**増やした瞬間**・`topic summarize`・`topic NAME`・`guide --context` が、この 4 つを
+**そのまま実行できるコマンドの形で** stderr に出します（対話では聞きません。
+arctx はエージェントも叩くので、ブロックする質問は毒です。exit code は 0 のまま）。
+
+```
+notice: topic "l2-tiling" spans 2 unjoined islands
+  island 1  2 records  tip n_7f04...  (lane opt-tile)
+  island 2  2 records  tip n_496d...  (lane opt-algo)
+  both are right, under different conditions
+    → arctx topic join l2-tiling --summary "..."
+  they turned out to be two subjects
+    → arctx topic split l2-tiling --island 2 --into NEW_NAME --summary "..."
+  island 2 was a dead end
+    → arctx cut n_496d... --reason "..."
+  the tag was a mistake
+    → arctx topic untag l2-tiling n_496d...
+```
+
+**`join` の入力に前後はありません。** `input_node_ids` は集合（fan-in）なので
+「正しい方を後ろに置く」という操作は存在しません。**後に来るのは join step の出力
+node** で、結論はそこに乗ります。だから `--summary` は必須です（`lane close` と同じ
+思想 — 繋ぐ操作ではなく、**結論を記録する**操作）。
+
+`join` は 3 つの書き込みを、これしかない順序で行います:
+
+1. 各島の tip（島内の極大元。複数あれば全部）を入力に 1 つの Step
+2. その出力 node を**同じ topic で tag** ← これを落とすと島は減りません。島は
+   *tag 済み* record 同士の系譜で決まるので、Step を足しただけでは tip 同士は
+   依然として互いに非到達のままです
+3. 結論を `topic summarize`（`--source` に両 tip、`--on` は出力 node）
+
+`split` はその鏡像で、島を丸ごと untag → 新しい名前で tag → 新 topic に結論。
+**元の topic も新 topic も 1 島になる**ので、合図は両方とも解消します。
+
+```
+$ arctx topic join l2-tiling --summary "CSR は 32、CSC は 64。境界は format 依存。"
+joined 2 lineages of topic "l2-tiling" — 1 island now
+  verdict on n_f63e5041...
+
+$ arctx topic split mask-update --island 2 --into csc-mask --summary "CSC 側は別問題"
+moved 1 records from "mask-update" to "csc-mask"
+  mask-update: 1 island(s) · csc-mask: 1 island(s)
+```
+
+`cut` と `untag` を混同しないでください。`cut` は「**この枝は死んだ**」という事実で、
+record を inactive にします。`untag` は「**tag が間違いだった**」で、record は生きたまま
+です。条件付きで誤りだった島は cut ではなく join し、条件を結論文に書きます —
+cut は歴史を消す道具ではありません。
 
 ## Reparent（付け替え）
 
