@@ -263,8 +263,28 @@ def topic_islands(
     groups: dict[str, list[str]] = {}
     for record_id in active_ids:
         groups.setdefault(find(record_id), []).append(record_id)
-    islands = [tuple(members) for members in groups.values()]
-    islands.sort(key=lambda island: active_ids.index(island[0]))
+
+    def in_lineage_order(members: list[str]) -> tuple[str, ...]:
+        """Oldest first: a record that reaches more members comes earlier.
+
+        Reachability inside an island is a partial order, and "how many other
+        members this one reaches" is a linear extension of it (if b descends
+        from a, everything b reaches, a reaches too, plus b itself). Tag order
+        breaks ties between unrelated siblings, so the reading order is the
+        order the work happened rather than the order it was tagged.
+        """
+        return tuple(
+            sorted(
+                members,
+                key=lambda rid: (
+                    -sum(1 for other in members if other in descendants[rid]),
+                    active_ids.index(rid),
+                ),
+            )
+        )
+
+    islands = [in_lineage_order(members) for members in groups.values()]
+    islands.sort(key=lambda island: min(active_ids.index(rid) for rid in island))
     return tuple(islands), inactive_ids
 
 
