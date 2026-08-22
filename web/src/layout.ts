@@ -52,6 +52,21 @@ const MARGIN_Y = 42;
 // row instead of continuing to extend horizontally.
 const CHAIN_WRAP_LENGTH = 7;
 
+// A fan of leaf children (a sweep recorded as one step per row, a batch of
+// alternatives tried from one state) is stacked one per row up to this many;
+// past it the fan is packed into a block instead. One run had 387 leaves on a
+// single node, which as a column is 33,000px of nothing.
+const FAN_STACK_LIMIT = 6;
+
+// A grid cell is LAYER_GAP wide and ROW_GAP tall, so a block with this ratio
+// of rows to columns comes out roughly square on screen.
+function fanShape(count: number): { rows: number; cols: number } {
+  if (count <= FAN_STACK_LIMIT) return { rows: count, cols: 1 };
+  const rows = Math.max(1, Math.round(Math.sqrt((count * LAYER_GAP) / ROW_GAP)));
+  const cols = Math.ceil(count / rows);
+  return { rows: Math.ceil(count / cols), cols };
+}
+
 // Cluster (lane block) packing parameters.
 const CLUSTER_COLUMN_GAP = 220;
 const CLUSTER_ROW_GAP = 120;
@@ -219,7 +234,8 @@ function placeClusterDag(
   for (const layer of layers) {
     layer.sort((a, b) => compareClusterPlacement(a, b, parentsOf, new Map()));
   }
-  const packed = layers.map((layer) => packLayer(layer));
+
+  const packed = layers.map((layer) => packLayer(layer, MAX_STACK_HEIGHT));
 
   const columnX: number[] = [];
   let nextX = 0;
@@ -246,21 +262,21 @@ function placeClusterDag(
 
 // Split one layer into sub-columns ("stacks") of roughly equal height, in the
 // layer's existing order so lineage still reads top-to-bottom within a stack.
-function packLayer(layer: ClusterLayout[]): ClusterLayout[][] {
+function packLayer(layer: ClusterLayout[], budget: number): ClusterLayout[][] {
   if (layer.length < 2) return [layer];
   const total = layer.reduce(
     (sum, cluster) => sum + cluster.height + CLUSTER_ROW_GAP,
     0,
   );
-  const stackCount = Math.max(1, Math.ceil(total / MAX_STACK_HEIGHT));
+  const stackCount = Math.max(1, Math.ceil(total / budget));
   if (stackCount === 1) return [layer];
 
-  const budget = total / stackCount;
+  const perStack = total / stackCount;
   const stacks: ClusterLayout[][] = [[]];
   let used = 0;
   for (const cluster of layer) {
     const size = cluster.height + CLUSTER_ROW_GAP;
-    if (used > 0 && used + size > budget && stacks.length < stackCount) {
+    if (used > 0 && used + size > perStack && stacks.length < stackCount) {
       stacks.push([]);
       used = 0;
     }
@@ -428,14 +444,42 @@ function layoutCluster(
 
       const nextChildren: string[] = primaryChildrenOf.get(currentId) ?? [];
       const child: string | undefined = nextChildren[0];
+      // A node with several children is a branch point, not a link in a
+      // chain. Following only the first child left every sibling for the
+      // catch-all pass at the end, which gives each one its own row in a
+      // column of its own — the 387-leaf fan that started this.
       const chainContinues =
-        child !== undefined && !visited.has(child) && (parentCountOf.get(child) ?? 0) === 1;
+        nextChildren.length === 1 &&
+        child !== undefined &&
+        !visited.has(child) &&
+        (parentCountOf.get(child) ?? 0) === 1;
 
       if (!chainContinues) {
-        // Chain ended (branch, merge, or leaf). Recurse normally into any
-        // children from here (covers branching at the chain's tail).
+        // Chain ended (branch, merge, or leaf). Leaf children are packed into
+        // a block first — a sweep fans hundreds of them off one node, and one
+        // row each turns the lane into a column nothing can read. Branching
+        // children keep the ordinary recursive placement below it.
+        const ordered = sortedChildren(nextChildren, span, nodeOrder).filter(
+          (childId) => !visited.has(childId),
+        );
+        const leaves = ordered.filter((childId) => span(childId) === 1);
+        const branches = ordered.filter((childId) => span(childId) !== 1);
+
         let childTop = topSlot;
-        for (const childId of sortedChildren(nextChildren, span, nodeOrder)) {
+        if (leaves.length) {
+          const { rows } = fanShape(leaves.length);
+          leaves.forEach((childId, index) => {
+            const column = Math.floor(index / rows);
+            const childDepth = depth.get(childId) ?? baseDepth + 1;
+            positions.set(childId, {
+              x: MARGIN_X + (childDepth + column) * LAYER_GAP,
+              y: MARGIN_Y + (childTop + (index % rows)) * ROW_GAP,
+            });
+            visited.add(childId);
+          });
+          childTop += rows;
+        }
+        for (const childId of branches) {
           place(childId, childTop);
           childTop += span(childId);
         }
@@ -653,10 +697,17 @@ function subtreeSpan(primaryChildren: Map<string, string[]>): (nodeId: string) =
     if (visiting.has(nodeId)) return 1;
 
     visiting.add(nodeId);
-    const total = (primaryChildren.get(nodeId) ?? []).reduce(
-      (sum, childId) => sum + measure(childId, visiting),
-      0,
-    );
+    // Leaf children are packed into a block (see `fanShape`), so they reserve
+    // that block's rows rather than one row each; branching children keep
+    // their own vertical space.
+    let leaves = 0;
+    let branches = 0;
+    for (const childId of primaryChildren.get(nodeId) ?? []) {
+      const childSpan = measure(childId, visiting);
+      if (childSpan === 1) leaves += 1;
+      else branches += childSpan;
+    }
+    const total = fanShape(leaves).rows + branches;
     visiting.delete(nodeId);
 
     const value = Math.max(1, total);
