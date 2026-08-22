@@ -432,6 +432,70 @@
   padding-left: 7px;
 }
 
+/* ---- what each lineage concluded ---- */
+
+.topics-island-says {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--color-text-muted);
+  border-left: 2px solid var(--color-border);
+  padding-left: 9px;
+}
+
+/* ---- minimap: the subject's footprint on the run ---- */
+
+.topics-map {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+  padding: 10px 12px 12px;
+}
+
+.topics-map figcaption {
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+  margin-bottom: 8px;
+}
+
+.topics-map svg {
+  display: block;
+  width: 100%;
+}
+
+.topics-map-lane {
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  fill: var(--color-text-muted);
+}
+
+.topics-map-rule {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.topics-map-span {
+  stroke: var(--color-text-placeholder);
+  stroke-width: 7;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+
+.topics-map-lit {
+  cursor: pointer;
+  transition: r 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topics-map-lit {
+    transition: none;
+  }
+}
+
 /* ---- empty state ---- */
 
 .topics-empty {

@@ -14,8 +14,17 @@
 
 import { useMemo, useState } from "react";
 
-import { islandTips, listTopics, type TopicRecord, type TopicView } from "./topicViews";
+import { islandStatements, islandTips, listTopics, type TopicRecord, type TopicView } from "./topicViews";
 import type { RunDocument } from "./types";
+
+// One hue per island, so the minimap reads as separate constellations rather
+// than one speckled cloud. Cycles for topics with many islands.
+const ISLAND_COLORS = [
+  "var(--color-accent)",
+  "var(--color-candidate)",
+  "var(--color-success)",
+];
+const islandColor = (index: number) => ISLAND_COLORS[index % ISLAND_COLORS.length];
 
 type RecordSelection = { kind: "node" | "step"; id: string };
 
@@ -113,11 +122,13 @@ function TopicDetail({
   onSelectRecord: (selection: RecordSelection) => void;
 }) {
   const [showHistory, setShowHistory] = useState(false);
+  const [hovered, setHovered] = useState<string | null>(null);
   const byId = new Map(topic.records.map((r) => [r.recordId, r]));
   const tips = useMemo(
     () => new Set(topic.islands.flatMap((island) => islandTips(doc, island))),
     [doc, topic],
   );
+  const statements = useMemo(() => islandStatements(doc, topic), [doc, topic]);
   const jump = (recordId: string) =>
     onSelectRecord({ kind: byId.get(recordId)?.kind ?? "node", id: recordId });
   return (
@@ -200,9 +211,14 @@ function TopicDetail({
           <div key={island[0]} className="topics-island">
             {index > 0 && <span className="topics-island-gap" aria-hidden="true" />}
             <header>
-              <b>island {index + 1}</b>
+              <b style={{ color: islandColor(index) }}>island {index + 1}</b>
               <span>{island.length} records</span>
             </header>
+            {/* What this lineage concluded. Two islands is a shape; the
+                contradiction to settle lives in the two statements. */}
+            <p className="topics-island-says">
+              {statements.perIsland[index]?.text ?? "この系譜だけの結論はまだ無い"}
+            </p>
             <div className="topics-lineage">
               {island.map((recordId) => (
                 <RecordCard
@@ -211,6 +227,7 @@ function TopicDetail({
                   recordId={recordId}
                   tip={tips.has(recordId)}
                   onSelect={jump}
+                  onHover={setHovered}
                 />
               ))}
             </div>
@@ -229,12 +246,15 @@ function TopicDetail({
                   record={byId.get(recordId)}
                   recordId={recordId}
                   onSelect={jump}
+                  onHover={setHovered}
                 />
               ))}
             </div>
           </div>
         )}
       </div>
+
+      <TopicMinimap doc={doc} topic={topic} hovered={hovered} onSelect={jump} />
     </section>
   );
 }
@@ -246,17 +266,27 @@ function RecordCard({
   recordId,
   tip = false,
   onSelect,
+  onHover,
 }: {
   record: TopicRecord | undefined;
   recordId: string;
   tip?: boolean;
   onSelect: (recordId: string) => void;
+  onHover?: (recordId: string | null) => void;
 }) {
   const classes = ["topics-record"];
   if (tip) classes.push("tip");
   if (record && !record.active) classes.push("cut");
   return (
-    <button type="button" className={classes.join(" ")} onClick={() => onSelect(recordId)}>
+    <button
+      type="button"
+      className={classes.join(" ")}
+      onClick={() => onSelect(recordId)}
+      onMouseEnter={() => onHover?.(recordId)}
+      onMouseLeave={() => onHover?.(null)}
+      onFocus={() => onHover?.(recordId)}
+      onBlur={() => onHover?.(null)}
+    >
       <span className={`topics-record-glyph ${record?.kind ?? "node"}`}>
         {record?.kind === "step" ? "→" : "●"}
       </span>
@@ -274,6 +304,128 @@ function RecordCard({
   );
 }
 
+// Where the subject sits in the run. Not the graph's own geometry — a run
+// with 78 lanes collapses into a hairline at strip size — but the two axes a
+// reader actually thinks in: which lane, and when. Each row is a lane that
+// carries this topic; faint ticks are that lane's other records, so a lit dot
+// reads as "here, among all this". Islands keep their colour, so a subject
+// split across lanes shows as separate constellations.
+function TopicMinimap({
+  doc,
+  topic,
+  hovered,
+  onSelect,
+}: {
+  doc: RunDocument;
+  topic: TopicView;
+  hovered: string | null;
+  onSelect: (recordId: string) => void;
+}) {
+  const rows = useMemo(() => {
+    const provenance = doc.record_provenance ?? {};
+    const entries = Object.entries(provenance)
+      .map(([recordId, p]) => ({
+        recordId,
+        lane: p.lane_name ?? p.lane_id ?? "(no lane)",
+        at: p.created_at ?? "",
+      }))
+      .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    const order = new Map(entries.map((entry, index) => [entry.recordId, index]));
+
+    const island = new Map<string, number>();
+    topic.islands.forEach((members, index) => {
+      for (const recordId of members) island.set(recordId, index);
+    });
+
+    const laneOf = new Map(entries.map((entry) => [entry.recordId, entry.lane]));
+    const laneNames: string[] = [];
+    for (const recordId of island.keys()) {
+      const lane = laneOf.get(recordId);
+      if (lane && !laneNames.includes(lane)) laneNames.push(lane);
+    }
+
+    return {
+      total: entries.length || 1,
+      island,
+      order,
+      lanes: laneNames.map((lane) => {
+        // A lane's work happens in a burst, so its records compress to a few
+        // pixels of the run's timeline. Draw the burst as the lane's active
+        // window rather than as ticks nothing can tell apart.
+        const indices = entries
+          .filter((entry) => entry.lane === lane)
+          .map((entry) => order.get(entry.recordId)!);
+        return {
+          lane,
+          span: indices.length
+            ? { from: Math.min(...indices), to: Math.max(...indices), count: indices.length }
+            : null,
+          lit: [...island.keys()].filter((recordId) => laneOf.get(recordId) === lane),
+        };
+      }),
+    };
+  }, [doc, topic]);
+
+  if (!rows.lanes.length) return null;
+
+  const ROW = 22;
+  const LABEL = 150;
+  const WIDTH = 1000;
+  const height = rows.lanes.length * ROW;
+  const x = (index: number) => LABEL + (index / rows.total) * (WIDTH - LABEL - 12);
+
+  return (
+    <figure className="topics-map">
+      <figcaption>
+        どの lane に・いつ散っているか · {rows.island.size} records / {rows.lanes.length} lanes
+      </figcaption>
+      <svg
+        viewBox={`0 0 ${WIDTH} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ maxHeight: `${height}px` }}
+        role="img"
+        aria-label={`${topic.name} のタグ済み record が run のどの lane のどのあたりにあるか`}
+      >
+        {rows.lanes.map((row, index) => {
+          const y = index * ROW + ROW / 2;
+          return (
+            <g key={row.lane}>
+              <text className="topics-map-lane" x={LABEL - 10} y={y + 4} textAnchor="end">
+                {row.lane}
+              </text>
+              <line className="topics-map-rule" x1={LABEL} y1={y} x2={WIDTH - 12} y2={y} />
+              {row.span && (
+                <line
+                  className="topics-map-span"
+                  x1={x(row.span.from) - 3}
+                  y1={y}
+                  x2={x(row.span.to) + 3}
+                  y2={y}
+                >
+                  <title>{`${row.lane}: ${row.span.count} records`}</title>
+                </line>
+              )}
+              {row.lit.map((recordId) => (
+                <circle
+                  key={recordId}
+                  className="topics-map-lit"
+                  cx={x(rows.order.get(recordId) ?? 0)}
+                  cy={y}
+                  r={hovered === recordId ? 9 : 6}
+                  fill={islandColor(rows.island.get(recordId) ?? 0)}
+                  onClick={() => onSelect(recordId)}
+                >
+                  <title>{recordId}</title>
+                </circle>
+              ))}
+            </g>
+          );
+        })}
+      </svg>
+    </figure>
+  );
+}
+
 // A split subject has exactly four causes, and each one is a command. The
 // same four the CLI prints — a candidate, never an error, so nothing is red
 // and nothing here blocks.
@@ -281,14 +433,24 @@ function SplitResolutions({ doc, topic }: { doc: RunDocument; topic: TopicView }
   const [copied, setCopied] = useState<string | null>(null);
   const tips = topic.islands.map((island) => islandTips(doc, island)[0] ?? island[0]);
   const last = tips[tips.length - 1];
-  const joinCommand = `arctx topic join ${topic.name} --summary "..."`;
+  // When the current statement already cites two or more islands, the subject
+  // was settled in prose and only the graph lags behind — join can reuse it.
+  const { reconciling } = islandStatements(doc, topic);
+  const joinCommand = reconciling
+    ? `arctx topic join ${topic.name}`
+    : `arctx topic join ${topic.name} --summary "..."`;
   const copy = (command: string) => {
     setCopied(command);
     void navigator.clipboard?.writeText(command).catch(() => undefined);
     window.setTimeout(() => setCopied(null), 1400);
   };
   const options: { when: string; command: string }[] = [
-    { when: "both are right, under different conditions", command: joinCommand },
+    {
+      when: reconciling
+        ? "現在の主張は既に両方を引いている（結論を再利用）"
+        : "both are right, under different conditions",
+      command: joinCommand,
+    },
     {
       when: "they turned out to be two subjects",
       command: `arctx topic split ${topic.name} --island ${topic.islands.length} --into NEW_NAME --summary "..."`,
