@@ -65,6 +65,21 @@ export function stepType(doc: RunDocument, stepId: string): string {
   return "step";
 }
 
+// A step's display label, from the same payload the graph view uses for the
+// node it produced — a step reads as the work it did, not as its id.
+export function stepLabel(doc: RunDocument, stepId: string): string {
+  const payload = stepActionPayload(payloadsForStep(doc, stepId));
+  if (payload) return compactLabel(graphLabel(doc, payload));
+  const type = stepType(doc, stepId);
+  return type === "step" ? "step" : compactLabel(type);
+}
+
+export function recordLabel(doc: RunDocument, recordId: string): string {
+  return doc.steps.some((step) => step.step_id === recordId)
+    ? stepLabel(doc, recordId)
+    : nodeLabel(doc, recordId);
+}
+
 export function nodeLabel(doc: RunDocument, nodeId: string): string {
   if (nodeId === doc.root_node_id) return "root";
 

@@ -11,6 +11,7 @@
 // connectivity would collapse every topic into one island.
 
 import { recordEventRank } from "./lanes";
+import { laneIdForRecord, laneLabel, provenanceFor, recordLabel } from "./model";
 import type { RunDocument, RunPayload } from "./types";
 
 export const TAG_TYPE = "tag";
@@ -21,6 +22,11 @@ export interface TopicRecord {
   kind: "node" | "step";
   active: boolean;
   note: string | null;
+  // Derived for display: a record reads as the work it stands for, not as an
+  // opaque id. Same derivation the graph view uses for its node labels.
+  label: string;
+  laneName: string | null;
+  createdAt: string | null;
 }
 
 export interface TopicSummary {
@@ -70,11 +76,15 @@ function tagRecords(doc: RunDocument, name: string): TopicRecord[] {
     const step = steps.get(recordId);
     if (!node && !step) continue;
     const note = payload.content?.note;
+    const laneId = laneIdForRecord(doc, recordId);
     records.push({
       recordId,
       kind: node ? "node" : "step",
       active: node ? !node.inactive : !step!.inactive,
       note: typeof note === "string" ? note : null,
+      label: recordLabel(doc, recordId),
+      laneName: laneId ? laneLabel(doc, laneId) : null,
+      createdAt: provenanceFor(doc, recordId)?.created_at ?? null,
     });
   }
   return records;
@@ -180,9 +190,36 @@ export function topicIslands(
     if (group) group.push(id);
     else groups.set(root, [id]);
   }
-  const islands = [...groups.values()];
-  islands.sort((a, b) => activeIds.indexOf(a[0]) - activeIds.indexOf(b[0]));
+  // Oldest first inside an island: a record that reaches more members comes
+  // earlier (a linear extension of the reachability order), with tag order
+  // breaking ties between unrelated siblings. Islands themselves keep
+  // first-appearance order so island numbers stay stable.
+  const islands = [...groups.values()].map((members) =>
+    [...members].sort(
+      (a, b) =>
+        members.filter((other) => reach.get(b)!.has(other)).length -
+          members.filter((other) => reach.get(a)!.has(other)).length ||
+        activeIds.indexOf(a) - activeIds.indexOf(b),
+    ),
+  );
+  islands.sort(
+    (a, b) =>
+      Math.min(...a.map((id) => activeIds.indexOf(id))) -
+      Math.min(...b.map((id) => activeIds.indexOf(id))),
+  );
   return { islands, inactive };
+}
+
+// An island's frontier: the members no other member derives from. These are
+// the records a join takes as inputs — joining anything upstream of them
+// would fork the lineage instead of continuing it. Mirrors
+// arctx.core.topics.island_tips.
+export function islandTips(doc: RunDocument, island: string[]): string[] {
+  const adjacency = forwardAdjacency(doc);
+  const reach = new Map(island.map((id) => [id, descendants(adjacency, id)]));
+  return island.filter(
+    (id) => !island.some((other) => other !== id && reach.get(id)!.has(other)),
+  );
 }
 
 export function topicView(doc: RunDocument, name: string): TopicView {

@@ -244,3 +244,17 @@ def test_joining_islands_requires_tagging_the_new_node():
 
     _tag(handle, joined.output_node_id, "tiling")
     assert len(topic_view(handle.run_graph, "tiling").islands) == 1
+
+
+def test_island_members_are_listed_oldest_first():
+    """An island reads as a lineage, so tag order must not decide the order."""
+    handle = _handle()
+    a1 = _step(handle, handle.root_node_id).output_node_id
+    a2 = _step(handle, a1).output_node_id
+    a3 = _step(handle, a2).output_node_id
+    # Tagged newest-first, on purpose.
+    for record_id in (a3, a1, a2):
+        _tag(handle, record_id, "tiling")
+
+    (island,) = topic_view(handle.run_graph, "tiling").islands
+    assert island == (a1, a2, a3)
