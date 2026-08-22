@@ -5,7 +5,12 @@ from __future__ import annotations
 import arctx
 from arctx.core.schema.payloads import NodePayload, StepPayload
 from arctx.core.schema.requirements import Requirement
-from arctx.core.topics import list_topics, topic_names, topic_view
+from arctx.core.topics import (
+    list_topics,
+    topic_names,
+    topic_summary_history,
+    topic_view,
+)
 
 
 def _handle():
@@ -258,3 +263,61 @@ def test_island_members_are_listed_oldest_first():
 
     (island,) = topic_view(handle.run_graph, "tiling").islands
     assert island == (a1, a2, a3)
+
+
+# ---------------------------------------------------------------------------
+# Which island a statement speaks for
+# ---------------------------------------------------------------------------
+
+
+def _summarize(handle, node_id, topic, text, sources=()):
+    handle.attach(
+        node_id,
+        NodePayload(
+            payload_id="_",
+            target_id="_",
+            type="topic_summary",
+            content={"topic": topic, "text": text, "sources": list(sources)},
+        ),
+    )
+
+
+def test_statement_islands_separates_one_lineage_from_a_reconciliation():
+    from arctx.core.topics import island_statements, statement_islands
+
+    handle = _handle()
+    root = handle.root_node_id
+    a = _step(handle, root).output_node_id
+    b = _step(handle, root).output_node_id
+    _tag(handle, a, "tiling")
+    _tag(handle, b, "tiling")
+    view = topic_view(handle.run_graph, "tiling")
+    assert len(view.islands) == 2
+
+    # Written on island 1's own node: it speaks for that lineage alone.
+    _summarize(handle, a, "tiling", "island 1 の結論")
+    history = topic_summary_history(handle.run_graph, "tiling")
+    assert statement_islands(handle.run_graph, view.islands, history[-1]) == frozenset({0})
+
+    # Citing both sides: the subject was reconciled in prose.
+    _summarize(handle, root, "tiling", "両方をまとめた結論", sources=(a, b))
+    per_island, reconciling = island_statements(handle.run_graph, "tiling")
+    assert reconciling is not None and reconciling.text == "両方をまとめた結論"
+    assert per_island[0] is not None and per_island[0].text == "island 1 の結論"
+    assert per_island[1] is None
+
+
+def test_statement_islands_is_empty_when_nothing_anchors_it():
+    from arctx.core.topics import statement_islands
+
+    handle = _handle()
+    root = handle.root_node_id
+    a = _step(handle, root).output_node_id
+    b = _step(handle, root).output_node_id
+    _tag(handle, a, "tiling")
+    _tag(handle, b, "tiling")
+    # Attached to the root, which no tagged record descends from.
+    _summarize(handle, root, "tiling", "どこの話でもない")
+    view = topic_view(handle.run_graph, "tiling")
+    history = topic_summary_history(handle.run_graph, "tiling")
+    assert statement_islands(handle.run_graph, view.islands, history[-1]) == frozenset()

@@ -323,6 +323,32 @@ node** で、結論はそこに乗ります。だから `--summary` は必須で
 `split` はその鏡像で、島を丸ごと untag → 新しい名前で tag → 新 topic に結論。
 **元の topic も新 topic も 1 島になる**ので、合図は両方とも解消します。
 
+### 主張がどの島のものか
+
+結論文は `--source` と「どの node に書いたか」で位置が決まります（`statement_islands`）。
+
+- **1 島だけを指す** → その系譜だけの結論。他の島から書いた結論が来ると、latest wins で
+  **黙って上書きされる**（無関係な系譜どうしなので merge にならない）
+- **2 島以上を指す** → 散文の中では既に統合済み。グラフだけが遅れている状態
+
+なので:
+
+- `arctx topic summarize` は、**現在の主張が別の島のものなら拒否**します（`--force` で押し切れる）。
+  git の merge conflict と同じ扱いで、対話で聞く代わりに止めます。どちらが正しいかはデータからは
+  決まらないので、**エージェントは勝手に決めずユーザーに聞いてください**
+- `arctx topic join NAME` は、現在の主張が既に 2 島以上を指しているなら **`--summary` を省略できます**
+  （その主張をそのまま結論として再利用）。散文で済んでいる統合を構造に反映するだけの 1 コマンドです
+
+```
+$ arctx topic summarize k-star-coverage --summary "island 2 側の結論"
+error: topic "k-star-coverage" is split, and this statement speaks for island 2
+       while the current one speaks for island 1:
+  island 1 (current): ...
+  island 2 (yours):    ...
+  ...
+  record it anyway → --force
+```
+
 ```
 $ arctx topic join l2-tiling --summary "CSR は 32、CSC は 64。境界は format 依存。"
 joined 2 lineages of topic "l2-tiling" — 1 island now

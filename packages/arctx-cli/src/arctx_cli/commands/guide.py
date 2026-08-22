@@ -66,6 +66,10 @@ the same.
    `topic join NAME --summary` (both right, verdict on the new node),
    `topic split NAME --island N --into NEW` (two subjects all along),
    `cut <ID>` (that one was a dead end), `topic untag NAME <ID>` (wrong tag).
+   **Which lineage is right is a judgement, not something the data settles:
+   ask before you pick.** Writing a statement from one island while the
+   current one speaks for another is refused, because "latest wins" would
+   drop a live conclusion.
 
 Corrections are append-only: `arctx cut <ID>` retires a record (`uncut`
 reverses), `arctx reparent <NODE>` swaps a node's producer. Nothing is deleted.
@@ -217,8 +221,12 @@ def build_current_context(args) -> str:
             for view in split[:5]:
                 text += (
                     f"  - `{view.name}`: {len(view.islands)} islands — "
-                    f"`arctx topic {view.name}` for the four ways out\n"
+                    f"`arctx topic {view.name}` shows what each one concluded\n"
                 )
+            text += (
+                "  - which lineage is right is a question for the user, not a "
+                "guess — ask, then `topic join` / `split` / `cut` / `untag`\n"
+            )
             if len(split) > 5:
                 text += f"  - … {len(split) - 5} more — `arctx topics`\n"
 

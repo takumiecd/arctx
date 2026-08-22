@@ -315,3 +315,86 @@ def test_split_notice_offers_every_resolution_as_a_command(tmp_path):
     )
     graph = _graph(tmp_path)
     assert split_notice(graph, topic_view(graph, "tiling")) == []
+
+
+def test_summarize_refuses_to_supersede_another_islands_belief(tmp_path):
+    ids = _two_islands(tmp_path)
+    common = dict(run_id="run_topic", name="tiling", store_dir=_store_dir(tmp_path))
+
+    run_topic_summarize_command(
+        text="island 1 の結論", sources=[ids["a2"]], on_node=ids["a2"], **common
+    )
+    # "latest wins" cannot merge unrelated lineages, so this would drop a live
+    # conclusion from every view. Refused like a merge conflict.
+    with pytest.raises(ValueError, match="speaks for island 2"):
+        run_topic_summarize_command(
+            text="island 2 の結論", sources=[ids["b"]], on_node=ids["b"], **common
+        )
+
+    # --force is the "I know, record it anyway" escape.
+    run_topic_summarize_command(
+        text="island 2 の結論", sources=[ids["b"]], on_node=ids["b"], force=True, **common
+    )
+    assert topic_view(_graph(tmp_path), "tiling").summary.text == "island 2 の結論"
+
+
+def test_summarize_is_free_once_the_statement_covers_both_islands(tmp_path):
+    ids = _two_islands(tmp_path)
+    common = dict(run_id="run_topic", name="tiling", store_dir=_store_dir(tmp_path))
+    run_topic_summarize_command(
+        text="両方をまとめた", sources=[ids["a2"], ids["b"]], on_node=ids["a2"], **common
+    )
+    # The current statement is not speaking for a single lineage any more, so
+    # there is nothing to silently supersede.
+    run_topic_summarize_command(
+        text="island 2 の追記", sources=[ids["b"]], on_node=ids["b"], **common
+    )
+
+
+def test_join_reuses_a_statement_that_already_cites_both_islands(tmp_path):
+    ids = _two_islands(tmp_path)
+    run_topic_summarize_command(
+        run_id="run_topic",
+        name="tiling",
+        text="CSR は 32、CSC は 64",
+        sources=[ids["a2"], ids["b"]],
+        on_node=ids["a2"],
+        store_dir=_store_dir(tmp_path),
+    )
+
+    result = run_topic_join_command(
+        run_id="run_topic",
+        name="tiling",
+        summary="",
+        title=None,
+        input_node_ids=None,
+        store_dir=_store_dir(tmp_path),
+    )
+
+    assert result["reused_statement"] is True
+    assert result["islands"] == 1
+    view = topic_view(_graph(tmp_path), "tiling")
+    assert view.summary.text == "CSR は 32、CSC は 64"
+    assert view.summary.target_id == result["step"]["output_node_id"]
+
+
+def test_join_still_needs_a_verdict_when_nothing_reconciles(tmp_path):
+    _two_islands(tmp_path)
+    with pytest.raises(ValueError, match="needs --summary"):
+        run_topic_join_command(
+            run_id="run_topic", name="tiling", summary="", title=None,
+            input_node_ids=None, store_dir=_store_dir(tmp_path),
+        )
+
+
+def test_split_notice_shows_what_each_island_concluded(tmp_path):
+    ids = _two_islands(tmp_path)
+    run_topic_summarize_command(
+        run_id="run_topic", name="tiling", text="island 1 の結論",
+        sources=[ids["a2"]], on_node=ids["a2"], store_dir=_store_dir(tmp_path),
+    )
+    graph = _graph(tmp_path)
+    text = "\n".join(split_notice(graph, topic_view(graph, "tiling")))
+
+    assert "says: island 1 の結論" in text
+    assert "says: (nothing of its own)" in text

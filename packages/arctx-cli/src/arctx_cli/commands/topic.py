@@ -278,11 +278,6 @@ def run_topic_join_command(
     over tagged records), then the statement, attached to that same node so
     the verdict sits where the join happened.
     """
-    if not summary or not summary.strip():
-        raise ValueError(
-            "topic join needs --summary TEXT: joining is recording the verdict, "
-            "not just drawing an edge"
-        )
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
         raise KeyError(f"unknown run_id: {run_id}")
@@ -290,6 +285,20 @@ def run_topic_join_command(
     if name not in core_topics.topic_names(graph):
         raise KeyError(f"unknown topic: {name!r}")
     view = core_topics.topic_view(graph, name)
+
+    reused = False
+    if not summary or not summary.strip():
+        # When the current statement already cites two or more islands, the
+        # subject was reconciled in prose and only the graph lagged behind.
+        # Re-use that text rather than asking for it a second time.
+        _, reconciling = core_topics.island_statements(graph, name)
+        if reconciling is None:
+            raise ValueError(
+                "topic join needs --summary TEXT: joining is recording the "
+                "verdict, not just drawing an edge"
+            )
+        summary = reconciling.text
+        reused = True
 
     tips: list[str] = []
     if input_node_ids:
@@ -351,6 +360,7 @@ def run_topic_join_command(
         "step": step,
         "joined": inputs,
         "islands": _island_count(run_id, store_dir, name),
+        "reused_statement": reused,
     }
 
 
@@ -444,6 +454,52 @@ def run_topic_split_command(
     }
 
 
+def _refuse_cross_island_overwrite(
+    graph, *, name: str, text: str, sources: list[str] | None, target: str
+) -> None:
+    """Stop a statement from silently superseding another lineage's belief.
+
+    A topic keeps one current statement and the latest wins — which is right
+    for a single line of reasoning, and wrong across unjoined islands: the
+    other lineage's conclusion would vanish from every view while its records
+    stay active. That is a merge conflict, so this refuses like one, instead
+    of asking a question no agent should answer on its own.
+    """
+    view = core_topics.topic_view(graph, name)
+    if len(view.islands) < 2 or view.summary is None:
+        return
+    current_islands = core_topics.statement_islands(graph, view.islands, view.summary)
+    if len(current_islands) != 1:
+        return  # unanchored, or already reconciled across islands
+    candidate = core_topics.TopicSummary(
+        payload_id="(new)",
+        target_id=target,
+        text=text,
+        sources=tuple(sources or ()),
+    )
+    new_islands = core_topics.statement_islands(graph, view.islands, candidate)
+    if len(new_islands) != 1 or new_islands == current_islands:
+        return
+
+    current_index = next(iter(current_islands))
+    new_index = next(iter(new_islands))
+    raise ValueError(
+        f'topic "{name}" is split, and this statement speaks for island '
+        f"{new_index + 1} while the current one speaks for island "
+        f"{current_index + 1}:\n"
+        f"  island {current_index + 1} (current): {view.summary.text}\n"
+        f"  island {new_index + 1} (yours):    {text}\n"
+        f"Writing this would drop the other lineage's conclusion from every "
+        f"view while its records stay active. Which one is right is a "
+        f"judgement, not something the data settles — ask, then reconcile:\n"
+        f'  both, under different conditions → arctx topic join {name} --summary "..."\n'
+        f"  two subjects                     → arctx topic split {name} "
+        f'--island {new_index + 1} --into NEW_NAME --summary "..."\n'
+        f"  the other island is a dead end   → arctx cut <ID>\n"
+        f"  record it anyway                 → --force"
+    )
+
+
 def run_topic_summarize_command(
     *,
     run_id: str,
@@ -467,6 +523,10 @@ def run_topic_summarize_command(
         if source not in graph.nodes and source not in graph.steps:
             raise KeyError(f"unknown --source record: {source}")
     target = on_node or _default_input_node_ids(handle, lane_id or "default")[0]
+    if not force:
+        _refuse_cross_island_overwrite(
+            graph, name=name, text=text.strip(), sources=sources, target=target
+        )
     content: dict = {"topic": name, "text": text.strip()}
     if sources:
         content["sources"] = list(sources)
@@ -500,6 +560,7 @@ def split_notice(graph, view: core_topics.TopicView) -> list[str]:
     if len(view.islands) < 2:
         return []
     lanes = _record_lanes(graph, view)
+    per_island, reconciling = core_topics.island_statements(graph, view.name)
     lines = [f'topic "{view.name}" spans {len(view.islands)} unjoined islands']
     tips_by_island: list[str] = []
     for index, island in enumerate(view.islands, 1):
@@ -510,10 +571,26 @@ def split_notice(graph, view: core_topics.TopicView) -> list[str]:
             f"  island {index}  {len(island)} records  tip {tips[0]}"
             + (f"  (lane {lane})" if lane else "")
         )
+        # Show what each lineage concluded: "2 islands" is a shape, but the
+        # contradiction people have to settle lives in the two statements.
+        statement = per_island[index - 1]
+        lines.append(
+            f"    says: {_clip(statement.text)}" if statement is not None
+            else "    says: (nothing of its own)"
+        )
     last = tips_by_island[-1]
+    if reconciling is not None:
+        lines += [
+            f"  the current statement already cites {len(view.islands)} islands, so the",
+            f"  subject is settled in prose and only the graph lags behind:",
+            f"    → arctx topic join {view.name}   (reuses that statement as the verdict)",
+        ]
+    else:
+        lines += [
+            "  both are right, under different conditions",
+            f'    → arctx topic join {view.name} --summary "..."',
+        ]
     lines += [
-        "  both are right, under different conditions",
-        f'    → arctx topic join {view.name} --summary "..."',
         "  they turned out to be two subjects",
         f'    → arctx topic split {view.name} --island {len(view.islands)} '
         f'--into NEW_NAME --summary "..."',
@@ -523,6 +600,11 @@ def split_notice(graph, view: core_topics.TopicView) -> list[str]:
         f"    → arctx topic untag {view.name} {last}",
     ]
     return lines
+
+
+def _clip(text: str, width: int = 72) -> str:
+    collapsed = " ".join(text.split())
+    return collapsed if len(collapsed) <= width else collapsed[: width - 1] + "…"
 
 
 def _record_lanes(graph, view: core_topics.TopicView) -> dict[str, str]:
@@ -695,6 +777,8 @@ def cli_topic(args) -> int:
                 f"\"{result['topic']}\" — {result['islands']} {island_word} now"
             )
             print(f"  verdict on {result['step']['output_node_id']}")
+            if result.get("reused_statement"):
+                print("  (reused the current statement — it already cited both sides)")
             return 0
         if command == "split":
             if len(positional) < 2:
