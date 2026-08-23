@@ -53,9 +53,9 @@ Use the modes deliberately:
 - **Move across several repos in one terminal:** run
   `eval "$(arctx use <run_id> --shell)"`; the environment variable wins over
   each repo's pointer.
-- **Parallel agents:** prefer `arctx lane env` or
-  `arctx lane spawn`, which pins both the run and the lane in
-  process-local environment variables.
+- **Parallel agents:** pin both the run and the lane in process-local
+  environment variables — `eval "$(arctx use <run_id> --shell)"` and
+  `eval "$(arctx lane switch <name> --shell)"`.
 
 `arctx current` reads the repo pointer (`<gitdir>/arctx-id`) and prints that
 repo's persistent default. It does not report an `ARCTX_RUN_ID` override.
@@ -203,33 +203,35 @@ Worktree helpers:
 - `arctx git worktree remove <path> [--force]`: wrapper over
   `git worktree remove`.
 
-## Work Sessions
+## Parallel attribution
 
-A work session is the attribution unit for parallel agents or terminals working
-in the same run. Mutating CLI commands append under a lock, so concurrent
-writers serialize their new records instead of overwriting existing history.
+A lane is the attribution unit for parallel agents or terminals working in the
+same run. Mutating CLI commands append under a lock, so concurrent writers
+serialize their new records instead of overwriting existing history.
 
-- `arctx lane start [--user U] [--lane WS]`: create a work
-  session and print its id.
-- `arctx lane env [--new] [--run R] [--user U]`: print shell exports
-  for `ARCTX_RUN_ID`, `ARCTX_LANE_ID`, and `ARCTX_USER_ID`.
-- `arctx lane spawn [--user U] -- <cmd>`: run a child command with a
-  child-only work session.
-- `arctx lane list` / `arctx lane show <ws_id>`: inspect work
-  sessions.
-
-Fixed-mode example:
+Pinning is done with environment variables; there are no dedicated session
+commands (`lane start` / `lane env` / `lane spawn` were removed — the lane verbs
+are `create` / `switch` / `close` / `open` / `list` / `show` / `summaries` /
+`validate`).
 
 ```bash
-eval "$(arctx lane env --run run_x --new --user codex)"
+eval "$(arctx use run_x --shell)"            # export ARCTX_RUN_ID=run_x
+arctx lane create codex --purpose "..." --user codex
+eval "$(arctx lane switch codex --shell)"    # export ARCTX_LANE_ID=lane_...
+export ARCTX_USER_ID=codex
+
 arctx add --from NODE_ID --type suggestion
 ```
 
-Spawn example:
+Without `--shell`, `arctx lane switch` writes the repo-wide pointer
+(`<gitdir>/arctx-lane`). With it, nothing is written — so several terminals
+sharing one checkout can hold different lanes.
+
+To hand a child process its own lane, pass the variables when launching it:
 
 ```bash
-arctx lane spawn --run run_x --user codex -- codex
-arctx lane spawn --run run_x --user claude-code -- claude
+ARCTX_LANE_ID=$(arctx lane show codex --json | jq -r .lane.lane_id) \
+ARCTX_USER_ID=codex codex
 ```
 
 Attribution resolution:
@@ -240,12 +242,18 @@ Attribution resolution:
 
 ## Worktree Attachment
 
-- `arctx lane start --worktree PATH`
-- `arctx lane env --new --worktree PATH`
-- `arctx lane spawn --worktree PATH -- <cmd>`
+Attaching a worktree is exporting one variable; there is no dedicated command
+(`lane start` / `lane env` / `lane spawn` were removed).
 
-These commands record the resolved worktree path on
-`Lane.metadata["worktree"]` and export `ARCTX_GIT_WORKTREE=PATH`.
+```bash
+arctx git worktree add ../wt-claude claude/vec
+
+eval "$(arctx use demo --shell)"             # this terminal's run
+arctx lane create claude --purpose "vectorization" --user claude
+eval "$(arctx lane switch claude --shell)"   # this terminal's lane
+export ARCTX_USER_ID=claude
+export ARCTX_GIT_WORKTREE=../wt-claude       # this terminal's checkout
+```
 
 When `ARCTX_GIT_WORKTREE` is set, git verbs (`arctx git commit`, `revert`,
 `cherry-pick`, `merge`, `reset`, `verify`, and the post-rewrite hook) run their

@@ -77,8 +77,8 @@ ARCTX には独立した 3 つの状態があります:
   （`ARCTX_HOME` 指定時と git repo 外では `<ARCTX_HOME>/runs/<run_id>`）。
 - **Repo pointer:** `<gitdir>/arctx-id`。`arctx init`, `arctx use`,
   `arctx git init` が書き込む。
-- **Shell pointer:** `ARCTX_RUN_ID`。通常は
-  `eval "$(arctx use <run_id> --shell)"` または `arctx lane env` で設定する。
+- **Shell pointer:** `ARCTX_RUN_ID`。`eval "$(arctx use <run_id> --shell)"` で
+  設定する（この端末だけに効き、repo pointer は書かない）。
 
 解決順:
 
@@ -115,26 +115,31 @@ repo registry も `repo_id` もありません。
 - 1 つのターミナルで checkout を移動しながら `run_x` を追うには、各 repo の pointer に
   頼らずターミナルを固定します: `eval "$(arctx use run_x --shell)"`。
 
-## Work Session 固定モード
+## 端末ごとの固定モード
 
 並列 agent は共有 repo pointer だけに頼るべきではありません。各プロセスの環境で
-run と work session を固定します。
+run と lane を固定します。
 
 ```bash
-eval "$(arctx lane env --run run_x --new --user codex)"
+eval "$(arctx use run_x --shell)"            # export ARCTX_RUN_ID=run_x
+arctx lane create codex --purpose "..." --user codex
+eval "$(arctx lane switch codex --shell)"    # export ARCTX_LANE_ID=lane_...
+export ARCTX_USER_ID=codex
+
 arctx add --from NODE_ID --type suggestion
 ```
 
-子プロセスには `spawn` を使います。子は固有の `ARCTX_LANE_ID` を受け取り、
-兄弟ターミナルや兄弟子プロセスは固定セッションを共有しません。`arctx add`
-（`--from` 省略時の frontier 解決）と `arctx guide` / `arctx guide --context`
-は、この `ARCTX_LANE_ID` 環境変数を repo pointer より優先して解決するため、
-spawn された子プロセス内でもその子自身の lane が正しく見えます。
+`--shell` は repo pointer を書かないので、同じ checkout の別ターミナルは別の lane を
+持てます。子プロセスに別の lane を渡したいときは、環境変数を渡して起動するだけです:
 
 ```bash
-arctx lane spawn --run run_x --user codex -- codex
-arctx lane spawn --run run_x --user claude-code -- claude
+ARCTX_LANE_ID=$(arctx lane show codex --json | jq -r .lane.lane_id) \
+ARCTX_USER_ID=codex codex
 ```
+
+`arctx add`（`--from` 省略時の frontier 解決）と `arctx guide` /
+`arctx guide --context` は `ARCTX_LANE_ID` を repo pointer より優先して解決するため、
+子プロセス内でもその子自身の lane が正しく見えます。
 
 明示モードでは、変更系コマンドごとに `--run` と `--lane` の両方を渡します。
 
@@ -156,8 +161,8 @@ run ディレクトリを NFS やクラウド同期フォルダ経由で複数�
 
 ```bash
 arctx git worktree add ../my-repo-codex codex/run-x --base main
-arctx lane spawn --run run_x --user codex --worktree ../my-repo-codex -- codex
+export ARCTX_GIT_WORKTREE=../my-repo-codex
 ```
 
-work session は worktree パスを記録し、子に `ARCTX_GIT_WORKTREE=PATH` を export
-します。git verb は、shell の cwd が別の場所でも、その worktree 内で実行されます。
+`ARCTX_GIT_WORKTREE` が設定されていると、git verb は shell の cwd が別の場所でも
+その worktree 内で実行されます。
