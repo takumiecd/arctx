@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import errno
 import os
+import platform
 import sys
+from importlib import metadata
 
 from arctx_cli.commands import core_cli_commands, register_cli_commands
 
@@ -29,6 +31,45 @@ class _RootArgumentParser(argparse.ArgumentParser):
         print(f"{self.prog}: error: {message}", file=sys.stderr)
         print(GUIDE_HINT, file=sys.stderr)
         self.exit(2)
+
+
+def version_line() -> str:
+    """One line identifying this install, for bug reports (see CONTRIBUTING).
+
+    Core and CLI are released in lockstep and pinned exactly (``arctx==<v>``),
+    so they normally match — printing both is what makes a mismatched install
+    visible, which is the failure this line exists to expose.
+    """
+    from arctx import __version__ as core_version  # noqa: PLC0415
+
+    try:
+        cli_version = metadata.version("arctx-cli")
+    except metadata.PackageNotFoundError:
+        # Running from a source checkout via PYTHONPATH: nothing is installed,
+        # so there is no distribution metadata to read.
+        cli_version = "source"
+
+    return (
+        f"arctx {core_version} (arctx-cli {cli_version}, "
+        f"python {platform.python_version()}, {sys.platform})"
+    )
+
+
+class _VersionAction(argparse.Action):
+    """``--version``, computed when asked for rather than on every startup."""
+
+    def __init__(self, option_strings, dest, default=argparse.SUPPRESS, help=None):
+        super().__init__(
+            option_strings=option_strings,
+            dest=dest,
+            default=default,
+            nargs=0,
+            help=help,
+        )
+
+    def __call__(self, parser, namespace, values, option_string=None):  # noqa: D102
+        print(version_line())
+        parser.exit()
 
 
 def _user_error(message: str, *, command: str | None = None) -> int:
@@ -76,6 +117,13 @@ def _build_parser(*, run_dir: str | None = None) -> argparse.ArgumentParser:
             "shows the current context in one shot."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    # Before the subparsers: the version action exits during parsing, so it
+    # answers even though a subcommand is otherwise required.
+    parser.add_argument(
+        "--version",
+        action=_VersionAction,
+        help="Show the installed arctx / arctx-cli versions and exit",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

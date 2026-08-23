@@ -35,6 +35,19 @@ arctx dump --format outline
 
 マシン全体でグローバルな current run はありません。
 
+## バージョン確認
+
+```bash
+arctx --version
+# arctx 0.4.4b1 (arctx-cli 0.4.4b1, python 3.13.8, darwin)
+```
+
+core と CLI はロックステップで公開され `arctx==<version>` で厳密に pin されている
+ので、通常この 2 つは一致します。**両方を出すのは食い違いを見えるようにするため**
+で、バグ報告にはこの 1 行を添えてください（CONTRIBUTING）。ソースチェックアウトを
+`PYTHONPATH` で動かしている場合、インストールされた配布物が無いので CLI 側は
+`source` と表示されます。
+
 ## Current Run の解決
 
 ほとんどの参照/変更コマンドは `--run` を受け取ります。省略した場合、ARCTX は
