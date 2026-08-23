@@ -111,7 +111,7 @@ def resolve_lane_id(
 
     Chain (mirrors :func:`resolve_run_id`):
     1. Explicit *lane_id*.
-    2. ``ARCTX_LANE_ID`` env var, then legacy ``ARCTX_LANE_ID``.
+    2. ``ARCTX_LANE_ID`` env var.
     3. Active-lane pointer for *run_id* at ``<gitdir>/arctx-lanes.json`` when a
        run is known, falling back to the legacy ``<gitdir>/arctx-lane`` pointer.
     4. ``<ARCTX_HOME>/config.json`` ``lane.id``.
