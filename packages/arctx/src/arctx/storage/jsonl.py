@@ -19,7 +19,7 @@ from arctx.core.schema.payloads import payload_from_dict
 from arctx.core.schema.requirements import requirement_from_dict
 from arctx.core.schema.work import work_event_from_dict, lane_from_dict
 from arctx.core.lanes import apply_lane_status_events
-from arctx.storage._cache import load_cache, save_cache
+from arctx.storage._cache import fingerprint as _fingerprint, load_cache, save_cache
 
 
 class JsonlRunStore:
@@ -57,21 +57,22 @@ class JsonlRunStore:
                 continue
         return runs
 
+
     def _row_counts(self, run_path: Path) -> tuple[int, ...]:
-        """Return current on-disk row counts for the JSONL collections."""
+        """On-disk row counts, used to ask whether an in-memory graph is complete.
+
+        This is deliberately not the cache key — see `_cache.fingerprint`. Row
+        counts answer "did a concurrent writer add rows while I held this
+        graph?", which counting does answer; they cannot answer "is this the
+        same content?", which is what a cache needs.
+        """
         counts = []
-        for name in (
-            "nodes",
-            "steps",
-            "payloads",
-            "lanes",
-            "work_events",
-        ):
-            p = run_path / f"{name}.jsonl"
-            if not p.exists():
+        for name in ("nodes", "steps", "payloads", "lanes", "work_events"):
+            path = run_path / f"{name}.jsonl"
+            if not path.exists():
                 counts.append(0)
             else:
-                with p.open("r", encoding="utf-8") as fh:
+                with path.open("r", encoding="utf-8") as fh:
                     counts.append(sum(1 for line in fh if line.strip()))
         return tuple(counts)
 
@@ -119,7 +120,7 @@ class JsonlRunStore:
             # Only refresh the cache when the in-memory graph matches disk
             # exactly. If a concurrent writer added records, disk is a superset
             # and caching the in-memory graph would under-report; skip and let
-            # the row-count mismatch trigger a rebuild on next load.
+            # the next load rebuild it.
             mem_counts = (
                 len(run.run_graph.nodes),
                 len(run.run_graph.steps),
@@ -127,9 +128,8 @@ class JsonlRunStore:
                 len(run.run_graph.lanes),
                 len(run.run_graph.work_events),
             )
-            disk_counts = self._row_counts(run_path)
-            if mem_counts == disk_counts:
-                save_cache(run_path, disk_counts, run.run_graph)
+            if mem_counts == self._row_counts(run_path):
+                save_cache(run_path, _fingerprint(run_path), run.run_graph)
 
         return run_path
 
@@ -194,8 +194,8 @@ class JsonlRunStore:
         requirement = requirement_from_dict(manifest["requirement"])
 
         # --- Cache fast path ---
-        row_counts = self._row_counts(run_path)
-        cached_graph = load_cache(run_path, row_counts)
+        cache_fingerprint = _fingerprint(run_path)
+        cached_graph = load_cache(run_path, cache_fingerprint)
         if cached_graph is not None:
             return RunHandle(
                 run_id=manifest["run_id"],
@@ -277,7 +277,7 @@ class JsonlRunStore:
         # full-load and cache fast paths report the current lifecycle state.
         apply_lane_status_events(graph)
 
-        save_cache(run_path, row_counts, graph)
+        save_cache(run_path, cache_fingerprint, graph)
 
         return RunHandle(
             run_id=manifest["run_id"],
