@@ -202,7 +202,9 @@ def test_validate_lane_run_reports_issues():
 
 
 def test_persistent_lane_pointer_is_scoped_by_run(monkeypatch):
-    with tempfile.TemporaryDirectory() as td:
+    # This test chdirs into the temp dir, and Windows will not delete
+    # a directory that is some process's live cwd.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
         root = Path(td)
         (root / ".git").mkdir()
         monkeypatch.chdir(root)

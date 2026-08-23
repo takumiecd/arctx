@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ from arctx.core.schema.requirements import requirement_from_dict
 from arctx.core.schema.work import work_event_from_dict, lane_from_dict
 from arctx.core.lanes import apply_lane_status_events
 from arctx.storage._cache import fingerprint as _fingerprint, load_cache, save_cache
+from arctx.storage._locking import exclusive_lock
 
 
 class BrokenRunFileError(ValueError):
@@ -458,6 +459,27 @@ def _ordered_rows(
     return sorted(deduped, key=lambda row: rank.get(str(row[id_key]), -1))
 
 
+# Windows refuses to rename over a file another process has open, and readers
+# do not take the run lock — `load_run` is deliberately lock-free. The clash is
+# transient (a reader holds the handle for the length of one read), so retry
+# rather than fail a write that is otherwise complete. POSIX never enters the
+# loop: rename over an open file is legal there.
+_REPLACE_TIMEOUT = 5.0
+_REPLACE_RETRY_DELAY = 0.02
+
+
+def _replace_with_retry(tmp: str, path: Path) -> None:
+    deadline = time.monotonic() + _REPLACE_TIMEOUT
+    while True:
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(_REPLACE_RETRY_DELAY)
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write *text* to *path* atomically and durably (temp + fsync + replace)."""
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.tmp_")
@@ -466,7 +488,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     except Exception:
         try:
             os.unlink(tmp)
@@ -560,11 +582,8 @@ def _recover_journal(run_path: Path) -> None:
 def _run_lock(run_path: Path):
     lock_path = run_path / ".append.lock"
     with lock_path.open("a", encoding="utf-8") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        try:
+        with exclusive_lock(lock):
             yield
-        finally:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def _existing_ids(run_path: Path) -> dict[str, set[str]]:

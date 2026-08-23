@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from arctx_cli.commands.init import run_init_command
@@ -40,7 +41,8 @@ class TestHookInstallPostMerge:
         assert post_merge_path.exists()
         assert "post-merge" in post_merge_path.read_text()
         # Must be executable.
-        assert post_merge_path.stat().st_mode & 0o111
+        if sys.platform != "win32":  # NTFS has no executable bit
+            assert post_merge_path.stat().st_mode & 0o111
 
     def test_install_force_overwrites_post_merge(self, tmp_path):
         """--force should overwrite existing post-merge hook."""

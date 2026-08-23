@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+import sys
 import subprocess
 from pathlib import Path
 
@@ -31,7 +32,8 @@ class TestHookInstall:
         hook_path = Path(result["hook_path"])
         file_stat = hook_path.stat()
         # Check owner execute bit.
-        assert file_stat.st_mode & stat.S_IXUSR
+        if sys.platform != "win32":  # NTFS has no executable bit
+            assert file_stat.st_mode & stat.S_IXUSR
 
     def test_install_hook_content_contains_post_rewrite(self, tmp_path):
         repo = _init_git_repo(tmp_path / "repo")
@@ -88,4 +90,5 @@ class TestHookInstall:
 
         post_commit_path = repo / ".git" / "hooks" / "post-commit"
         file_stat = post_commit_path.stat()
-        assert file_stat.st_mode & stat.S_IXUSR
+        if sys.platform != "win32":  # NTFS has no executable bit
+            assert file_stat.st_mode & stat.S_IXUSR

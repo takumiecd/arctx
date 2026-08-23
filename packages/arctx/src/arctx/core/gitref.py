@@ -174,7 +174,12 @@ def normalize_repo_path(path: str | Path, *, repo_root: str | Path | None = None
         elif raw.is_absolute():
             raise GitRefError(f"path is outside the repository: {path}")
 
-    text = str(raw).strip()
+    # `as_posix()`, not `str()`: on Windows a path reaches us with backslashes
+    # and git only understands forward slashes, so `bench\result.txt` went to
+    # git whole and came back "exists on disk, but not in <commit>". It has to
+    # be `as_posix()` rather than a blind replace — a backslash is a legal
+    # character in a POSIX filename, and PosixPath leaves it alone.
+    text = raw.as_posix().strip()
     while text.startswith("./"):
         text = text[2:]
     text = text.strip("/")

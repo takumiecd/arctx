@@ -66,7 +66,9 @@ def test_guide_command_error_has_no_self_referential_hint(capsys, monkeypatch):
     # up without needing to touch the command registry itself.
     monkeypatch.setattr(guide_module, "cli_guide", _boom)
 
-    with tempfile.TemporaryDirectory() as td:
+    # This test chdirs into the temp dir, and Windows will not delete
+    # a directory that is some process's live cwd.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
         # chdir away from the repo: run_init_command writes the active-run
         # pointer into the enclosing gitdir, which would pollute the real
         # <repo>/.git/arctx-id when tests run from a checkout.
