@@ -26,6 +26,8 @@ VERSION_FILES = (
 )
 DIST = ROOT / "dist"
 WEB = ROOT / "web"
+WEB_PACKAGE_JSON = WEB / "package.json"
+PROJECT_GUIDE = ROOT / "CLAUDE.md"
 PACKAGED_STATIC = ROOT / "packages/arctx/src/arctx/web/static"
 DEPENDENCY_FILES = (
     ROOT / "packages/arctx-cli/pyproject.toml",
@@ -59,6 +61,15 @@ def replace_once(path: Path, pattern: str, replacement: str) -> None:
     path.write_text(updated, encoding="utf-8")
 
 
+def npm_version(version: str) -> str:
+    """The same version as npm spells it: PEP 440 `0.4.4b1` is semver `0.4.4-b1`."""
+    match = re.fullmatch(r"(\d+\.\d+\.\d+)((?:a|b|rc)\d*)?", version)
+    if match is None:
+        raise ValueError(f"Unsupported version format: {version}")
+    base, suffix = match.groups()
+    return f"{base}-{suffix}" if suffix else base
+
+
 def set_version(version: str) -> None:
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:a|b|rc)?\d*", version):
         raise ValueError(f"Unsupported version format: {version}")
@@ -68,6 +79,24 @@ def set_version(version: str) -> None:
             replace_once(path, r'__version__ = "[^"]+"', f'__version__ = "{version}"')
         else:
             replace_once(path, r'^version = "[^"]+"', f'version = "{version}"')
+
+    # The frontend is built into the arctx wheel, so it ships as part of the
+    # same release and drifts if it is not bumped here (it sat at 0.3.1-b3
+    # through four releases).
+    replace_once(
+        WEB_PACKAGE_JSON,
+        r'^  "version": "[^"]+"',
+        f'  "version": "{npm_version(version)}"',
+    )
+
+    # The project guide states the current version as a fact about the repo,
+    # and a stale fact there misleads every agent that reads it (it sat four
+    # releases behind before this was automated).
+    replace_once(
+        PROJECT_GUIDE,
+        r"^This project is `[^`]+` beta\.",
+        f"This project is `{version}` beta.",
+    )
 
     for path in DEPENDENCY_FILES:
         # Exact pin: the three packages are versioned and released in
