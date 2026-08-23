@@ -111,9 +111,16 @@ PyPI versions come from the package metadata, not from Git tags. Update the
 version first, commit that change, then tag the release commit. Do not reuse a
 version that has already been uploaded to PyPI.
 
-Release automation lives in `scripts/release.py` and uses `uv`. The default
-release surface is `arctx` plus `arctx-cli`; `arctx-tui` is secondary and is
-excluded unless `--include-tui` is passed.
+Release automation lives in `scripts/release.py` and uses `uv`. The release
+surface is `arctx` plus `arctx-cli`.
+
+`arctx-tui` is **not published**. It was last uploaded as 0.2.0b4, whose loose
+`arctx>=0.2.0b4` pin let pip pair it with a much newer core — installing it
+today gets you an `ImportError` on the first run, from a rename it never saw.
+The TUI is legacy and nobody is maintaining it, so the package was removed from
+PyPI rather than kept alive. It still lives in this repo and still runs from a
+checkout. `--include-tui` would republish it: don't pass it unless you mean to
+take the TUI back on.
 
 The standard release path builds the web GUI, copies `web/dist` into
 `packages/arctx/src/arctx/web/static`, builds the selected packages into root

@@ -2,8 +2,10 @@
 # ruff: noqa: D103
 """Prepare ARCTX package releases.
 
-The default release surface is arctx + arctx-cli. arctx-tui can be included
-explicitly, but it is not part of the must-ship release path.
+The release surface is arctx + arctx-cli. arctx-tui is legacy and is not
+published to PyPI at all — its version is still bumped here so a source
+checkout stays internally consistent, but `--include-tui` would put it back on
+PyPI, which is a decision, not a default.
 """
 
 from __future__ import annotations
