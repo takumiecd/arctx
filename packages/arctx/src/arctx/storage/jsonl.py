@@ -22,6 +22,28 @@ from arctx.core.lanes import apply_lane_status_events
 from arctx.storage._cache import fingerprint as _fingerprint, load_cache, save_cache
 
 
+class BrokenRunFileError(ValueError):
+    """A line in a run file could not be parsed.
+
+    Carries enough to act on: which file, which line, and what the line looks
+    like. `arctx doctor` reports these; `arctx doctor --repair` sets them aside.
+    """
+
+    def __init__(self, path: Path, line_number: int, reason: str, text: str):
+        self.path = path
+        self.line_number = line_number
+        self.reason = reason
+        self.text = text
+        excerpt = text if len(text) <= 120 else text[:117] + "..."
+        super().__init__(
+            f"{path.name} line {line_number} is not valid JSON: {reason}\n"
+            f"  file: {path}\n"
+            f"  line: {excerpt}\n"
+            f"  run `arctx doctor --run <id>` to see every broken line, "
+            f"or `arctx doctor --run <id> --repair` to set them aside"
+        )
+
+
 class JsonlRunStore:
     """Store a run as a directory of JSON and JSONL files."""
 
@@ -323,11 +345,21 @@ class JsonlRunStore:
     def _read_jsonl(path: Path) -> list[dict[str, Any]]:
         if not path.exists():
             return []
-        return [
-            _fast_json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        rows: list[dict[str, Any]] = []
+        for number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if not line.strip():
+                continue
+            try:
+                rows.append(_fast_json.loads(line))
+            except ValueError as exc:
+                # One unreadable line stops the whole run from loading, so the
+                # error has to say which line, in which file. "Unterminated
+                # string at column 49" with no file name leaves the reader
+                # nowhere to start.
+                raise BrokenRunFileError(path, number, str(exc), line) from exc
+        return rows
 
 
 def _dedup_rows(rows: list[dict[str, Any]], id_key: str) -> list[dict[str, Any]]:
