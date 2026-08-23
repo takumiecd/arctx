@@ -156,50 +156,63 @@ class JsonlRunStore:
         return run_path
 
     def append_batch(self, batch: AppendBatch) -> AppendResult:
-        """Atomically append one lane batch to an existing run."""
+        """Append one lane batch to an existing run, all of it or none of it.
+
+        The batch spans four files. It is written to the journal whole before
+        any file is touched, so an interrupted apply leaves a record of what was
+        meant to happen rather than records the work-event ledger never heard
+        of. See `_JOURNAL_NAME`.
+        """
         run_path = self.run_path(batch.run_id)
         if not (run_path / "run.json").exists():
             raise KeyError(f"unknown run_id: {batch.run_id}")
         run_path.mkdir(parents=True, exist_ok=True)
 
         with _run_lock(run_path):
+            # Finish anyone else's interrupted batch before adding to it, so
+            # `existing` describes a whole run and seq numbering stays dense.
+            _recover_journal(run_path)
+
             existing = _existing_ids(run_path)
+            plan: dict[str, list[dict[str, Any]]] = {}
+
+            def stage(file_name: str, row: dict[str, Any]) -> None:
+                plan.setdefault(file_name, []).append(row)
+
             # Lanes have open membership — no owner lock. A different actor
             # appending to a shared lane is expected, not an error; the lane
             # record is idempotent (added only if its id is new).
             if batch.lane.lane_id not in existing["lanes"]:
-                _append_dicts(
-                    run_path / "lanes.jsonl",
-                    [batch.lane.to_dict()],
-                )
+                stage("lanes.jsonl", batch.lane.to_dict())
                 existing["lanes"].add(batch.lane.lane_id)
 
             appended_records: list[str] = []
             for record in batch.records:
                 if record.record_id in existing[record.record_kind]:
                     continue
-                _append_dicts(
-                    run_path / _record_file(record),
-                    [record.record.to_dict()],
-                )
+                stage(_record_file(record), record.record.to_dict())
                 existing[record.record_kind].add(record.record_id)
                 appended_records.append(record.record_id)
 
             next_seq = len(existing["work_events"]) + 1
             event_ids: list[str] = []
             event_seqs: list[int] = []
-            event_rows: list[dict[str, Any]] = []
             for event in batch.events:
                 if event.event_id in existing["work_events"]:
                     continue
                 data = event.to_dict()
                 data["seq"] = next_seq
-                event_rows.append(data)
+                stage("work_events.jsonl", data)
                 event_ids.append(event.event_id)
                 event_seqs.append(next_seq)
                 existing["work_events"].add(event.event_id)
                 next_seq += 1
-            _append_dicts(run_path / "work_events.jsonl", event_rows)
+
+            if plan:
+                _write_journal(run_path, plan)
+                for file_name, rows in plan.items():
+                    _append_dicts(run_path / file_name, rows)
+                _clear_journal(run_path)
 
             return AppendResult(
                 event_id=event_ids[0] if event_ids else "",
@@ -227,6 +240,14 @@ class JsonlRunStore:
             )
 
         # --- Full load ---
+        # A batch that was journalled but not fully applied is committed as far
+        # as the writer was concerned, so fold it in here as well. Reading never
+        # writes: the on-disk repair happens under the lock in `append_batch`.
+        pending = read_journal(run_path)
+
+        def rows_of(name: str) -> list[dict[str, Any]]:
+            return self._read_jsonl(run_path / name) + list(pending.get(name, ()))
+
         graph = RunGraph()
         if (run_path / "graph.json").exists():
             gdata = self._read_json(run_path / "graph.json")
@@ -254,16 +275,17 @@ class JsonlRunStore:
         for epath in [run_path / "lane_events.jsonl", run_path / "work_events.jsonl"]:
             if epath.exists():
                 event_rows.extend(self._read_jsonl(epath))
+        event_rows.extend(pending.get("work_events.jsonl", ()))
         event_rows = _sort_event_rows(_dedup_rows(event_rows, "event_id"))
         rank = _record_rank(event_rows)
 
-        for row in _ordered_rows(self._read_jsonl(run_path / "nodes.jsonl"), "node_id", rank):
+        for row in _ordered_rows(rows_of("nodes.jsonl"), "node_id", rank):
             graph.nodes[row["node_id"]] = Node(
                 node_id=row["node_id"],
                 metadata=dict(row.get("metadata") or {}),
             )
 
-        for row in _ordered_rows(self._read_jsonl(run_path / "steps.jsonl"), "step_id", rank):
+        for row in _ordered_rows(rows_of("steps.jsonl"), "step_id", rank):
             step = Step(
                 step_id=row["step_id"],
                 input_node_ids=tuple(row.get("input_node_ids") or []),
@@ -272,9 +294,7 @@ class JsonlRunStore:
             )
             graph.add_step(step)
 
-        for row in _ordered_rows(
-            self._read_jsonl(run_path / "payloads.jsonl"), "payload_id", rank
-        ):
+        for row in _ordered_rows(rows_of("payloads.jsonl"), "payload_id", rank):
             payload = payload_from_dict(row)
             graph.payloads[payload.payload_id] = payload
             if payload.target_kind == "node":
@@ -288,6 +308,7 @@ class JsonlRunStore:
         for lpath in [run_path / "work_sessions.jsonl", run_path / "lanes.jsonl"]:
             if lpath.exists():
                 lane_rows.extend(self._read_jsonl(lpath))
+        lane_rows.extend(pending.get("lanes.jsonl", ()))
         for row in _dedup_rows(lane_rows, "lane_id"):
             session = lane_from_dict(row)
             graph.lanes[session.lane_id] = session
@@ -299,7 +320,10 @@ class JsonlRunStore:
         # full-load and cache fast paths report the current lifecycle state.
         apply_lane_status_events(graph)
 
-        save_cache(run_path, cache_fingerprint, graph)
+        # Both conditions matter: the key is a content fingerprint, and a graph
+        # holding unapplied journal rows is not what the files say yet.
+        if not pending:
+            save_cache(run_path, cache_fingerprint, graph)
 
         return RunHandle(
             run_id=manifest["run_id"],
@@ -451,6 +475,87 @@ def _atomic_write_text(path: Path, text: str) -> None:
         raise
 
 
+# A batch is one lane's worth of records plus the work events that describe
+# them, and it lands across four files. Appending to four files is four chances
+# to stop halfway: a killed process, a full disk, a laptop losing power. What
+# survived would be records the work-event ledger has no entry for — invisible
+# to lane summaries, to topic "latest wins", to `explore` ordering.
+#
+# So the batch is written down whole, once, before any of it is applied. If the
+# journal outlives the apply, the next writer replays it and the next reader
+# folds it in. Replay is safe to run twice: records are immutable and keyed by
+# opaque id, so "already there" is the same answer as "just written".
+_JOURNAL_NAME = ".append.journal"
+
+_ID_KEY_BY_FILE = {
+    "nodes.jsonl": "node_id",
+    "steps.jsonl": "step_id",
+    "payloads.jsonl": "payload_id",
+    "lanes.jsonl": "lane_id",
+    "work_events.jsonl": "event_id",
+}
+
+
+def _journal_path(run_path: Path) -> Path:
+    return run_path / _JOURNAL_NAME
+
+
+def _write_journal(run_path: Path, plan: dict[str, list[dict[str, Any]]]) -> None:
+    """Record the whole batch durably before a single row of it is applied."""
+    text = _fast_json.dumps({"files": plan}) + "\n"
+    with _journal_path(run_path).open("w", encoding="utf-8") as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def read_journal(run_path: Path) -> dict[str, list[dict[str, Any]]]:
+    """Rows from a batch that was recorded but may not be fully applied.
+
+    A journal torn mid-write describes a batch that had not started being
+    applied, so an unparsable journal correctly yields nothing.
+    """
+    try:
+        raw = _journal_path(run_path).read_text(encoding="utf-8").strip()
+    except (FileNotFoundError, NotADirectoryError):
+        return {}
+    if not raw:
+        return {}
+    try:
+        data = _fast_json.loads(raw.splitlines()[-1])
+    except Exception:  # noqa: BLE001 — a torn journal means "nothing pending"
+        return {}
+    files = data.get("files") if isinstance(data, dict) else None
+    if not isinstance(files, dict):
+        return {}
+    return {
+        name: rows
+        for name, rows in files.items()
+        if name in _ID_KEY_BY_FILE and isinstance(rows, list)
+    }
+
+
+def _clear_journal(run_path: Path) -> None:
+    try:
+        _journal_path(run_path).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _recover_journal(run_path: Path) -> None:
+    """Finish applying a journalled batch. Caller must hold the run lock."""
+    plan = read_journal(run_path)
+    for name, rows in plan.items():
+        if not rows:
+            continue
+        id_key = _ID_KEY_BY_FILE[name]
+        path = run_path / name
+        present = _ids_from_jsonl(path, id_key)
+        missing = [row for row in rows if str(row.get(id_key, "")) not in present]
+        _append_dicts(path, missing)
+    _clear_journal(run_path)
+
+
 @contextlib.contextmanager
 def _run_lock(run_path: Path):
     lock_path = run_path / ".append.lock"
@@ -508,3 +613,8 @@ def _append_dicts(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open(mode, encoding="utf-8") as f:
         for row in rows:
             f.write(_fast_json.dumps(row) + "\n")
+        # Reach the disk before the caller is told the write happened. Without
+        # this the rows live in the OS page cache and a power loss drops them
+        # while the journal that would have replayed them is already gone.
+        f.flush()
+        os.fsync(f.fileno())
