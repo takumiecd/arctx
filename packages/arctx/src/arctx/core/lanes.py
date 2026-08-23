@@ -107,8 +107,26 @@ class LaneMembership:
     node_to_lane: dict[str, str] = field(default_factory=dict)
     step_to_lane: dict[str, str] = field(default_factory=dict)
     payload_to_lane: dict[str, str] = field(default_factory=dict)
+    # The reverse index. lane_membership computes it anyway; keeping it turns
+    # "which nodes belong to this lane" from a scan of every node into a dict
+    # lookup. Lanes grow with steps in real use, so the scan was the quadratic.
+    lane_nodes: dict[str, frozenset[str]] = field(default_factory=dict)
+    lane_steps: dict[str, frozenset[str]] = field(default_factory=dict)
+    lane_payloads: dict[str, frozenset[str]] = field(default_factory=dict)
     groups: tuple[LaneGroup, ...] = ()
     event_ids: tuple[str, ...] = ()
+
+    def nodes_in(self, lane_id: str) -> frozenset[str]:
+        """Return the nodes owned by *lane_id*."""
+        return self.lane_nodes.get(lane_id, frozenset())
+
+    def steps_in(self, lane_id: str) -> frozenset[str]:
+        """Return the steps owned by *lane_id*."""
+        return self.lane_steps.get(lane_id, frozenset())
+
+    def payloads_in(self, lane_id: str) -> frozenset[str]:
+        """Return the payloads owned by *lane_id*."""
+        return self.lane_payloads.get(lane_id, frozenset())
 
 
 @dataclass(frozen=True)
@@ -234,11 +252,7 @@ def lane_root_candidates(
         return (explicit,)
 
     roots: set[str] = set()
-    lane_nodes = {
-        node_id
-        for node_id, owner in membership.node_to_lane.items()
-        if owner == lane_id
-    }
+    lane_nodes = membership.nodes_in(lane_id)
     for node_id in lane_nodes:
         incoming_step = graph.step_to_node(node_id)
         if incoming_step is None:
@@ -289,6 +303,7 @@ def lane_membership(
     payload_to_lane: dict[str, str] = {}
     lane_nodes: dict[str, set[str]] = {}
     lane_steps: dict[str, set[str]] = {}
+    lane_payloads: dict[str, set[str]] = {}
     event_ids: list[str] = []
 
     def provenance_for(event: WorkEvent, record_id: str) -> LaneRecordProvenance:
@@ -318,6 +333,7 @@ def lane_membership(
         elif record_id in payload_ids:
             if record_id not in payload_to_lane:
                 payload_to_lane[record_id] = prov.lane_id
+                lane_payloads.setdefault(prov.lane_id, set()).add(record_id)
                 provenance[record_id] = prov
 
     for event in graph.work_events:
@@ -350,6 +366,9 @@ def lane_membership(
         node_to_lane=node_to_lane,
         step_to_lane=step_to_lane,
         payload_to_lane=payload_to_lane,
+        lane_nodes={k: frozenset(v) for k, v in lane_nodes.items()},
+        lane_steps={k: frozenset(v) for k, v in lane_steps.items()},
+        lane_payloads={k: frozenset(v) for k, v in lane_payloads.items()},
         groups=groups,
         event_ids=tuple(event_ids),
     )
@@ -412,27 +431,29 @@ def lane_edge_node_ids(
     *,
     root_node_id: str | None = None,
     active_only: bool = True,
+    inactive_nodes: set[str] | frozenset[str] | None = None,
+    inactive_steps: set[str] | frozenset[str] | None = None,
 ) -> tuple[str, ...]:
     """Return terminal nodes for one lane.
 
     A lane edge is a lane-owned node that has no outgoing active step in the
     same lane. Cross-lane outgoing steps do not make the source non-terminal for
     this lane; they represent another lane continuing from this state.
+
+    ``inactive_nodes`` / ``inactive_steps`` let a caller that is already walking
+    every lane compute the cut fixpoint once and hand it down. The fixpoint is
+    whole-graph, so recomputing it per lane is what made rendering quadratic.
     """
     membership = membership or lane_membership(graph, root_node_id=root_node_id)
-    lane_nodes = {
-        node_id
-        for node_id, owner in membership.node_to_lane.items()
-        if owner == lane_id
-    }
-    lane_steps = {
-        step_id
-        for step_id, owner in membership.step_to_lane.items()
-        if owner == lane_id
-    }
+    lane_nodes = set(membership.nodes_in(lane_id))
+    lane_steps = set(membership.steps_in(lane_id))
     if active_only:
-        lane_nodes -= inactive_node_ids(graph)
-        lane_steps -= inactive_step_ids(graph)
+        lane_nodes -= (
+            inactive_nodes if inactive_nodes is not None else inactive_node_ids(graph)
+        )
+        lane_steps -= (
+            inactive_steps if inactive_steps is not None else inactive_step_ids(graph)
+        )
 
     out: list[str] = []
     for node_id in sorted(lane_nodes):
@@ -448,6 +469,8 @@ def lane_edge_summaries(
     *,
     root_node_id: str | None = None,
     active_only: bool = True,
+    inactive_nodes: set[str] | frozenset[str] | None = None,
+    inactive_steps: set[str] | frozenset[str] | None = None,
 ) -> tuple[SummaryPayload, ...]:
     """Return summaries attached to terminal nodes in one lane."""
     edge_nodes = set(
@@ -457,6 +480,8 @@ def lane_edge_summaries(
             membership,
             root_node_id=root_node_id,
             active_only=active_only,
+            inactive_nodes=inactive_nodes,
+            inactive_steps=inactive_steps,
         )
     )
     if not edge_nodes:
@@ -474,6 +499,8 @@ def lane_active_frontiers(
     membership: LaneMembership | None = None,
     *,
     root_node_id: str | None = None,
+    inactive_nodes: set[str] | frozenset[str] | None = None,
+    inactive_steps: set[str] | frozenset[str] | None = None,
 ) -> tuple[str, ...]:
     """Return this lane's active frontier nodes.
 
@@ -486,19 +513,20 @@ def lane_active_frontiers(
     excludes outgoing steps within the same lane) and is the set of nodes an
     agent could plausibly continue from without an explicit ``--from``.
     """
-    from arctx.core.cuts import is_active_node
-
     membership = membership or lane_membership(graph, root_node_id=root_node_id)
-    lane_nodes = {
-        node_id
-        for node_id, owner in membership.node_to_lane.items()
-        if owner == lane_id
-    }
-    inactive_steps = inactive_step_ids(graph)
+    lane_nodes = membership.nodes_in(lane_id)
+    # Both fixpoints are hoisted. `is_active_node` recomputes the whole-graph
+    # cut fixpoint on every call, so asking it per node made the everyday
+    # `arctx add` -- which resolves the frontier to find its default --from --
+    # quadratic in the size of the run.
+    if inactive_nodes is None:
+        inactive_nodes = inactive_node_ids(graph)
+    if inactive_steps is None:
+        inactive_steps = inactive_step_ids(graph)
     return tuple(
         node_id
         for node_id in sorted(lane_nodes)
-        if is_active_node(graph, node_id)
+        if node_id not in inactive_nodes
         and all(
             step_id in inactive_steps for step_id in graph.steps_from_node(node_id)
         )
@@ -812,6 +840,7 @@ def lane_summary_payloads(
     membership: LaneMembership | None = None,
     *,
     root_node_id: str | None = None,
+    rank: dict[str, int] | None = None,
 ) -> tuple[SummaryPayload, ...]:
     """Return the lane's summary payloads oldest-first in work-event order.
 
@@ -819,14 +848,20 @@ def lane_summary_payloads(
     created (``lane close`` / ``lane summarize`` both attach one). Ordering
     comes from :func:`record_event_rank`, with the payload's own id as a stable
     tie-break.
+
+    ``rank`` lets a caller walking every lane build that mapping once. It is
+    whole-graph, so rebuilding it per lane was quadratic.
     """
     membership = membership or lane_membership(graph, root_node_id=root_node_id)
-    rank = record_event_rank(graph)
+    if rank is None:
+        rank = record_event_rank(graph)
     payloads = [
         payload
-        for payload_id, payload in graph.payloads.items()
+        for payload in (
+            graph.payloads.get(payload_id)
+            for payload_id in membership.payloads_in(lane_id)
+        )
         if isinstance(payload, SummaryPayload)
-        and membership.payload_to_lane.get(payload_id) == lane_id
     ]
     payloads.sort(key=lambda p: (rank.get(p.payload_id, -1), p.payload_id))
     return tuple(payloads)
@@ -838,10 +873,11 @@ def lane_current_summary(
     membership: LaneMembership | None = None,
     *,
     root_node_id: str | None = None,
+    rank: dict[str, int] | None = None,
 ) -> SummaryPayload | None:
     """Return the lane's current summary — the latest one wins."""
     payloads = lane_summary_payloads(
-        graph, lane_id, membership, root_node_id=root_node_id
+        graph, lane_id, membership, root_node_id=root_node_id, rank=rank
     )
     return payloads[-1] if payloads else None
 
@@ -917,13 +953,16 @@ def lane_overview(
     membership: LaneMembership | None = None,
     *,
     root_node_id: str | None = None,
+    inactive_nodes: set[str] | frozenset[str] | None = None,
+    inactive_steps: set[str] | frozenset[str] | None = None,
+    rank: dict[str, int] | None = None,
 ) -> LaneOverview:
     """Fold one lane's record into a flat overview."""
     lane = graph.lanes.get(lane_id)
     if lane is None:
         raise KeyError(f"unknown lane: {lane_id}")
     membership = membership or lane_membership(graph, root_node_id=root_node_id)
-    summary = lane_current_summary(graph, lane_id, membership)
+    summary = lane_current_summary(graph, lane_id, membership, rank=rank)
     # A lane closed while owning no records has no SummaryPayload to carry its
     # conclusion — the close event's reason is the durable fallback text.
     fallback_text = None
@@ -944,16 +983,16 @@ def lane_overview(
         summary_text=summary.text if summary is not None else fallback_text,
         summary_payload_id=summary.payload_id if summary is not None else None,
         summary_node_id=summary.target_id if summary is not None else None,
-        node_count=sum(
-            1 for owner in membership.node_to_lane.values() if owner == lane_id
+        node_count=len(membership.nodes_in(lane_id)),
+        step_count=len(membership.steps_in(lane_id)),
+        payload_count=len(membership.payloads_in(lane_id)),
+        active_frontier_node_ids=lane_active_frontiers(
+            graph,
+            lane_id,
+            membership,
+            inactive_nodes=inactive_nodes,
+            inactive_steps=inactive_steps,
         ),
-        step_count=sum(
-            1 for owner in membership.step_to_lane.values() if owner == lane_id
-        ),
-        payload_count=sum(
-            1 for owner in membership.payload_to_lane.values() if owner == lane_id
-        ),
-        active_frontier_node_ids=lane_active_frontiers(graph, lane_id, membership),
     )
 
 
@@ -968,8 +1007,19 @@ def list_lane_overviews(
     surface (like ``git branch`` hiding merged noise), closed lanes are history.
     """
     membership = lane_membership(graph, root_node_id=root_node_id)
+    inactive_nodes = inactive_node_ids(graph)
+    inactive_steps = inactive_step_ids(graph)
+    rank = record_event_rank(graph)
     overviews = [
-        lane_overview(graph, lane_id, membership) for lane_id in graph.lanes
+        lane_overview(
+            graph,
+            lane_id,
+            membership,
+            inactive_nodes=inactive_nodes,
+            inactive_steps=inactive_steps,
+            rank=rank,
+        )
+        for lane_id in graph.lanes
     ]
     overviews.sort(
         key=lambda item: (
@@ -1132,6 +1182,9 @@ def lane_export_view(
         root_node_id=root_node_id,
     )
     event_ids = set(membership.event_ids)
+    # One cut fixpoint for the whole document, not two per lane.
+    inactive_nodes = inactive_node_ids(graph)
+    inactive_steps = inactive_step_ids(graph)
     sessions = [
         session.to_dict()
         for session in sorted(
@@ -1166,7 +1219,13 @@ def lane_export_view(
                 "metadata": summary.metadata,
             }
             for group in membership.groups
-            for summary in lane_edge_summaries(graph, group.lane_id, membership)
+            for summary in lane_edge_summaries(
+                graph,
+                group.lane_id,
+                membership,
+                inactive_nodes=inactive_nodes,
+                inactive_steps=inactive_steps,
+            )
             if summary.payload_id in payload_ids and summary.target_id in node_ids
         ],
     }
