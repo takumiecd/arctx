@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import json
 import os
 import tempfile
@@ -20,6 +19,7 @@ from arctx.core.schema.requirements import requirement_from_dict
 from arctx.core.schema.work import work_event_from_dict, lane_from_dict
 from arctx.core.lanes import apply_lane_status_events
 from arctx.storage._cache import fingerprint as _fingerprint, load_cache, save_cache
+from arctx.storage._locking import exclusive_lock
 
 
 class BrokenRunFileError(ValueError):
@@ -560,11 +560,8 @@ def _recover_journal(run_path: Path) -> None:
 def _run_lock(run_path: Path):
     lock_path = run_path / ".append.lock"
     with lock_path.open("a", encoding="utf-8") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        try:
+        with exclusive_lock(lock):
             yield
-        finally:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def _existing_ids(run_path: Path) -> dict[str, set[str]]:
