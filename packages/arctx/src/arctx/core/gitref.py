@@ -18,6 +18,7 @@ asset: the repository is always the one enclosing the run data.
 from __future__ import annotations
 
 import mimetypes
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -220,6 +221,8 @@ def resolve_commit(repo_root: str | Path, commit: str) -> str:
         When the revision does not resolve to a commit in this clone.
 
     """
+    if not commit or commit.startswith("-"):
+        raise MissingCommit(f"not a revision: {commit!r}")
     try:
         return _git_text(["rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}"], repo_root)
     except GitRefError as exc:
@@ -340,7 +343,7 @@ _COMMIT_FORMAT = "%H%x1f%s%x1f%an <%ae>%x1f%aI"
 
 def commit_exists(repo_root: str | Path, commit: str) -> bool:
     """Return True when *commit* resolves to a commit object in this clone."""
-    if not commit:
+    if not commit or commit.startswith("-"):
         return False
     return _git_ok(
         ["rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}"], repo_root
@@ -396,6 +399,24 @@ def commit_infos(
     return out
 
 
+_FULL_SHA = re.compile(r"\A[0-9a-f]{40}\Z")
+
+
+def _resolved_rev(repo_root: str | Path, rev: str) -> str:
+    """Return *rev* as a full SHA, refusing anything that is not one.
+
+    Revision strings reach this module off a payload, and a payload arrives
+    with the run — a run received from someone else is attacker-controlled
+    data. Git reads a leading dash in a revision position as an option, and
+    ``git diff --output=<path> <head>`` truncates that path. A resolved
+    40-hex SHA cannot be read as an option, so resolution is the guard.
+    """
+    sha = resolve_commit(repo_root, rev)
+    if not _FULL_SHA.match(sha):
+        raise MissingCommit(f"revision did not resolve to a sha: {rev!r}")
+    return sha
+
+
 def _diff_args(
     base: str | None,
     head: str,
@@ -406,6 +427,8 @@ def _diff_args(
     With no base, a commit is compared to its own first parent — the natural
     reading of "what this commit changed". *exclude* becomes negative
     pathspecs, which is how a caller keeps its own bookkeeping out of a diff.
+
+    Both revisions must already be resolved SHAs; see :func:`_resolved_rev`.
     """
     revs = [base, head] if base else [f"{head}^!"]
     if not exclude:
@@ -423,6 +446,7 @@ def diff_stat(
     """Return the aggregate diff stat for *head* (against *base* when given)."""
     if not commit_exists(repo_root, head):
         raise MissingCommit(f"commit not found in this repository: {head}")
+    base = _resolved_rev(repo_root, base) if base else None
     try:
         raw = _git_text(
             [
@@ -464,6 +488,7 @@ def changed_files(
     """Return the paths touched by *head* (against *base* when given)."""
     if not commit_exists(repo_root, head):
         raise MissingCommit(f"commit not found in this repository: {head}")
+    base = _resolved_rev(repo_root, base) if base else None
     try:
         raw = _git_text(
             [
@@ -494,6 +519,7 @@ def commit_patch(
     """
     if not commit_exists(repo_root, head):
         raise MissingCommit(f"commit not found in this repository: {head}")
+    base = _resolved_rev(repo_root, base) if base else None
     raw = _git_bytes(
         [
             "diff",
