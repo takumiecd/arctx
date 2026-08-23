@@ -9,7 +9,6 @@ build-backend = "hatchling.build"
 members = [
     "packages/arctx",
     "packages/arctx-cli",
-    "packages/arctx-tui",
 ]
 
 [tool.uv.sources]
@@ -20,7 +19,6 @@ dev = [
     "black>=23.0",
     "mypy>=1.0",
     "pytest>=7.0",
-    "pytest-asyncio>=0.21",
     "ruff>=0.1.0",
 ]
 

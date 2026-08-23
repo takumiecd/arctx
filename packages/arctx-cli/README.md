@@ -23,4 +23,4 @@ arctx dump
 ## Package layout
 
 This package provides the `arctx` CLI command. The core API is in the separate
-`arctx` package; the experimental TUI is shipped separately as `arctx-tui`.
+`arctx` package, which also carries the web GUI served by `arctx web`.

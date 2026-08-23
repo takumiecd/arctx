@@ -2,7 +2,7 @@
 
 These helpers resolve store backends, run IDs, user IDs, and lane IDs
 from environment variables and the ARCTX config file.  They carry no CLI /
-argparse dependency, so arctx-tui and other non-CLI consumers can import them
+argparse dependency, so non-CLI consumers (the serve layer, embedders) can import them
 directly.
 """
 

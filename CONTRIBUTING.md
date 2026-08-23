@@ -19,28 +19,29 @@ git clone https://github.com/takumiecd/arctx.git
 cd arctx
 
 # Run without installing (packages are not usually installed during local dev)
-PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src \
+PYTHONPATH=packages/arctx/src:packages/arctx-cli/src \
   python3 -m arctx_cli.main --help
 
 # Run tests
 PYTHONDONTWRITEBYTECODE=1 \
-  PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src \
-  python3 -m pytest packages/arctx/tests packages/arctx-cli/tests packages/arctx-tui/tests \
+  PYTHONPATH=packages/arctx/src:packages/arctx-cli/src \
+  python3 -m pytest packages/arctx/tests packages/arctx-cli/tests \
   --import-mode=importlib -q
 ```
 
 ## Project Layout
 
-This is a monorepo with three independent packages:
+This is a monorepo with two independent packages plus a web frontend:
 
 | Path | Import | Purpose |
 |------|--------|---------|
 | `packages/arctx/` | `import arctx` | Core API, storage, payloads, extensions |
 | `packages/arctx-cli/` | `import arctx_cli` | `arctx` command — argparse CLI |
-| `packages/arctx-tui/` | `import arctx_tui` | `arctx-tui` command — Textual TUI |
+| `web/` | — | React frontend, served by `arctx web` and built into the `arctx` wheel |
 
-Core (`arctx`) has **no CLI/TUI dependencies**. CLI and TUI depend on core
-but not on each other.
+Core (`arctx`) has **no CLI dependencies**; the CLI depends on core. The web
+frontend imports neither: it consumes the `arctx export --format json`
+document and, live, the `arctx serve` HTTP API.
 
 ## What to Contribute
 
@@ -81,9 +82,9 @@ We use:
 Run before submitting:
 
 ```bash
-ruff check packages/arctx/src packages/arctx-cli/src packages/arctx-tui/src
-black packages/arctx/src packages/arctx-cli/src packages/arctx-tui/src
-mypy packages/arctx/src packages/arctx-cli/src packages/arctx-tui/src
+ruff check packages/arctx/src packages/arctx-cli/src
+black packages/arctx/src packages/arctx-cli/src
+mypy packages/arctx/src packages/arctx-cli/src
 ```
 
 ## Pull Request Process
@@ -112,15 +113,7 @@ version first, commit that change, then tag the release commit. Do not reuse a
 version that has already been uploaded to PyPI.
 
 Release automation lives in `scripts/release.py` and uses `uv`. The release
-surface is `arctx` plus `arctx-cli`.
-
-`arctx-tui` is **not published**. It was last uploaded as 0.2.0b4, whose loose
-`arctx>=0.2.0b4` pin let pip pair it with a much newer core — installing it
-today gets you an `ImportError` on the first run, from a rename it never saw.
-The TUI is legacy and nobody is maintaining it, so the package was removed from
-PyPI rather than kept alive. It still lives in this repo and still runs from a
-checkout. `--include-tui` would republish it: don't pass it unless you mean to
-take the TUI back on.
+surface is `arctx` plus `arctx-cli`, which is the whole repo.
 
 The standard release path builds the web GUI, copies `web/dist` into
 `packages/arctx/src/arctx/web/static`, builds the selected packages into root
@@ -135,9 +128,8 @@ uv run scripts/release.py 0.3.1b4 --prepare
 git diff
 git add packages/arctx/pyproject.toml \
   packages/arctx-cli/pyproject.toml \
-  packages/arctx-tui/pyproject.toml \
   packages/arctx/src/arctx/__init__.py \
-  uv.lock
+  uv.lock web/package.json CLAUDE.md
 git commit -m "release: prepare 0.3.1b4"
 
 # Tag the commit that contains the matching pyproject.toml versions.
@@ -149,12 +141,6 @@ uv run scripts/release.py 0.3.1b4 --no-clean --upload --repository testpypi
 
 # Then publish the same dist/ contents to PyPI.
 uv run scripts/release.py 0.3.1b4 --no-clean --upload
-```
-
-To include the TUI package in the same release:
-
-```bash
-uv run scripts/release.py 0.3.1b4 --prepare --include-tui
 ```
 
 ## Questions?
