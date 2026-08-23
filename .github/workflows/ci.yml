@@ -102,6 +102,55 @@ jobs:
       - name: twine check
         run: python -m twine check packages/*/dist/*
 
+  installed:
+    name: installed wheel (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    # The `test` job runs from source via PYTHONPATH and installs pytest, which
+    # depends on tomli below 3.11 -- so it supplied a runtime dependency
+    # arctx-cli never declared, and 0.4.6b1 shipped to PyPI with every command
+    # dead on 3.10 while CI was green on 3.10. Nothing here may touch the
+    # source tree: install the built wheels into a clean venv and drive the
+    # console script, the way a user who ran `pip install arctx-cli` does.
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Build wheels
+        run: |
+          python -m pip install --upgrade pip build
+          for pkg in arctx arctx-cli; do
+            python -m build --wheel "packages/$pkg"
+          done
+      - name: Install into a clean venv
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install packages/arctx/dist/*.whl packages/arctx-cli/dist/*.whl
+      - name: Smoke the console script outside the source tree
+        run: |
+          set -euxo pipefail
+          cd /tmp
+          git config --global init.defaultBranch main
+          git config --global user.email "ci@arctx.dev"
+          git config --global user.name "ARCTX CI"
+          /tmp/venv/bin/arctx --version
+          /tmp/venv/bin/arctx --help > /dev/null
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          git init -q .
+          git commit -q --allow-empty -m init
+          /tmp/venv/bin/arctx init demo --run-id smoke
+          /tmp/venv/bin/arctx lane create L1 --purpose smoke
+          /tmp/venv/bin/arctx lane switch L1
+          /tmp/venv/bin/arctx add --title first --type note --field text=hi
+          /tmp/venv/bin/arctx dump
+          /tmp/venv/bin/arctx export --format json > /dev/null
+          /tmp/venv/bin/arctx guide --context
+          /tmp/venv/bin/arctx doctor
+
   lint:
     name: lint (informational)
     runs-on: ubuntu-latest

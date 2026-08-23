@@ -26,11 +26,12 @@ try:
 except ModuleNotFoundError:  # py310 fallback
     try:
         import tomli as tomllib  # type: ignore[no-redef]
-    except ModuleNotFoundError as exc:
-        raise ImportError(
-            "Python 3.10 requires the 'tomli' package for TOML parsing. "
-            "Install it with: pip install tomli"
-        ) from exc
+    except ModuleNotFoundError:
+        # Do not take the whole CLI down for a feature this invocation may not
+        # use. `main()` imports this module before argparse runs, so raising
+        # here killed even `arctx --help`. Alias files are simply unreadable
+        # without a parser; every other command works.
+        tomllib = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +73,15 @@ def _write_toml_aliases(path: Path, aliases: dict[str, str]) -> None:
 def _read_toml_aliases(path: Path) -> dict[str, str]:
     """Read the ``[aliases]`` table from *path*.  Returns {} if missing."""
     if not path.exists():
+        return {}
+    if tomllib is None:
+        import sys
+
+        print(
+            f"notice: ignoring {path} — no TOML parser on this interpreter "
+            "(pip install tomli)",
+            file=sys.stderr,
+        )
         return {}
     with path.open("rb") as fh:
         data = tomllib.load(fh)
