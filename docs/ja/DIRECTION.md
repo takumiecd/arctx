@@ -41,10 +41,9 @@ working tree の中で実行します:
 - `ARCTX_GIT_WORKTREE` はすべての git verb
   (`arctx git commit / revert / cherry-pick / merge / reset / verify`) の cwd を
   上書きします。
-- `arctx lane start / env / spawn --worktree PATH` は解決済みのパス
-  （加えて現在のブランチと `git --git-common-dir`）を
-  `Lane.metadata["worktree"]` に記録し、下流プロセス向けに
-  `ARCTX_GIT_WORKTREE` を export します。
+- worktree の指定は `ARCTX_GIT_WORKTREE=PATH` の export です。git verb はこれを
+  読み、git サブプロセスを shell cwd ではなくそのパスで実行します
+  （`arctx.ext.git.helpers.repo`）。専用の attach コマンドはありません。
 - `arctx git worktree {add,list,remove}` は上流の `git worktree` plumbing の
   薄いラッパーです。ライフサイクルは git 側に残るため、ARCTX の外で作成された
   worktree も attach できます。
@@ -54,5 +53,5 @@ working tree の中で実行します:
 - worktree パスを `arctx lane list` / TUI ビューで表示する。
 - agent が単一セッション中に worktree を移動した際、step ごとの workspace
   パスを記録する。
-- `lane env --new --worktree PATH` が存在しないディレクトリを指す場合に
-  worktree を自動生成する。
+- `ARCTX_GIT_WORKTREE` が存在しないディレクトリを指す場合に、その場で
+  worktree を生成する（あるいは明確に落とす）。

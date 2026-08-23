@@ -52,7 +52,7 @@ ARCTX は agent framework でも planner でも executor でも **ありませ�
 
 *同じ run に対して 2 つの AI エージェント（Claude と Codex）が並列に作業。各自が独立した `lane` を持ち、両ブランチは同じ `RunGraph` に兄弟 step として着地する — レースも上書きもなし。*
 
-> 0.3 beta — DAG コア（Node / Step / Payload）は安定化しつつあります。ストレージや API の変更はまだあり得ますが、リリースノートに記載します。
+> 0.4 beta — DAG コア（Node / Step / Payload）は安定化しつつあります。ストレージや API の変更はまだあり得ますが、リリースノートに記載します。
 
 *English version: [README.md](README.md).*
 
@@ -146,14 +146,20 @@ Claude と Codex が、互いに踏まないように同じ run を駆動しま�
 # 共有ベースライン。両エージェントはこの node id から作業を分岐する。
 BASE=$(arctx git commit -m "baseline" --run demo | jq -r .output_node_id)
 
-# ターミナル 1 — Claude
-eval $(arctx lane env --run demo --new --user claude)
+# ターミナル 1 — Claude。run と lane をこのターミナルにだけ固定する。
+eval "$(arctx use demo --shell)"
+arctx lane create claude --purpose "内側ループのベクトル化" --user claude
+eval "$(arctx lane switch claude --shell)"
+export ARCTX_USER_ID=claude
 git checkout -b claude/vec
 # ...edits...
 git add . && arctx git commit -m "Claude: vectorize inner loop" --from "$BASE"
 
 # ターミナル 2 — Codex（同時に実行）
-eval $(arctx lane env --run demo --new --user codex)
+eval "$(arctx use demo --shell)"
+arctx lane create codex --purpose "parallel map" --user codex
+eval "$(arctx lane switch codex --shell)"
+export ARCTX_USER_ID=codex
 git checkout main && git checkout -b codex/map
 # ...edits...
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
@@ -213,6 +219,59 @@ n_root
 
 ---
 
+### 例 4: 1 つの主題、2 つのブランチ、1 つの結論
+
+`lane` が「作業の束」、table が「数値の束」なら、**topic は「意味の束」**です。
+グラフのどこにある node / step でも主題に tag でき、それが何を意味するかを読めます。
+
+```bash
+arctx topic tag l2-tiling "$CLAUDE_RESULT"
+arctx topic tag l2-tiling "$CODEX_RESULT"     # もう一方のブランチの record
+```
+
+連結性は要求も検証もされません。ただし 2 つ目の tag は、この主題が**出会ったことの
+ない 2 つの系譜にまたがった**ことに気づき、出口を全部「実行できるコマンド」として
+提示します:
+
+```text
+notice: topic "l2-tiling" spans 2 unjoined islands
+  island 1  1 records  tip n_b003732a  (lane claude)
+  island 2  1 records  tip n_8744ba41  (lane codex)
+  both are right, under different conditions
+    → arctx topic join l2-tiling --summary "..."
+  they turned out to be two subjects
+    → arctx topic split l2-tiling --island 2 --into NEW_NAME --summary "..."
+  island 2 was a dead end
+    → arctx cut n_8744ba41 --reason "..."
+  the tag was a mistake
+    → arctx topic untag l2-tiling n_8744ba41
+```
+
+分かれた主題は**抱えたままの矛盾**であり、出口はちょうど 4 つしかありません。1 つ
+選びます:
+
+```bash
+arctx topic join l2-tiling \
+  --summary "128 tiles win on both branches; the map path just needed the same bound"
+# joined 2 lineages of topic "l2-tiling" — 1 island now
+```
+
+join は各島の tip から出る本物の Step なので、結論は両方の**後に来る node**です。
+だから `--summary` が必須になります（`lane close` と同じ規律）。join に「正しい側」は
+ありません — 入力は集合です。
+
+```bash
+arctx topics
+# l2-tiling  ·  3 records · 1 islands  ·  128 tiles win on both branches; ...
+```
+
+`arctx guide --context` は上位の結論文と、**まだ分かれたままの topic** を意図的に
+表示します — 「まだ噛み合っていない 2 つのことを知っている」場所です。
+`arctx topic log <name>` は結論文の変遷を古い信念から現在まで辿ります。
+かつてそう考えていたこと自体も証拠だからです。
+
+---
+
 ## 30 秒クイックスタート
 
 git repository の中から:
@@ -236,13 +295,19 @@ arctx dump --format mermaid            # または視覚的な mermaid flowchart
 
 ```bash
 # Claude のターミナル
-eval $(arctx lane env --run demo --new --user claude)
+eval "$(arctx use demo --shell)"
+arctx lane create claude --purpose "vectorization" --user claude
+eval "$(arctx lane switch claude --shell)"
+export ARCTX_USER_ID=claude
 git checkout -b claude/vec
 # ...edits...
 git add . && arctx git commit -m "Claude: vectorization" --from "$BASE"
 
 # Codex のターミナル（並列に実行）
-eval $(arctx lane env --run demo --new --user codex)
+eval "$(arctx use demo --shell)"
+arctx lane create codex --purpose "parallel map" --user codex
+eval "$(arctx lane switch codex --shell)"
+export ARCTX_USER_ID=codex
 git checkout main && git checkout -b codex/map
 # ...edits...
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
@@ -267,14 +332,14 @@ VHS 録画はこのシナリオの `examples/demo_cli.tape` と `examples/demo_e
 arctx git worktree add ../wt-claude claude/vec
 arctx git worktree add ../wt-codex  codex/map
 
-# 各エージェントの lane を 1 つの worktree に attach する。
-# これは ARCTX_RUN_ID / ARCTX_LANE_ID / ARCTX_USER_ID に加えて
-# ARCTX_GIT_WORKTREE も export するので、以降の `arctx git commit` はその
-# worktree 内だけで実行される。
-eval $(arctx lane env --run demo --new --user claude \
-        --worktree ../wt-claude)
-eval $(arctx lane env --run demo --new --user codex \
-        --worktree ../wt-codex)
+# 各ターミナルが run / lane / user / worktree を自分で固定する。git verb
+# (`arctx git commit`, `revert`, `merge` ...) は ARCTX_GIT_WORKTREE を読み、
+# shell の cwd ではなくそこで git サブプロセスを実行する。
+eval "$(arctx use demo --shell)"
+arctx lane create claude --purpose "vectorization" --user claude
+eval "$(arctx lane switch claude --shell)"
+export ARCTX_USER_ID=claude
+export ARCTX_GIT_WORKTREE=../wt-claude
 ```
 
 両エージェントとも依然として同じ `RunGraph` に兄弟 step として commit を着地させます。
@@ -315,8 +380,11 @@ RunGraph
 | `arctx show [id]` | 現在の run、または 1 件の node/step/payload を表示する。 |
 | `arctx log` | DAG を順序付きイベントストリームとして表示する。 |
 | `arctx git commit -m ...` | 実際の `git commit` を駆動し、`GitChangePayload` 付きの `Step` を記録する。 |
-| `arctx lane env --new --user <name>` | ターミナルやサブプロセスが自分のセッションを持つよう shell export を出力する。`--worktree PATH` で git 操作を紐づいた worktree に固定もできる。 |
-| `arctx git worktree add <path> [branch]` | `git worktree add` の薄いラッパー。`lane env` の `--worktree` と組み合わせて各エージェントに独立 checkout を与える。 |
+| `arctx lane create <name>` | lane を開く。フラットで git ブランチのような作業単位。purpose を持ち、close には summary が必須。 |
+| `arctx lane switch <name> --shell` | `export ARCTX_LANE_ID=…` を出力し、repo 全体のポインタを書かずにこのターミナルだけ lane を切り替える。 |
+| `arctx topic tag <name> <id>...` | グラフを横断して record を「意味の束」にまとめる。連結性は要求されない — 島が 2 つ以上なのは join の*候補*であってエラーではない。 |
+| `arctx topic summarize <name> --summary ...` | その主題の現在の結論文。`arctx topics` が全 topic を結論文と島数つきで一覧する。 |
+| `arctx git worktree add <path> [branch]` | `git worktree add` の薄いラッパー。`ARCTX_GIT_WORKTREE=<path>` を export すると git verb がその中で走る。 |
 | `arctx dump --format outline` | run 全体を LLM 向けのインデント spanning-tree でダンプする。 |
 | `arctx dump --format mermaid` | 人間 / docs 向けの mermaid flowchart。 |
 

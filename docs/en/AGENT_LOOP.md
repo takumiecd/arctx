@@ -42,8 +42,9 @@ ARCTX has three separate pieces of state:
   `<ARCTX_HOME>/runs/<run_id>` when `ARCTX_HOME` is set / outside a repo).
 - **Repo pointer:** `<gitdir>/arctx-id`, written by `arctx init`, `arctx use`,
   and `arctx git init`.
-- **Shell pointer:** `ARCTX_RUN_ID`, usually set with
-  `eval "$(arctx use <run_id> --shell)"` or `arctx lane env`.
+- **Shell pointer:** `ARCTX_RUN_ID`, set with
+  `eval "$(arctx use <run_id> --shell)"` (this terminal only; it does not write
+  the repo pointer).
 
 Resolution order is:
 
@@ -81,24 +82,32 @@ self"). There is no repo registry and no `repo_id`.
   terminal instead of relying on each repo's pointer:
   `eval "$(arctx use run_x --shell)"`.
 
-## Work Session Fixed Mode
+## Per-terminal Fixed Mode
 
 Parallel agents should not rely only on shared repo pointers. Pin the run and
-work session in each process environment instead.
+lane in each process environment instead.
 
 ```bash
-eval "$(arctx lane env --run run_x --new --user codex)"
+eval "$(arctx use run_x --shell)"            # export ARCTX_RUN_ID=run_x
+arctx lane create codex --purpose "..." --user codex
+eval "$(arctx lane switch codex --shell)"    # export ARCTX_LANE_ID=lane_...
+export ARCTX_USER_ID=codex
+
 arctx add --from NODE_ID --type suggestion
 ```
 
-Use `spawn` for child processes. The child receives a unique
-`ARCTX_LANE_ID`; sibling terminals and sibling child processes do not
-share the fixed session.
+`--shell` writes no pointer, so sibling terminals sharing one checkout hold
+different lanes. To hand a child process its own lane, pass the variables when
+launching it:
 
 ```bash
-arctx lane spawn --run run_x --user codex -- codex
-arctx lane spawn --run run_x --user claude-code -- claude
+ARCTX_LANE_ID=$(arctx lane show codex --json | jq -r .lane.lane_id) \
+ARCTX_USER_ID=codex codex
 ```
+
+`arctx add` (frontier resolution when `--from` is omitted) and `arctx guide`
+resolve `ARCTX_LANE_ID` ahead of the repo pointer, so a child process sees its
+own lane.
 
 For explicit mode, pass both `--run` and `--lane` on every mutating
 command.
@@ -118,13 +127,12 @@ model is settled.
 
 ## Worktree Per Agent
 
-For parallel coding agents, pair work sessions with git worktrees:
+For parallel coding agents, pair lanes with git worktrees:
 
 ```bash
 arctx git worktree add ../my-repo-codex codex/run-x --base main
-arctx lane spawn --run run_x --user codex --worktree ../my-repo-codex -- codex
+export ARCTX_GIT_WORKTREE=../my-repo-codex
 ```
 
-The work session records the worktree path and exports
-`ARCTX_GIT_WORKTREE=PATH` to the child. Git verbs then run in that worktree
-even if the shell cwd is somewhere else.
+When `ARCTX_GIT_WORKTREE` is set, git verbs run in that worktree even if the
+shell cwd is somewhere else.

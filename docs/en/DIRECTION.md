@@ -24,10 +24,9 @@ their git subprocesses inside the linked working tree:
 
 - `ARCTX_GIT_WORKTREE` overrides the cwd for every git verb
   (`arctx git commit / revert / cherry-pick / merge / reset / verify`).
-- `arctx lane start / env / spawn --worktree PATH` records the
-  resolved path (plus current branch and `git --git-common-dir`) on
-  `Lane.metadata["worktree"]` and exports `ARCTX_GIT_WORKTREE`
-  for downstream processes.
+- Selecting a worktree is exporting `ARCTX_GIT_WORKTREE=PATH`: the git verbs
+  read it and run their git subprocess there instead of in the shell's cwd
+  (`arctx.ext.git.helpers.repo`). There is no dedicated attach command.
 - `arctx git worktree {add,list,remove}` is a thin wrapper around the
   upstream `git worktree` plumbing. Lifecycle stays in git so that
   worktrees created outside ARCTX can still be attached.
@@ -37,5 +36,5 @@ Possible follow-ups:
 - Surface the worktree path in `arctx lane list` / TUI views.
 - Record a per-step workspace path when an agent moves between
   worktrees during a single session.
-- Auto-create a worktree when `lane env --new --worktree PATH`
-  points at a missing directory.
+- Create the worktree on the spot (or fail loudly) when
+  `ARCTX_GIT_WORKTREE` points at a missing directory.

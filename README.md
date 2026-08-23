@@ -52,7 +52,7 @@ It is the graph layer for research, optimization, debugging, and agent work.
 
 *Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `lane`; both branches land as sibling steps in the same `RunGraph` — no race, no overwrite.*
 
-> 0.3 beta — the DAG core (Node / Step / Payload) is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
+> 0.4 beta — the DAG core (Node / Step / Payload) is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
 
 *日本語版は [README.ja.md](README.ja.md) を参照してください。*
 
@@ -145,14 +145,20 @@ Claude and Codex drive the same run without stepping on each other.
 # Shared baseline. Both agents branch their work off this node id.
 BASE=$(arctx git commit -m "baseline" --run demo | jq -r .output_node_id)
 
-# Terminal 1 — Claude
-eval $(arctx lane env --run demo --new --user claude)
+# Terminal 1 — Claude. Pin the run and a lane to this terminal only.
+eval "$(arctx use demo --shell)"
+arctx lane create claude --purpose "vectorize the inner loop" --user claude
+eval "$(arctx lane switch claude --shell)"
+export ARCTX_USER_ID=claude
 git checkout -b claude/vec
 # ...edits...
 git add . && arctx git commit -m "Claude: vectorize inner loop" --from "$BASE"
 
 # Terminal 2 — Codex (running at the same time)
-eval $(arctx lane env --run demo --new --user codex)
+eval "$(arctx use demo --shell)"
+arctx lane create codex --purpose "parallel map" --user codex
+eval "$(arctx lane switch codex --shell)"
+export ARCTX_USER_ID=codex
 git checkout main && git checkout -b codex/map
 # ...edits...
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
@@ -212,6 +218,60 @@ When your colleague asks *"how did you know it was the loop bound?"*, the graph 
 
 ---
 
+### Example 4: One subject, two branches, one conclusion
+
+A `lane` is a unit of work and a table is a bundle of numbers. A **topic** is a
+bundle of *meaning*: tag any nodes or steps as belonging to a subject, from
+anywhere in the graph, and read what they add up to.
+
+```bash
+arctx topic tag l2-tiling "$CLAUDE_RESULT"
+arctx topic tag l2-tiling "$CODEX_RESULT"     # a record from the other branch
+```
+
+Connectivity is never required or validated. But the second tag notices that
+the subject now spans two lineages that never met — and says so, with every way
+out spelled as a runnable command:
+
+```text
+notice: topic "l2-tiling" spans 2 unjoined islands
+  island 1  1 records  tip n_b003732a  (lane claude)
+  island 2  1 records  tip n_8744ba41  (lane codex)
+  both are right, under different conditions
+    → arctx topic join l2-tiling --summary "..."
+  they turned out to be two subjects
+    → arctx topic split l2-tiling --island 2 --into NEW_NAME --summary "..."
+  island 2 was a dead end
+    → arctx cut n_8744ba41 --reason "..."
+  the tag was a mistake
+    → arctx topic untag l2-tiling n_8744ba41
+```
+
+A split subject is a contradiction you are carrying, and there are exactly four
+ways out of it. Take one:
+
+```bash
+arctx topic join l2-tiling \
+  --summary "128 tiles win on both branches; the map path just needed the same bound"
+# joined 2 lineages of topic "l2-tiling" — 1 island now
+```
+
+The join is a real Step from every island's tip, so the verdict is a node that
+comes *after* both — which is why `--summary` is required. It has no correct
+side: the inputs are a set.
+
+```bash
+arctx topics
+# l2-tiling  ·  3 records · 1 islands  ·  128 tiles win on both branches; ...
+```
+
+`arctx guide --context` prints the top statements and, deliberately, the topics
+that are still split — the ones where you know two things that do not agree
+yet. `arctx topic log <name>` walks the statement history, oldest belief to
+current: what you used to think is evidence too.
+
+---
+
 ## 30-second Quick Start
 
 From inside a git repository:
@@ -234,13 +294,19 @@ Two agents on the same repo? Each gets an isolated lane that doesn't touch the o
 
 ```bash
 # Claude's terminal
-eval $(arctx lane env --run demo --new --user claude)
+eval "$(arctx use demo --shell)"
+arctx lane create claude --purpose "vectorization" --user claude
+eval "$(arctx lane switch claude --shell)"
+export ARCTX_USER_ID=claude
 git checkout -b claude/vec
 # ...edits...
 git add . && arctx git commit -m "Claude: vectorization" --from "$BASE"
 
 # Codex's terminal (running in parallel)
-eval $(arctx lane env --run demo --new --user codex)
+eval "$(arctx use demo --shell)"
+arctx lane create codex --purpose "parallel map" --user codex
+eval "$(arctx lane switch codex --shell)"
+export ARCTX_USER_ID=codex
 git checkout main && git checkout -b codex/map
 # ...edits...
 git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
@@ -264,14 +330,14 @@ can edit, stage, and commit without trampling each other:
 arctx git worktree add ../wt-claude claude/vec
 arctx git worktree add ../wt-codex  codex/map
 
-# Each agent attaches its lane to one worktree.
-# This exports ARCTX_RUN_ID / ARCTX_LANE_ID / ARCTX_USER_ID *and*
-# ARCTX_GIT_WORKTREE, so subsequent `arctx git commit` runs inside that
-# worktree only.
-eval $(arctx lane env --run demo --new --user claude \
-        --worktree ../wt-claude)
-eval $(arctx lane env --run demo --new --user codex \
-        --worktree ../wt-codex)
+# Each terminal pins its own run, lane, user, and worktree. The git verbs
+# (`arctx git commit`, `revert`, `merge`, ...) read ARCTX_GIT_WORKTREE and run
+# their git subprocess there instead of in the shell's cwd.
+eval "$(arctx use demo --shell)"
+arctx lane create claude --purpose "vectorization" --user claude
+eval "$(arctx lane switch claude --shell)"
+export ARCTX_USER_ID=claude
+export ARCTX_GIT_WORKTREE=../wt-claude
 ```
 
 Both agents still land their commits as sibling steps in the same
@@ -311,8 +377,11 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx show [id]` | Show the current run or a single node/step/payload. |
 | `arctx log` | Show the DAG as an ordered event stream. |
 | `arctx git commit -m ...` | Drive a real `git commit` and record a `Step` with `GitChangePayload`. |
-| `arctx lane env --new --user <name>` | Print shell exports so a terminal or subprocess gets its own session. Add `--worktree PATH` to also pin git operations to a linked worktree. |
-| `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Combine with `--worktree` on `lane env` to give each agent an isolated checkout. |
+| `arctx lane create <name>` | Open a lane — a flat, git-branch-like unit of work with a purpose and a required summary on close. |
+| `arctx lane switch <name> --shell` | Print `export ARCTX_LANE_ID=…` so one terminal gets its own lane, without writing the repo-wide pointer. |
+| `arctx topic tag <name> <id>...` | Bundle records into a subject across the graph. Connectivity is not required — 2+ islands is a join *candidate*, not an error. |
+| `arctx topic summarize <name> --summary ...` | The subject's current statement. `arctx topics` lists every subject with its statement and island count. |
+| `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Export `ARCTX_GIT_WORKTREE=<path>` to make the git verbs run inside it. |
 | `arctx dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
 | `arctx dump --format mermaid` | Mermaid flowchart for humans / docs. |
 

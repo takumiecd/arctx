@@ -487,32 +487,34 @@ arctx log --outline --run demo    # 旧来の spanning-tree outline
   時の summary が表示される。内部の node/step まで見たい場合は
   `--expand-closed-lanes` を指定する。
 
-## Work Sessions
+## 並列作業の attribution
 
-work session は、同じ run で並列に作業する agent やターミナルの attribution 単位
-です。変更系 CLI コマンドはロックの下で append するため、並行 writer は既存履歴を
+同じ run を並列に駆動する agent やターミナルは、それぞれ自分の lane を持ちます。
+変更系 CLI コマンドはロックの下で append するため、並行 writer は既存履歴を
 上書きせず新しい record を直列化します。
 
-- `arctx lane start [--user U] [--lane WS]`: work session を作成し
-  その id を表示する。
-- `arctx lane env [--new] [--run R] [--user U]`: `ARCTX_RUN_ID`,
-  `ARCTX_LANE_ID`, `ARCTX_USER_ID` の shell export を出力する。
-- `arctx lane spawn [--user U] -- <cmd>`: 子専用の work session で子コマンドを
-  実行する。
-- `arctx lane list` / `arctx lane show <ws_id>`: work session を検査する。
-
-固定モードの例:
+端末ごとの固定は**環境変数**で行います（`lane start` / `lane env` / `lane spawn`
+という専用コマンドは削除済み。lane の verb は `create` / `switch` / `close` /
+`open` / `list` / `show` / `summaries` / `validate`）。
 
 ```bash
-eval "$(arctx lane env --run run_x --new --user codex)"
+eval "$(arctx use run_x --shell)"           # export ARCTX_RUN_ID=run_x
+arctx lane create codex --purpose "..." --user codex
+eval "$(arctx lane switch codex --shell)"   # export ARCTX_LANE_ID=lane_...
+export ARCTX_USER_ID=codex
+
 arctx add --from NODE_ID --type suggestion
 ```
 
-spawn の例:
+`--shell` を付けない `arctx lane switch` は repo 全体のポインタ
+(`<gitdir>/arctx-lane`) を書きます。`--shell` はそれを書かず export 行を出すだけ
+なので、**同じ checkout で複数ターミナルが別々の lane を持てます**。
+
+子プロセスに別の lane を渡したいときは、その環境変数を渡して起動するだけです:
 
 ```bash
-arctx lane spawn --run run_x --user codex -- codex
-arctx lane spawn --run run_x --user claude-code -- claude
+ARCTX_LANE_ID=$(arctx lane show codex --json | jq -r .lane.lane_id) \
+ARCTX_USER_ID=codex codex
 ```
 
 attribution の解決:
@@ -523,19 +525,24 @@ attribution の解決:
 
 ## Worktree の Attach
 
-- `arctx lane start --worktree PATH`
-- `arctx lane env --new --worktree PATH`
-- `arctx lane spawn --worktree PATH -- <cmd>`
+worktree の固定は**環境変数だけ**で行います。専用の attach コマンドはありません
+（`lane start` / `lane env` / `lane spawn` は削除済み）。
 
-これらのコマンドは解決済みの worktree パスを
-`Lane.metadata["worktree"]` に記録し、`ARCTX_GIT_WORKTREE=PATH` を export
-します。
+```bash
+arctx git worktree add ../wt-claude claude/vec
+
+eval "$(arctx use demo --shell)"          # この端末の run
+arctx lane create claude --purpose "vectorization" --user claude
+eval "$(arctx lane switch claude --shell)" # この端末の lane
+export ARCTX_USER_ID=claude
+export ARCTX_GIT_WORKTREE=../wt-claude     # この端末の checkout
+```
 
 `ARCTX_GIT_WORKTREE` が設定されていると、git verb (`arctx git commit`, `revert`,
 `cherry-pick`, `merge`, `reset`, `verify`、および post-rewrite hook) は git
-サブプロセスを shell cwd ではなく `cwd=$ARCTX_GIT_WORKTREE` で実行します。
-`arctx git worktree add` と併用して、1 つの ARCTX run を共有しつつ各 agent に独立した
-checkout を与えます。
+サブプロセスを shell cwd ではなく `cwd=$ARCTX_GIT_WORKTREE` で実行します
+(`arctx.ext.git.helpers.repo`)。`arctx git worktree add` と併用して、1 つの ARCTX
+run を共有しつつ各 agent に独立した checkout を与えます。
 
 ## Export
 
