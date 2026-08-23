@@ -557,6 +557,33 @@ export ARCTX_GIT_WORKTREE=../wt-claude     # この端末の checkout
 (`arctx.ext.git.helpers.repo`)。`arctx git worktree add` と併用して、1 つの ARCTX
 run を共有しつつ各 agent に独立した checkout を与えます。
 
+## arctx doctor（壊れた run を見つけて、戻す）
+
+run は append-only の jsonl の集まりで、**読み手は毎回すべての行を parse します**。
+つまり 1 行でも壊れると `dump` / `show` / `explore` / `topics` が揃って止まります
+（`run.json` しか読まない `list` だけが動く）。書き込みの中断・disk full・手編集・
+まずい merge のどれでも起こり得ます。
+
+```bash
+arctx doctor            # どのファイルの何行目が壊れているかを表示（健全なら exit 0）
+arctx doctor --json     # 機械可読
+arctx doctor --repair   # 壊れた行を <file>.broken に退避し、本体を書き直す
+```
+
+`--repair` は**消しません**。退避先の `<file>.broken` に元の行がそのまま残るので、
+中身が本物の record だったなら手で直して戻せます。`run.json` / `graph.json` は
+報告はしますが書き換えません（1 行しかない JSON 文書を「壊れた行を除いて書き直す」のは
+run を消すのと同じため）。`<file>.broken` は `.arctx/.gitignore` 済みです。
+
+読み込み時のエラーも、どのファイルの何行目かを言うようになりました:
+
+```text
+arctx: payloads.jsonl line 4 is not valid JSON: Unterminated string starting at: line 1 column 49
+  file: /path/.arctx/runs/demo/payloads.jsonl
+  line: {"payload_id": "pl_broken", "target_id": "n_x", "pay
+  run `arctx doctor --run <id>` to see every broken line, or `arctx doctor --run <id> --repair` to set them aside
+```
+
 ## Export
 
 `arctx export` は `dump` とは別物です: `dump` は検査と LLM コンテキスト用、`export` は

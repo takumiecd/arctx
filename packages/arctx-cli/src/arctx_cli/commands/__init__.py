@@ -35,6 +35,8 @@ def core_cli_commands() -> list[CliCommand]:
     from arctx_cli.commands.init import cli_init
     from arctx_cli.commands.lane import add_parser as add_lane_parser
     from arctx_cli.commands.lane import cli_lane
+    from arctx_cli.commands.doctor import add_parser as add_doctor_parser
+    from arctx_cli.commands.doctor import cli_doctor
     from arctx_cli.commands.list import add_parser as add_list_parser
     from arctx_cli.commands.list import cli_list
     from arctx_cli.commands.log import add_parser as add_log_parser
@@ -81,6 +83,7 @@ def core_cli_commands() -> list[CliCommand]:
         CliCommand("init", add_init_parser, cli_init),
         CliCommand("lane", add_lane_parser, cli_lane),
         CliCommand("list", add_list_parser, cli_list),
+        CliCommand("doctor", add_doctor_parser, cli_doctor),
         CliCommand("log", add_log_parser, cli_log),
         CliCommand("cut", add_cut_parser, cli_cut),
         CliCommand("uncut", add_uncut_parser, cli_uncut),

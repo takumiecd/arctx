@@ -63,6 +63,9 @@ GITIGNORE_LINES = (
     "run.cache.pkl",
     ".append.lock",
     ".cache_tmp_*",
+    # Quarantine written by `arctx doctor --repair`: the repaired file is what
+    # travels, the unreadable lines stay on the machine that found them.
+    "*.jsonl.broken",
     ".*.tmp_*",
 )
 

@@ -208,7 +208,10 @@ def test_guide_reports_context_unavailable_note_without_crashing(tmp_path, monke
     assert rc == 0  # fail-safe: guide never exits non-zero on broken context
     out = capsys.readouterr().out
     assert "context unavailable" in out
-    assert "JSONDecodeError" in out or "Error" in out
+    # The note has to carry enough to act on. It used to be a bare
+    # "JSONDecodeError"; now it names the file and points at the repair.
+    assert "nodes.jsonl" in out
+    assert "arctx doctor" in out
 
 
 def test_guide_active_frontiers_listed_for_lane(tmp_path, monkeypatch, capsys):
