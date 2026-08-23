@@ -19,6 +19,7 @@ The web frontend lives in **`web/`** (React + React Flow + Vite, import-free of 
 - CLI: `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m arctx_cli.main <subcommand> ...`
 - TUI (requires textual installed): `PYTHONPATH=packages/arctx/src:packages/arctx-tui/src python3 -m arctx_tui.main`
 - GUI (requires a built frontend — `npm --prefix web run build` first): `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m arctx_cli.main web --run <run> --no-browser`
+- Web frontend tests: `npm --prefix web test` (vitest; `src/layout.test.ts` pins the graph layout's invariants) and `npm --prefix web run typecheck`
 - Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/arctx/src packages/arctx-cli/src packages/arctx-tui/src`
 
 Docs are Japanese-first and should match the current implementation:
