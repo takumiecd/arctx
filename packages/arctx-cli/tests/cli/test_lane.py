@@ -73,8 +73,10 @@ def test_create_then_switch_named_lane():
         )
         assert switched["created"] is False
         assert switched["lane_id"] == created["lane_id"]
-        assert switched["export"].startswith("export ARCTX_LANE_ID=")
-        assert "ARCTX_LANE_ID=" in switched["export"]
+        # One export, once: `eval` runs whatever this line says, and a rename
+        # once left the same variable exported twice in a row.
+        assert switched["export"] == f"export ARCTX_LANE_ID={created['lane_id']}"
+        assert switched["export"].count("ARCTX_LANE_ID") == 1
 
         lanes = list_lanes(run_id="run_lane", store_dir=sd)
         assert len(lanes) == 1
