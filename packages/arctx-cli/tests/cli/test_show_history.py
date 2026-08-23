@@ -29,7 +29,6 @@ def _init_run(td: str, run_id: str = "run_show") -> dict:
         run_id=run_id,
         store_dir=_store_dir(td),
         extensions=["git"],
-        no_hooks=True,
     )
 
 
@@ -38,15 +37,25 @@ def _make_handle_with_two_git_payloads(td: str, run_id: str = "run_show"):
     store = resolve_store(_store_dir(td))
     handle = store.load_run(run_id)
 
-    # Create a step with dry_run commit.
+    # `arctx add` makes the step, `arctx git add` records the commit on it.
     handle.ensure_lane(user_id="user", lane_id="ws")
-    t = handle.git.commit(
-        message="initial",
-        branch="main",
+    t = handle.add_step(
+        [handle.root_node_id],
+        StepPayload(payload_id="_", target_id="_", type="commit"),
         user_id="user",
         lane_id="ws",
-        head_commit="sha_v1",
-        dry_run=True,
+    )
+    handle.attach(
+        t.step_id,
+        GitChangePayload(
+            payload_id="_",
+            target_id="_",
+            branch="main",
+            head_commit="sha_v1",
+            commits=("sha_v1",),
+        ),
+        user_id="user",
+        lane_id="ws",
     )
 
     # Manually append a second GitChangePayload (simulating amend).

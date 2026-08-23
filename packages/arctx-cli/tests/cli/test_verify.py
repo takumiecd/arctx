@@ -60,7 +60,6 @@ def _init_arctx(tmp_path: Path, run_id: str = "run_test") -> dict:
         run_id=run_id,
         store_dir=_store_dir(tmp_path),
         extensions=["git"],
-        no_hooks=True,
     )
 
 
@@ -70,6 +69,40 @@ def _get_head_sha(repo: Path) -> str:
         cwd=str(repo), capture_output=True, text=True, check=True,
     )
     return result.stdout.strip()
+
+
+def _record_commit(handle, *, message, user_id, lane_id, head_commit):
+    """Record one commit the way a user does now: `arctx add` + `arctx git add`.
+
+    arctx no longer drives git, so the commit is already made by the caller;
+    this only appends the step and the record that names its sha.
+    """
+    from arctx.core.lanes import lane_active_frontiers
+    from arctx.core.schema.payloads import StepPayload
+    from arctx.ext.git.payloads import GitChangePayload
+
+    frontiers = lane_active_frontiers(handle.run_graph, lane_id)
+    tip = frontiers[0] if frontiers else handle.root_node_id
+    step = handle.add_step(
+        [tip],
+        StepPayload(payload_id="_", target_id="_", type="commit",
+                    content={"message": message}),
+        user_id=user_id,
+        lane_id=lane_id,
+    )
+    handle.attach(
+        step.step_id,
+        GitChangePayload(
+            payload_id="_",
+            target_id="_",
+            branch="main",
+            head_commit=head_commit,
+            commits=(head_commit,),
+        ),
+        user_id=user_id,
+        lane_id=lane_id,
+    )
+    return step
 
 
 def _git_commit_file(repo: Path, filename: str, message: str) -> str:
@@ -103,23 +136,21 @@ class TestVerifyCLIRealGit:
         handle.ensure_lane(user_id="alice", lane_id="ws_v")
 
         sha1 = _git_commit_file(repo, "f1.txt", "first")
-        t1 = handle.git.commit(
+        t1 = _record_commit(
+            handle,
             message="first",
-            branch="main",
             user_id="alice",
             lane_id="ws_v",
             head_commit=sha1,
-            dry_run=True,  # git commit already done above
         )
 
         sha2 = _git_commit_file(repo, "f2.txt", "second")
-        t2 = handle.git.commit(
+        t2 = _record_commit(
+            handle,
             message="second",
-            branch="main",
             user_id="alice",
             lane_id="ws_v",
             head_commit=sha2,
-            dry_run=True,
         )
 
         store.save_run(handle)
@@ -134,7 +165,11 @@ class TestVerifyCLIRealGit:
         assert result["violations"] == []
 
     def test_amend_sha_update_no_violations(self, tmp_path, monkeypatch):
-        """After amend + sha update via adopt_rewrite, verify still passes."""
+        """After an amend, re-recording the new sha keeps verify passing.
+
+        arctx no longer adopts rewrites on its own — the user records the new
+        sha with `arctx git add`, and verify must follow the latest record.
+        """
         repo = _init_git_repo(tmp_path / "repo")
         monkeypatch.setenv("ARCTX_HOME", str(_arctx_home(tmp_path)))
         monkeypatch.setenv("ARCTX_LANE_ID", "ws_a")
@@ -147,13 +182,12 @@ class TestVerifyCLIRealGit:
         handle.ensure_lane(user_id="alice", lane_id="ws_a")
 
         sha1 = _git_commit_file(repo, "f1.txt", "first")
-        t1 = handle.git.commit(
+        t1 = _record_commit(
+            handle,
             message="first",
-            branch="main",
             user_id="alice",
             lane_id="ws_a",
             head_commit=sha1,
-            dry_run=True,
         )
 
         # Amend the last commit.
@@ -164,11 +198,18 @@ class TestVerifyCLIRealGit:
         )
         new_sha = _get_head_sha(repo)
 
-        # Update arctx record via adopt_rewrite (amend mode, no onto needed).
-        handle.git.adopt_rewrite(
-            sha_map={sha1: new_sha},
-            onto=new_sha,
-            mode="amend",
+        # Record the new sha on the same step, the way `arctx git add` does.
+        from arctx.ext.git.payloads import GitChangePayload
+
+        handle.attach(
+            t1.step_id,
+            GitChangePayload(
+                payload_id="_",
+                target_id="_",
+                branch="main",
+                head_commit=new_sha,
+                commits=(new_sha,),
+            ),
             user_id="alice",
             lane_id="ws_a",
         )
@@ -219,21 +260,19 @@ class TestVerifyCLIRealGit:
         )
 
         # Record t1 with sha_A, then t2 with sha_B (sha_B is NOT a descendant of sha_A).
-        t1 = handle.git.commit(
+        t1 = _record_commit(
+            handle,
             message="commit A",
-            branch="main",
             user_id="alice",
             lane_id="ws_nd",
             head_commit=sha_A,
-            dry_run=True,
         )
-        t2 = handle.git.commit(
+        t2 = _record_commit(
+            handle,
             message="commit B (wrong sha)",
-            branch="main",
             user_id="alice",
             lane_id="ws_nd",
             head_commit=sha_B,
-            dry_run=True,
         )
         store.save_run(handle)
 
@@ -261,13 +300,12 @@ class TestVerifyCLIMocked:
         handle = store.load_run(run_id)
         handle.ensure_lane(user_id="alice", lane_id="ws_m")
         for i, sha in enumerate(["sha_A", "sha_B"]):
-            handle.git.commit(
+            _record_commit(
+                handle,
                 message=f"commit {i + 1}",
-                branch="main",
                 user_id="alice",
                 lane_id="ws_m",
                 head_commit=sha,
-                dry_run=True,
             )
         store.save_run(handle)
         return store

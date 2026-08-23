@@ -43,11 +43,6 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
         help="Directory to save runs (default: <repo_root>/.arctx/runs)",
     )
     parser.add_argument(
-        "--no-hooks",
-        action="store_true",
-        help="Skip installing git hooks (post-rewrite etc.)",
-    )
-    parser.add_argument(
         "--extension",
         action="append",
         default=[],
@@ -77,7 +72,6 @@ def run_init_command(
     target_id: str | None,
     run_id: str | None,
     store_dir: str | None,
-    no_hooks: bool = False,
     extensions: list[str] | None = None,
     extension_options: dict[str, object] | None = None,
 ) -> dict[str, str]:
@@ -97,8 +91,6 @@ def run_init_command(
         Directory under which run directories are created.
         If None, defaults to ``<repo_root>/.arctx/runs`` (or
         ``<ARCTX_HOME>/runs`` when ``ARCTX_HOME`` is set / outside a repo).
-    no_hooks:
-        If True, skip installing git hooks.
     extensions:
         Names of extensions to enable.  Each extension's ``on_init`` is called
         and the extension is recorded in ``<run_dir>/extensions.json``.
@@ -155,9 +147,6 @@ def run_init_command(
         # sandbox. The run itself is still valid without an active pointer.
         pass
 
-    installed_hook_path: str | None = None
-    hook_warning: str | None = None
-
     # Activate requested extensions.
     enabled_extensions: list[str] = []
     if extensions:
@@ -167,32 +156,12 @@ def run_init_command(
 
         for ext_name in extensions:
             ext = load_extension(ext_name)  # raises KeyError for unknown names
-            opts = dict(extension_options or {})
-            if no_hooks:
-                opts["ext_git_no_hooks"] = True
-            git_hook_existed = False
-            if ext.name == "git" and not opts.get("ext_git_no_hooks"):
-                try:
-                    git_hook_existed = (
-                        find_repo_root() / ".git" / "hooks" / "post-rewrite"
-                    ).exists()
-                except RuntimeError:
-                    git_hook_existed = False
             ctx = InitContext(
                 run_id=handle.run_id,
                 run_dir=str(run_path),
-                options=opts,
+                options=dict(extension_options or {}),
             )
             ext.on_init(ctx)
-            if ext.name == "git" and not opts.get("ext_git_no_hooks"):
-                try:
-                    hook_path = find_repo_root() / ".git" / "hooks" / "post-rewrite"
-                    if hook_path.exists() and not git_hook_existed:
-                        installed_hook_path = str(hook_path)
-                    elif hook_path.exists() and git_hook_existed:
-                        hook_warning = f"hook already exists: {hook_path}"
-                except RuntimeError:
-                    pass
             add_enabled(run_path, EnabledExtension(name=ext.name, version=ext.version, config={}))
             enabled_extensions.append(ext_name)
 
@@ -201,8 +170,6 @@ def run_init_command(
         "root_node_id": handle.root_node_id,
         "store_dir": resolved_store_dir,
         "arctx_id_path": written_arctx_id_path,
-        "hook_path": installed_hook_path,
-        "hook_warning": hook_warning,
         "enabled_extensions": enabled_extensions,
     }
 
@@ -221,7 +188,6 @@ def cli_init(args) -> int:
             target_id=args.target_id,
             run_id=args.run_id,
             store_dir=args.store_dir,
-            no_hooks=args.no_hooks,
             extensions=list(args.extension or []),
             extension_options=vars(args),
         )
@@ -229,11 +195,4 @@ def cli_init(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(result["run_id"])
-    if result.get("hook_path"):
-        print(
-            f"hint: git hook installed at {result['hook_path']}",
-            file=sys.stderr,
-        )
-    if result.get("hook_warning"):
-        print(f"warning: {result['hook_warning']}", file=sys.stderr)
     return 0

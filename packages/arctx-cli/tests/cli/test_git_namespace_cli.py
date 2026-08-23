@@ -23,25 +23,26 @@ def _init_git_enabled_run(tmp_path, run_id: str = "run_git_cli") -> str:
         run_id=run_id,
         store_dir=store_dir,
         extensions=["git"],
-        no_hooks=True,
     )
     return store_dir
 
 
-def test_canonical_git_commit_parser(tmp_path):
-    """Parse ``arctx git commit`` under the canonical git namespace."""
+def test_canonical_git_add_parser(tmp_path):
+    """Parse ``arctx git add`` under the canonical git namespace."""
     store_dir = _init_git_enabled_run(tmp_path)
     args = parse_args([
-        "git", "commit", "-m", "msg", "--run", "run_git_cli", "--store-dir", store_dir
+        "git", "add", "--step", "t_1", "--commit", "abc123",
+        "--run", "run_git_cli", "--store-dir", store_dir,
     ])
 
     assert args.command == "git"
-    assert args.git_command == "commit"
-    assert args.message == "msg"
+    assert args.git_command == "add"
+    assert args.step_id == "t_1"
+    assert args.commits == ["abc123"]
 
 
-def test_git_commit_shortcut_alias_routes_to_canonical_namespace(tmp_path):
-    """Route ``arctx commit`` through the enabled git extension alias."""
+def test_git_verify_shortcut_alias_routes_to_canonical_namespace(tmp_path):
+    """Route ``arctx verify`` through the enabled git extension alias."""
     user_toml = tmp_path / "aliases.toml"
     store_dir = _init_git_enabled_run(tmp_path)
 
@@ -49,13 +50,12 @@ def test_git_commit_shortcut_alias_routes_to_canonical_namespace(tmp_path):
         patch.object(alias_mod, "_user_alias_path", return_value=user_toml),
         patch.object(git_cmd_mod, "cli_git", return_value=0) as cli_git,
     ):
-        rc = main(["commit", "-m", "msg", "--run", "run_git_cli", "--store-dir", store_dir])
+        rc = main(["verify", "--run", "run_git_cli", "--store-dir", store_dir])
 
     assert rc == 0
     args = cli_git.call_args.args[0]
     assert args.command == "git"
-    assert args.git_command == "commit"
-    assert args.message == "msg"
+    assert args.git_command == "verify"
 
 
 def test_git_default_aliases_are_visible_for_enabled_run(tmp_path, capsys):
@@ -64,9 +64,19 @@ def test_git_default_aliases_are_visible_for_enabled_run(tmp_path, capsys):
     store_dir = _init_git_enabled_run(tmp_path)
 
     with patch.object(alias_mod, "_user_alias_path", return_value=user_toml):
-        rc = main(["alias", "resolve", "commit", "--run", "run_git_cli", "--store-dir", store_dir])
+        rc = main(["alias", "resolve", "verify", "--run", "run_git_cli", "--store-dir", store_dir])
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert '"target": "git commit"' in out
+    assert '"target": "git verify"' in out
     assert '"source": "ext:git"' in out
+
+
+def test_removed_git_write_verbs_are_not_registered(tmp_path):
+    """arctx no longer drives git: the write verbs must be gone, not hidden."""
+    import pytest
+
+    store_dir = _init_git_enabled_run(tmp_path)
+    for verb in ("commit", "revert", "merge", "cherry-pick", "reset", "branch", "hook"):
+        with pytest.raises(SystemExit):
+            parse_args(["git", verb, "--run", "run_git_cli", "--store-dir", store_dir])

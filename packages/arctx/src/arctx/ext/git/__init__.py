@@ -1,16 +1,27 @@
-"""Built-in git extension."""
+"""Built-in git extension — records commits, never drives or watches git.
+
+ARCTX is git-native at the storage layer (runs live in a repository, jsonl
+merges with ``merge=union``, assets are references to git objects). That is
+core and does not depend on this extension.
+
+What this extension adds is narrow on purpose: a ``git_change`` record that
+names commit hashes, plus read-time derivation of the diff those hashes stand
+for. It does **not** run git on the user's behalf and does **not** install
+hooks. Both of those were removed: driving git meant arctx's own subprocesses
+tripped arctx's own hooks and double-recorded, and adopting bare git operations
+meant guessing a graph position that ``arctx add`` tracks by other means. A
+commit is recorded when the user says so, with ``arctx git add --commit``.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from arctx.ext.base import CliCommand, ExtensionBase, InitContext, Violation
 
 if TYPE_CHECKING:
-    import argparse
-
     from arctx.core.run.handle import RunHandle
 
 
@@ -19,50 +30,17 @@ class GitNamespace:
     """Python API namespace for git extension verbs.
 
     Core ``RunHandle`` stays git-agnostic; git verbs are exposed as
-    ``handle.git.<verb>``.
+    ``handle.git.<verb>``. Everything here reads — the write verbs
+    (``commit``/``revert``/``merge``/``cherry_pick``/``reset``/
+    ``adopt_rewrite``) were removed along with the hooks.
     """
 
     handle: "RunHandle"
 
-    def commit(self, **kwargs: Any) -> object:
-        from arctx.ext.git.verbs.commit import commit_impl
-
-        return commit_impl(self.handle, **kwargs)
-
-    def adopt_rewrite(self, **kwargs: Any) -> object:
-        from arctx.ext.git.verbs.rewrite import adopt_rewrite_impl
-
-        return adopt_rewrite_impl(self.handle, **kwargs)
-
-    def revert(self, **kwargs: Any) -> object:
-        from arctx.ext.git.verbs.revert import revert_impl
-
-        return revert_impl(self.handle, **kwargs)
-
-    def cherry_pick(self, **kwargs: Any) -> object:
-        from arctx.ext.git.verbs.cherry_pick import cherry_pick_impl
-
-        return cherry_pick_impl(self.handle, **kwargs)
-
-    def reset(self, **kwargs: Any) -> object:
-        from arctx.ext.git.verbs.reset import reset_impl
-
-        return reset_impl(self.handle, **kwargs)
-
-    def merge(self, **kwargs: Any) -> object:
-        from arctx.ext.git.verbs.merge import merge_impl
-
-        return merge_impl(self.handle, **kwargs)
-
-    def verify(self, **kwargs: Any) -> object:
+    def verify(self, **kwargs: object) -> object:
         from arctx.ext.git.verbs.verify import verify_impl
 
         return verify_impl(self.handle, **kwargs)
-
-    def branch_members(self, branch: str) -> set[str]:
-        from arctx.ext.git.queries import branch_members
-
-        return branch_members(self.handle.run_graph, branch)
 
     def current_sha(self, step_id: str) -> str | None:
         from arctx.ext.git.queries import current_sha
@@ -80,11 +58,10 @@ class GitExtension(ExtensionBase):
 
     name = "git"
     version = "0.1"
-    description = "Integration with git to record commits and branches into the arctx graph."
+    description = "Record git commits into the arctx graph and derive their diffs at read time."
 
     def register_schema(self) -> None:
         # Import-time side effects register payload decoders/classes.
-        import arctx.ext.git.events  # noqa: F401
         import arctx.ext.git.payloads  # noqa: F401
 
     def register_verbs(self, handle: "RunHandle") -> None:
@@ -98,25 +75,10 @@ class GitExtension(ExtensionBase):
         return [CliCommand(name=self.name, add_parser=add_parser, handler=cli_git)]
 
     def default_aliases(self) -> dict[str, str]:
-        return {
-            "branch": "git branch",
-            "cherry-pick": "git cherry-pick",
-            "commit": "git commit",
-            "hook": "git hook",
-            "merge": "git merge",
-            "reset": "git reset",
-            "revert": "git revert",
-            "verify": "git verify",
-        }
+        return {"verify": "git verify"}
 
-    def register_init_options(self, parser: "argparse.ArgumentParser") -> None:
-        group = parser.add_argument_group("git extension")
-        group.add_argument(
-            "--git-no-hooks",
-            dest="ext_git_no_hooks",
-            action="store_true",
-            help="With --extension git, skip installing git hooks",
-        )
+    def register_init_options(self, parser: object) -> None:
+        group = parser.add_argument_group("git extension")  # type: ignore[attr-defined]
         group.add_argument(
             "--git-repo-root",
             dest="ext_git_repo_root",
@@ -125,8 +87,8 @@ class GitExtension(ExtensionBase):
         )
 
     def on_init(self, ctx: InitContext) -> None:
+        """Point this checkout at the run. No hooks are installed."""
         from arctx.paths import find_repo_root, write_arctx_id
-        from arctx_cli.ext.git.hook import run_hook_install
 
         raw_repo_root = ctx.options.get("ext_git_repo_root")
         try:
@@ -136,14 +98,6 @@ class GitExtension(ExtensionBase):
 
         try:
             write_arctx_id(repo_root, ctx.run_id)
-        except OSError:
-            pass
-
-        if ctx.options.get("ext_git_no_hooks"):
-            return
-
-        try:
-            run_hook_install(repo_path=repo_root, force=False)
         except OSError:
             pass
 
@@ -160,10 +114,12 @@ class GitExtension(ExtensionBase):
             )
             for v in violations
         ]
+
     def guide_text(self) -> str:
-        return """* `arctx git commit` : Record a git commit as a step in the arctx graph.
-* `arctx git verify` : Run verification scripts and attach results to the graph.
-* `arctx git branch` : Record a branch switch or creation.
+        return """* `arctx git add --step T --commit SHA` : Record git commits on a step.
+* `arctx git show --step T` : Show the records plus the diff git reports for them now.
+* `arctx git verify` : Check the descendant constraint over all steps.
 """
+
 
 __all__ = ["GitExtension", "GitNamespace"]

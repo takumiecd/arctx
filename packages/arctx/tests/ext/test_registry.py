@@ -25,7 +25,7 @@ def test_load_git_extension():
     ext = load_extension("git")
     assert ext.name == "git"
     assert ext.version == "0.1"
-    assert "commit" in ext.default_aliases()
+    assert "verify" in ext.default_aliases()
 
 
 def test_git_extension_registers_namespace():
@@ -35,8 +35,8 @@ def test_git_extension_registers_namespace():
     ext.register_verbs(handle)
 
     assert hasattr(handle, "git")
-    assert callable(handle.git.commit)
-    assert not hasattr(handle, "commit")
+    assert callable(handle.git.verify)
+    assert not hasattr(handle, "verify")
 
 
 def test_load_unknown_raises():
