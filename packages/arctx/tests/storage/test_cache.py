@@ -165,3 +165,82 @@ def _where(handle) -> str | None:
         if value:
             return value
     return None
+
+
+def test_a_cache_planted_in_the_run_directory_is_never_read(tmp_path):
+    """Unpickling is executing, so a run directory must not carry a pickle.
+
+    Git was never the exposed path — the file is git-ignored — but a run
+    handed over as a zip, on a shared drive, or over NFS is, and reading it
+    took only `arctx dump`.
+    """
+    import pickle
+
+    canary = tmp_path / "canary.txt"
+
+    class Detonate:
+        def __reduce__(self):
+            return (_write_canary, (str(canary),))
+
+    run = init(_req(), run_id="planted")
+    store = JsonlRunStore(str(tmp_path / "runs"))
+    store.save_run(run)
+    run_dir = tmp_path / "runs" / "planted"
+
+    planted = run_dir / "run.cache.pkl"
+    planted.write_bytes(
+        pickle.dumps(
+            {
+                "schema_version": CACHE_SCHEMA_VERSION,
+                "fingerprint": fingerprint(run_dir),
+                "payload_types": (),
+                "run_graph": Detonate(),
+            }
+        )
+    )
+
+    store.load_run("planted")
+
+    assert not canary.exists(), "a pickle inside the run directory was executed"
+    assert not planted.exists(), "the planted file should be discarded, not left to rot"
+
+
+def _write_canary(path: str) -> str:  # pragma: no cover - only runs if unpickled
+    Path(path).write_text("executed", encoding="utf-8")
+    return path
+
+
+def test_the_cache_lives_outside_the_run_directory(tmp_path, monkeypatch):
+    from arctx.storage._cache import cache_path, cache_root
+
+    monkeypatch.setenv("ARCTX_CACHE_DIR", str(tmp_path / "cache"))
+    run_dir = tmp_path / "runs" / "somewhere"
+    run_dir.mkdir(parents=True)
+
+    path = cache_path(run_dir)
+    assert cache_root() in path.parents
+    assert run_dir not in path.parents
+
+
+def test_two_checkouts_of_one_run_do_not_share_a_cache(tmp_path, monkeypatch):
+    """Two worktrees hold different content under the same run id."""
+    from arctx.storage._cache import cache_path
+
+    monkeypatch.setenv("ARCTX_CACHE_DIR", str(tmp_path / "cache"))
+    first = tmp_path / "checkout-a" / ".arctx" / "runs" / "demo"
+    second = tmp_path / "checkout-b" / ".arctx" / "runs" / "demo"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+
+    assert cache_path(first) != cache_path(second)
+
+
+def test_cache_root_follows_the_environment(tmp_path, monkeypatch):
+    from arctx.storage._cache import cache_root
+
+    monkeypatch.setenv("ARCTX_CACHE_DIR", str(tmp_path / "explicit"))
+    assert cache_root() == tmp_path / "explicit"
+
+    monkeypatch.delenv("ARCTX_CACHE_DIR")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    assert cache_root() == tmp_path / "xdg" / "arctx"
