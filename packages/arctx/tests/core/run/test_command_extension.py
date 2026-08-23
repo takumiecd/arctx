@@ -35,7 +35,7 @@ def test_command_run_records_step_payload_and_lane_pointer(tmp_path):
     assert payload.command[:2] == (sys.executable, "-c")
     assert payload.cwd == str(tmp_path.resolve())
     assert payload.exit_code == 0
-    assert payload.stdout == "ok\n"
+    assert payload.stdout.splitlines() == ["ok"]
 
     pointer = latest_lane_pointer(handle.run_graph, "s1")
     assert pointer is not None

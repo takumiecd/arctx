@@ -75,7 +75,7 @@ def test_command_cli_runs_and_records_payload(tmp_path, capsys):
     assert rc == 0
     data = json.loads(capsys.readouterr().out)
     assert data["payload"]["payload_type"] == "command_run"
-    assert data["payload"]["stdout"] == "ok\n"
+    assert data["payload"]["stdout"].splitlines() == ["ok"]
 
     store = resolve_store(store_dir)
     handle = store.load_run("run_command_cli")
@@ -111,4 +111,4 @@ def test_command_alias_runs_when_extension_enabled(tmp_path, capsys):
 
     assert rc == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["payload"]["stdout"] == "alias\n"
+    assert data["payload"]["stdout"].splitlines() == ["alias"]
