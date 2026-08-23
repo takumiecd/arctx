@@ -2,10 +2,7 @@
 # ruff: noqa: D103
 """Prepare ARCTX package releases.
 
-The release surface is arctx + arctx-cli. arctx-tui is legacy and is not
-published to PyPI at all — its version is still bumped here so a source
-checkout stays internally consistent, but `--include-tui` would put it back on
-PyPI, which is a decision, not a default.
+The release surface is arctx + arctx-cli, which is now the whole repo.
 """
 
 from __future__ import annotations
@@ -18,12 +15,10 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIMARY_PACKAGES = ("arctx", "arctx-cli")
-ALL_PACKAGES = ("arctx", "arctx-cli", "arctx-tui")
+ALL_PACKAGES = ("arctx", "arctx-cli")
 VERSION_FILES = (
     ROOT / "packages/arctx/pyproject.toml",
     ROOT / "packages/arctx-cli/pyproject.toml",
-    ROOT / "packages/arctx-tui/pyproject.toml",
     ROOT / "packages/arctx/src/arctx/__init__.py",
 )
 DIST = ROOT / "dist"
@@ -31,10 +26,7 @@ WEB = ROOT / "web"
 WEB_PACKAGE_JSON = WEB / "package.json"
 PROJECT_GUIDE = ROOT / "CLAUDE.md"
 PACKAGED_STATIC = ROOT / "packages/arctx/src/arctx/web/static"
-DEPENDENCY_FILES = (
-    ROOT / "packages/arctx-cli/pyproject.toml",
-    ROOT / "packages/arctx-tui/pyproject.toml",
-)
+DEPENDENCY_FILES = (ROOT / "packages/arctx-cli/pyproject.toml",)
 
 
 def run(cmd: list[str], *, cwd: Path = ROOT) -> None:
@@ -126,7 +118,6 @@ def run_tests() -> None:
             "pytest",
             "packages/arctx/tests",
             "packages/arctx-cli/tests",
-            "packages/arctx-tui/tests",
             "--import-mode=importlib",
             "-q",
         ]
@@ -192,9 +183,7 @@ def upload_dist(repository: str | None) -> None:
 
 
 def package_selection(args: argparse.Namespace) -> tuple[str, ...]:
-    selected = tuple(args.package or PRIMARY_PACKAGES)
-    if args.include_tui and "arctx-tui" not in selected:
-        selected = (*selected, "arctx-tui")
+    selected = tuple(args.package or ALL_PACKAGES)
     unknown = sorted(set(selected) - set(ALL_PACKAGES))
     if unknown:
         raise ValueError(f"Unknown package(s): {', '.join(unknown)}")
@@ -219,11 +208,6 @@ def main() -> int:
         action="append",
         choices=ALL_PACKAGES,
         help="Package to build/upload. May be repeated. Defaults to arctx and arctx-cli.",
-    )
-    parser.add_argument(
-        "--include-tui",
-        action="store_true",
-        help="Also include arctx-tui in the selected packages",
     )
     parser.add_argument("--no-clean", action="store_true", help="Do not remove dist directories")
     parser.add_argument("--skip-tests", action="store_true", help="Skip pytest during --prepare")

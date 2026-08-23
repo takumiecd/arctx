@@ -1,6 +1,6 @@
 """Re-export payload builder helpers from arctx.payload_builder.
 
-The implementation lives in arctx so that arctx-tui and other non-CLI
+The implementation lives in arctx so that non-CLI
 consumers can use it without depending on arctx-cli.
 """
 

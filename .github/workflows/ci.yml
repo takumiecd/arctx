@@ -33,24 +33,21 @@ jobs:
           git config --global user.name "ARCTX CI"
       - name: Install test dependencies
         # Packages run from source via PYTHONPATH, mirroring the documented
-        # dev workflow. We only need the runtime deps (typing-extensions for
-        # arctx, textual for arctx-tui) plus the test runner.
+        # dev workflow. We only need the runtime dep (typing-extensions) plus
+        # the test runner.
         run: |
           python -m pip install --upgrade pip
           python -m pip install \
             "typing-extensions>=4.0.0" \
-            "textual>=0.80" \
-            "pytest>=7.0" \
-            "pytest-asyncio>=0.21"
+            "pytest>=7.0"
       - name: Run tests
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src
+          PYTHONPATH: packages/arctx/src:packages/arctx-cli/src
         run: |
           python -m pytest \
             packages/arctx/tests \
             packages/arctx-cli/tests \
-            packages/arctx-tui/tests \
             --import-mode=importlib -q
 
   web:
@@ -93,7 +90,7 @@ jobs:
         run: python -m arctx.web.bundle
       - name: Build all packages
         run: |
-          for pkg in arctx arctx-cli arctx-tui; do
+          for pkg in arctx arctx-cli; do
             python -m build "packages/$pkg"
           done
       - name: twine check

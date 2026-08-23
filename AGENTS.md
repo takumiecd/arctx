@@ -4,21 +4,19 @@ This file provides guidance to Codex when working in this repository.
 
 ## Commands
 
-The packages are usually not installed during local development. Use `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src`.
+The packages are usually not installed during local development. Use `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src`.
 
-This repo contains three Python packages plus one web frontend. The primary, must-ship surface is **`arctx` (core) + `arctx-cli`**; `arctx-tui` is a de-prioritized secondary surface. The web GUI is the intended interactive direction (the TUI is experimental/legacy). Focus releases, tests, and docs on core + CLI.
+This repo contains two Python packages plus one web frontend. The must-ship surface is **`arctx` (core) + `arctx-cli`**; the web GUI is a secondary surface and the intended interactive direction. Focus releases, tests, and docs on core + CLI.
 
 The web frontend lives in **`web/`** (React + React Flow + Vite, import-free of the Python packages). It consumes the `arctx export --format json` document and, in live mode, the `arctx serve` HTTP API. The data contract is `arctx.core.run.export.json_document`, mirrored in `web/src/types.ts` — keep the two in sync. See `web/README.md`.
 - `arctx` (import name `arctx`) — core API, payloads, extensions. See `packages/arctx/`. **Primary.**
 - `arctx-cli` (import name `arctx_cli`, provides the `arctx` command) — argparse CLI. See `packages/arctx-cli/`. Depends only on `arctx`. **Primary.** Also hosts `arctx serve` (the dependency-free JSON API primitive every GUI frontend shares).
-- `arctx-tui` (import name `arctx_tui`, provides the `arctx-tui` command) — Textual TUI. See `packages/arctx-tui/`. Depends only on `arctx` and `textual`. Install separately: `pip install arctx-tui`. **Experimental / secondary — not a release blocker; may lag behind core+CLI.**
 
-- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/arctx/src:packages/arctx-cli/src:packages/arctx-tui/src python3 -m pytest packages/arctx/tests packages/arctx-cli/tests packages/arctx-tui/tests --import-mode=importlib -q`
+- Run all tests: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m pytest packages/arctx/tests packages/arctx-cli/tests --import-mode=importlib -q`
 - Run one test file: `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m pytest packages/arctx/tests/core/test_run_api.py -q`
 - CLI: `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m arctx_cli.main <subcommand> ...`
-- TUI (requires textual installed): `PYTHONPATH=packages/arctx/src:packages/arctx-tui/src python3 -m arctx_tui.main`
 - GUI (requires a built frontend — `npm --prefix web run build` first): `PYTHONPATH=packages/arctx/src:packages/arctx-cli/src python3 -m arctx_cli.main web --run <run> --no-browser`
-- Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/arctx/src packages/arctx-cli/src packages/arctx-tui/src`
+- Optional checks configured in `pyproject.toml`: `ruff check .`, `black .`, `mypy packages/arctx/src packages/arctx-cli/src`
 
 Docs are Japanese-first and should match the current implementation:
 
@@ -120,7 +118,7 @@ Current commands:
 - `serve` — local read/write HTTP API for one run (live-mode backend for GUIs). `GET /run` returns the same JSON document as `export --format json`; `POST /step` / `POST /attach` (node or step) / `POST /cut` write through the same verbs as `add` / `attach` / `cut`; `GET /health` for liveness. Stdlib-only (`http.server`), CORS-enabled (`--cors-origin`), default bind `127.0.0.1:8787`. Two layers: harness-neutral pure dispatcher `arctx/serve/api.py` (`dispatch(...)`, socket-free and unit-tested) + thin `http.server` shell `arctx/serve/server.py`. The JSON shapes are the contract a future FastAPI port would expose unchanged.
 - `migrate` — convert a jsonl run dir to sqlite
 
-Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (moved to standalone `arctx-tui` command).
+Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (the Textual TUI was removed from the repo entirely — see `arctx web`).
 
 Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
 `arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to
