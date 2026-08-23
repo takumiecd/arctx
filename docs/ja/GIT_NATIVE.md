@@ -39,11 +39,16 @@ ARCTX は Obsidian 型のツールになる。**データはリポジトリの�
   `<repo_root>/.arctx/runs`（既定）、(3) repo 外なら `$XDG_DATA_HOME/arctx/runs` /
   `~/.local/share/arctx/runs`。`resolve_arctx_home()` は run データではなく
   ユーザ設定 `config.json` の場所という意味に純化した
-- **キャッシュの置き場所**: run dir 内に置いたまま、`arctx init` が生成する
-  `.arctx/.gitignore` で除外する（run dir の中に閉じるほうが単純で、キャッシュの
-  寿命が run dir の寿命と一致するため）。除外対象は `run.cache.pkl` /
-  `.append.lock` / 一時ファイル。**除外してよいのは「消しても再生成できるもの」だけ**
-  で、書き込み先を除外してはならない（この規則を破っていたのが `run.db*` = Phase 6 参照）
+- **キャッシュの置き場所**: **run dir の外**（マシンローカルのキャッシュ根:
+  `ARCTX_CACHE_DIR` → `$XDG_CACHE_HOME/arctx` → `~/.cache/arctx`、run dir の絶対パス
+  でキー付け）。当初は run dir 内に置いて gitignore していたが、**キャッシュは
+  pickle であり、unpickle は実行**なので、zip / 共有ドライブ / NFS で受け取った run dir
+  が細工した `run.cache.pkl` を運べてしまう（git 経由では飛ばないので気づきにくい）。
+  run dir 内に残っている旧 `run.cache.pkl` は**読まずに削除**する。
+  `.arctx/.gitignore` の除外対象は `run.cache.pkl`（旧）/ `.append.lock` /
+  `.append.journal` / `*.jsonl.broken` / 一時ファイル。**除外してよいのは「消しても
+  再生成できるもの」だけ**で、書き込み先を除外してはならない（この規則を破っていたのが
+  `run.db*` = Phase 6 参照）
 - **重複の解決**: 同一 ID の重複行は**最初の 1 行が勝つ**。レコードは immutable
   なので重複行は同一内容であり、first/last の選択は結果に影響しない（行順非依存に
   なることだけが目的）

@@ -1,8 +1,24 @@
 """Pickle-based RunGraph load cache for run directories.
 
-The cache file ``run.cache.pkl`` lives inside the run directory alongside
-``run.json`` / ``nodes.jsonl`` etc.  It is a derived artefact:
+The cache lives **outside** the run directory, under a machine-local cache
+root, keyed by the run directory's absolute path.  It is a derived artefact:
 removing it is always safe — the only consequence is a slower ``load_run``.
+
+It has to live outside because it is a pickle, and unpickling is executing.
+When the cache sat next to ``run.json``, a run directory handed to you any way
+other than git — a zip, a shared drive, an NFS mount, a colleague's USB stick —
+could carry a crafted ``run.cache.pkl``, and then a read-only ``arctx dump``
+ran whatever was in it:
+
+    $ arctx dump
+    *** code from run.cache.pkl executed ***
+    run=pkl  nodes=2  steps=1
+
+Git was never the exposed path (the file is git-ignored), which is exactly what
+made this easy to miss. Under the cache root the file is one only this user
+writes, which is the same trust level as any other user-local cache. A stale
+``run.cache.pkl`` found inside a run directory is now deleted on sight rather
+than read.
 
 Cache structure (pickled dict)::
 
@@ -110,9 +126,49 @@ CACHE_SCHEMA_VERSION: int = 8
 _CACHE_FILENAME = "run.cache.pkl"
 
 
+def cache_root() -> Path:
+    """Machine-local directory holding derived caches.
+
+    Priority mirrors :func:`arctx.paths.arctx_home`:
+    1. ``ARCTX_CACHE_DIR``
+    2. ``$XDG_CACHE_HOME/arctx``
+    3. ``~/.cache/arctx``
+    """
+    env = os.environ.get("ARCTX_CACHE_DIR")
+    if env:
+        return Path(env)
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        return Path(xdg) / "arctx"
+    return Path.home() / ".cache" / "arctx"
+
+
 def cache_path(run_dir: Path) -> Path:
-    """Return the path to the cache file for *run_dir*."""
-    return run_dir / _CACHE_FILENAME
+    """Where *run_dir*'s cache lives — outside *run_dir*.
+
+    Keyed by the run directory's absolute path, so two checkouts of the same
+    run (two worktrees, two clones) get their own cache instead of fighting
+    over one.
+    """
+    try:
+        key = str(run_dir.resolve())
+    except OSError:  # pragma: no cover - defensive
+        key = str(run_dir)
+    digest = hashlib.blake2b(key.encode("utf-8"), digest_size=8).hexdigest()
+    return cache_root() / f"{run_dir.name}-{digest}.pkl"
+
+
+def discard_legacy_cache(run_dir: Path) -> None:
+    """Remove a pre-0.4.6 cache written inside the run directory.
+
+    Deleting rather than reading it: the file is derived, so nothing is lost,
+    and it is the one file in a run directory that executes when read.
+    """
+    legacy = run_dir / _CACHE_FILENAME
+    try:
+        legacy.unlink()
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+        pass
 
 
 def load_cache(run_dir: Path, expected_fingerprint: Fingerprint) -> RunGraph | None:
@@ -122,6 +178,7 @@ def load_cache(run_dir: Path, expected_fingerprint: Fingerprint) -> RunGraph | N
     version matches, and the stored fingerprint equals *expected_fingerprint*.
     Returns ``None`` in every other case (file absent, corrupt, stale).
     """
+    discard_legacy_cache(run_dir)
     path = cache_path(run_dir)
     if not path.exists():
         return None
@@ -160,7 +217,8 @@ def save_cache(run_dir: Path, fingerprint: Fingerprint, graph: RunGraph) -> None
     try:
         # Write to a temp file in the same directory so os.replace is atomic
         # (same filesystem).
-        fd, tmp_path = tempfile.mkstemp(dir=run_dir, prefix=".cache_tmp_", suffix=".pkl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=".cache_tmp_", suffix=".pkl")
         try:
             with os.fdopen(fd, "wb") as fh:
                 pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)

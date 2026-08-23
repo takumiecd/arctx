@@ -18,8 +18,10 @@ arctx dump --format outline
 - `arctx init <req_id>` は `<repo_root>/.arctx/runs` 配下に run を作成します
   (git-native ストレージ: run データはリポジトリの中に置き、共有は git に委ねます)。
   同時に `<repo_root>/.arctx/.gitattributes`（`* linguist-generated=true` と
-  `*.jsonl merge=union`）と `.arctx/.gitignore`（`run.cache.pkl` などの
-  派生ファイルを除外）を冪等に書き込みます。除外してよいのは**消しても再生成できる
+  `*.jsonl merge=union`）と `.arctx/.gitignore`（`.append.lock` / `.append.journal` /
+  `*.jsonl.broken` などの派生ファイルを除外）を冪等に書き込みます。ロードキャッシュは
+  run dir の**外**（`ARCTX_CACHE_DIR` → `$XDG_CACHE_HOME/arctx` → `~/.cache/arctx`）に
+  置かれます — pickle を run データと一緒に配ると、受け取った側が読むだけで実行されるため。除外してよいのは**消しても再生成できる
   ものだけ**です（書き込み先を除外すると、その記録が commit に入らなくなる）。
   `ARCTX_HOME` が設定されている場合、または git repo の外で実行した場合は
   従来どおり `<ARCTX_HOME>/runs` が使われます。`--store-dir` で明示指定も可能です。

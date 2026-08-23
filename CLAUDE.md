@@ -212,7 +212,7 @@ and its output Node inherits the Step's lane. Verbs: `lane create` / `switch` /
 
 ## Storage
 
-`JsonlRunStore` writes the current schema only. A run directory contains:
+`JsonlRunStore` writes the current schema only. The load cache is **not** in the run directory — it is a pickle, and unpickling is executing, so it lives under a machine-local cache root (`ARCTX_CACHE_DIR` → `$XDG_CACHE_HOME/arctx` → `~/.cache/arctx`) keyed by the run directory's absolute path; a legacy `run.cache.pkl` found inside a run directory is deleted on sight, never read. A run directory contains:
 
 - `run.json`
 - `graph.json` (RunGraph metadata)
