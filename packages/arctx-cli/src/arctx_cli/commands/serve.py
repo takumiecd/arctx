@@ -29,8 +29,16 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
                         help="Bind host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8787,
                         help="Bind port (default: 8787)")
-    parser.add_argument("--cors-origin", default="*",
-                        help="Access-Control-Allow-Origin value (default: *)")
+    parser.add_argument(
+        "--cors-origin",
+        default=None,
+        help=(
+            "Extra browser origin(s) allowed to call this server, comma separated. "
+            "By default only loopback origins are, which covers the bundled GUI and "
+            "a local dev server. '*' allows any website your browser visits to read "
+            "and write this run."
+        ),
+    )
     parser.add_argument("--run", default=None)
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
