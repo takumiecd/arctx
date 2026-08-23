@@ -574,7 +574,7 @@ run を共有しつつ各 agent に独立した checkout を与えます。
 
 `arctx serve` は 1 つの run を読み書きできるローカル HTTP API として公開します。
 GUI の live モード用バックエンドです（共有用の静的 JSON とは別物）。標準ライブラリ
-（`http.server`）のみで動き、追加インストール不要・CORS 対応です。
+（`http.server`）のみで動き、追加インストール不要です。ループバックにバインドし、**ループバック以外のオリジン / ホスト名からのリクエストは 403 で拒否**します（`arctx.serve.guard`）。
 
 - `GET /run` — `export --format json` と同じデータ契約（全 node/step/payload、`lane_edge_summaries`）に加え、live API の現在 lane（`current_lane_id` / `current_lane_name`）を返す。
 - `POST /step` — `{ "input_node_ids": [...], "type": ..., "content": {...} }` で Step を作成（出力 node も同時に生成）。
@@ -602,7 +602,7 @@ Asset 読み出しはリクエスト時に git を叩いて解決します（い
 通るため、CLI と API が記録方法でズレることはありません。
 
 - `--host`（デフォルト `127.0.0.1`）/ `--port`（デフォルト `8787`）
-- `--cors-origin`（デフォルト `*`）: 別オリジンのフロント開発サーバから叩けるようにする。
+- `--cors-origin`（デフォルトなし = ループバックのみ）: 追加で許可するブラウザオリジンをカンマ区切りで指定する。既定でも同梱 GUI とローカルの dev サーバは通るので、通常は不要。**`*` を渡すと、ブラウザで開いた任意のサイトがこの run を読み書きできる**（起動時に警告が出る）。
 - `--run` / `--store-dir` / `--user` / `--lane`: 他の変更系コマンドと共通。
 
 ## Graph

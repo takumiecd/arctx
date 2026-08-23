@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from arctx.serve.api import dispatch
+from arctx.serve.guard import RequestGuard, guard_from_cors_option
 from arctx.web.extensions import WebRequest, WebRoute
 from arctx.web.layouts import get_layout, save_layout
 
@@ -36,8 +37,9 @@ def build_handler(
     lane_id: str,
     extension_scripts: list[str] | tuple[str, ...] = (),
     extension_routes: list[WebRoute] | tuple[WebRoute, ...] = (),
-    cors_origin: str = "*",
+    guard: RequestGuard | None = None,
 ) -> type[BaseHTTPRequestHandler]:
+    guard = guard or RequestGuard()
     route_map = {(route.method.upper(), route.path.rstrip("/") or "/"): route.handler for route in extension_routes}
 
     class _Handler(BaseHTTPRequestHandler):
@@ -45,12 +47,26 @@ def build_handler(
             pass
 
         def _cors(self) -> None:
-            self.send_header("Access-Control-Allow-Origin", cors_origin)
+            allow = guard.acao(self.headers.get("Origin"))
+            self.send_header("Vary", "Origin")
+            if allow is None:
+                return
+            self.send_header("Access-Control-Allow-Origin", allow)
             self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
             self.send_header(
                 "Access-Control-Allow-Headers",
                 "Content-Type, X-Arctx-Run-Id, X-Arctx-Work-Session-Id, X-Arctx-Lane-Id",
             )
+
+        def _refused(self) -> bool:
+            """Answer 403 and stop when this request is not ours to serve."""
+            reason = guard.reject(
+                origin=self.headers.get("Origin"), host=self.headers.get("Host")
+            )
+            if reason is None:
+                return False
+            self._send_json(403, {"error": reason, "code": "forbidden_origin"})
+            return True
 
         def _send_json(self, status: int, payload: dict) -> None:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -180,6 +196,8 @@ def build_handler(
             self._send_bytes(200, data, ctype or "application/octet-stream")
 
         def do_GET(self) -> None:
+            if self._refused():
+                return
             if self._is_api():
                 self._api("GET")
             elif self._is_web_api():
@@ -188,6 +206,8 @@ def build_handler(
                 self._serve_static()
 
         def do_POST(self) -> None:
+            if self._refused():
+                return
             if self._is_api():
                 self._api("POST")
             elif self._is_web_api():
@@ -196,6 +216,8 @@ def build_handler(
                 self._send_json(404, {"error": "not found"})
 
         def do_PUT(self) -> None:
+            if self._refused():
+                return
             if self._is_web_api():
                 self._web_api("PUT")
             else:
@@ -215,22 +237,26 @@ def serve_gui(
     lane_id: str = "default",
     extension_scripts: list[str] | tuple[str, ...] = (),
     extension_routes: list[WebRoute] | tuple[WebRoute, ...] = (),
-    cors_origin: str = "*",
+    cors_origin: str | None = None,
     on_ready: Callable[[str], None] | None = None,
 ) -> None:
+    guard = guard_from_cors_option(cors_origin)
     handler = build_handler(
         store,
         run_id,
         static_dir=static_dir,
         user_id=user_id,
         lane_id=lane_id,
-        cors_origin=cors_origin,
+        guard=guard,
         extension_scripts=extension_scripts,
         extension_routes=extension_routes,
     )
     httpd = ThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}/"
     print(f"arctx web: {url}  (run {run_id})")
+    if guard.allow_any_origin:
+        print("  WARNING: --cors-origin '*' lets any website in your browser read and")
+        print("           write this run for as long as this server is up.")
     if on_ready is not None:
         on_ready(url)
     try:
