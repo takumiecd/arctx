@@ -1,7 +1,7 @@
 {
   "name": "arctx-web",
   "private": true,
-  "version": "0.4.5-b1",
+  "version": "0.4.6-b1",
   "type": "module",
   "description": "Web GUI for ARCTX experiment graphs. Live mode talks to `arctx serve`; static mode renders an embedded run document.",
   "scripts": {
