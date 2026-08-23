@@ -8,7 +8,13 @@ from pathlib import Path
 from arctx import init
 from arctx.core.schema.payloads import StepPayload
 from arctx.core.schema.requirements import Requirement
-from arctx.storage._cache import CACHE_SCHEMA_VERSION, load_cache, save_cache
+from arctx.storage._cache import (
+    CACHE_SCHEMA_VERSION,
+    FINGERPRINTED_FILES,
+    fingerprint,
+    load_cache,
+    save_cache,
+)
 from arctx.storage.jsonl import JsonlRunStore
 
 
@@ -42,7 +48,7 @@ def test_cache_roundtrip():
         assert len(cached.nodes) == len(run.run_graph.nodes)
 
 
-def test_cache_miss_on_stale_counts():
+def test_cache_miss_on_stale_key():
     run = init(_req(), run_id="cache_stale")
     with tempfile.TemporaryDirectory() as td:
         store = JsonlRunStore(td)
@@ -87,3 +93,75 @@ def test_cache_miss_when_payload_registry_differs(monkeypatch):
             _cache, "registered_payload_types", lambda: ("something", "else")
         )
         assert load_cache(run_dir, row_counts) is None
+
+
+def test_cache_miss_when_content_changes_but_row_count_does_not():
+    """The failure this fingerprint exists for.
+
+    Storage is git-native, so the ordinary way a run directory changes is a
+    checkout, and a checkout routinely swaps content while leaving the number
+    of lines alone. Keyed on row counts, the cache answered such a swap with
+    the *previous* branch's run — no error, just the wrong data.
+    """
+    run = init(_req(), run_id="cache_swap")
+    run.add_step([run.root_node_id], StepPayload(payload_id="_", target_id="_",
+                                                 type="experiment",
+                                                 content={"where": "BRANCH-A"}))
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(run)
+        run_dir = Path(td) / "cache_swap"
+
+        before = store.load_run("cache_swap")
+        assert _where(before) == "BRANCH-A"
+
+        payloads = run_dir / "payloads.jsonl"
+        rows = payloads.read_text(encoding="utf-8").splitlines()
+        swapped = [line.replace("BRANCH-A", "BRANCH-B") for line in rows]
+        assert len(swapped) == len(rows)  # same row count, different content
+        payloads.write_text("\n".join(swapped) + "\n", encoding="utf-8")
+
+        after = store.load_run("cache_swap")
+        assert _where(after) == "BRANCH-B"
+
+
+def test_cache_miss_when_a_lane_event_changes():
+    """lane_events.jsonl is read by load_run, so it must be fingerprinted.
+
+    Row counts covered five files; this was not one of them, so a lane close
+    arriving by `git pull` left the cache claiming the lane was still open.
+    """
+    run = init(_req(), run_id="cache_lane_events")
+    with tempfile.TemporaryDirectory() as td:
+        store = JsonlRunStore(td)
+        store.save_run(run)
+        run_dir = Path(td) / "cache_lane_events"
+
+        first = fingerprint(run_dir)
+        (run_dir / "lane_events.jsonl").write_text(
+            '{"event_id": "we_x", "event_type": "lane_closed"}\n', encoding="utf-8"
+        )
+        assert fingerprint(run_dir) != first
+
+
+def test_fingerprint_covers_every_file_load_run_reads():
+    """A file added to the load path must be added to the fingerprint.
+
+    Forgetting one is invisible in every test that does not edit that
+    particular file, and shows up in the field as a stale read.
+    """
+    import inspect
+    import re
+
+    source = inspect.getsource(JsonlRunStore.load_run)
+    read = set(re.findall(r'"([A-Za-z_]+\.jsonl?|[A-Za-z_]+\.json)"', source))
+    missing = read - set(FINGERPRINTED_FILES)
+    assert not missing, f"load_run reads {sorted(missing)}, which the cache does not fingerprint"
+
+
+def _where(handle) -> str | None:
+    for payload in handle.run_graph.payloads.values():
+        value = (getattr(payload, "content", None) or {}).get("where")
+        if value:
+            return value
+    return None
