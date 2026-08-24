@@ -76,7 +76,7 @@ ARCTX には独立した 3 つの状態があります:
 - **Run:** `<repo_root>/.arctx/runs/<run_id>` 配下のグラフ
   （`ARCTX_HOME` 指定時と git repo 外では `<ARCTX_HOME>/runs/<run_id>`）。
 - **Repo pointer:** `<gitdir>/arctx-id`。`arctx init`, `arctx use`,
-  `arctx git init` が書き込む。
+  `arctx init --extension git` が書き込む。
 - **Shell pointer:** `ARCTX_RUN_ID`。`eval "$(arctx use <run_id> --shell)"` で
   設定する（この端末だけに効き、repo pointer は書かない）。
 
@@ -97,13 +97,13 @@ ARCTX_RUN_ID
 ```bash
 cd ~/dev/my-repo
 arctx init "feature X" --run-id run_x --extension git
-arctx git init
-arctx git commit -m "first change"
+git commit -m "first change"
+arctx add --title "first change" --type commit --commit HEAD
 ```
 
-`arctx init --extension git` は run を作成し git 連携を有効化します。
-`arctx git init` はこの checkout を run に紐づけ（repo pointer）、hook を
-インストールします。その後は通常の `arctx git ...` コマンドが repo pointer から
+`arctx init --extension git` は run を作成し、git 連携を有効化し、この checkout を
+run に紐づけます（repo pointer）。**hook は入れません** — コミットは自分で作り、
+`arctx add --commit HEAD` で記録します。以後 `arctx git ...` は repo pointer から
 run を解決できます。
 
 ## 1 Run = 1 Repo
@@ -160,9 +160,9 @@ run ディレクトリを NFS やクラウド同期フォルダ経由で複数�
 並列 coding agent では、work session と git worktree を組み合わせます:
 
 ```bash
-arctx git worktree add ../my-repo-codex codex/run-x --base main
-export ARCTX_GIT_WORKTREE=../my-repo-codex
+git worktree add ../my-repo-codex -b codex/run-x main
+cd ../my-repo-codex
 ```
 
-`ARCTX_GIT_WORKTREE` が設定されていると、git verb は shell の cwd が別の場所でも
+arctx は git を実行しないので worktree 設定は不要です。その worktree でコミットし、そこで `arctx add --commit HEAD` を実行してください。以前は shell の cwd が別の場所でも
 その worktree 内で実行されます。

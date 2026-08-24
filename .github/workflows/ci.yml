@@ -102,6 +102,21 @@ jobs:
       - name: twine check
         run: python -m twine check packages/*/dist/*
 
+  docs:
+    name: docs name real commands
+    runs-on: ubuntu-latest
+    # Prose drifts away from the parser silently. It has happened twice: #60
+    # (README naming a command that was never registered) and the `claude-code`
+    # adapter, documented in CLAUDE.md for months after the command was
+    # deleted. Both are cheap to catch mechanically.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip "typing-extensions>=4.0.0"
+      - run: python .github/check_documented_commands.py
+
   installed:
     name: installed wheel (py${{ matrix.python-version }})
     runs-on: ubuntu-latest

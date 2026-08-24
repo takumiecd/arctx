@@ -61,10 +61,12 @@ arctx cut --node <tip> --reason "grow-score not smooth at scale"  # 非活性化
 
 ## 5. 同期 = union（arctx ネイティブ）
 
+> **未実装**: 以下の `arctx remote` / `push` / `pull` は設計案であり、まだ CLI に登録されていません。現状の共有手段は git です（run はリポジトリの中にあり、jsonl は `merge=union` でマージされます）。
+
 ```bash
-arctx remote add origin <dir>   # remote 登録（v1 はファイル共有ログ）
-arctx push                      # 相手に無い record を送る（ID差分・冪等）
-arctx pull                      # 相手の record を取り込む＝union
+# 未実装（設計案）: arctx remote add origin <dir>   # remote 登録（v1 はファイル共有ログ）
+# 未実装（設計案）: arctx push                      # 相手に無い record を送る（ID差分・冪等）
+# 未実装（設計案）: arctx pull                      # 相手の record を取り込む＝union
 ```
 
 統合は **ID-aware な union**（append-only・冪等・可換・収束）。git をお手本にしつつ
@@ -87,7 +89,7 @@ PR は **DAG の中の append-only な審査状態**。提案は転送(push)で�
 | レビュー | `arctx log` / `arctx dump` |
 | 採用（整合性チェック付き統合） | `arctx accept <source>`（NGなら拒否→rebase 再提案） |
 | 却下（残す） | `arctx reject <source> --reason ...`（＝cut） |
-| 同期 | `arctx push` / `arctx pull`（remote は `arctx remote add`、union 収束） |
+| 同期 | `arctx push` / `arctx pull`（remote は `arctx remote add`、union 収束）— **未実装** |
 
 `accept` は内部で多入力 `add`（join）を走らせ、土台が cut／サイクル／target が
 前進していたら **拒否**（黙ってグラフを壊さない）。`reject` は `cut`。整合性の検査は

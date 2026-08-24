@@ -10,7 +10,7 @@ Node -> Step -> Node -> Step -> Node
 
 コアは standalone で git に依存しません。Git 連携は `arctx.ext.git` 配下の
 標準 extension で、正準 CLI は `arctx git <verb>`、一般的なワークフロー向けに
-`arctx commit` などのデフォルト alias があります。
+`arctx verify` のデフォルト alias があります。
 
 ARCTX の本体は記録です。CLI は LLM agent 向けの記録プロトコル、Web は
 記録を読み返すための補助的なレビュー面として役割を分けます。Web の入口は
@@ -32,26 +32,10 @@ Web 独自の状態モデルは作りません。Overview、検索、比較、�
 `arctx export --format json` の同じ RunGraph / Payload / Lane データから導出し、
 書き込みは core の `add` / `attach` / `cut` / lane 操作に変換します。
 
-## Git worktree 対応ワークフロー
+## Git worktree との併用
 
-Git extension は worktree 対応です。`Lane` を特定の `git worktree` に
-attach でき、そのセッション内の ARCTX コマンドは git サブプロセスを紐づいた
-working tree の中で実行します:
-
-- `ARCTX_GIT_WORKTREE` はすべての git verb
-  (`arctx git commit / revert / cherry-pick / merge / reset / verify`) の cwd を
-  上書きします。
-- worktree の指定は `ARCTX_GIT_WORKTREE=PATH` の export です。git verb はこれを
-  読み、git サブプロセスを shell cwd ではなくそのパスで実行します
-  （`arctx.ext.git.helpers.repo`）。専用の attach コマンドはありません。
-- `arctx git worktree {add,list,remove}` は上流の `git worktree` plumbing の
-  薄いラッパーです。ライフサイクルは git 側に残るため、ARCTX の外で作成された
-  worktree も attach できます。
-
-考えられるフォローアップ:
-
-- worktree パスを `arctx lane list` / TUI ビューで表示する。
-- agent が単一セッション中に worktree を移動した際、step ごとの workspace
-  パスを記録する。
-- `ARCTX_GIT_WORKTREE` が存在しないディレクトリを指す場合に、その場で
-  worktree を生成する（あるいは明確に落とす）。
+arctx は git を実行しないので、worktree を arctx に教える設定はありません
+(`ARCTX_GIT_WORKTREE` と `arctx git worktree` は削除済み)。各 agent に独立した
+checkout を与えるには、`git worktree add` でツリーを作り、その中でコミットし、
+そこで `arctx add --commit HEAD` を実行します。1 つの ARCTX run を共有しつつ、
+git 側のライフサイクルは git に残ります。

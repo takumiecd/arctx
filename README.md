@@ -98,13 +98,15 @@ You try variant A, it gets slower. You try variant B, it gets faster. Three mont
 # 1. Baseline. Capture its node id so the experiments can branch off it.
 arctx init optimize --extension git --run-id bench
 echo "def f(): pass" > work.py && git add work.py
-BASE=$(arctx git commit -m "baseline: naive loop" | jq -r .output_node_id)
+git commit -qm "baseline: naive loop"
+BASE=$(arctx add --title "baseline: naive loop" --type commit --commit HEAD | jq -r .output_node_id)
 
 # 2. Hypothesis A — add a cache layer, branched off the baseline node.
 git checkout -b feat/cache
 # ...edit...
 git add .
-A=$(arctx git commit -m "add cache (hypothesis A)" --from "$BASE" | jq -r .output_node_id)
+git commit -qm "add cache (hypothesis A)"
+A=$(arctx add --title "add cache (hypothesis A)" --type commit --commit HEAD --from "$BASE" | jq -r .output_node_id)
 arctx attach "$A" --type benchmark \
   --json '{"elapsed_ms": 1200, "note": "slower than baseline"}'
 
@@ -115,7 +117,8 @@ arctx cut "$A" --reason "slower than baseline"
 git checkout main && git checkout -b feat/vectorize
 # ...edit...
 git add .
-B=$(arctx git commit -m "vectorize (hypothesis B)" --from "$BASE" | jq -r .output_node_id)
+git commit -qm "vectorize (hypothesis B)"
+B=$(arctx add --title "vectorize (hypothesis B)" --type commit --commit HEAD --from "$BASE" | jq -r .output_node_id)
 arctx attach "$B" --type benchmark \
   --json '{"elapsed_ms": 180, "note": "5x faster than baseline"}'
 ```
@@ -143,7 +146,8 @@ Claude and Codex drive the same run without stepping on each other.
 
 ```bash
 # Shared baseline. Both agents branch their work off this node id.
-BASE=$(arctx git commit -m "baseline" --run demo | jq -r .output_node_id)
+git commit -qm "baseline"
+BASE=$(arctx add --title "baseline" --type commit --commit HEAD --run demo | jq -r .output_node_id)
 
 # Terminal 1 — Claude. Pin the run and a lane to this terminal only.
 eval "$(arctx use demo --shell)"
@@ -152,7 +156,8 @@ eval "$(arctx lane switch claude --shell)"
 export ARCTX_USER_ID=claude
 git checkout -b claude/vec
 # ...edits...
-git add . && arctx git commit -m "Claude: vectorize inner loop" --from "$BASE"
+git add . && git commit -qm "Claude: vectorize inner loop"
+arctx add --title "Claude: vectorize inner loop" --type commit --commit HEAD --from "$BASE"
 
 # Terminal 2 — Codex (running at the same time)
 eval "$(arctx use demo --shell)"
@@ -161,7 +166,8 @@ eval "$(arctx lane switch codex --shell)"
 export ARCTX_USER_ID=codex
 git checkout main && git checkout -b codex/map
 # ...edits...
-git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
+git add . && git commit -qm "Codex: parallel map"
+arctx add --title "Codex: parallel map" --type commit --commit HEAD --from "$BASE"
 ```
 
 Both land in the same `RunGraph` as sibling steps off the baseline. Each
@@ -186,20 +192,23 @@ Record every hypothesis as you chase a bug; walk it backwards once you find the 
 ```bash
 arctx init debug --extension git --run-id bug-42
 echo "# repro" > repro.py && git add repro.py
-REPRO=$(arctx git commit -m "reproduction script" | jq -r .output_node_id)
+git commit -qm "reproduction script"
+REPRO=$(arctx add --title "reproduction script" --type commit --commit HEAD | jq -r .output_node_id)
 
 # Hypothesis: race condition in cache
 git checkout -b try/race-fix
 # ...edit...
 git add .
-R=$(arctx git commit -m "fix: add lock around cache" --from "$REPRO" | jq -r .output_node_id)
+git commit -qm "fix: add lock around cache"
+R=$(arctx add --title "fix: add lock around cache" --type commit --commit HEAD --from "$REPRO" | jq -r .output_node_id)
 arctx attach "$R" --type observation --json '{"result": "still flaky"}'
 
 # Hypothesis: off-by-one in index
 git checkout main && git checkout -b try/index-fix
 # ...edit...
 git add .
-I=$(arctx git commit -m "fix: correct loop bound" --from "$REPRO" | jq -r .output_node_id)
+git commit -qm "fix: correct loop bound"
+I=$(arctx add --title "fix: correct loop bound" --type commit --commit HEAD --from "$REPRO" | jq -r .output_node_id)
 arctx attach "$I" --type observation --json '{"result": "bug gone - 3 runs green"}'
 ```
 
@@ -281,7 +290,8 @@ pip install arctx-cli
 
 arctx init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py
-BASE=$(arctx git commit -m "baseline" | jq -r .output_node_id)
+git commit -qm "baseline"
+BASE=$(arctx add --title "baseline" --type commit --commit HEAD | jq -r .output_node_id)
 
 arctx log                              # walk the DAG
 arctx dump --format outline            # or dump it as an LLM-friendly outline
@@ -300,7 +310,8 @@ eval "$(arctx lane switch claude --shell)"
 export ARCTX_USER_ID=claude
 git checkout -b claude/vec
 # ...edits...
-git add . && arctx git commit -m "Claude: vectorization" --from "$BASE"
+git add . && git commit -qm "Claude: vectorization"
+arctx add --title "Claude: vectorization" --type commit --commit HEAD --from "$BASE"
 
 # Codex's terminal (running in parallel)
 eval "$(arctx use demo --shell)"
@@ -309,7 +320,8 @@ eval "$(arctx lane switch codex --shell)"
 export ARCTX_USER_ID=codex
 git checkout main && git checkout -b codex/map
 # ...edits...
-git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
+git add . && git commit -qm "Codex: parallel map"
+arctx add --title "Codex: parallel map" --type commit --commit HEAD --from "$BASE"
 ```
 
 Both branches land in the same `RunGraph` as sibling steps off `$BASE`. See `examples/demo_cli.tape` and `examples/demo_env.sh` for the runnable VHS recording of this scenario.
@@ -326,18 +338,18 @@ Both branches land in the same `RunGraph` as sibling steps off `$BASE`. See `exa
 can edit, stage, and commit without trampling each other:
 
 ```bash
-# Set up two worktrees on independent branches.
-arctx git worktree add ../wt-claude claude/vec
-arctx git worktree add ../wt-codex  codex/map
+# Set up two worktrees on independent branches, with git itself.
+git worktree add ../wt-claude -b claude/vec
+git worktree add ../wt-codex  -b codex/map
 
-# Each terminal pins its own run, lane, user, and worktree. The git verbs
-# (`arctx git commit`, `revert`, `merge`, ...) read ARCTX_GIT_WORKTREE and run
-# their git subprocess there instead of in the shell's cwd.
+# Each terminal pins its own run, lane, and user, and simply works inside its
+# own worktree. arctx never runs git for you, so there is nothing extra to
+# point at the worktree — you commit there, and name the sha when you record.
 eval "$(arctx use demo --shell)"
 arctx lane create claude --purpose "vectorization" --user claude
 eval "$(arctx lane switch claude --shell)"
 export ARCTX_USER_ID=claude
-export ARCTX_GIT_WORKTREE=../wt-claude
+cd ../wt-claude
 ```
 
 Both agents still land their commits as sibling steps in the same
@@ -359,7 +371,7 @@ RunGraph
 - Each **attempt / experiment / action is recorded as a step**, producing an output node that represents the resulting state.
 - `NodePayload` / `StepPayload` — generic annotations, distinguished by a `type` string.
 - `CutPayload` — append-only invalidation. The target isn't deleted; it's filtered out at read time.
-- `GitChangePayload` — attached by the `git` extension on every `arctx git commit`.
+- `GitChangePayload` — a reference to commits you already made, recorded by `arctx add --commit <ref>` (or `arctx git add`). Diffs are derived from git at read time, never copied.
 
 Activity ("is this node still in scope?") is computed at read time from `RunGraph` + cut payloads. The store is never rewritten.
 
@@ -376,12 +388,12 @@ Activity ("is this node still in scope?") is computed at read time from `RunGrap
 | `arctx cut <node-or-step>` | Mark a node or step inactive via append-only payload. |
 | `arctx show [id]` | Show the current run or a single node/step/payload. |
 | `arctx log` | Show the DAG as an ordered event stream. |
-| `arctx git commit -m ...` | Drive a real `git commit` and record a `Step` with `GitChangePayload`. |
+| `arctx add --commit HEAD` | Record a Step that stands for a commit **you** made. arctx never runs git; the lane position is `arctx add`'s, so there is only one mechanism to go out of sync. |
 | `arctx lane create <name>` | Open a lane — a flat, git-branch-like unit of work with a purpose and a required summary on close. |
 | `arctx lane switch <name> --shell` | Print `export ARCTX_LANE_ID=…` so one terminal gets its own lane, without writing the repo-wide pointer. |
 | `arctx topic tag <name> <id>...` | Bundle records into a subject across the graph. Connectivity is not required — 2+ islands is a join *candidate*, not an error. |
 | `arctx topic summarize <name> --summary ...` | The subject's current statement. `arctx topics` lists every subject with its statement and island count. |
-| `arctx git worktree add <path> [branch]` | Thin wrapper over `git worktree add`. Export `ARCTX_GIT_WORKTREE=<path>` to make the git verbs run inside it. |
+| `arctx git show --step <id>` | The commits recorded on a step, plus the diff git reports for them right now. |
 | `arctx dump --format outline` | LLM-friendly indented spanning-tree dump of the whole run. |
 | `arctx dump --format mermaid` | Mermaid flowchart for humans / docs. |
 

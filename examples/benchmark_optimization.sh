@@ -30,7 +30,8 @@ PY
 # Capture the baseline node so both hypotheses fan out from the SAME baseline,
 # even after one of them is cut.
 git add work.py
-BASE=$(arctx git commit -m "baseline: naive loop" | node_id)
+git commit -qm "baseline: naive loop"
+BASE=$(arctx add --title "baseline: naive loop" --type commit --commit HEAD | node_id)
 
 # 3. Hypothesis A — add a cache layer (spoiler: it gets slower)
 git checkout -b feat/cache
@@ -48,7 +49,8 @@ def sum_list(data):
     return total
 PY
 git add work.py
-STEP_A=$(arctx git commit -m "hypothesis A: add cache layer" --from "$BASE" | step_id)
+git commit -qm "hypothesis A: add cache layer"
+STEP_A=$(arctx add --title "hypothesis A: add cache layer" --type commit --commit HEAD --from "$BASE" | step_id)
 
 # Attach benchmark result to the step — slower than baseline
 arctx attach "$STEP_A" \
@@ -66,7 +68,8 @@ def sum_list(data):
     return sum(data)
 PY
 git add work.py
-STEP_B=$(arctx git commit -m "hypothesis B: use built-in sum" --from "$BASE" | step_id)
+git commit -qm "hypothesis B: use built-in sum"
+STEP_B=$(arctx add --title "hypothesis B: use built-in sum" --type commit --commit HEAD --from "$BASE" | step_id)
 
 # Attach benchmark result to the step — much faster
 arctx attach "$STEP_B" \

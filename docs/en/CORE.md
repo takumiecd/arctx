@@ -60,10 +60,15 @@ Accept (merge) = simply don't cut. To continue, stack more `add` on the tip.
 
 ## 5. Sync = union (arctx-native)
 
+> **Not implemented**: the `arctx remote` / `push` / `pull` verbs below are a
+> design sketch and are not registered in the CLI. Sharing works through git
+> today — the run lives in the repository and its jsonl merges with
+> `merge=union`.
+
 ```bash
-arctx remote add origin <dir>   # register a remote (v1: a file-backed shared log)
-arctx push                      # send records the remote lacks (id diff, idempotent)
-arctx pull                      # union the remote's records in
+# not implemented (design sketch): arctx remote add origin <dir>   # register a remote (v1: a file-backed shared log)
+# not implemented (design sketch): arctx push                      # send records the remote lacks (id diff, idempotent)
+# not implemented (design sketch): arctx pull                      # union the remote's records in
 ```
 
 Merging across people/machines is an **ID-aware union** (append-only, idempotent,
@@ -89,7 +94,7 @@ A PR is an append-only review STATE in the DAG. Proposing is not a transport
 | review | `arctx log` / `arctx dump` |
 | accept (guarded merge) | `arctx accept <source>` (refused → rebase & re-propose) |
 | reject (kept) | `arctx reject <source> --reason ...` (= cut) |
-| sync | `arctx push` / `arctx pull` (`arctx remote add` first; union converges) |
+| sync | `arctx push` / `arctx pull` (`arctx remote add` first; union converges) — **not implemented** |
 
 `accept` runs a multi-input `add` (join); if the base was cut, it would
 cycle, or the target advanced, it is **refused** (never silent corruption).

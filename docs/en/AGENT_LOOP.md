@@ -41,7 +41,7 @@ ARCTX has three separate pieces of state:
 - **Run:** the graph under `<repo_root>/.arctx/runs/<run_id>` (or
   `<ARCTX_HOME>/runs/<run_id>` when `ARCTX_HOME` is set / outside a repo).
 - **Repo pointer:** `<gitdir>/arctx-id`, written by `arctx init`, `arctx use`,
-  and `arctx git init`.
+  and `arctx init --extension git`.
 - **Shell pointer:** `ARCTX_RUN_ID`, set with
   `eval "$(arctx use <run_id> --shell)"` (this terminal only; it does not write
   the repo pointer).
@@ -63,12 +63,12 @@ or when a child process should be isolated from other terminals.
 ```bash
 cd ~/dev/my-repo
 arctx init "feature X" --run-id run_x --extension git
-arctx git init
-arctx git commit -m "first change"
+git commit -m "first change"
+arctx add --title "first change" --type commit --commit HEAD
 ```
 
 `arctx init --extension git` creates the run and enables git integration.
-`arctx git init` binds this checkout to that run (repo pointer) and installs
+`arctx init --extension git` binds this checkout to that run (repo pointer). It does not install
 hooks. After that, regular `arctx git ...` commands can resolve the run from
 the repo pointer.
 
@@ -130,9 +130,9 @@ model is settled.
 For parallel coding agents, pair lanes with git worktrees:
 
 ```bash
-arctx git worktree add ../my-repo-codex codex/run-x --base main
-export ARCTX_GIT_WORKTREE=../my-repo-codex
+git worktree add ../my-repo-codex -b codex/run-x main
+cd ../my-repo-codex
 ```
 
-When `ARCTX_GIT_WORKTREE` is set, git verbs run in that worktree even if the
-shell cwd is somewhere else.
+arctx does not run git, so no worktree setting is needed: commit in the
+worktree and run `arctx add --commit HEAD` there.
