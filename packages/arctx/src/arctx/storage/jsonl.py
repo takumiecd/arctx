@@ -438,15 +438,29 @@ def _dedup_rows(rows: list[dict[str, Any]], id_key: str) -> list[dict[str, Any]]
 def _sort_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Order work-event rows deterministically, ignoring file order.
 
-    Mirrors ``arctx.core.lanes._event_order``: ``seq`` when present, then the
-    creation timestamp, then the opaque event id as a final tiebreak.
+    Mirrors ``arctx.core.lanes._event_order``: the creation timestamp first,
+    then ``seq``, then the opaque event id as a final tiebreak.
+
+    Timestamp-major, not seq-major, and the reason is git. ``seq`` is dense and
+    per-file, so two branches that each append events both number them from the
+    same place: after a ``merge=union`` merge, one branch's fifth event and the
+    other branch's fifth event both claim ``seq=5``, and a branch that happened
+    to do more work carries *higher* numbers regardless of when it did them.
+    Ordering by seq first therefore made the merged cut/uncut state depend on
+    which branch appended more events rather than on which decision came last —
+    silently, with no conflict and nothing for `arctx doctor` to report.
+
+    Within a single branch the two keys agree (events are appended in time
+    order), so this only changes the answer where seq was meaningless anyway.
+    ``seq`` still breaks ties inside one timestamp, which is what it is good
+    for.
     """
 
-    def key(row: dict[str, Any]) -> tuple[int, str, str]:
+    def key(row: dict[str, Any]) -> tuple[str, int, str]:
         seq = row.get("seq")
         return (
-            int(seq) if seq is not None else -1,
             str(row.get("created_at") or ""),
+            int(seq) if seq is not None else -1,
             str(row.get("event_id") or ""),
         )
 

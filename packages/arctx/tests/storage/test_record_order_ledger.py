@@ -114,3 +114,58 @@ def test_pure_library_runs_still_record_no_events(tmp_path, monkeypatch, marker)
 
     assert handle.run_graph.work_events == []
     assert is_active_node(handle.run_graph, step.output_node_id) is (marker == "uncut")
+
+
+# ---------------------------------------------------------------------------
+# event order across a union merge
+# ---------------------------------------------------------------------------
+
+
+def test_events_order_by_time_not_by_seq():
+    """`seq` is per-file and dense, so it collides across a union merge.
+
+    Two branches each number their events from the same place, and a branch
+    that did more work carries higher numbers regardless of when it did them.
+    Ordering by seq first made the merged cut/uncut state depend on which
+    branch appended more events rather than on which decision came last.
+    """
+    from arctx.storage.jsonl import _sort_event_rows
+
+    rows = [
+        # the branch that did more work: high seq, but it acted FIRST
+        {"event_id": "e_a", "seq": 10, "created_at": "2026-08-24T01:00:00Z"},
+        # the branch that acted LAST: low seq
+        {"event_id": "e_b", "seq": 4, "created_at": "2026-08-24T02:00:00Z"},
+    ]
+    assert [r["event_id"] for r in _sort_event_rows(rows)] == ["e_a", "e_b"]
+
+
+def test_seq_still_breaks_ties_inside_one_timestamp():
+    from arctx.storage.jsonl import _sort_event_rows
+
+    rows = [
+        {"event_id": "e_2", "seq": 2, "created_at": "2026-08-24T01:00:00Z"},
+        {"event_id": "e_1", "seq": 1, "created_at": "2026-08-24T01:00:00Z"},
+    ]
+    assert [r["event_id"] for r in _sort_event_rows(rows)] == ["e_1", "e_2"]
+
+
+def test_core_event_order_agrees_with_storage():
+    """The two orderings are mirrors; drift between them is a silent bug."""
+    from arctx.core.lanes import _event_order
+    from arctx.core.schema.work import WorkEvent
+
+    def ev(event_id, seq, created_at):
+        return WorkEvent(
+            event_id=event_id,
+            run_id="r",
+            lane_id="L",
+            user_id="u",
+            event_type="cut_added",
+            seq=seq,
+            created_at=created_at,
+        )
+
+    earlier = ev("e_a", 10, "2026-08-24T01:00:00Z")
+    later = ev("e_b", 4, "2026-08-24T02:00:00Z")
+    assert _event_order(later) > _event_order(earlier)

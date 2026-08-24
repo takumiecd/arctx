@@ -22,9 +22,13 @@ from arctx.core.schema.work import WorkEvent, Lane
 LANE_STATUS_EVENTS = ("lane_closed", "lane_opened")
 
 
-def _event_order(event: WorkEvent) -> tuple[int, str]:
-    """Sort key putting later events last (seq if present, else timestamp)."""
-    return (event.seq if event.seq is not None else -1, event.created_at or "")
+def _event_order(event: WorkEvent) -> tuple[str, int]:
+    """Sort key putting later events last: timestamp first, then ``seq``.
+
+    Timestamp-major because ``seq`` is per-file and dense, so it collides across
+    a ``merge=union`` merge — see ``arctx.storage.jsonl._sort_event_rows``.
+    """
+    return (event.created_at or "", event.seq if event.seq is not None else -1)
 
 
 def apply_lane_status_events(graph: RunGraph) -> None:
