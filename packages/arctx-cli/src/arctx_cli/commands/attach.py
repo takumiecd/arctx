@@ -84,7 +84,7 @@ def run_attach_command(
         lane_id=lane_id,
         before=before,
     )
-    return {"payload": attached.to_dict(), "notices": notices}
+    return {"payload": attached.to_dict(), "notices": notices, "handle": handle}
 
 
 def cli_attach(args) -> int:
@@ -106,7 +106,7 @@ def cli_attach(args) -> int:
             # stdout stays pure JSON so `attach ... | jq -r .payload_id` works.
             print(f"notice: {notice}", file=sys.stderr)
         print(json.dumps(result["payload"], ensure_ascii=False, indent=2))
-        strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="attach")
+        strict_rc = warn_if_invalid(result.get("handle") or run_id, args.store_dir, command_name="attach")
         return strict_rc or 0
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)

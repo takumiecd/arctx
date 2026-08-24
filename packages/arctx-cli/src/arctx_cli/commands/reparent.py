@@ -103,7 +103,7 @@ def run_reparent_command(
         lane_id=lane_id,
         before=before,
     )
-    return {"step": step_view(step)}
+    return {"step": step_view(step), "handle": handle}
 
 
 def cli_reparent(args) -> int:
@@ -124,7 +124,7 @@ def cli_reparent(args) -> int:
             lane_id=resolve_lane_id_from_args(args),
         )
         print(json.dumps(result["step"], ensure_ascii=False, indent=2))
-        strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="reparent")
+        strict_rc = warn_if_invalid(result.get("handle") or run_id, args.store_dir, command_name="reparent")
         return strict_rc or 0
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)

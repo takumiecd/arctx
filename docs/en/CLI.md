@@ -7,9 +7,9 @@ For a normal git-backed run in one repository:
 ```bash
 cd ~/dev/my-repo
 arctx init req_demo --run-id demo --extension git
-arctx git init
 arctx current
-arctx git commit -m "implement first step"
+git commit -m "implement first step"
+arctx add --title "implement first step" --type commit --commit HEAD
 arctx dump --format outline
 ```
 
@@ -26,7 +26,7 @@ What those setup commands do:
 - `arctx init ... --extension git` also enables the git extension for that run.
   When run inside a git repo, it writes this repo's `<gitdir>/arctx-id` and
   installs hooks unless `--no-hooks` / `--git-no-hooks` is used.
-- `arctx git init` binds this checkout to the run (writes the repo pointer) and
+- `arctx init --extension git` binds this checkout to the run (writes the repo pointer) and
   installs hooks.
 - `arctx use <run_id>` switches the current repo to an existing run by writing
   `<gitdir>/arctx-id`.
@@ -146,7 +146,13 @@ Cutting records an inactive branch. It does not delete history.
 ## Git Integration
 
 Git integration is a standard extension. The canonical command namespace is
-`arctx git ...`; shortcut aliases such as `arctx commit` are kept for daily use.
+`arctx git ...`; `arctx verify` is the only shortcut alias left.
+
+**arctx does not run git and does not install hooks.** You make the commit,
+then record its sha. `git commit` / `revert` / `merge` / `cherry-pick` /
+`reset` / `branch` / `init` / `hook` / `worktree` were removed: arctx's own git
+subprocesses tripped arctx's own hooks and double-recorded, and hook-driven
+adoption guessed a graph position `arctx add` already tracks.
 
 Extension command namespaces are loaded from the resolved current run. If
 `arctx git ...` is not visible, first make sure the command can resolve a run
@@ -158,24 +164,18 @@ Setup commands:
 - `arctx init <req_id> --extension git`: create a run and enable the git
   extension. Inside a git repo, this also writes `<gitdir>/arctx-id` and
   installs hooks.
-- `arctx git init [--repo-path P] [--no-hooks]`: bind this checkout to the
-  current run and install hooks.
+- `arctx init <req_id> --extension git`: create the run, enable the git
+  extension, and (inside a repo) write `<gitdir>/arctx-id`. No hooks.
 
-Daily git verbs:
+Recording day to day:
 
-- `arctx git commit -m "message"` / `arctx commit -m "message"`
-  - The input node is normally resolved from the lane / branch tip.
-    Pass `--from NODE` to branch off a chosen node instead (repeat for a
-    fan-in) — this is how experiments fan out as siblings from a shared
-    baseline.
-- `arctx git branch list` / `arctx branch list`
-- `arctx git branch show <name>` / `arctx branch show <name>`
-- `arctx git revert --sha SHA` / `arctx revert --sha SHA`
-- `arctx git cherry-pick --sha SHA` / `arctx cherry-pick --sha SHA`
-- `arctx git merge --other branch:<name>` / `arctx merge --other branch:<name>`
-- `arctx git reset --node NODE --mode hard` / `arctx reset --node NODE --mode hard`
-- `arctx git verify` / `arctx verify`
-- `arctx git hook install` / `arctx hook install`
+- `git commit -m "message"` then
+  `arctx add --title "message" --type commit --commit HEAD`
+  - One command records both the Step and the commit it stands for. Exactly
+    one mechanism tracks lane position — `arctx add`'s — so nothing can drift.
+  - Input nodes resolve from the lane frontier; pass `--from NODE` (repeatable
+    for fan-in) to branch off a chosen node instead.
+- `arctx git verify` / `arctx verify`: descendant constraint over all steps.
 
 Commit attachment commands:
 
@@ -196,12 +196,6 @@ the change under review.
 
 Worktree helpers:
 
-- `arctx git worktree add <path> [branch] [--base REF] [--existing-branch]`:
-  thin wrapper over `git worktree add`. Creates a new branch named after the
-  path leaf when `branch` is omitted.
-- `arctx git worktree list`: JSON-parsed `git worktree list --porcelain`.
-- `arctx git worktree remove <path> [--force]`: wrapper over
-  `git worktree remove`.
 
 ## Parallel attribution
 
@@ -246,20 +240,18 @@ Attaching a worktree is exporting one variable; there is no dedicated command
 (`lane start` / `lane env` / `lane spawn` were removed).
 
 ```bash
-arctx git worktree add ../wt-claude claude/vec
+git worktree add ../wt-claude -b claude/vec
 
 eval "$(arctx use demo --shell)"             # this terminal's run
 arctx lane create claude --purpose "vectorization" --user claude
 eval "$(arctx lane switch claude --shell)"   # this terminal's lane
 export ARCTX_USER_ID=claude
-export ARCTX_GIT_WORKTREE=../wt-claude       # this terminal's checkout
+cd ../wt-claude       # this terminal's checkout
 ```
 
-When `ARCTX_GIT_WORKTREE` is set, git verbs (`arctx git commit`, `revert`,
-`cherry-pick`, `merge`, `reset`, `verify`, and the post-rewrite hook) run their
-git subprocesses with `cwd=$ARCTX_GIT_WORKTREE` instead of the shell cwd. Use
-this with `arctx git worktree add` to give each agent an isolated checkout
-while sharing one ARCTX run.
+arctx never runs git, so there is nothing to point at a worktree: commit in it
+and run `arctx add --commit HEAD` there. One ARCTX run is shared across the
+worktrees; their lifecycle stays entirely in git.
 
 ## Export
 

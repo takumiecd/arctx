@@ -99,13 +99,15 @@ variant A を試すと遅くなる。variant B を試すと速くなる。3 か�
 # 1. ベースライン。実験が分岐できるよう node id を取得しておく。
 arctx init optimize --extension git --run-id bench
 echo "def f(): pass" > work.py && git add work.py
-BASE=$(arctx git commit -m "baseline: naive loop" | jq -r .output_node_id)
+git commit -qm "baseline: naive loop"
+BASE=$(arctx add --title "baseline: naive loop" --type commit --commit HEAD | jq -r .output_node_id)
 
 # 2. 仮説 A — キャッシュ層を追加。ベースライン node から分岐させる。
 git checkout -b feat/cache
 # ...edit...
 git add .
-A=$(arctx git commit -m "add cache (hypothesis A)" --from "$BASE" | jq -r .output_node_id)
+git commit -qm "add cache (hypothesis A)"
+A=$(arctx add --title "add cache (hypothesis A)" --type commit --commit HEAD --from "$BASE" | jq -r .output_node_id)
 arctx attach "$A" --type benchmark \
   --json '{"elapsed_ms": 1200, "note": "slower than baseline"}'
 
@@ -116,7 +118,8 @@ arctx cut "$A" --reason "slower than baseline"
 git checkout main && git checkout -b feat/vectorize
 # ...edit...
 git add .
-B=$(arctx git commit -m "vectorize (hypothesis B)" --from "$BASE" | jq -r .output_node_id)
+git commit -qm "vectorize (hypothesis B)"
+B=$(arctx add --title "vectorize (hypothesis B)" --type commit --commit HEAD --from "$BASE" | jq -r .output_node_id)
 arctx attach "$B" --type benchmark \
   --json '{"elapsed_ms": 180, "note": "5x faster than baseline"}'
 ```
@@ -144,7 +147,8 @@ Claude と Codex が、互いに踏まないように同じ run を駆動しま�
 
 ```bash
 # 共有ベースライン。両エージェントはこの node id から作業を分岐する。
-BASE=$(arctx git commit -m "baseline" --run demo | jq -r .output_node_id)
+git commit -qm "baseline"
+BASE=$(arctx add --title "baseline" --type commit --commit HEAD --run demo | jq -r .output_node_id)
 
 # ターミナル 1 — Claude。run と lane をこのターミナルにだけ固定する。
 eval "$(arctx use demo --shell)"
@@ -153,7 +157,8 @@ eval "$(arctx lane switch claude --shell)"
 export ARCTX_USER_ID=claude
 git checkout -b claude/vec
 # ...edits...
-git add . && arctx git commit -m "Claude: vectorize inner loop" --from "$BASE"
+git add . && git commit -qm "Claude: vectorize inner loop"
+arctx add --title "Claude: vectorize inner loop" --type commit --commit HEAD --from "$BASE"
 
 # ターミナル 2 — Codex（同時に実行）
 eval "$(arctx use demo --shell)"
@@ -162,7 +167,8 @@ eval "$(arctx lane switch codex --shell)"
 export ARCTX_USER_ID=codex
 git checkout main && git checkout -b codex/map
 # ...edits...
-git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
+git add . && git commit -qm "Codex: parallel map"
+arctx add --title "Codex: parallel map" --type commit --commit HEAD --from "$BASE"
 ```
 
 両者は同じ `RunGraph` にベースラインからの兄弟 step として着地します。各エージェントは
@@ -187,20 +193,23 @@ n_root
 ```bash
 arctx init debug --extension git --run-id bug-42
 echo "# repro" > repro.py && git add repro.py
-REPRO=$(arctx git commit -m "reproduction script" | jq -r .output_node_id)
+git commit -qm "reproduction script"
+REPRO=$(arctx add --title "reproduction script" --type commit --commit HEAD | jq -r .output_node_id)
 
 # 仮説: キャッシュの race condition
 git checkout -b try/race-fix
 # ...edit...
 git add .
-R=$(arctx git commit -m "fix: add lock around cache" --from "$REPRO" | jq -r .output_node_id)
+git commit -qm "fix: add lock around cache"
+R=$(arctx add --title "fix: add lock around cache" --type commit --commit HEAD --from "$REPRO" | jq -r .output_node_id)
 arctx attach "$R" --type observation --json '{"result": "still flaky"}'
 
 # 仮説: index の off-by-one
 git checkout main && git checkout -b try/index-fix
 # ...edit...
 git add .
-I=$(arctx git commit -m "fix: correct loop bound" --from "$REPRO" | jq -r .output_node_id)
+git commit -qm "fix: correct loop bound"
+I=$(arctx add --title "fix: correct loop bound" --type commit --commit HEAD --from "$REPRO" | jq -r .output_node_id)
 arctx attach "$I" --type observation --json '{"result": "bug gone - 3 runs green"}'
 ```
 
@@ -281,7 +290,8 @@ pip install arctx-cli
 
 arctx init my_task --extension git --run-id demo
 echo "def f(): pass" > work.py && git add work.py
-BASE=$(arctx git commit -m "baseline" | jq -r .output_node_id)
+git commit -qm "baseline"
+BASE=$(arctx add --title "baseline" --type commit --commit HEAD | jq -r .output_node_id)
 
 arctx log                              # DAG を歩く
 arctx dump --format outline            # または LLM 向けの outline でダンプ
@@ -301,7 +311,8 @@ eval "$(arctx lane switch claude --shell)"
 export ARCTX_USER_ID=claude
 git checkout -b claude/vec
 # ...edits...
-git add . && arctx git commit -m "Claude: vectorization" --from "$BASE"
+git add . && git commit -qm "Claude: vectorization"
+arctx add --title "Claude: vectorization" --type commit --commit HEAD --from "$BASE"
 
 # Codex のターミナル（並列に実行）
 eval "$(arctx use demo --shell)"
@@ -310,7 +321,8 @@ eval "$(arctx lane switch codex --shell)"
 export ARCTX_USER_ID=codex
 git checkout main && git checkout -b codex/map
 # ...edits...
-git add . && arctx git commit -m "Codex: parallel map" --from "$BASE"
+git add . && git commit -qm "Codex: parallel map"
+arctx add --title "Codex: parallel map" --type commit --commit HEAD --from "$BASE"
 ```
 
 両ブランチは同じ `RunGraph` に `$BASE` からの兄弟 step として着地します。実行可能な
@@ -329,17 +341,17 @@ VHS 録画はこのシナリオの `examples/demo_cli.tape` と `examples/demo_e
 
 ```bash
 # 独立したブランチで 2 つの worktree を用意。
-arctx git worktree add ../wt-claude claude/vec
-arctx git worktree add ../wt-codex  codex/map
+git worktree add ../wt-claude -b claude/vec
+git worktree add ../wt-codex  -b codex/map
 
 # 各ターミナルが run / lane / user / worktree を自分で固定する。git verb
-# (`arctx git commit`, `revert`, `merge` ...) は ARCTX_GIT_WORKTREE を読み、
+# arctx は git を代行しないので、worktree を指す設定は要りません。そこで
 # shell の cwd ではなくそこで git サブプロセスを実行する。
 eval "$(arctx use demo --shell)"
 arctx lane create claude --purpose "vectorization" --user claude
 eval "$(arctx lane switch claude --shell)"
 export ARCTX_USER_ID=claude
-export ARCTX_GIT_WORKTREE=../wt-claude
+cd ../wt-claude
 ```
 
 両エージェントとも依然として同じ `RunGraph` に兄弟 step として commit を着地させます。
@@ -362,7 +374,7 @@ RunGraph
 - 各 **試行 / 実験 / アクションは step として記録され**、結果状態を表す出力 node を生成します。
 - `NodePayload` / `StepPayload` — `type` 文字列で区別される汎用注釈。
 - `CutPayload` — append-only な無効化。対象は削除されず、read-time にフィルタされます。
-- `GitChangePayload` — `git` extension が `arctx git commit` ごとに attach します。
+- `GitChangePayload` — すでに作ったコミットへの参照。`arctx add --commit <ref>`（または `arctx git add`）で記録します。diff は読み取り時に git から導出され、コピーはされません。
 
 活性（「この node はまだスコープ内か？」）は `RunGraph` + cut payload から read-time に
 計算されます。ストアが書き換えられることはありません。
@@ -379,12 +391,12 @@ RunGraph
 | `arctx cut <node-or-step>` | append-only payload で node または step を inactive にする。 |
 | `arctx show [id]` | 現在の run、または 1 件の node/step/payload を表示する。 |
 | `arctx log` | DAG を順序付きイベントストリームとして表示する。 |
-| `arctx git commit -m ...` | 実際の `git commit` を駆動し、`GitChangePayload` 付きの `Step` を記録する。 |
+| `arctx add --commit HEAD` | **自分で作った**コミットに対応する Step を記録する。arctx は git を実行しない。レーン位置は `arctx add` のものだけなので、ずれる機構が1つしかない。 |
 | `arctx lane create <name>` | lane を開く。フラットで git ブランチのような作業単位。purpose を持ち、close には summary が必須。 |
 | `arctx lane switch <name> --shell` | `export ARCTX_LANE_ID=…` を出力し、repo 全体のポインタを書かずにこのターミナルだけ lane を切り替える。 |
 | `arctx topic tag <name> <id>...` | グラフを横断して record を「意味の束」にまとめる。連結性は要求されない — 島が 2 つ以上なのは join の*候補*であってエラーではない。 |
 | `arctx topic summarize <name> --summary ...` | その主題の現在の結論文。`arctx topics` が全 topic を結論文と島数つきで一覧する。 |
-| `arctx git worktree add <path> [branch]` | `git worktree add` の薄いラッパー。`ARCTX_GIT_WORKTREE=<path>` を export すると git verb がその中で走る。 |
+| `arctx git show --step <id>` | Step に記録されたコミットと、いま git が報告する diff。 |
 | `arctx dump --format outline` | run 全体を LLM 向けのインデント spanning-tree でダンプする。 |
 | `arctx dump --format mermaid` | 人間 / docs 向けの mermaid flowchart。 |
 

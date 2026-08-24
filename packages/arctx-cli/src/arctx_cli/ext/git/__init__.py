@@ -1,4 +1,12 @@
-"""arctx git subcommand — attach commit hashes to steps."""
+"""arctx git subcommand — record commit hashes on steps and read them back.
+
+This namespace does not run git. The verbs that did (``commit``, ``revert``,
+``merge``, ``cherry-pick``, ``reset``, ``branch``) and the hooks that adopted
+bare git operations were removed: arctx's own git subprocesses tripped arctx's
+own hooks and double-recorded, and hook-driven adoption had to guess a graph
+position that ``arctx add`` already tracks. What is left records what the user
+states (``add``) and reads it back (``list``, ``show``, ``verify``).
+"""
 
 from __future__ import annotations
 
@@ -26,27 +34,9 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     git_parser = subparsers.add_parser("git", help="Git integration commands")
     git_sub = git_parser.add_subparsers(dest="git_command", required=True)
 
-    from arctx_cli.ext.git.branch import add_parser as add_branch_parser
-    from arctx_cli.ext.git.cherry_pick import add_parser as add_cherry_pick_parser
-    from arctx_cli.ext.git.commit import add_parser as add_commit_parser
-    from arctx_cli.ext.git.hook import add_parser as add_hook_parser
-    from arctx_cli.ext.git.merge import add_parser as add_merge_parser
-    from arctx_cli.ext.git.reset import add_parser as add_reset_parser
-    from arctx_cli.ext.git.init import add_init_parser
-    from arctx_cli.ext.git.revert import add_parser as add_revert_parser
     from arctx_cli.ext.git.verify import add_parser as add_verify_parser
-    from arctx_cli.ext.git.worktree import add_parser as add_worktree_parser
 
-    add_branch_parser(git_sub)
-    add_cherry_pick_parser(git_sub)
-    add_commit_parser(git_sub)
-    add_hook_parser(git_sub)
-    add_init_parser(git_sub)
-    add_merge_parser(git_sub)
-    add_reset_parser(git_sub)
-    add_revert_parser(git_sub)
     add_verify_parser(git_sub)
-    add_worktree_parser(git_sub)
 
     sp_list = git_sub.add_parser("list", help="List git_change payloads for a Step")
     sp_list.add_argument("--step", required=True, dest="step_id")
@@ -86,45 +76,16 @@ def _run_dir(store: object, run_id: str) -> Path:
 
 def cli_git(args) -> int:
     """Dispatch canonical ``arctx git`` subcommands."""
-    from arctx_cli.ext.git.branch import cli_branch
-    from arctx_cli.ext.git.cherry_pick import cli_cherry_pick
-    from arctx_cli.ext.git.commit import cli_commit
-    from arctx_cli.ext.git.hook import cli_hook
-    from arctx_cli.ext.git.merge import cli_merge
-    from arctx_cli.ext.git.reset import cli_reset
-    from arctx_cli.ext.git.revert import cli_revert
     from arctx_cli.ext.git.verify import cli_verify
 
     if args.git_command == "add":
         return _cli_git_attach(args)
-    if args.git_command == "branch":
-        return cli_branch(args)
-    if args.git_command == "cherry-pick":
-        return cli_cherry_pick(args)
-    if args.git_command == "commit":
-        return cli_commit(args)
-    if args.git_command == "hook":
-        return cli_hook(args)
-    if args.git_command == "init":
-        from arctx_cli.ext.git.init import cli_git_init  # noqa: PLC0415
-
-        return cli_git_init(args)
     if args.git_command == "list":
         return _cli_git_list(args)
-    if args.git_command == "merge":
-        return cli_merge(args)
-    if args.git_command == "reset":
-        return cli_reset(args)
-    if args.git_command == "revert":
-        return cli_revert(args)
     if args.git_command == "show":
         return _cli_git_show(args)
     if args.git_command == "verify":
         return cli_verify(args)
-    if args.git_command == "worktree":
-        from arctx_cli.ext.git.worktree import cli_worktree  # noqa: PLC0415
-
-        return cli_worktree(args)
     print(f"unknown git subcommand: {args.git_command}", file=sys.stderr)
     return 1
 

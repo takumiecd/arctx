@@ -11,30 +11,15 @@ plain `Step`.
 
 Core is standalone and does not depend on git. Git integration is the standard
 extension under `arctx.ext.git`; its canonical CLI is `arctx git <verb>`, with
-default aliases such as `arctx commit` for common workflows.
+a default alias, `arctx verify`.
 
 Future UI work should render the DAG visually and show payload details only for
 the focused node or step.
 
 ## Git worktree-aware workflows
 
-The Git extension is worktree-aware. A `Lane` can be attached to
-a specific `git worktree`, and ARCTX commands inside that session run
-their git subprocesses inside the linked working tree:
-
-- `ARCTX_GIT_WORKTREE` overrides the cwd for every git verb
-  (`arctx git commit / revert / cherry-pick / merge / reset / verify`).
-- Selecting a worktree is exporting `ARCTX_GIT_WORKTREE=PATH`: the git verbs
-  read it and run their git subprocess there instead of in the shell's cwd
-  (`arctx.ext.git.helpers.repo`). There is no dedicated attach command.
-- `arctx git worktree {add,list,remove}` is a thin wrapper around the
-  upstream `git worktree` plumbing. Lifecycle stays in git so that
-  worktrees created outside ARCTX can still be attached.
-
-Possible follow-ups:
-
-- Surface the worktree path in `arctx lane list` / TUI views.
-- Record a per-step workspace path when an agent moves between
-  worktrees during a single session.
-- Create the worktree on the spot (or fail loudly) when
-  `ARCTX_GIT_WORKTREE` points at a missing directory.
+The Git extension does not run git, so there is nothing to point at a
+worktree (`ARCTX_GIT_WORKTREE` and `arctx git worktree` are gone). To give each
+agent an isolated checkout: create the tree with `git worktree add`, commit
+inside it, and run `arctx add --commit HEAD` there. One ARCTX run is shared;
+the worktree lifecycle stays entirely in git.

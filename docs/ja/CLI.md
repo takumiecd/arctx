@@ -7,9 +7,9 @@
 ```bash
 cd ~/dev/my-repo
 arctx init req_demo --run-id demo --extension git
-arctx git init
 arctx current
-arctx git commit -m "implement first step"
+git commit -m "implement first step"
+arctx add --title "implement first step" --type commit --commit HEAD
 arctx dump --format outline
 ```
 
@@ -25,11 +25,9 @@ arctx dump --format outline
   ものだけ**です（書き込み先を除外すると、その記録が commit に入らなくなる）。
   `ARCTX_HOME` が設定されている場合、または git repo の外で実行した場合は
   従来どおり `<ARCTX_HOME>/runs` が使われます。`--store-dir` で明示指定も可能です。
-- `arctx init ... --extension git` はその run の git extension も有効化します。
-  git repo 内で実行すると、この repo の `<gitdir>/arctx-id` を書き込み、
-  `--no-hooks` / `--git-no-hooks` を指定しない限り hook をインストールします。
-- `arctx git init` はこの checkout を run に紐づける repo pointer を書き、
-  hook をインストールします。
+- `arctx init ... --extension git` はその run の git extension も有効化し、
+  git repo 内で実行するとこの repo の `<gitdir>/arctx-id`（run ポインタ）を
+  書き込みます。**git hook は一切インストールしません。**
 - `arctx use <run_id>` は `<gitdir>/arctx-id` を書き込み、現在の repo を既存の run に
   切り替えます。
 - `eval "$(arctx use <run_id> --shell)"` は `ARCTX_RUN_ID` を export して現在の
@@ -406,7 +404,13 @@ producer が2つできる場合は拒否されます（reparent で cut した�
 ## Git 連携
 
 Git 連携は標準 extension です。正準のコマンド名前空間は `arctx git ...` で、
-`arctx commit` などのショートカット alias も日常利用のために残しています。
+ショートカット alias は `arctx verify` の 1 つだけ残っています。
+
+**arctx は git を実行しませんし、hook も入れません。** コミットは自分で作り、
+その sha を記録します。以前あった `git commit` / `revert` / `merge` /
+`cherry-pick` / `reset` / `branch` / `init` / `hook` / `worktree` は削除しました
+— arctx 自身の git サブプロセスが arctx 自身の hook を叩いて二重記録を作り、
+hook 経由の取り込みは `arctx add` がすでに持っているグラフ位置を推測していたためです。
 
 extension のコマンド名前空間は、解決された current run からロードされます。
 `arctx git ...` が見えない場合は、まずコマンドが `--extension git` で作成された run を
@@ -416,24 +420,17 @@ extension のコマンド名前空間は、解決された current run からロ
 セットアップコマンド:
 
 - `arctx init <req_id> --extension git`: run を作成し git extension を有効化する。
-  git repo 内では `<gitdir>/arctx-id` も書き hook をインストールする。
-- `arctx git init [--repo-path P] [--no-hooks]`: この checkout を現在の run に
-  紐づけ、hook をインストールする。
+  git repo 内では `<gitdir>/arctx-id`（run ポインタ）も書く。hook は入れない。
 
-日常の git verb:
+日常の記録:
 
-- `arctx git commit -m "message"` / `arctx commit -m "message"`
-  - 入力 node は通常 lane / branch tip から解決されます。代わりに選んだ node
-    から分岐するには `--from NODE` を渡します（fan-in には繰り返す）。これが実験を
-    共有ベースラインから兄弟として fan-out させる方法です。
-- `arctx git branch list` / `arctx branch list`
-- `arctx git branch show <name>` / `arctx branch show <name>`
-- `arctx git revert --sha SHA` / `arctx revert --sha SHA`
-- `arctx git cherry-pick --sha SHA` / `arctx cherry-pick --sha SHA`
-- `arctx git merge --other branch:<name>` / `arctx merge --other branch:<name>`
-- `arctx git reset --node NODE --mode hard` / `arctx reset --node NODE --mode hard`
-- `arctx git verify` / `arctx verify`
-- `arctx git hook install` / `arctx hook install`
+- `git commit -m "message"` してから `arctx add --title "message" --type commit --commit HEAD`
+  - 1 コマンドで Step と、その Step が指すコミットの両方を記録します。
+    レーン位置を追う機構は `arctx add` のもの **1 つだけ** なので、ずれようがありません。
+  - 入力 node は通常 lane の frontier から解決されます。選んだ node から分岐するには
+    `--from NODE` を渡します（fan-in には繰り返す）。これが実験を共有ベースラインから
+    兄弟として fan-out させる方法です。
+- `arctx git verify` / `arctx verify`: 全 step の descendant 制約を検査する。
 
 commit 添付コマンド:
 
@@ -451,13 +448,6 @@ commit 添付コマンド:
 導出する diff は `.arctx/**` を除外します（commit N の記録は commit N+1 に乗る
 仕様なので、run データ自体は「レビュー対象の変更」ではないため）。
 
-Worktree ヘルパー:
-
-- `arctx git worktree add <path> [branch] [--base REF] [--existing-branch]`:
-  `git worktree add` の薄いラッパー。`branch` を省略するとパス末尾の名前で新しい
-  ブランチを作成する。
-- `arctx git worktree list`: `git worktree list --porcelain` を JSON parse する。
-- `arctx git worktree remove <path> [--force]`: `git worktree remove` のラッパー。
 
 ## arctx log
 
@@ -544,20 +534,18 @@ worktree の固定は**環境変数だけ**で行います。専用の attach �
 （`lane start` / `lane env` / `lane spawn` は削除済み）。
 
 ```bash
-arctx git worktree add ../wt-claude claude/vec
+git worktree add ../wt-claude -b claude/vec
 
 eval "$(arctx use demo --shell)"          # この端末の run
 arctx lane create claude --purpose "vectorization" --user claude
 eval "$(arctx lane switch claude --shell)" # この端末の lane
 export ARCTX_USER_ID=claude
-export ARCTX_GIT_WORKTREE=../wt-claude     # この端末の checkout
+cd ../wt-claude     # この端末の checkout
 ```
 
-`ARCTX_GIT_WORKTREE` が設定されていると、git verb (`arctx git commit`, `revert`,
-`cherry-pick`, `merge`, `reset`, `verify`、および post-rewrite hook) は git
-サブプロセスを shell cwd ではなく `cwd=$ARCTX_GIT_WORKTREE` で実行します
-(`arctx.ext.git.helpers.repo`)。`arctx git worktree add` と併用して、1 つの ARCTX
-run を共有しつつ各 agent に独立した checkout を与えます。
+arctx は git を代行しないので、worktree を arctx に教える設定はありません。
+その worktree の中でコミットし、そこで `arctx add --commit HEAD` を実行すれば、
+1 つの ARCTX run を共有しつつ各 agent が独立した checkout を持てます。
 
 ## arctx doctor（壊れた run を見つけて、戻す）
 

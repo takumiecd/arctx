@@ -29,7 +29,8 @@ def process(items):
 
 # Bug: should be i + 1, not i
 PY
-git add repro.py && arctx git commit -m "reproduction script: demonstrates off-by-one"
+git add repro.py && git commit -qm "reproduction script: demonstrates off-by-one"
+  arctx add --title "reproduction script: demonstrates off-by-one" --type commit --commit HEAD
 
 # 3. Hypothesis 1: race condition in cache (wrong — still flaky)
 git checkout -b try/race-fix
@@ -45,7 +46,8 @@ def process(items):
         return result
 PY
 git add repro.py
-STEP_1=$(arctx git commit -m "hypothesis: add lock around cache" | step_id)
+git commit -qm "hypothesis: add lock around cache"
+STEP_1=$(arctx add --title "hypothesis: add lock around cache" --type commit --commit HEAD | step_id)
 
 arctx attach "$STEP_1" \
   --type observation \
@@ -61,7 +63,8 @@ def process(items):
     return result
 PY
 git add repro.py
-FIX=$(arctx git commit -m "fix: correct loop bound")
+git commit -qm "fix: correct loop bound"
+FIX=$(arctx add --title "fix: correct loop bound" --type commit --commit HEAD)
 STEP_FIX=$(echo "$FIX" | step_id)
 FIX_NODE=$(echo "$FIX" | node_id)
 

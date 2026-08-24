@@ -30,25 +30,32 @@ Prerequisites:
 --- Step 1: Initialize the run (Terminal 1) ---
 
   arctx init optimize --extension git --run-id multi-agent-demo
-  arctx git commit -m "baseline: empty project"
+  git commit -qm "baseline: empty project"
+  arctx add --title "baseline: empty project" --type commit --commit HEAD
 
 --- Step 2: Start Claude's session (Terminal 1) ---
 
-  eval $(arctx lane env --run multi-agent-demo --new --user claude)
+  arctx lane create claude --purpose "claude work" --run multi-agent-demo
+  eval "$(arctx lane switch claude --shell)"
+  export ARCTX_USER_ID=claude
   git checkout -b claude/vec
 
   # ... make some edits ...
 
-  git add . && arctx git commit -m "Claude: vectorize inner loop"
+  git add . && git commit -qm "Claude: vectorize inner loop"
+  arctx add --title "Claude: vectorize inner loop" --type commit --commit HEAD
 
 --- Step 3: Start Codex's session (Terminal 2) ---
 
-  eval $(arctx lane env --run multi-agent-demo --new --user codex)
+  arctx lane create codex --purpose "codex work" --run multi-agent-demo
+  eval "$(arctx lane switch codex --shell)"
+  export ARCTX_USER_ID=codex
   git checkout main && git checkout -b codex/map
 
   # ... make some edits ...
 
-  git add . && arctx git commit -m "Codex: parallel map"
+  git add . && git commit -qm "Codex: parallel map"
+  arctx add --title "Codex: parallel map" --type commit --commit HEAD
 
 --- Step 4: Inspect the graph (either terminal) ---
 
@@ -62,11 +69,17 @@ baseline. No merge conflicts in the graph — both stay reviewable.
 If you want each agent to have its own checkout directory:
 
   # Terminal 1
-  arctx git worktree add ../wt-claude claude/vec
-  eval $(arctx lane env --run multi-agent-demo --new --user claude --worktree ../wt-claude)
+  git worktree add ../wt-claude -b claude/vec
+  arctx lane create claude --purpose "claude work" --run multi-agent-demo
+  eval "$(arctx lane switch claude --shell)"
+  export ARCTX_USER_ID=claude
+  cd ../wt-claude
 
   # Terminal 2
-  arctx git worktree add ../wt-codex codex/map
-  eval $(arctx lane env --run multi-agent-demo --new --user codex --worktree ../wt-codex)
+  git worktree add ../wt-codex -b codex/map
+  arctx lane create codex --purpose "codex work" --run multi-agent-demo
+  eval "$(arctx lane switch codex --shell)"
+  export ARCTX_USER_ID=codex
+  cd ../wt-codex
 
 INSTRUCTIONS

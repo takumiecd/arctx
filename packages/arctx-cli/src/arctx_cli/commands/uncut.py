@@ -60,7 +60,7 @@ def run_uncut_command(
         lane_id=lane_id,
         before=before,
     )
-    return {"uncut": uncut.to_dict()}
+    return {"uncut": uncut.to_dict(), "handle": handle}
 
 
 def cli_uncut(args) -> int:
@@ -97,5 +97,5 @@ def cli_uncut(args) -> int:
         lane_id=resolve_lane_id_from_args(args),
     )
     print(json.dumps(result["uncut"], ensure_ascii=False, indent=2))
-    strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="uncut")
+    strict_rc = warn_if_invalid(result.get("handle") or run_id, args.store_dir, command_name="uncut")
     return strict_rc or 0

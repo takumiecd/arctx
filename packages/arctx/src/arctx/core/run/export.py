@@ -17,8 +17,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from arctx.core.cuts import inactive_node_ids, inactive_step_ids
-from arctx.core.lanes import lane_export_view
+from arctx.core.cuts import (
+    cut_node_ids,
+    cut_step_ids,
+    inactive_node_ids,
+    inactive_step_ids,
+)
+from arctx.core.lanes import lane_export_view, record_event_rank
 from arctx.core.run.handle import RunHandle
 from arctx.core.run_graph import RunGraph
 from arctx.core.schema.payloads import CutPayload, NodePayload, StepPayload
@@ -276,15 +281,21 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
     the shared source of truth for both ``export --format json`` and the
     ``arctx serve`` HTTP API (``GET /run``).
 
-    Cut propagation is precomputed here via core's ``inactive_*`` helpers and
-    exposed as an ``inactive`` flag on each node/step, so frontends never have
-    to reimplement cut semantics. ``--exclude-cut`` drops inactive records (and
+    Cut state is precomputed here via core's helpers and exposed on each
+    node/step as two flags, so frontends never have to reimplement cut
+    semantics: ``inactive`` (cut, or downstream of one) and ``directly_cut``
+    (this record carries an effective cut marker of its own). ``directly_cut``
+    is what an "uncut" control should key on, and deriving it in the frontend
+    used to be wrong -- payloads ship sorted, and cut/uncut is decided by which
+    marker came last. ``--exclude-cut`` drops inactive records (and
     any payloads targeting them). ``--node``/``--depth`` restrict the export to
     the spanning subtree, reusing the same walk as the other formats.
     """
     graph = handle.run_graph
     inactive_nodes = inactive_node_ids(graph)
     inactive_trans = inactive_step_ids(graph)
+    cut_nodes = cut_node_ids(graph)
+    cut_steps = cut_step_ids(graph)
 
     # Determine the set of records to include.
     if opts.node_id is None and opts.depth is None:
@@ -307,6 +318,7 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
     for nid in node_ids:
         d = graph.nodes[nid].to_dict()
         d["inactive"] = nid in inactive_nodes
+        d["directly_cut"] = nid in cut_nodes
         nodes_out.append(d)
     nodes_out.sort(key=lambda d: str(d["node_id"]))
 
@@ -314,6 +326,7 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
     for sid in step_ids:
         d = graph.steps[sid].to_dict()
         d["inactive"] = sid in inactive_trans
+        d["directly_cut"] = sid in cut_steps
         steps_out.append(d)
     steps_out.sort(key=lambda d: str(d["step_id"]))
 
@@ -326,7 +339,15 @@ def json_document(handle: RunHandle, opts: ExportOptions) -> dict:
             continue
         payload_ids.add(p.payload_id)
         payloads_out.append(p.to_dict())
-    payloads_out.sort(key=lambda d: str(d.get("payload_id")))
+    # Recorded order, not id order. Payload ids are opaque uuids, so sorting by
+    # them shuffles the append-only sequence -- and cut/uncut supersession is
+    # "the last marker wins", so a consumer folding the array in order got the
+    # answer backwards roughly half the time. `record_event_rank` is the
+    # durable ordering signal; the id breaks ties stably.
+    _rank = record_event_rank(graph)
+    payloads_out.sort(
+        key=lambda d: (_rank.get(str(d.get("payload_id")), -1), str(d.get("payload_id")))
+    )
 
     lanes = lane_export_view(
         graph,

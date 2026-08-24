@@ -109,6 +109,7 @@ function makeDoc(spec: Spec): RunDocument {
     node_id: nodeId,
     metadata: {},
     inactive: inactive.has(nodeId),
+    directly_cut: inactive.has(nodeId),
   }));
 
   const steps = spec.edges.map(([from, to]) => ({
@@ -117,6 +118,7 @@ function makeDoc(spec: Spec): RunDocument {
     output_node_id: to,
     metadata: {},
     inactive: inactive.has(to),
+    directly_cut: inactive.has(to),
   }));
 
   return {

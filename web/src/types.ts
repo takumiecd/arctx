@@ -5,7 +5,11 @@
 export interface RunNode {
   node_id: string;
   metadata: Record<string, unknown>;
+  // Cut, or downstream of a cut. Precomputed by the backend.
   inactive: boolean;
+  // This record carries an effective cut marker of its own. Key the "uncut"
+  // control on this, never on re-deriving supersession from `payloads`.
+  directly_cut: boolean;
 }
 
 export interface RunStep {
@@ -14,6 +18,7 @@ export interface RunStep {
   output_node_id: string;
   metadata: Record<string, unknown>;
   inactive: boolean;
+  directly_cut: boolean;
 }
 
 // Payloads are open-ended: every payload has these keys, plus type-specific

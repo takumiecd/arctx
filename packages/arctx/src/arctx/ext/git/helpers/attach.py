@@ -33,7 +33,17 @@ def attach_commits_to_step(
         raise ValueError(f"step {step_id} is inactive (cut)")
 
     repo_root = git_repo.find_repo_root(Path("."))
-    resolved = tuple(git_repo.resolve_commit(repo_root, c) for c in commits)
+    resolved_list = []
+    for ref in commits:
+        try:
+            resolved_list.append(git_repo.resolve_commit(repo_root, ref))
+        except Exception as exc:  # noqa: BLE001 — any git failure is the same answer
+            # A bad ref is user input, not a crash. The CLI catches ValueError
+            # and prints one line; a raw CalledProcessError printed a traceback.
+            raise ValueError(
+                f"not a commit in this repository: {ref!r}"
+            ) from exc
+    resolved = tuple(resolved_list)
     branch = git_repo.current_branch(repo_root) or ""
 
     payload_id = handle._next_id("pl")

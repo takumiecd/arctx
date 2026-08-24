@@ -121,10 +121,14 @@ Current commands:
 
 Deleted or unregistered commands: `plan`, `predict`, `observe`, `note`, `view`, `sync`, `anchor`, `node`, `step`, `payload`, `trace`, `reachable`, `outcomes`, `tui` (the Textual TUI was removed from the repo entirely — see `arctx web`).
 
-Git shortcut commands such as `arctx commit`, `arctx verify`, `arctx branch`,
-`arctx reset`, and `arctx hook` are alias-layer shortcuts that resolve to
-`arctx git ...`. Register new git CLI surface under the canonical `git`
-namespace first.
+`arctx verify` is the only git shortcut alias left (it resolves to
+`arctx git verify`). arctx does **not** run git and does **not** install hooks:
+`git commit` / `revert` / `merge` / `cherry-pick` / `reset` / `branch` / `init`
+/ `hook` / `worktree` were removed because arctx's own git subprocesses tripped
+arctx's own hooks and double-recorded, and hook-driven adoption guessed a graph
+position `arctx add` already tracks. Make the commit yourself, then record it:
+`arctx add --commit HEAD`. Register new git CLI surface under the canonical
+`git` namespace first.
 
 Commands resolve the target run in this order:
 

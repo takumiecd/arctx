@@ -47,6 +47,16 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
     parser.add_argument("--store-dir", default=None)
     parser.add_argument("--user", default=None)
     parser.add_argument("--lane", default=None)
+    parser.add_argument(
+        "--commit",
+        action="append",
+        default=None,
+        dest="commits",
+        metavar="REF",
+        help="Record git commit(s) already made, as a git_change on this step "
+        "(repeatable; needs the git extension enabled). arctx never makes the "
+        "commit — you do, then name it here.",
+    )
     parser.add_argument("--force", action="store_true",
                         help="Write even if the target lane is closed")
 
@@ -100,6 +110,7 @@ def run_add_step_command(
     user_id: str | None = None,
     lane_id: str | None = None,
     force: bool = False,
+    commits: list[str] | None = None,
 ) -> dict:
     store = resolve_store(store_dir)
     if not store.run_path(run_id).exists():
@@ -133,6 +144,24 @@ def run_add_step_command(
         user_id=user_id,
         lane_id=lane_id,
     )
+    git_change = None
+    if commits:
+        # One command, one mechanism. `arctx git commit` used to drive git and
+        # track lane position separately from `arctx add`, and the two went out
+        # of sync — a commit got made and not recorded, or recorded under the
+        # wrong parent. Here the position is `arctx add`'s, and the commit is
+        # one the user already made.
+        from arctx.ext.git.helpers.attach import attach_commits_to_step
+
+        git_change = attach_commits_to_step(
+            handle,
+            store.run_path(run_id),
+            step.step_id,
+            tuple(commits),
+            user_id=user_id or "user",
+            lane_id=lane_id,
+        )
+
     maybe_append_or_save(
         store=store,
         handle=handle,
@@ -140,7 +169,13 @@ def run_add_step_command(
         lane_id=lane_id,
         before=before,
     )
-    return {"step": step_view(step)}
+    view = step_view(step)
+    if git_change is not None:
+        view["git_change"] = git_change
+    # The handle already reflects the write. Handing it to the post-write check
+    # saves a full reload-and-reparse of the run — that third validation was
+    # the most expensive of the three every write pays.
+    return {"step": view, "handle": handle}
 
 
 def cli_add(args) -> int:
@@ -158,9 +193,12 @@ def cli_add(args) -> int:
             user_id=resolve_user_id_from_args(args),
             lane_id=resolve_lane_id_from_args(args),
             force=args.force,
+            commits=args.commits,
         )
         print(json.dumps(result["step"], ensure_ascii=False, indent=2))
-        strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="add")
+        strict_rc = warn_if_invalid(
+            result.get("handle") or run_id, args.store_dir, command_name="add"
+        )
         return strict_rc or 0
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -32,20 +32,43 @@ def _ensure_session(handle, user_id: str = "user", ws_id: str = "ws_1") -> None:
 def _make_chain(handle, shas: list[str]):
     """Create a linear commit chain with the given SHAs.
 
+    Mirrors what a user does now that arctx no longer drives git: ``arctx add``
+    creates the step, ``arctx git add`` records the commit on it.
+
     Returns list of (step, output_node_id) tuples.
     """
+    from arctx.core.schema.payloads import StepPayload
+    from arctx.ext.git.payloads import GitChangePayload
+
     _ensure_session(handle)
     result = []
+    tip = handle.root_node_id
     for i, sha in enumerate(shas):
-        t = handle.git.commit(
-            message=f"commit {i + 1}",
-            branch="main",
+        step = handle.add_step(
+            [tip],
+            StepPayload(
+                payload_id="_",
+                target_id="_",
+                type="commit",
+                content={"message": f"commit {i + 1}"},
+            ),
             user_id="user",
             lane_id="ws_1",
-            head_commit=sha,
-            dry_run=True,
         )
-        result.append((t, t.output_node_id))
+        handle.attach(
+            step.step_id,
+            GitChangePayload(
+                payload_id="_",
+                target_id="_",
+                branch="main",
+                head_commit=sha,
+                commits=(sha,),
+            ),
+            user_id="user",
+            lane_id="ws_1",
+        )
+        tip = step.output_node_id
+        result.append((step, step.output_node_id))
     return result
 
 
@@ -273,15 +296,7 @@ class TestVerifyRootNodeSkipped:
     def test_root_input_skipped(self):
         """root → t1: root has no sha, so input side is skipped. No violation."""
         handle = _make_handle()
-        _ensure_session(handle)
-        handle.git.commit(
-            message="first",
-            branch="main",
-            user_id="user",
-            lane_id="ws_1",
-            head_commit="sha_A",
-            dry_run=True,
-        )
+        _make_chain(handle, ["sha_A"])
 
         # Even if merge-base would return non-ancestor, the root-input check
         # skips it because root is not in step_by_output_node.

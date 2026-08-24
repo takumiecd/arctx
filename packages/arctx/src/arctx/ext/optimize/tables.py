@@ -27,6 +27,8 @@ is one Step with N rows), which is why a row's identity is its ``payload_id``.
 
 from __future__ import annotations
 
+import math
+
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -46,9 +48,18 @@ def value_kind(value: JSONValue) -> str | None:
     bool is checked before number because bool is an int subclass in Python.
     int and float deliberately collapse into one "number" kind — what must
     stay stable for sorting and best-row selection is numericness, not width.
+
+    NaN and the infinities are rejected. They are not sortable — every
+    comparison with NaN is False, so min()/max() seeded on a NaN row return it
+    as the best in *both* directions — and they have no JSON spelling, so
+    writing one puts bytes in the canonical jsonl that a strict parser refuses.
+    A diverged training run logging ``loss=NaN`` is an everyday event, so this
+    has to fail at the door.
     """
     if isinstance(value, bool):
         return "bool"
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
     if isinstance(value, (int, float)):
         return "number"
     if isinstance(value, str):
@@ -128,6 +139,13 @@ def _check_row(
     for section, key, value in _row_items(row):
         kind = value_kind(value)
         if kind is None:
+            if isinstance(value, float):
+                # Reached via `trial add --rows`: json.dumps writes a bare
+                # `NaN`/`Infinity` token and json.loads reads it back happily.
+                return (
+                    f'value for "{key}" must be a finite number, got {value!r} '
+                    f"(NaN and the infinities are not sortable and have no JSON spelling)"
+                )
             return f'value for "{key}" must be a scalar (number / bool / string)'
         column = schema.get(key)
         if column is None:

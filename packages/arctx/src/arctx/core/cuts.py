@@ -98,3 +98,33 @@ def is_active_node(graph: RunGraph, node_id: str) -> bool:
 
 def is_inactive_step(graph: RunGraph, step_id: str) -> bool:
     return step_id in inactive_step_ids(graph)
+
+
+def nodes_with_multiple_active_producers(
+    graph: RunGraph,
+) -> list[tuple[str, list[str]]]:
+    """Return ``(node_id, active_producer_step_ids)`` for every broken node.
+
+    A node may have many producing Steps but at most one active — that is what
+    keeps the active subgraph a tree, and what makes append-only re-parenting
+    mean anything. Nothing checked it at read time, so a node that ended up with
+    two active producers was reported by `trace` and `export` as a merged
+    lineage that never happened, while `arctx lane validate` and `arctx doctor`
+    both said healthy.
+
+    Two routes get a run into that state: concurrent writers (validation happens
+    outside the run lock, so two `reparent` calls can both pass the guard) and a
+    git merge of two branches that each re-parented the same node. This is a
+    detector, not a preventer — it covers both routes and makes the state loud.
+    """
+    inactive = inactive_step_ids(graph)
+    broken: list[tuple[str, list[str]]] = []
+    for node_id in graph.nodes:
+        active = [
+            step_id
+            for step_id in graph.producers_of(node_id)
+            if step_id not in inactive
+        ]
+        if len(active) > 1:
+            broken.append((node_id, sorted(active)))
+    return broken

@@ -49,22 +49,22 @@ def add_parser(subparsers) -> argparse.ArgumentParser:
 
 
 def _resolve_run_dir_from_args(args) -> str | None:
-    """Best-effort: resolve run_dir from args."""
-    from pathlib import Path
+    """Resolve run_dir exactly the way dispatch does.
 
-    store_dir = getattr(args, "store_dir", None)
-    run_id_arg = getattr(args, "run", None)
-    if run_id_arg is None:
-        import os
+    This used to be a second, subtly different resolver: it stopped at
+    ``ARCTX_RUN_ID`` and never read ``<gitdir>/arctx-id``, so inside a repo
+    with a run pointer and no env var `alias list` / `alias resolve` answered
+    for a different run than the one the CLI would actually dispatch against.
+    Rebuild the token list and go through the one resolver.
+    """
+    from arctx_cli.alias import resolve_run_dir_for_alias
 
-        run_id_arg = os.environ.get("ARCTX_RUN_ID")
-    if run_id_arg and store_dir:
-        return str(Path(store_dir) / run_id_arg)
-    if run_id_arg:
-        from arctx_cli.paths import resolve_store_dir
-
-        return str(Path(resolve_store_dir()) / run_id_arg)
-    return None
+    tokens: list[str] = []
+    if getattr(args, "run", None):
+        tokens += ["--run", args.run]
+    if getattr(args, "store_dir", None):
+        tokens += ["--store-dir", args.store_dir]
+    return resolve_run_dir_for_alias(tokens)
 
 
 def _collect_ext_aliases(run_dir: str | None) -> tuple[list[dict[str, str]], list[str]]:

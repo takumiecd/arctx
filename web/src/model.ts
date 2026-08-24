@@ -34,20 +34,25 @@ export function isDirectlyCut(
   recordId: string,
   kind: "node" | "step",
 ): boolean {
-  let cut = false;
-  for (const p of doc.payloads) {
-    if (p.target_id !== recordId || p.target_kind !== kind) continue;
-    if (p.payload_type === "cut") cut = true;
-    else if (p.payload_type === "uncut") cut = false;
+  // Read the backend's flag. This used to fold `doc.payloads` in array order,
+  // which was wrong: cut/uncut is "the last marker wins", and payloads did not
+  // ship in recorded order. A genuinely cut record could render as active, and
+  // an uncut one could render as cut with its uncut control hidden.
+  if (kind === "node") {
+    return doc.nodes.find((n) => n.node_id === recordId)?.directly_cut ?? false;
   }
-  return cut;
+  return doc.steps.find((s) => s.step_id === recordId)?.directly_cut ?? false;
 }
 
 // The text of a node's SummaryPayload (payload_type "summary"), if any. A
 // summary is a descriptive context snapshot used for history truncation /
 // hand-off; it never changes the validity of the node or its descendants.
 export function nodeSummaryText(doc: RunDocument, nodeId: string): string | null {
-  for (const p of payloadsForNode(doc, nodeId)) {
+  // The *current* summary is the latest one, and payloads arrive in recorded
+  // order — so walk backwards. Taking the first one showed the oldest.
+  const payloads = payloadsForNode(doc, nodeId);
+  for (let i = payloads.length - 1; i >= 0; i -= 1) {
+    const p = payloads[i];
     if (p.payload_type === "summary") {
       const text = typeof p.text === "string" ? p.text.trim() : "";
       return text || "(summary)";

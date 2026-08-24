@@ -60,7 +60,7 @@ def run_cut_command(
         lane_id=lane_id,
         before=before,
     )
-    return {"cut": cut.to_dict()}
+    return {"cut": cut.to_dict(), "handle": handle}
 
 
 def cli_cut(args) -> int:
@@ -100,5 +100,5 @@ def cli_cut(args) -> int:
         lane_id=resolve_lane_id_from_args(args),
     )
     print(json.dumps(result["cut"], ensure_ascii=False, indent=2))
-    strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="cut")
+    strict_rc = warn_if_invalid(result.get("handle") or run_id, args.store_dir, command_name="cut")
     return strict_rc or 0

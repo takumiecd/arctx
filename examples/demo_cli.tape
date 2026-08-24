@@ -29,10 +29,10 @@ Sleep 1.5s
 
 Type "# 2. Give each agent its own git worktree (separate checkouts)"
 Enter
-Type "arctx git worktree add ../wt-claude claude/vec"
+Type "git worktree add ../wt-claude -b claude/vec"
 Enter
 Sleep 1s
-Type "arctx git worktree add ../wt-codex  codex/map"
+Type "git worktree add ../wt-codex  -b codex/map"
 Enter
 Sleep 1.2s
 
@@ -58,7 +58,7 @@ Type "echo 'def claude_vec(xs): return [x*2 for x in xs]' > claude.py"
 Enter
 Type "git add claude.py"
 Enter
-Type "arctx git commit -m 'Claude: vectorization approach'"
+Type "git commit -qm 'Claude: vectorization approach' && arctx add --title 'Claude: vectorization approach' --type commit --commit HEAD"
 Enter
 Sleep 1.8s
 
@@ -82,7 +82,7 @@ Type "echo 'def codex_map(xs): return list(map(lambda x: x*2, xs))' > codex.py"
 Enter
 Type "git add codex.py"
 Enter
-Type "arctx git commit -m 'Codex: parallel map implementation'"
+Type "git commit -qm 'Codex: parallel map implementation' && arctx add --title 'Codex: parallel map implementation' --type commit --commit HEAD"
 Enter
 Sleep 1.8s
 

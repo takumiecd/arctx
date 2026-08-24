@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from arctx.core.cuts import cut_node_ids, cut_step_ids, inactive_step_ids
+from arctx.core.cuts import cut_node_ids, cut_step_ids
 from arctx.core.schema.payloads import UncutPayload
 
 
@@ -35,11 +35,18 @@ def uncut_impl(
             raise ValueError(f"step is not cut: {target_id}")
         # Reinstating a step must not give its output node a second active
         # producer (the "at most one active producer" invariant).
+        #
+        # A competing producer counts as retired only when it is EXPLICITLY
+        # cut. Inactive-by-propagation is revocable — uncut the upstream node
+        # and the producer comes straight back — so treating it as retired let
+        # both producers end up active, with `lane validate` and `doctor` both
+        # reporting healthy while trace and export showed a merged lineage that
+        # never happened.
         output_node_id = self.run_graph.step_output(target_id)
         if output_node_id:
-            inactive = inactive_step_ids(self.run_graph)
+            explicitly_cut = cut_step_ids(self.run_graph)
             for producer in self.run_graph.producers_of(output_node_id):
-                if producer != target_id and producer not in inactive:
+                if producer != target_id and producer not in explicitly_cut:
                     raise ValueError(
                         f"cannot uncut {target_id!r}: output node "
                         f"{output_node_id!r} already has an active producer "

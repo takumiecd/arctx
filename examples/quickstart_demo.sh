@@ -28,8 +28,21 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -d "$REPO_ROOT/packages/arctx/src" ]; then
   export PYTHONPATH="$REPO_ROOT/packages/arctx/src:$REPO_ROOT/packages/arctx-cli/src${PYTHONPATH:+:$PYTHONPATH}"
-  ARCTX() { python3 -m arctx_cli.main "$@"; }
-  echo "(running from local source: $REPO_ROOT)"
+  # arctx needs >= 3.10, and `python3` is still 3.9 on stock macOS — running the
+  # source under it fails at import with a bare SyntaxError. Pick a real one.
+  PY_BIN=""
+  for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 &&
+       "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+      PY_BIN="$candidate"; break
+    fi
+  done
+  if [ -z "$PY_BIN" ]; then
+    echo "error: need Python 3.10+ to run arctx from source; none found" >&2
+    exit 1
+  fi
+  ARCTX() { "$PY_BIN" -m arctx_cli.main "$@"; }
+  echo "(running from local source: $REPO_ROOT, using $PY_BIN)"
 elif command -v arctx >/dev/null 2>&1; then
   ARCTX() { arctx "$@"; }
 else
@@ -39,6 +52,7 @@ fi
 
 node_id() { python3 -c "import sys,json;print(json.load(sys.stdin)['output_node_id'])"; }
 step_id() { python3 -c "import sys,json;print(json.load(sys.stdin)['step_id'])"; }
+# (the two helpers above only parse JSON, so any python3 will do)
 
 # --- Throwaway sandbox ------------------------------------------------------
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/arctx-demo.XXXXXX")"
@@ -64,11 +78,14 @@ def sum_list(data):
     return total
 PY
 git add work.py
-BASE="$(ARCTX git commit -m "baseline: naive python loop" | node_id)"
+git commit -qm "baseline: naive python loop"
+BASE="$(ARCTX add --title "baseline: naive python loop" --type commit --commit HEAD | node_id)"
 echo "[1/4] baseline committed"
 
 # --- Agent 1 (Claude): memoization cache — a dead end -----------------------
-eval "$(ARCTX lane env --run quickstart --new --user claude 2>/dev/null)"
+ARCTX lane create claude --purpose "claude work" --run quickstart >/dev/null 2>&1
+eval "$(ARCTX lane switch claude --run quickstart --shell 2>/dev/null)"
+export ARCTX_USER_ID=claude
 git checkout -q -b claude/cache
 cat > work.py <<'PY'
 _cache = {}
@@ -80,7 +97,8 @@ def sum_list(data):
     return _cache[key]
 PY
 git add work.py
-CACHE_NODE="$(ARCTX git commit -m "Claude: memoization cache" --from "$BASE" | node_id)"
+git commit -qm "Claude: memoization cache"
+CACHE_NODE="$(ARCTX add --title "Claude: memoization cache" --type commit --commit HEAD --from "$BASE" | node_id)"
 ARCTX attach "$CACHE_NODE" \
   --type benchmark \
   --field elapsed_ms=1300 \
@@ -88,7 +106,9 @@ ARCTX attach "$CACHE_NODE" \
 echo "[2/4] Claude's attempt recorded (benchmark attached)"
 
 # --- Agent 2 (Codex): builtin sum() — the winner ----------------------------
-eval "$(ARCTX lane env --run quickstart --new --user codex 2>/dev/null)"
+ARCTX lane create codex --purpose "codex work" --run quickstart >/dev/null 2>&1
+eval "$(ARCTX lane switch codex --run quickstart --shell 2>/dev/null)"
+export ARCTX_USER_ID=codex
 git checkout -q main
 git checkout -q -b codex/builtin
 cat > work.py <<'PY'
@@ -96,7 +116,8 @@ def sum_list(data):
     return sum(data)
 PY
 git add work.py
-WIN_NODE="$(ARCTX git commit -m "Codex: builtin sum()" --from "$BASE" | node_id)"
+git commit -qm "Codex: builtin sum()"
+WIN_NODE="$(ARCTX add --title "Codex: builtin sum()" --type commit --commit HEAD --from "$BASE" | node_id)"
 ARCTX attach "$WIN_NODE" \
   --type benchmark \
   --field elapsed_ms=260 \

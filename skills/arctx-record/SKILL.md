@@ -12,14 +12,16 @@ description: ARCTXが有効なリポジトリで作業の過程（コード変�
 
 ## 0. 記録モデルの大前提（必読）
 
-- **コミットは `arctx git commit -m "..."` で行う。** これが実際に `git commit`
-  を駆動し、その変更を1つの Transition として記録する。**素の `git commit`
-  は ARCTX に自動記録されない**（amend/rebase/revert/cherry-pick/merge の
-  追従フックは入るが、通常コミットの新規記録は `arctx git commit` 経由）。
+- **コミットは自分で `git commit` し、直後に
+  `arctx add --title "..." --type commit --commit HEAD` で記録する。**
+  arctx は git を実行しないし、フックも入れない（`arctx git commit` と
+  post-commit / post-rewrite フックは削除済み）。記録は常に明示的。
+  記録し忘れたコミットは、後から `arctx git add --step <T> --commit <SHA>`
+  で既存 Step に足せる。
 - コミットを伴わない作業（調査・意思決定・行き詰まり）は `transition` /
   `attach` / `cut` で明示的に記録する。
 - 複数エージェントが同じランで並行作業するときは、各自が
-  `eval "$(arctx lane env --run <run> --new --user <name>)"` で
+  `arctx lane create <name>` + `eval "$(arctx lane switch <name> --shell)"` で
   自分の lane を持つ。各エージェントの最初のコミットはランルートの
   兄弟 Transition として並ぶ（互いに衝突しない）。
 
@@ -63,23 +65,21 @@ arctx dump --format outline
 入力ノードから出力ノードを1つ生成する。作業が前の状態から新しい状態へ進んだときに使う。
 
 ```bash
-# 汎用 TransitionPayload で記録する
-arctx transition create \
+# 汎用 StepPayload で記録する
+arctx add \
   --from <input_node_id> \
-  --payload-type transition_payload \
-  --field type=implementation \
-  --field 'content={"summary": "CSC storage への index dtype 修正を実装"}'
+  --type implementation \
+  --json '{"summary": "CSC storage への index dtype 修正を実装"}'
 
-# 出力: {"transition_id": "t_...", "output_node_id": "n_..."}
+# 出力: {"step_id": "t_...", "output_node_id": "n_..."}
 ```
 
 複数ノードからのマージ（fan-in）:
 
 ```bash
-arctx transition create \
+arctx add \
   --from <node_a> --from <node_b> \
-  --payload-type transition_payload \
-  --field type=merge
+  --type merge
 ```
 
 ### `attach` — ノードへの注釈
@@ -127,21 +127,22 @@ TransitionPayload(type="test")    — テスト追加
 
 ### git 拡張ペイロード — git コミットを含む作業
 
-git 拡張が有効な場合、`arctx git commit` / `arctx commit` が `GitChangePayload` と `BranchPayload` を自動生成する:
+git 拡張が有効な場合、`arctx add --commit <ref>` が `GitChangePayload` を記録する:
 
 ```bash
-# 変更をステージしてから arctx git commit で記録する。
+# 自分でコミットしてから、その sha を記録する。
 # arctx が実際の git commit を駆動し、GitChangePayload / BranchPayload を生成する。
 git add -A
-arctx git commit -m "fix: INDEX_DTYPE を torch.int32 に統一"
+git commit -m "fix: INDEX_DTYPE を torch.int32 に統一"
+arctx add --title "fix: INDEX_DTYPE を torch.int32 に統一" --type commit --commit HEAD
 ```
 
 入力ノードは明示指定しない（`--from` は無い）。lane があればその
 ポインタ、無ければランルートから解決される。並行作業では先に
-`arctx lane env --new --user <name>` で自分のセッションを持つこと。
+`arctx lane create <name>` + `eval "$(arctx lane switch <name> --shell)"` で自分の lane を持つこと。
 
 amend / rebase / revert / cherry-pick / merge は追従フックが自動で取り込むため
-手動記録は不要。ただし**通常の新規コミットは `arctx git commit` 経由が必須**
+ただし**コミットの記録は明示的に行う必要がある**（フックは無い）
 （素の `git commit` は記録されない）。
 
 ## 4. Python API から記録する（エージェント実装内）
@@ -212,7 +213,7 @@ arctx dump --format outline
 arctx dump --node <node_id> --depth 3
 
 # 特定ノードの履歴を遡る
-arctx trace <node_id>
+arctx graph trace <node_id>
 
 # ノードのペイロードを確認する
 arctx show <node_id>

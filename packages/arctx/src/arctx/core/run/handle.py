@@ -93,7 +93,18 @@ class RunHandle:
     ) -> WorkEvent | None:
         lid = lane_id
         if user_id is None or lid is None:
-            return None
+            # A run with no events at all is ordered by file order alone, and
+            # the pure-library caller who never passes a user or lane is
+            # entitled to that. But once a run has a ledger, read order comes
+            # from the ledger — dropping the event here left the record
+            # unranked, and an unranked record written late used to be re-read
+            # as the oldest one, silently inverting cut/uncut supersession.
+            # Fall back to the same defaults the CLI resolves to rather than
+            # leaving a hole.
+            if not self.run_graph.work_events:
+                return None
+            user_id = user_id or "user"
+            lid = lid or "default"
         self.ensure_lane(user_id=user_id, lane_id=lid)
         event = WorkEvent(
             event_id=self._next_id("we"),
