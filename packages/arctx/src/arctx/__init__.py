@@ -27,7 +27,7 @@ from arctx.core.types import (
     TargetKind,
 )
 
-__version__ = "0.4.7b1"
+__version__ = "0.4.8b1"
 
 
 def init(requirement: Requirement, *, run_id: str | None = None) -> RunHandle:
