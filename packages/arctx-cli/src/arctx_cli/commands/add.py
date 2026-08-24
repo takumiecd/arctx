@@ -172,7 +172,10 @@ def run_add_step_command(
     view = step_view(step)
     if git_change is not None:
         view["git_change"] = git_change
-    return {"step": view}
+    # The handle already reflects the write. Handing it to the post-write check
+    # saves a full reload-and-reparse of the run — that third validation was
+    # the most expensive of the three every write pays.
+    return {"step": view, "handle": handle}
 
 
 def cli_add(args) -> int:
@@ -193,7 +196,9 @@ def cli_add(args) -> int:
             commits=args.commits,
         )
         print(json.dumps(result["step"], ensure_ascii=False, indent=2))
-        strict_rc = warn_if_invalid(run_id, args.store_dir, command_name="add")
+        strict_rc = warn_if_invalid(
+            result.get("handle") or run_id, args.store_dir, command_name="add"
+        )
         return strict_rc or 0
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
