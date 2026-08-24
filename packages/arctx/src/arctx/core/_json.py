@@ -23,6 +23,13 @@ except ImportError:
         return _json.loads(s)
 
     def dumps(obj: object) -> str:  # type: ignore[misc]
-        return _json.dumps(obj, ensure_ascii=False, sort_keys=True)
+        # allow_nan=False: bare NaN/Infinity are not JSON. Writing one puts
+        # bytes in the git-committed canon that a strict parser (orjson, JS
+        # JSON.parse) refuses to read, and jq silently turns into null. Fail
+        # loudly at the write instead. Note orjson has no equivalent option --
+        # it writes null for a non-finite float -- so the real guard is
+        # validation at the point the value enters (see
+        # arctx.ext.optimize.tables.value_kind); this is the backstop.
+        return _json.dumps(obj, ensure_ascii=False, sort_keys=True, allow_nan=False)
 
     HAVE_ORJSON = False

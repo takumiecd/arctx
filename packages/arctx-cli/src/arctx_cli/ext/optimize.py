@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +54,12 @@ def _parse_scalar(text: str):
     if value is None or isinstance(value, (dict, list)):
         raise ValueError(
             f"value must be a scalar (number / bool / string), got {text!r}"
+        )
+    if isinstance(value, float) and not math.isfinite(value):
+        # json.loads accepts NaN / Infinity / -Infinity, and 1e309 overflows to
+        # inf. None of them are sortable or writable as JSON.
+        raise ValueError(
+            f"value must be a finite number, got {text!r}"
         )
     return value
 
