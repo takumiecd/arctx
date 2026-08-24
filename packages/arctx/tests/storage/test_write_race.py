@@ -176,3 +176,45 @@ def test_a_pre_existing_error_does_not_block_an_unrelated_write(tmp_path, monkey
     store.append_batch(
         build_append_batch(later, user_id="u", lane_id="L", before=before)
     )
+
+
+def test_a_lane_closed_after_the_decision_refuses_the_write(tmp_path, monkeypatch):
+    """The closed-lane gate runs before the lock, against the writer's snapshot.
+
+    A lane closed between the gate and the append used to let the write land
+    anyway — the gate had already said yes.
+    """
+    monkeypatch.setenv("ARCTX_CACHE_DIR", str(tmp_path / "cache"))
+    store, x, b, c = _seed(tmp_path)
+
+    writer = store.load_run("race")
+    before = graph_counts(writer)
+    writer.add_step([b], _tp(), user_id="u", lane_id="L")
+
+    # Someone else closes the lane in between, the documented way.
+    closer = store.load_run("race")
+    closer.set_lane_status("L", status="closed", user_id="other", reason="done")
+    store.save_run(closer)
+
+    with pytest.raises(ConcurrentWriteRejected, match="closed"):
+        store.append_batch(
+            build_append_batch(writer, user_id="u", lane_id="L", before=before)
+        )
+
+
+def test_force_still_writes_to_a_closed_lane(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARCTX_CACHE_DIR", str(tmp_path / "cache"))
+    store, x, b, c = _seed(tmp_path)
+
+    writer = store.load_run("race")
+    before = graph_counts(writer)
+    writer.add_step([b], _tp(), user_id="u", lane_id="L")
+    closer = store.load_run("race")
+    closer.set_lane_status("L", status="closed", user_id="other", reason="done")
+    store.save_run(closer)
+
+    store.append_batch(
+        build_append_batch(
+            writer, user_id="u", lane_id="L", before=before, force=True
+        )
+    )

@@ -168,6 +168,7 @@ def run_add_step_command(
         user_id=user_id,
         lane_id=lane_id,
         before=before,
+        force=force,
     )
     view = step_view(step)
     if git_change is not None:

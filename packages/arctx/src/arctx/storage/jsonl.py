@@ -282,6 +282,19 @@ class JsonlRunStore:
         except Exception:  # noqa: BLE001 — never block a write on a read problem
             return
 
+        # The closed-lane gate runs in the CLI, before the lock, against the
+        # writer's own snapshot — so a lane closed in between slipped through.
+        # Re-check it here, where the answer is current. `--force` sets
+        # batch.force and is honoured, as it is at the gate.
+        if not batch.force:
+            lane = current.run_graph.lanes.get(batch.lane_id)
+            if lane is not None and getattr(lane, "status", "open") == "closed":
+                raise ConcurrentWriteRejected(
+                    f"lane {batch.lane_id} was closed before this write landed. "
+                    f"Nothing was written. Reopen it with `arctx lane open "
+                    f"{batch.lane_id}`, or write with --force."
+                )
+
         baseline = {
             node_id
             for node_id, _ in nodes_with_multiple_active_producers(current.run_graph)

@@ -198,10 +198,31 @@ def run_lane_switch_command(
     if shell:
         result["export"] = f"export ARCTX_LANE_ID={lane.lane_id}"
     else:
-        repo_root = find_repo_root()
+        try:
+            repo_root = find_repo_root()
+        except RuntimeError as exc:
+            raise _no_repo_for_pointer(
+                "`arctx lane switch`", f"arctx lane switch {name} --shell"
+            ) from exc
         write_arctx_lane(repo_root, lane.lane_id, run_id=run_id)
         result["arctx_lane_path"] = str(arctx_lane_path(repo_root))
     return result
+
+
+def _no_repo_for_pointer(what: str, shell_hint: str) -> RuntimeError:
+    """The pointer needs a repository; the shell form does not.
+
+    Outside a repo the generic "provide --run / ARCTX_RUN_ID" advice is a dead
+    end: the user has usually already done that — it is how they got this far —
+    and it does not help, because what is missing is somewhere to put a
+    persistent pointer, not a way to name the run. Name the form that works.
+    """
+    return RuntimeError(
+        f"{what} needs a git repository, because it writes a pointer into "
+        f"<gitdir>/. You are not in one. Either run `git init` here, or pin "
+        f"this terminal instead, which needs no repository:\n"
+        f"    eval \"$({shell_hint})\""
+    )
 
 
 def run_lane_current_command(*, run_id: str, store_dir: str | None) -> dict:

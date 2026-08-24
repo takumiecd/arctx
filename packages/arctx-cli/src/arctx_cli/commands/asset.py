@@ -103,6 +103,7 @@ def run_asset_attach_command(
         user_id=user_id,
         lane_id=lane_id,
         before=before,
+        force=force,
     )
     return {
         "payload": result.payload.to_dict(),

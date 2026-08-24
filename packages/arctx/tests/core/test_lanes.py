@@ -337,7 +337,13 @@ def test_lane_root_candidates_treat_entry_step_output_as_root():
 
 
 def test_validate_lanes_warns_about_default_lane_membership():
+    """The warning is about records left behind once the run uses lanes.
+
+    A run with no named lane keeps everything in ``default`` by definition, so
+    seeding one here is what makes the stray node stray.
+    """
     h = _handle()
+    h.ensure_lane(user_id="alice", lane_id="work")
     _seed_node(h, lane_id="default")
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
@@ -356,6 +362,7 @@ def test_validate_lanes_default_lane_membership_ignores_cut_records():
     uncutting it must bring the warning back.
     """
     h = _handle()
+    h.ensure_lane(user_id="alice", lane_id="work")
     node = _seed_node(h, lane_id="default")
 
     issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
@@ -571,3 +578,18 @@ def test_lane_export_view_is_json_ready():
             "metadata": {},
         }
     ]
+
+
+def test_a_run_with_no_named_lane_is_not_warned_about_default_membership():
+    """A brand-new user's first write must not be reported as an inconsistency.
+
+    `arctx init` then `arctx add` used to warn about the step it had just
+    written: everything lives in `default` until a lane is created, which is
+    not a problem, it is the starting state.
+    """
+    h = _handle()
+    _seed_node(h, lane_id="default")
+
+    issues = validate_lanes(h.run_graph, root_node_id=h.root_node_id)
+
+    assert not any(issue.code == "default_lane_membership" for issue in issues)

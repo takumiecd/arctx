@@ -45,6 +45,9 @@ def _seed_default_lane_node(sd: str) -> str:
     """
     store = resolve_store(sd)
     handle = store.load_run("run_lane")
+    # The warning only fires once the run uses lanes at all — until then,
+    # everything living in `default` is simply where it starts.
+    handle.ensure_lane(user_id="alice", lane_id="work")
     payload = StepPayload(payload_id=handle._next_id("pl"), target_id="pending", type="seed")
     step = handle.add_step(
         [handle.root_node_id],
