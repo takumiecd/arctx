@@ -172,7 +172,8 @@ def _cli_git_attach(args) -> int:
     from arctx.ext.git.helpers.attach import attach_commits_to_step
 
     try:
-        ensure_lane_open(handle, lane_id, force=getattr(args, "force", False))
+        force = getattr(args, "force", False)
+        ensure_lane_open(handle, lane_id, force=force)
         before = graph_counts(handle)
         result = attach_commits_to_step(
             handle,
@@ -192,6 +193,7 @@ def _cli_git_attach(args) -> int:
         user_id=user_id,
         lane_id=lane_id,
         before=before,
+        force=force,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

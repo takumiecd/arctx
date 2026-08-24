@@ -110,7 +110,11 @@ When adding a new RunHandle method, implement it in a focused `packages/arctx/sr
 
 Current commands:
 
-- `lane` — manage lanes (flat, git-branch-like). `lane create NAME [--purpose TEXT]`, `lane switch`, `lane summarize NAME --summary TEXT` (refresh the current summary mid-work, lane stays open), `lane close NAME --summary TEXT`, `lane open`. Close always works: a lane with no active frontier stamps its chronologically last output node, and an *empty* lane closes with the summary riding the `lane_closed` event (`lane_overview` falls back to it). `lane create` warns on stderr about open lanes with no writes for 7+ days (`arctx.core.lanes.stale_open_lanes`), and `guide --context` lists them — the "close your lanes" nudge. A lane's *current summary* is the latest `SummaryPayload` it owns, ordered by `record_event_rank` (the append-only work-event ledger, not jsonl line order).
+- `lane` — manage lanes (flat, git-branch-like). `lane create NAME [--purpose TEXT]`, `lane switch`, `lane summarize NAME --summary TEXT` (refresh the current summary mid-work, lane stays open), `lane close NAME --summary TEXT`, `lane open`. Close always works: a lane with no active frontier stamps its chronologically last output node, and an *empty* lane closes with the summary riding the `lane_closed` event (`lane_overview` falls back to it). `lane validate`'s `default_lane_membership` warning only fires once the run has
+a named lane: until then everything living in `default` is simply where it
+starts, and warning about it made a new user's first `arctx add` complain about
+the step it had just written. `lane create` warns on stderr about open lanes
+with no writes for 7+ days (`arctx.core.lanes.stale_open_lanes`), and `guide --context` lists them — the "close your lanes" nudge. A lane's *current summary* is the latest `SummaryPayload` it owns, ordered by `record_event_rank` (the append-only work-event ledger, not jsonl line order).
 - `current` / `use` — manage the active run pointer. `use <run> --shell` prints
   `export ARCTX_RUN_ID=<run>` for `eval` (terminal-scoped) instead of writing the
   repo pointer.
@@ -234,7 +238,10 @@ Old files `edges.jsonl`, `input_transitions.jsonl`, `output_transitions.jsonl`, 
 
 `append_batch` re-checks the batch **inside the run lock, against a fresh read**
 and raises `ConcurrentWriteRejected` if applying it would leave a node with two
-active producing steps. The lock only ever covered the append, not the decision
+active producing steps, or if the batch's lane was closed in the meantime
+(`--force` sets `AppendBatch.force` and is honoured, as it is at the CLI gate —
+the gate itself runs before the lock, so it could not see a lane closed after
+the writer's snapshot). The lock only ever covered the append, not the decision
 that produced it, so two writers that loaded the same state both concluded they
 were the only one retiring a node's producer, and both appended — silently.
 The check is deliberately narrow: only the invariant a stale snapshot can break,

@@ -621,9 +621,18 @@ def validate_lanes(
             # Hygiene check only: cut records shouldn't keep this warning
             # alive forever, since append-only history can never remove a
             # default-lane record from membership — only cutting it.
+            #
+            # And it only means anything once the run uses lanes at all. In a
+            # run with no named lane, the default lane owning everything is
+            # simply where the records are — so warning about it made a brand
+            # new user's very first `arctx add` complain about the step it had
+            # just written, right after `arctx init` told them to write it.
+            uses_lanes = any(
+                lane != "default" for lane in set(lane_node_ids) | set(lane_step_ids)
+            ) or any(lane != "default" for lane in graph.lanes)
             active_default_nodes = nodes - inactive_nodes_all
             active_default_steps = steps - inactive_steps_all
-            if active_default_nodes or active_default_steps:
+            if uses_lanes and (active_default_nodes or active_default_steps):
                 issues.append(
                     LaneValidationIssue(
                         code="default_lane_membership",

@@ -32,6 +32,11 @@ class AppendBatch:
     records: tuple[GraphRecordEnvelope, ...]
     lane: Lane
     events: tuple[WorkEvent, ...]
+    # False when the writer asked to respect the lane's closed state, so the
+    # store can re-check it under the lock. The CLI's gate runs before the lock,
+    # against the writer's own snapshot, so a lane closed in between slipped
+    # through. True means the writer passed --force and meant it.
+    force: bool = False
 
 
 def apply_to_graph(graph, batch: "AppendBatch") -> None:

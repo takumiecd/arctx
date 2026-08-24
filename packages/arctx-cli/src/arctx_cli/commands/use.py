@@ -74,7 +74,14 @@ def run_use_command(
         raise KeyError(f"unknown run_id: {run_id}")
     if shell:
         return {"run_id": run_id, "export": f"export ARCTX_RUN_ID={run_id}"}
-    repo_root = find_repo_root()
+    try:
+        repo_root = find_repo_root()
+    except RuntimeError as exc:
+        from arctx_cli.commands.lane import _no_repo_for_pointer  # noqa: PLC0415
+
+        raise _no_repo_for_pointer(
+            "`arctx use`", f"arctx use {run_id} --shell"
+        ) from exc
     write_arctx_id(repo_root, run_id)
     return {"run_id": run_id, "arctx_id_path": str(arctx_id_path(repo_root))}
 

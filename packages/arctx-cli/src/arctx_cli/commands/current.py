@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import argparse
 import json
 from pathlib import Path
@@ -47,7 +49,25 @@ def run_current_command(
     RuntimeError
         If not in a git repo or no ``<gitdir>/arctx-id`` is present.
     """
-    repo_root = find_repo_root()
+    # The env pin answers the question on its own. Requiring a repository to
+    # *report* the current run was a dead end outside one: the terminal already
+    # named a run, which is how the user got this far.
+    env_run = os.environ.get("ARCTX_RUN_ID")
+    try:
+        repo_root = find_repo_root()
+    except RuntimeError as exc:
+        if env_run:
+            arctx_home = resolve_arctx_home()
+            return {
+                "run_id": env_run,
+                "run_path": str(arctx_home / "runs" / env_run),
+                "source": "env",
+            }
+        raise RuntimeError(
+            "not in a git repository and no run is pinned. Set one for this "
+            "terminal with `eval \"$(arctx use <run_id> --shell)\"`, or run "
+            "`git init` here to keep a persistent pointer."
+        ) from exc
     run_id = read_arctx_id(repo_root)
     if not run_id:
         raise RuntimeError(
@@ -56,7 +76,7 @@ def run_current_command(
         )
     arctx_home = resolve_arctx_home()
     run_path = str(arctx_home/ "runs" / run_id)
-    return {"run_id": run_id, "run_path": run_path}
+    return {"run_id": run_id, "run_path": run_path, "source": "pointer"}
 
 
 def cli_current(args) -> int:
