@@ -45,17 +45,50 @@ def cli_doctor(args) -> int:
     else:
         diagnosis = diagnose(store, run_id)
 
+    # Files parsing is not the same as the graph making sense. Saying "run is
+    # healthy" while a node has two active producers is exactly the silent
+    # answer doctor exists to prevent, so check the invariants too when the run
+    # loads at all.
+    consistency = _consistency_issues(store, run_id) if not diagnosis.broken else []
+    ok = diagnosis.healthy and not consistency
+
     if args.as_json:
         payload = diagnosis.to_dict()
         payload["repaired"] = moved
+        payload["consistency"] = [
+            {"code": issue.code, "severity": issue.severity, "message": issue.message,
+             "record_id": issue.record_id}
+            for issue in consistency
+        ]
         print(json.dumps(payload, ensure_ascii=False, indent=2))
-        return 0 if diagnosis.healthy else 1
+        return 0 if ok else 1
 
-    _print_report(diagnosis, moved, repaired=args.repair)
-    return 0 if diagnosis.healthy else 1
+    _print_report(diagnosis, moved, repaired=args.repair, consistency=consistency)
+    return 0 if ok else 1
 
 
-def _print_report(diagnosis, moved: dict[str, int], *, repaired: bool) -> None:
+def _consistency_issues(store, run_id: str):
+    """Graph invariants that hold no matter how the run was written.
+
+    Read-only and never raises: doctor's job is to report, and a run that
+    cannot load has already been reported as broken lines.
+    """
+    try:
+        from arctx.core.lanes import validate_lanes  # noqa: PLC0415
+
+        handle = store.load_run(run_id)
+        return [
+            issue
+            for issue in validate_lanes(
+                handle.run_graph, root_node_id=handle.root_node_id
+            )
+            if issue.severity == "error"
+        ]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _print_report(diagnosis, moved: dict[str, int], *, repaired: bool, consistency=()) -> None:
     print(f"run {diagnosis.run_id}  ({diagnosis.run_path})")
 
     for report in diagnosis.files:
@@ -88,6 +121,15 @@ def _print_report(diagnosis, moved: dict[str, int], *, repaired: bool) -> None:
     if diagnosis.load_error:
         print()
         print(f"every line parses, but the run does not load: {diagnosis.load_error}")
+        return
+
+    if consistency:
+        print()
+        print(f"{len(consistency)} consistency issue(s) — every line parses, but:")
+        for issue in consistency:
+            print(f"  {issue.code}: {issue.message}")
+        print()
+        print("  `arctx lane validate` shows the same list with lane context.")
         return
 
     print()

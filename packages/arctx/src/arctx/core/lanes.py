@@ -548,9 +548,30 @@ def validate_lanes(
     lane provenance, and GUI/CLI surfaces can decide whether a warning should
     block a workflow.
     """
+    from arctx.core.cuts import nodes_with_multiple_active_producers
+
     run_root = _membership_root_node_id(graph, root_node_id)
     membership = lane_membership(graph, root_node_id=run_root)
     issues: list[LaneValidationIssue] = []
+
+    # Not a lane rule, but this is the one validator every write path and
+    # `arctx doctor` already run, and the state it catches is otherwise
+    # completely silent.
+    for node_id, producers in nodes_with_multiple_active_producers(graph):
+        issues.append(
+            LaneValidationIssue(
+                code="multiple_active_producers",
+                severity="error",
+                message=(
+                    f"node {node_id} has {len(producers)} active producing "
+                    f"steps ({', '.join(producers)}); at most one may be "
+                    f"active — retire the wrong one with "
+                    f"`arctx cut step <ID>`"
+                ),
+                record_id=node_id,
+                lane_id=membership.step_to_lane.get(producers[0]),
+            )
+        )
 
     lane_node_ids: dict[str, set[str]] = {}
     lane_step_ids: dict[str, set[str]] = {}

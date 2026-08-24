@@ -72,6 +72,14 @@ FINGERPRINTED_FILES: tuple[str, ...] = (
     "work_sessions.jsonl",
     "work_events.jsonl",
     "lane_events.jsonl",
+    # `load_run` folds an unapplied append journal into the graph it returns, so
+    # the journal is part of what a read sees and must be part of what the cache
+    # is keyed on. Leaving it out meant a warm reader and a cold reader of the
+    # same directory, at the same instant, disagreed about how many records the
+    # run has — silently, and the stale warm view then decided what the next
+    # write appended. An absent journal fingerprints as (name, None), so the
+    # ordinary no-journal case is unchanged.
+    ".append.journal",
 )
 
 # (filename, content digest or None when the file is absent) for each of the
