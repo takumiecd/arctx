@@ -3,7 +3,14 @@
 Resolution priority (later wins for the same key when merging):
 1. Extension default_aliases (load order; first ext wins among ext-default conflicts)
 2. User config (~/.config/arctx/aliases.toml)
-3. Run-local config (<run_dir>/aliases.toml)
+
+An alias only ever comes from code the user installed or a file in the user's
+own home. There is deliberately no run-local tier: a run lives in a repository
+and travels with it, so `<run_dir>/aliases.toml` was attacker-controlled data
+read at the highest priority. An alias like `show = "cut node"` turned a read
+command into an append-only write on a received run, overriding even the
+victim's own aliases, and the file was not in `.arctx/.gitignore`. Nothing in
+the product ever wrote one.
 
 Alias expansion is one-level only — alias-to-alias chains are prohibited to
 prevent infinite loops.
@@ -45,11 +52,6 @@ def _user_alias_path() -> Path:
     if xdg:
         return Path(xdg) / "arctx" / "aliases.toml"
     return Path.home() / ".config" / "arctx" / "aliases.toml"
-
-
-def _run_alias_path(run_dir: Path | str) -> Path:
-    """Return ``<run_dir>/aliases.toml``."""
-    return Path(run_dir) / "aliases.toml"
 
 
 # ---------------------------------------------------------------------------
@@ -104,13 +106,12 @@ def load_alias_table(
     Priority (later entries win for the same key):
     - Extension defaults (in load order; first ext wins for ext-level conflicts)
     - User config (~/.config/arctx/aliases.toml)
-    - Run-local config (<run_dir>/aliases.toml)
 
     Parameters
     ----------
     run_dir:
-        Directory of the active run.  When provided, ``<run_dir>/aliases.toml``
-        is loaded and takes highest priority.
+        Directory of the active run.  Kept because extension defaults are
+        resolved per run; no alias file is read from it.
     extensions_default_aliases:
         List of ``default_aliases()`` dicts from enabled extensions, in load
         order.  First ext wins for duplicate alias names at this tier.
@@ -127,11 +128,6 @@ def load_alias_table(
     # 2. User config (overrides ext defaults)
     user_aliases = _read_toml_aliases(_user_alias_path())
     merged.update(user_aliases)
-
-    # 3. Run-local config (highest priority)
-    if run_dir is not None:
-        run_aliases = _read_toml_aliases(_run_alias_path(run_dir))
-        merged.update(run_aliases)
 
     return merged
 
@@ -199,7 +195,6 @@ def list_aliases(
 
     *source* is one of:
 
-    - ``"run"`` — from ``<run_dir>/aliases.toml``
     - ``"user"`` — from ``~/.config/arctx/aliases.toml``
     - ``"ext:<name>"`` — from an extension's ``default_aliases()``
 
@@ -230,17 +225,68 @@ def list_aliases(
     for name, target in user_aliases.items():
         result[name] = (target, "user")
 
-    # 3. Run-local (highest priority)
-    if run_dir is not None:
-        run_aliases = _read_toml_aliases(_run_alias_path(run_dir))
-        for name, target in run_aliases.items():
-            result[name] = (target, "run")
-
     return result
 
 
+
+def resolve_run_dir_for_alias(tokens: list[str]) -> str | None:
+    """Best-effort resolution of run_dir for alias loading.
+
+    Reads ``--run`` / ``ARCTX_RUN_ID`` / ``<gitdir>/arctx-id`` — the documented
+    order — and returns None if no run resolves without side-effects.
+
+    This is the one resolver. `arctx alias list` / `alias resolve` used to have
+    their own, which stopped at ``ARCTX_RUN_ID`` and never consulted
+    ``<gitdir>/arctx-id``. Inside a repo with a run pointer and no env var the
+    two disagreed, so the alias-introspection commands reported a different
+    resolution than the CLI actually dispatched.
+    """
+    import os
+    from pathlib import Path
+
+    # Look for --run <id> in tokens
+    run_id: str | None = None
+    store_dir: str | None = None
+    for i, tok in enumerate(tokens):
+        if tok == "--run" and i + 1 < len(tokens):
+            run_id = tokens[i + 1]
+        if tok == "--store-dir" and i + 1 < len(tokens):
+            store_dir = tokens[i + 1]
+        if tok.startswith("--run="):
+            run_id = tok[6:]
+        if tok.startswith("--store-dir="):
+            store_dir = tok[12:]
+
+    if run_id is None:
+        run_id = os.environ.get("ARCTX_RUN_ID")
+
+    if run_id is None:
+        # Try <gitdir>/arctx-id
+        try:
+            from arctx_cli.paths import find_repo_root, read_arctx_id  # noqa: PLC0415
+
+            repo_root = find_repo_root()
+            run_id = read_arctx_id(repo_root)
+        except Exception:  # noqa: BLE001
+            pass
+
+    if run_id is None:
+        return None
+
+    if store_dir is None:
+        try:
+            from arctx_cli.paths import resolve_store_dir  # noqa: PLC0415
+
+            store_dir = resolve_store_dir()
+        except Exception:  # noqa: BLE001
+            return None
+
+    candidate = Path(store_dir) / run_id
+    return str(candidate) if candidate.is_dir() else None
+
 __all__ = [
     "load_alias_table",
+    "resolve_run_dir_for_alias",
     "resolve_alias",
     "save_user_alias",
     "remove_user_alias",

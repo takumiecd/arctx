@@ -142,53 +142,10 @@ def _build_parser(*, run_dir: str | None = None) -> argparse.ArgumentParser:
 
 
 def _resolve_run_dir_for_alias(tokens: list[str]) -> str | None:
-    """Best-effort resolution of run_dir for alias loading.
+    """Delegate to the one resolver in arctx_cli.alias."""
+    from arctx_cli.alias import resolve_run_dir_for_alias  # noqa: PLC0415
 
-    Reads ``--run`` / ``ARCTX_RUN_ID`` / ``<gitdir>/arctx-id``. Returns None if no
-    run can be resolved without side-effects.
-    """
-    import os
-    from pathlib import Path
-
-    # Look for --run <id> in tokens
-    run_id: str | None = None
-    store_dir: str | None = None
-    for i, tok in enumerate(tokens):
-        if tok == "--run" and i + 1 < len(tokens):
-            run_id = tokens[i + 1]
-        if tok == "--store-dir" and i + 1 < len(tokens):
-            store_dir = tokens[i + 1]
-        if tok.startswith("--run="):
-            run_id = tok[6:]
-        if tok.startswith("--store-dir="):
-            store_dir = tok[12:]
-
-    if run_id is None:
-        run_id = os.environ.get("ARCTX_RUN_ID")
-
-    if run_id is None:
-        # Try <gitdir>/arctx-id
-        try:
-            from arctx_cli.paths import find_repo_root, read_arctx_id  # noqa: PLC0415
-
-            repo_root = find_repo_root()
-            run_id = read_arctx_id(repo_root)
-        except Exception:  # noqa: BLE001
-            pass
-
-    if run_id is None:
-        return None
-
-    if store_dir is None:
-        try:
-            from arctx_cli.paths import resolve_store_dir  # noqa: PLC0415
-
-            store_dir = resolve_store_dir()
-        except Exception:  # noqa: BLE001
-            return None
-
-    candidate = Path(store_dir) / run_id
-    return str(candidate) if candidate.is_dir() else None
+    return resolve_run_dir_for_alias(tokens)
 
 
 def _collect_ext_default_aliases(run_dir: str | None) -> list[dict[str, str]]:
