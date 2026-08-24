@@ -134,10 +134,8 @@ class JsonlRunStore:
                 run.run_graph.lanes.values(),
                 "lane_id",
             )
-            self._merge_jsonl(
-                run_path / "work_events.jsonl",
-                run.run_graph.work_events,
-                "event_id",
+            self._merge_work_events(
+                run_path / "work_events.jsonl", run.run_graph
             )
 
             # Only refresh the cache when the in-memory graph matches disk
@@ -334,6 +332,35 @@ class JsonlRunStore:
         )
 
     @staticmethod
+    def _merge_work_events(path: Path, graph) -> None:
+        """Merge work events, numbering any that arrive without a ``seq``.
+
+        ``append_batch`` assigns a dense ``seq`` under the run lock; ``save_run``
+        used to write whatever the in-memory event carried, which for an event
+        built by ``RunHandle.record_work_event`` is ``None``. ``_sort_event_rows``
+        reads a missing ``seq`` as ``-1``, so those events sorted ahead of the
+        entire ledger on reload and inverted every decision ranked against them.
+        Number them here the same way, and write the number back onto the frozen
+        event so the graph this call is about to cache agrees with the bytes.
+        """
+        import dataclasses
+
+        existing = _dedup_rows(JsonlRunStore._read_jsonl(path), "event_id")
+        seen = {str(row["event_id"]) for row in existing}
+        next_seq = len(existing) + 1
+        merged = list(existing)
+        for index, event in enumerate(graph.work_events):
+            if str(event.event_id) in seen:
+                continue
+            seen.add(str(event.event_id))
+            if event.seq is None:
+                event = dataclasses.replace(event, seq=next_seq)
+                graph.work_events[index] = event
+            next_seq = max(next_seq, int(event.seq)) + 1
+            merged.append(event.to_dict())
+        _atomic_write_text(path, "".join(_fast_json.dumps(row) + "\n" for row in merged))
+
+    @staticmethod
     def _merge_jsonl(path: Path, records, id_attr: str) -> None:
         """Atomically rewrite *path* as the union (by ID) of disk rows and *records*.
 
@@ -449,14 +476,48 @@ def _ordered_rows(
     """Dedupe *rows* by *id_key* and put them in canonical creation order.
 
     Ranked records (those a work event claims to have created) follow the event
-    order. Unranked records sort ahead of them, keeping their relative file
-    order: the only unranked records a CLI-written run has are bootstrap ones
-    (the run root node), which do precede every event. A run written purely
-    through the core API passes no user/lane, records no events, and therefore
-    has an empty *rank* — every row is unranked and file order is preserved.
+    order. An unranked record is anchored **immediately after the last ranked
+    record that precedes it in file order**, which is where it was actually
+    written.
+
+    That anchoring is the whole point. Unranked rows used to sort ahead of
+    every ranked one, on the assumption that the only unranked records are
+    bootstrap rows (the run root) that genuinely do precede every event. Any
+    write that skips the ledger breaks the assumption, and a *late* unranked
+    record was then re-read as the *oldest* one. For cut/uncut, where the last
+    marker wins, that silently inverted the answer: a cut written through the
+    documented core API (which records no event without a user/lane) came back
+    from a cold load as superseded, so the same committed bytes reported
+    opposite states on the writer's warm cache and on a fresh clone.
+
+    File order is only trustworthy when this file has not been reordered. A
+    ``merge=union`` merge interleaves lines from both sides, so if the ranked
+    rows are not in ascending rank order the file order carries no information
+    and we fall back to ranking alone — the behaviour the union-merge
+    determinism tests pin. A run written purely through the core API records no
+    events at all: *rank* is empty, nothing is ranked, and file order is
+    preserved end to end.
     """
     deduped = _dedup_rows(rows, id_key)
-    return sorted(deduped, key=lambda row: rank.get(str(row[id_key]), -1))
+    ranks_in_file = [
+        rank[str(row[id_key])] for row in deduped if str(row[id_key]) in rank
+    ]
+    if any(a >= b for a, b in zip(ranks_in_file, ranks_in_file[1:])):
+        return sorted(deduped, key=lambda row: rank.get(str(row[id_key]), -1))
+
+    # (anchor, tier, file position): tier 0 keeps a ranked row ahead of the
+    # unranked rows that trail it, and file position breaks ties stably.
+    keyed: list[tuple[tuple[int, int, int], dict[str, Any]]] = []
+    anchor = -1
+    for position, row in enumerate(deduped):
+        record_rank = rank.get(str(row[id_key]))
+        if record_rank is None:
+            keyed.append(((anchor, 1, position), row))
+        else:
+            anchor = record_rank
+            keyed.append(((anchor, 0, position), row))
+    keyed.sort(key=lambda item: item[0])
+    return [row for _, row in keyed]
 
 
 # Windows refuses to rename over a file another process has open, and readers
