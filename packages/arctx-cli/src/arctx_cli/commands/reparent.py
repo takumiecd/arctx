@@ -21,6 +21,7 @@ from arctx_cli.context import (
 )
 from arctx_cli.payload_builder import build_payload, parse_field_args, parse_json_object
 from arctx_cli.post_write_check import warn_if_invalid
+from arctx_cli.write_retry import with_write_retry
 
 
 def add_parser(subparsers) -> argparse.ArgumentParser:
@@ -109,19 +110,25 @@ def run_reparent_command(
 def cli_reparent(args) -> int:
     try:
         run_id = resolve_run_id_from_args(args)
-        result = run_reparent_command(
-            run_id=run_id,
-            node_id=args.node_id,
-            input_node_ids=args.input_nodes,
-            title=args.title,
-            payload_kind=args.payload_kind,
-            payload_type=args.payload_type,
-            field_data=parse_field_args(args.field),
-            json_data=parse_json_object(args.json),
-            reason=args.reason,
-            store_dir=args.store_dir,
-            user_id=resolve_user_id_from_args(args),
-            lane_id=resolve_lane_id_from_args(args),
+        # Losing a race here is not the user's fault and has an obvious
+        # resolution: read the run again and redo the decision against what
+        # is there now. That is what the retry does — the whole cycle, since
+        # the stale part is the decision, not the append.
+        result = with_write_retry(
+            lambda: run_reparent_command(
+                run_id=run_id,
+                node_id=args.node_id,
+                input_node_ids=args.input_nodes,
+                title=args.title,
+                payload_kind=args.payload_kind,
+                payload_type=args.payload_type,
+                field_data=parse_field_args(args.field),
+                json_data=parse_json_object(args.json),
+                reason=args.reason,
+                store_dir=args.store_dir,
+                user_id=resolve_user_id_from_args(args),
+                lane_id=resolve_lane_id_from_args(args),
+            )
         )
         print(json.dumps(result["step"], ensure_ascii=False, indent=2))
         strict_rc = warn_if_invalid(result.get("handle") or run_id, args.store_dir, command_name="reparent")

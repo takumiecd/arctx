@@ -34,7 +34,16 @@ class ConcurrentWriteRejected(RuntimeError):
 
     Re-checking inside the lock turns that into this error, which the caller
     can act on: reload and try again.
+
+    ``retryable`` says whether trying again can succeed. A stale decision can:
+    redo it against the current state and it becomes an ordinary sequential
+    write. A lane that closed cannot — reloading finds it closed again, so
+    retrying would only spin.
     """
+
+    def __init__(self, message: str, *, retryable: bool = True):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 class BrokenRunFileError(ValueError):
@@ -292,7 +301,8 @@ class JsonlRunStore:
                 raise ConcurrentWriteRejected(
                     f"lane {batch.lane_id} was closed before this write landed. "
                     f"Nothing was written. Reopen it with `arctx lane open "
-                    f"{batch.lane_id}`, or write with --force."
+                    f"{batch.lane_id}`, or write with --force.",
+                    retryable=False,
                 )
 
         baseline = {

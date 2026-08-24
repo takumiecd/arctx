@@ -246,9 +246,14 @@ that produced it, so two writers that loaded the same state both concluded they
 were the only one retiring a node's producer, and both appended — silently.
 The check is deliberately narrow: only the invariant a stale snapshot can break,
 computed without lane membership so it stays cheap on a path every write takes.
-Pre-existing breakage does not block an unrelated write. Callers reload and
-retry; `validate=False` skips it and exists for callers that have already done
-the equivalent.
+Pre-existing breakage does not block an unrelated write. `ConcurrentWriteRejected.retryable` says whether trying again can help — a
+stale decision can be redone, a lane that closed cannot. `arctx reparent` wraps
+its whole load-decide-write cycle in `arctx_cli.write_retry.with_write_retry`,
+so a losing writer redoes the decision against the current state and lands the
+sequential outcome instead of reporting an error the user did not cause.
+Retrying only the append would resubmit the same stale decision, which is why
+the retry is around the cycle. `validate=False` skips the check and exists for
+callers that have already done the equivalent.
 
 `JsonlRunStore` is the only store. Do not reintroduce a second backend: storage
 is git-native, so a store git cannot carry is not an alternative canon — the
