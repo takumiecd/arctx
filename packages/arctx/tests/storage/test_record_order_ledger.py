@@ -121,30 +121,59 @@ def test_pure_library_runs_still_record_no_events(tmp_path, monkeypatch, marker)
 # ---------------------------------------------------------------------------
 
 
-def test_events_order_by_time_not_by_seq():
+def test_a_merged_ledger_orders_by_time_because_seq_collides():
     """`seq` is per-file and dense, so it collides across a union merge.
 
-    Two branches each number their events from the same place, and a branch
-    that did more work carries higher numbers regardless of when it did them.
-    Ordering by seq first made the merged cut/uncut state depend on which
-    branch appended more events rather than on which decision came last.
+    Two branches each number from the same place, and a branch that did more
+    work carries higher numbers regardless of when it acted. A duplicate seq is
+    how that is visible in the data, and only then does the clock lead.
     """
     from arctx.storage.jsonl import _sort_event_rows
 
     rows = [
         # the branch that did more work: high seq, but it acted FIRST
         {"event_id": "e_a", "seq": 10, "created_at": "2026-08-24T01:00:00Z"},
-        # the branch that acted LAST: low seq
+        # the other branch, acting later, renumbering from its own count
         {"event_id": "e_b", "seq": 4, "created_at": "2026-08-24T02:00:00Z"},
+        {"event_id": "e_c", "seq": 4, "created_at": "2026-08-24T02:30:00Z"},
     ]
-    assert [r["event_id"] for r in _sort_event_rows(rows)] == ["e_a", "e_b"]
+    assert [r["event_id"] for r in _sort_event_rows(rows)] == ["e_a", "e_b", "e_c"]
 
 
-def test_seq_still_breaks_ties_inside_one_timestamp():
+def test_a_single_branch_orders_by_seq_and_ignores_a_skewed_clock():
+    """On one branch seq is assigned in write order, so it beats the wall clock.
+
+    Two machines sharing a run do not share a clock. Ordering by time here let
+    a machine whose clock ran slow sort its later events before earlier ones
+    from the other machine — trading the merge bug for a clock-skew bug.
+    """
     from arctx.storage.jsonl import _sort_event_rows
 
     rows = [
-        {"event_id": "e_2", "seq": 2, "created_at": "2026-08-24T01:00:00Z"},
+        {"event_id": "e1", "seq": 1, "created_at": "2026-08-24T10:00:00Z"},
+        {"event_id": "e2", "seq": 2, "created_at": "2026-08-24T10:01:00Z"},
+        # same run, other machine, clock ten minutes behind — but written last
+        {"event_id": "e3", "seq": 3, "created_at": "2026-08-24T09:51:00Z"},
+    ]
+    assert [r["event_id"] for r in _sort_event_rows(rows)] == ["e1", "e2", "e3"]
+
+
+def test_a_ledger_missing_seqs_falls_back_to_time():
+    """Older runs have events written before save_run numbered them."""
+    from arctx.storage.jsonl import _sort_event_rows
+
+    rows = [
+        {"event_id": "x", "seq": None, "created_at": "2026-08-24T03:00:00Z"},
+        {"event_id": "y", "seq": 1, "created_at": "2026-08-24T01:00:00Z"},
+    ]
+    assert [r["event_id"] for r in _sort_event_rows(rows)] == ["y", "x"]
+
+
+def test_time_breaks_ties_when_seq_collides():
+    from arctx.storage.jsonl import _sort_event_rows
+
+    rows = [
+        {"event_id": "e_2", "seq": 1, "created_at": "2026-08-24T01:00:01Z"},
         {"event_id": "e_1", "seq": 1, "created_at": "2026-08-24T01:00:00Z"},
     ]
     assert [r["event_id"] for r in _sort_event_rows(rows)] == ["e_1", "e_2"]
@@ -166,6 +195,12 @@ def test_core_event_order_agrees_with_storage():
             created_at=created_at,
         )
 
-    earlier = ev("e_a", 10, "2026-08-24T01:00:00Z")
+    # colliding seqs -> the clock leads, as in storage
+    earlier = ev("e_a", 4, "2026-08-24T01:00:00Z")
     later = ev("e_b", 4, "2026-08-24T02:00:00Z")
     assert _event_order(later) > _event_order(earlier)
+
+    # a clean single-branch ledger -> seq leads, in both modules
+    assert _event_order(ev("e_2", 2, "2026-08-24T09:00:00Z"), by_seq=True) > _event_order(
+        ev("e_1", 1, "2026-08-24T10:00:00Z"), by_seq=True
+    )

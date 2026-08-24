@@ -22,12 +22,27 @@ from arctx.core.schema.work import WorkEvent, Lane
 LANE_STATUS_EVENTS = ("lane_closed", "lane_opened")
 
 
-def _event_order(event: WorkEvent) -> tuple[str, int]:
-    """Sort key putting later events last: timestamp first, then ``seq``.
+def _seq_is_authoritative(events) -> bool:
+    """True when ``seq`` alone totally orders *events*.
 
-    Timestamp-major because ``seq`` is per-file and dense, so it collides across
-    a ``merge=union`` merge — see ``arctx.storage.jsonl._sort_event_rows``.
+    Mirrors ``arctx.storage.jsonl._seq_is_authoritative``; see it for why.
     """
+    seqs = [event.seq for event in events]
+    if any(seq is None for seq in seqs):
+        return False
+    return len(seqs) == len(set(seqs))
+
+
+def _event_order(event: WorkEvent, *, by_seq: bool = False) -> tuple:
+    """Sort key putting later events last.
+
+    ``by_seq`` when the caller has checked that seq totally orders this ledger
+    (one branch, every event numbered) — seq is then immune to clock skew
+    between machines. Otherwise the wall clock leads, because a union merge
+    makes seq collide across branches.
+    """
+    if by_seq:
+        return (event.seq if event.seq is not None else -1, event.created_at or "")
     return (event.created_at or "", event.seq if event.seq is not None else -1)
 
 
@@ -39,12 +54,15 @@ def apply_lane_status_events(graph: RunGraph) -> None:
     status ``"open"`` (clears ``closed_at``). Lanes with no such event keep the
     status on their record ("open" by default).
     """
+    by_seq = _seq_is_authoritative(graph.work_events)
     latest: dict[str, WorkEvent] = {}
     for event in graph.work_events:
         if event.event_type not in LANE_STATUS_EVENTS:
             continue
         prev = latest.get(event.lane_id)
-        if prev is None or _event_order(event) >= _event_order(prev):
+        if prev is None or _event_order(event, by_seq=by_seq) >= _event_order(
+            prev, by_seq=by_seq
+        ):
             latest[event.lane_id] = event
     for lane_id, event in latest.items():
         lane = graph.lanes.get(lane_id)

@@ -284,7 +284,45 @@ def resolve_run_dir_for_alias(tokens: list[str]) -> str | None:
     candidate = Path(store_dir) / run_id
     return str(candidate) if candidate.is_dir() else None
 
+def collect_ext_default_aliases(
+    run_dir: str | Path | None,
+) -> tuple[list[dict[str, str]], list[str]]:
+    """Return ``(alias tables, extension names)`` for the run's enabled extensions.
+
+    The one collector. `arctx alias list` / `alias resolve` used to seed ``git``
+    unconditionally while dispatch iterated enabled extensions only, so on a run
+    without git enabled — which is every run straight out of `arctx init` —
+    introspection advertised `arctx verify` and dispatch answered "invalid
+    choice". The commands whose whole job is to say what an alias resolves to
+    were the ones stating a false fact.
+
+    This is the second input to the alias table; :func:`resolve_run_dir_for_alias`
+    is the first. Both live here so the two paths cannot drift again.
+    """
+    from arctx.ext import load_extension  # noqa: PLC0415
+    from arctx.ext.enabled import load_enabled  # noqa: PLC0415
+
+    tables: list[dict[str, str]] = []
+    names: list[str] = []
+    if run_dir is None:
+        return tables, names
+
+    seen: set[str] = set()
+    for enabled in load_enabled(str(run_dir)):
+        if enabled.name in seen:
+            continue
+        try:
+            ext = load_extension(enabled.name)
+        except (KeyError, ImportError):
+            continue
+        tables.append(ext.default_aliases())
+        names.append(ext.name)
+        seen.add(ext.name)
+    return tables, names
+
+
 __all__ = [
+    "collect_ext_default_aliases",
     "load_alias_table",
     "resolve_run_dir_for_alias",
     "resolve_alias",

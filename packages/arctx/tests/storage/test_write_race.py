@@ -198,7 +198,9 @@ def test_a_lane_closed_after_the_decision_refuses_the_write(tmp_path, monkeypatc
 
     with pytest.raises(ConcurrentWriteRejected, match="closed"):
         store.append_batch(
-            build_append_batch(writer, user_id="u", lane_id="L", before=before)
+            build_append_batch(
+                writer, user_id="u", lane_id="L", before=before, require_lane_open=True
+            )
         )
 
 
@@ -213,8 +215,32 @@ def test_force_still_writes_to_a_closed_lane(tmp_path, monkeypatch):
     closer.set_lane_status("L", status="closed", user_id="other", reason="done")
     store.save_run(closer)
 
+    # --force at the CLI means "do not require it open"
     store.append_batch(
         build_append_batch(
-            writer, user_id="u", lane_id="L", before=before, force=True
+            writer, user_id="u", lane_id="L", before=before, require_lane_open=False
         )
+    )
+
+
+def test_cut_into_a_closed_lane_is_allowed(tmp_path, monkeypatch):
+    """`cut` never ran the closed-lane gate and has no --force to get past one.
+
+    Closing a lane and then noticing a mistaken record in it is ordinary;
+    cutting it is how you fix it. Enforcing the gate for every writer made that
+    a dead end.
+    """
+    monkeypatch.setenv("ARCTX_CACHE_DIR", str(tmp_path / "cache"))
+    store, x, b, c = _seed(tmp_path)
+
+    closer = store.load_run("race")
+    closer.set_lane_status("L", status="closed", user_id="u", reason="done")
+    store.save_run(closer)
+
+    writer = store.load_run("race")
+    before = graph_counts(writer)
+    writer.cut(x, target_kind="node", reason="a mistake I noticed", user_id="u", lane_id="L")
+    # no require_lane_open: this write never ran the gate
+    store.append_batch(
+        build_append_batch(writer, user_id="u", lane_id="L", before=before)
     )

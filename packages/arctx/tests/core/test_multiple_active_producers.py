@@ -114,3 +114,28 @@ def test_cutting_the_duplicate_clears_it():
 
     handle.cut(rogue_id, target_kind="step", reason="duplicate producer", **kw)
     assert nodes_with_multiple_active_producers(handle.run_graph) == []
+
+
+def test_a_cut_node_is_not_reported():
+    """Cutting the node is how you retire a dead end.
+
+    Reporting a retired branch would leave `arctx doctor` pointing at a problem
+    the user already resolved, with no append-only way to clear it.
+    """
+    handle = _run()
+    kw = dict(user_id="u", lane_id="L")
+    a = handle.add_step([handle.root_node_id], _tp(), **kw).output_node_id
+    b = handle.add_step([handle.root_node_id], _tp(), **kw).output_node_id
+    step = handle.add_step([a], _tp(), **kw)
+    handle.run_graph.add_step(
+        Step(
+            step_id=handle._next_id("t"),
+            input_node_ids=(b,),
+            output_node_id=step.output_node_id,
+            metadata={},
+        )
+    )
+    assert nodes_with_multiple_active_producers(handle.run_graph)
+
+    handle.cut(step.output_node_id, target_kind="node", reason="dead end", **kw)
+    assert nodes_with_multiple_active_producers(handle.run_graph) == []

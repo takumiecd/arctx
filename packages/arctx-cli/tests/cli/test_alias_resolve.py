@@ -210,3 +210,43 @@ def test_alias_introspection_resolves_the_run_the_same_way_dispatch_does(
     introspection = _resolve_run_dir_from_args(_Args())
     assert introspection == dispatch
     assert dispatch is not None and dispatch.endswith("drift")
+
+
+def test_introspection_does_not_advertise_a_disabled_extension(tmp_path, monkeypatch):
+    """`alias resolve verify` used to say yes on every freshly-init'd run.
+
+    The introspection path seeded git's aliases unconditionally while dispatch
+    iterated enabled extensions only — so the commands whose job is to say what
+    an alias resolves to stated a false fact, and `arctx verify` then answered
+    "invalid choice".
+    """
+    from arctx_cli.alias import collect_ext_default_aliases
+    from arctx_cli.commands.init import run_init_command
+
+    store_dir = str(tmp_path / "runs")
+    run_init_command(
+        requirement_id="r", target_type="task", target_id="t",
+        run_id="noext", store_dir=store_dir,
+    )
+    run_dir = str(tmp_path / "runs" / "noext")
+
+    tables, names = collect_ext_default_aliases(run_dir)
+    assert tables == [] and names == []
+
+    run_init_command(
+        requirement_id="r", target_type="task", target_id="t",
+        run_id="withgit", store_dir=store_dir, extensions=["git"],
+    )
+    tables, names = collect_ext_default_aliases(str(tmp_path / "runs" / "withgit"))
+    assert "git" in names
+    assert any("verify" in table for table in tables)
+
+
+def test_both_alias_paths_use_the_one_collector():
+    """Two collectors is how the last drift happened; assert there is one."""
+    from arctx_cli.alias import collect_ext_default_aliases
+    from arctx_cli.commands.alias_cmd import _collect_ext_aliases
+    from arctx_cli.main import _collect_ext_default_aliases
+
+    assert _collect_ext_aliases(None) == collect_ext_default_aliases(None)
+    assert _collect_ext_default_aliases(None) == collect_ext_default_aliases(None)[0]

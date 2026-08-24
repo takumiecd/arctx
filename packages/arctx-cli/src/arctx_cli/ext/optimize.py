@@ -392,7 +392,7 @@ def run_trial_add_command(
         user_id=user_id,
         lane_id=lane_id,
         before=before,
-        force=force,
+        require_lane_open=not force,
     )
     return {
         "step": step_view(handle.run_graph.steps[target_step_id]),

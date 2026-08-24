@@ -193,7 +193,7 @@ def _cli_git_attach(args) -> int:
         user_id=user_id,
         lane_id=lane_id,
         before=before,
-        force=force,
+        require_lane_open=not force,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

@@ -138,7 +138,11 @@ with no writes for 7+ days (`arctx.core.lanes.stale_open_lanes`), and `guide --c
   - `topic summarize` **refuses** to write a statement anchored to one island when the current statement is anchored to another (`--force` overrides). "Latest wins" is right for one line of reasoning and wrong across unjoined lineages — it would drop a live conclusion from every view. Which island each statement speaks for is derived from its `sources` plus the node it was written on (`statement_islands`): one island means it speaks for that lineage alone, two or more means it reconciles them.
   - `topic untag NAME ID...` — the tag was a mistake. Append-only supersession on the `(topic, record)` pair (generic payload `type="untag"`; last marker wins by record_event_rank, so `tag → untag → tag` restores it), and unlike `cut` the record itself stays active. Never use `cut` for a mis-tag, or `untag` for a dead end.
 - `trial` / `trials` — optimize extension (enable with `arctx ext enable optimize`). `trial add --table NAME --col k=v --metric k=v` records one scored Step (defaults `--from` to the current lane frontier like `add`; repeatable `--table` for multi-membership). Rows are payloads, so a sweep does not have to grow the graph: `trial add --to TARGET_ID ...` appends a row to an existing Step (step id / its output node id / another row's payload id), and `trial add --rows PATH|-` writes a whole JSONL/JSON-array batch onto one Step (the batch is validated against itself before anything is written). A row's identity is its payload id — that is the first column of `arctx trials NAME`, with a `step` column only when rows share a Step. `notice:` lines go to stderr so stdout stays pure JSON. `trials` lists every table with columns and kinds; `trials NAME [--sort COL] [--best min:COL] [--json]` prints the derived comparison table.
-- `doctor` — check a run's files and report every unreadable line with its file and line number (`--json` for machine output, exit 1 when unhealthy). One unparsable line stops every reader, so `--repair` moves those lines to `<file>.broken` and rewrites the file without them; nothing is deleted, and `run.json` / `graph.json` are reported but never rewritten. Scanner lives in `packages/arctx/src/arctx/storage/doctor.py`.
+- `doctor` — check a run's files and report every unreadable line, plus the one
+graph state where a read would answer untruthfully (`multiple_active_producers`);
+the wider lane-hygiene rules stay in `arctx lane validate`, since legitimate
+runs break them by design and history is append-only so they can never be
+cleared with its file and line number (`--json` for machine output, exit 1 when unhealthy). One unparsable line stops every reader, so `--repair` moves those lines to `<file>.broken` and rewrites the file without them; nothing is deleted, and `run.json` / `graph.json` are reported but never rewritten. Scanner lives in `packages/arctx/src/arctx/storage/doctor.py`.
 - `show` — inspect a node / step / payload as JSON
 - `graph` — dump / trace / reachable graph queries
 - `dump` — render the whole run as `outline` (LLM-friendly) or `mermaid` (visual)
@@ -246,9 +250,19 @@ that produced it, so two writers that loaded the same state both concluded they
 were the only one retiring a node's producer, and both appended — silently.
 The check is deliberately narrow: only the invariant a stale snapshot can break,
 computed without lane membership so it stays cheap on a path every write takes.
-Pre-existing breakage does not block an unrelated write. Callers reload and
-retry; `validate=False` skips it and exists for callers that have already done
-the equivalent.
+Pre-existing breakage does not block an unrelated write. `ConcurrentWriteRejected.retryable` says whether trying again can help — a
+stale decision can be redone, a lane that closed cannot. The closed-lane
+recheck is opt-in (`AppendBatch.require_lane_open`), set only by the commands
+that run the CLI gate — `cut` / `uncut` / `reparent` never did and have no
+`--force`, so cutting a mistaken record inside a lane you just closed stays
+legal. `arctx reparent` wraps its whole load-decide-write cycle in
+`arctx_cli.write_retry.with_write_retry` (jittered backoff; without it
+contending writers reload in lockstep and the same ones keep losing),
+so a losing writer redoes the decision against the current state and lands the
+sequential outcome instead of reporting an error the user did not cause.
+Retrying only the append would resubmit the same stale decision, which is why
+the retry is around the cycle. `validate=False` skips the check and exists for
+callers that have already done the equivalent.
 
 `JsonlRunStore` is the only store. Do not reintroduce a second backend: storage
 is git-native, so a store git cannot carry is not an alternative canon — the
