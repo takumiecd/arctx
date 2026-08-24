@@ -625,7 +625,40 @@ def cli_trials(args) -> int:
         if args.best:
             column, maximize = _parse_best(args.best)
             row = trial_tables.best_row(table, column, maximize=maximize)
+            # `--best` is the one read path that never consulted `invalid`, so a
+            # row quarantined over an *unrelated* column simply vanished from
+            # the comparison and the winner was silently wrong. Quarantine is a
+            # schema conflict, not a statement about this metric: say what was
+            # left out, on stderr so stdout stays machine-clean.
+            hidden = [
+                (hidden_row, reason)
+                for hidden_row, reason in table.invalid
+                if trial_tables.value_kind(hidden_row.metrics.get(column)) == "number"
+            ]
+            for hidden_row, reason in hidden:
+                print(
+                    f"notice: {hidden_row.payload_id} has {column} = "
+                    f"{_format_value(hidden_row.metrics.get(column))} but is "
+                    f"excluded from this comparison — {reason}",
+                    file=sys.stderr,
+                )
+            if hidden:
+                print(
+                    f"notice: {len(hidden)} row(s) with a numeric \"{column}\" were "
+                    f"quarantined; see `arctx trials {table.name}`",
+                    file=sys.stderr,
+                )
             if row is None:
+                if hidden:
+                    # "no active row has a numeric column" would be false here:
+                    # the rows are active, just hidden by a schema conflict.
+                    print(
+                        f'every row in "{table.name}" with a numeric "{column}" is '
+                        f"quarantined; fix the conflict above, or cut the row that "
+                        f"fixed the column type",
+                        file=sys.stderr,
+                    )
+                    return 1
                 print(
                     f'no active row in "{table.name}" has a numeric "{column}"',
                     file=sys.stderr,
