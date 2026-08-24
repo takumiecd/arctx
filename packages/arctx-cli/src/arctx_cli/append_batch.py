@@ -24,7 +24,7 @@ def maybe_append_or_save(
     user_id: str | None,
     lane_id: str | None,
     before: dict[str, set[str]],
-    force: bool = False,
+    require_lane_open: bool = False,
 ) -> None:
     """Use append_batch for capable stores, otherwise fall back to save_run."""
     if _has_new_work_events(handle, before):
@@ -38,7 +38,7 @@ def maybe_append_or_save(
             user_id=user_id,
             lane_id=lane_id,
             before=before,
-            force=force,
+            require_lane_open=require_lane_open,
         )
     )
 
@@ -49,7 +49,7 @@ def build_append_batch(
     user_id: str,
     lane_id: str,
     before: dict[str, set[str]],
-    force: bool = False,
+    require_lane_open: bool = False,
 ) -> AppendBatch:
     """Build an append batch from records added since *before*."""
     records: list[GraphRecordEnvelope] = []
@@ -82,7 +82,7 @@ def build_append_batch(
         lane=session,
         events=tuple(new_events),
         records=tuple(records),
-        force=force,
+        require_lane_open=require_lane_open,
     )
 
 

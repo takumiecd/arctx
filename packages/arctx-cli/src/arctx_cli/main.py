@@ -149,26 +149,10 @@ def _resolve_run_dir_for_alias(tokens: list[str]) -> str | None:
 
 
 def _collect_ext_default_aliases(run_dir: str | None) -> list[dict[str, str]]:
-    """Load default_aliases from extensions enabled in the current run."""
-    from arctx.ext import load_extension  # noqa: PLC0415
-    from arctx.ext.enabled import load_enabled  # noqa: PLC0415
+    """Delegate to the one collector in arctx_cli.alias."""
+    from arctx_cli.alias import collect_ext_default_aliases  # noqa: PLC0415
 
-    ext_aliases: list[dict[str, str]] = []
-    seen: set[str] = set()
-    if run_dir is None:
-        return ext_aliases
-
-    for ee in load_enabled(run_dir):
-        if ee.name in seen:
-            continue
-        try:
-            ext = load_extension(ee.name)
-            ext_aliases.append(ext.default_aliases())
-            seen.add(ext.name)
-        except (KeyError, ImportError):
-            continue
-    return ext_aliases
-
+    return collect_ext_default_aliases(run_dir)[0]
 
 def parse_args(argv: list[str] | None = None):
     """Parse CLI arguments."""

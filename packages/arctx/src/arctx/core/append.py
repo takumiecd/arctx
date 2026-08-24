@@ -32,11 +32,16 @@ class AppendBatch:
     records: tuple[GraphRecordEnvelope, ...]
     lane: Lane
     events: tuple[WorkEvent, ...]
-    # False when the writer asked to respect the lane's closed state, so the
-    # store can re-check it under the lock. The CLI's gate runs before the lock,
-    # against the writer's own snapshot, so a lane closed in between slipped
-    # through. True means the writer passed --force and meant it.
-    force: bool = False
+    # True only when this write ran the CLI's closed-lane gate and was not
+    # forced past it — then the store re-checks the lane under the lock, where
+    # the gate's own answer may already be stale.
+    #
+    # Opt-in, not opt-out. `cut` / `uncut` / `reparent` never run that gate and
+    # have no --force flag, so defaulting to "enforce" made them refuse writes
+    # into a closed lane that have always been legal: closing a lane and then
+    # noticing a mistaken record in it is an ordinary thing to do, and cutting
+    # it is how you fix it.
+    require_lane_open: bool = False
 
 
 def apply_to_graph(graph, batch: "AppendBatch") -> None:

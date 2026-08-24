@@ -69,3 +69,34 @@ def test_a_successful_operation_runs_exactly_once():
 
     assert with_write_retry(operation) == 42
     assert calls["n"] == 1
+
+
+def test_contending_writers_back_off_instead_of_starving():
+    """Without jitter the losers reload in lockstep and keep losing.
+
+    Measured with simultaneous `arctx reparent` on one node before the backoff:
+    12 writers left 4 failing and 20 left 11, though the run stayed correct.
+    """
+    import arctx_cli.write_retry as wr
+
+    assert wr.DEFAULT_ATTEMPTS >= 12, "an N-way race needs close to N retries"
+
+    slept: list[float] = []
+    real_sleep = wr.time.sleep
+    wr.time.sleep = slept.append
+    try:
+        calls = {"n": 0}
+
+        def operation():
+            calls["n"] += 1
+            if calls["n"] < 5:
+                raise ConcurrentWriteRejected("lost again")
+            return "ok"
+
+        assert with_write_retry(operation) == "ok"
+    finally:
+        wr.time.sleep = real_sleep
+
+    assert len(slept) == 4
+    assert all(0 <= d <= 0.25 for d in slept), slept
+    assert len(set(slept)) > 1, "a fixed delay keeps the losers synchronised"

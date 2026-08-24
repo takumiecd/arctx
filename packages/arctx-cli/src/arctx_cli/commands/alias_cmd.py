@@ -68,41 +68,10 @@ def _resolve_run_dir_from_args(args) -> str | None:
 
 
 def _collect_ext_aliases(run_dir: str | None) -> tuple[list[dict[str, str]], list[str]]:
-    """Load default_aliases from standard and enabled extensions."""
-    from arctx.ext import load_extension
-    from arctx.ext.enabled import load_enabled
+    """Delegate to the one collector in arctx_cli.alias."""
+    from arctx_cli.alias import collect_ext_default_aliases
 
-    ext_aliases: list[dict[str, str]] = []
-    ext_names: list[str] = []
-    seen: set[str] = set()
-    for ext_name in ["git"]:
-        try:
-            ext = load_extension(ext_name)
-            ext_aliases.append(ext.default_aliases())
-            ext_names.append(ext.name)
-            seen.add(ext.name)
-        except (KeyError, ImportError):
-            continue
-
-    if run_dir is None:
-        return ext_aliases, ext_names
-
-    for ee in load_enabled(run_dir):
-        if ee.name in seen:
-            continue
-        try:
-            ext = load_extension(ee.name)
-            ext_aliases.append(ext.default_aliases())
-            ext_names.append(ext.name)
-            seen.add(ext.name)
-        except (KeyError, ImportError):
-            continue
-    return ext_aliases, ext_names
-
-
-# ---------------------------------------------------------------------------
-# CLI dispatcher
-# ---------------------------------------------------------------------------
+    return collect_ext_default_aliases(run_dir)
 
 
 def cli_alias(args) -> int:

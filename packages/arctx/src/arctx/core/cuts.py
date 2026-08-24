@@ -116,10 +116,18 @@ def nodes_with_multiple_active_producers(
     outside the run lock, so two `reparent` calls can both pass the guard) and a
     git merge of two branches that each re-parented the same node. This is a
     detector, not a preventer — it covers both routes and makes the state loud.
+
+    A node that is itself inactive is skipped. Cutting the node is how you
+    retire a dead end, and a retired branch's lineage is not something any read
+    reports as live — so flagging it would leave `arctx doctor` pointing at a
+    problem the user already resolved, with no way to clear it.
     """
     inactive = inactive_step_ids(graph)
+    inactive_nodes = inactive_node_ids(graph)
     broken: list[tuple[str, list[str]]] = []
     for node_id in graph.nodes:
+        if node_id in inactive_nodes:
+            continue
         active = [
             step_id
             for step_id in graph.producers_of(node_id)

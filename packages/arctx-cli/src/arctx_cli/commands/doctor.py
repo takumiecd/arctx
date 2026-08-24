@@ -55,6 +55,10 @@ def cli_doctor(args) -> int:
     if args.as_json:
         payload = diagnosis.to_dict()
         payload["repaired"] = moved
+        # `healthy` is the whole answer callers key on, so it has to mean the
+        # same thing as the exit code. It used to describe files only, and so
+        # said true while doctor exited 1 over a consistency issue.
+        payload["healthy"] = ok
         payload["consistency"] = [
             {"code": issue.code, "severity": issue.severity, "message": issue.message,
              "record_id": issue.record_id}
@@ -67,8 +71,25 @@ def cli_doctor(args) -> int:
     return 0 if ok else 1
 
 
+# Codes that mean a read of this run would answer untruthfully — not the wider
+# lane-hygiene set, which legitimate runs violate by design.
+_DOCTOR_CODES = frozenset({"multiple_active_producers"})
+
+
 def _consistency_issues(store, run_id: str):
-    """Graph invariants that hold no matter how the run was written.
+    """Graph states where the run would report something untrue.
+
+    Deliberately narrow. Reporting every `validate_lanes` error here was wrong:
+    most of those codes are lane-bookkeeping rules that legitimate runs break
+    by design — a run written through the pure core API has no lane provenance
+    at all, and a long-lived run accumulates lanes with several root candidates.
+    Both are fine, neither can be cleared (history is append-only), and calling
+    them out made `arctx doctor` exit 1 forever on the maintainer's real run.
+
+    What belongs here is the state where the *graph itself* lies: a node with
+    two active producing steps makes `trace` and `export` report a merged
+    lineage that never happened. `arctx lane validate` is still the place to
+    see the full bookkeeping picture.
 
     Read-only and never raises: doctor's job is to report, and a run that
     cannot load has already been reported as broken lines.
@@ -82,7 +103,7 @@ def _consistency_issues(store, run_id: str):
             for issue in validate_lanes(
                 handle.run_graph, root_node_id=handle.root_node_id
             )
-            if issue.severity == "error"
+            if issue.code in _DOCTOR_CODES
         ]
     except Exception:  # noqa: BLE001
         return []

@@ -83,7 +83,7 @@ def run_attach_command(
         user_id=user_id,
         lane_id=lane_id,
         before=before,
-        force=force,
+        require_lane_open=not force,
     )
     return {"payload": attached.to_dict(), "notices": notices, "handle": handle}
 

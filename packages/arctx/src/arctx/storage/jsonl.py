@@ -293,9 +293,10 @@ class JsonlRunStore:
 
         # The closed-lane gate runs in the CLI, before the lock, against the
         # writer's own snapshot — so a lane closed in between slipped through.
-        # Re-check it here, where the answer is current. `--force` sets
-        # batch.force and is honoured, as it is at the gate.
-        if not batch.force:
+        # Re-check it here, where the answer is current, but only for writes
+        # that ran the gate at all: `cut` / `uncut` / `reparent` never did, and
+        # cutting a record inside a lane you just closed is legal and ordinary.
+        if batch.require_lane_open:
             lane = current.run_graph.lanes.get(batch.lane_id)
             if lane is not None and getattr(lane, "status", "open") == "closed":
                 raise ConcurrentWriteRejected(
@@ -540,34 +541,61 @@ def _dedup_rows(rows: list[dict[str, Any]], id_key: str) -> list[dict[str, Any]]
     return out
 
 
+def _seq_is_authoritative(rows: list[dict[str, Any]]) -> bool:
+    """True when ``seq`` alone totally orders these events.
+
+    ``seq`` is dense and per-file, so it is exactly right on a single branch and
+    meaningless across a ``merge=union`` merge, where two branches both number
+    from the same place. It is also useless if some events carry no seq at all
+    (older runs, written before ``save_run`` numbered them).
+
+    Both conditions are visible in the data: a duplicate or a missing seq means
+    seq cannot be trusted as the order, and only then is the wall clock the
+    better signal.
+    """
+    seqs = [row.get("seq") for row in rows]
+    if any(seq is None for seq in seqs):
+        return False
+    return len(seqs) == len(set(int(seq) for seq in seqs))
+
+
 def _sort_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Order work-event rows deterministically, ignoring file order.
 
-    Mirrors ``arctx.core.lanes._event_order``: the creation timestamp first,
-    then ``seq``, then the opaque event id as a final tiebreak.
+    Mirrors ``arctx.core.lanes._event_order``.
 
-    Timestamp-major, not seq-major, and the reason is git. ``seq`` is dense and
-    per-file, so two branches that each append events both number them from the
-    same place: after a ``merge=union`` merge, one branch's fifth event and the
-    other branch's fifth event both claim ``seq=5``, and a branch that happened
-    to do more work carries *higher* numbers regardless of when it did them.
-    Ordering by seq first therefore made the merged cut/uncut state depend on
-    which branch appended more events rather than on which decision came last —
-    silently, with no conflict and nothing for `arctx doctor` to report.
+    Which key leads depends on whether ``seq`` still totally orders the events
+    (see :func:`_seq_is_authoritative`), and neither choice is safe on its own:
 
-    Within a single branch the two keys agree (events are appended in time
-    order), so this only changes the answer where seq was meaningless anyway.
-    ``seq`` still breaks ties inside one timestamp, which is what it is good
-    for.
+    - seq-major is right on one branch, where seq is assigned in write order and
+      is immune to clock skew between machines sharing the run.
+    - it is wrong across a union merge, where the branch that did more work
+      carries higher numbers regardless of when it acted — that inversion is
+      what timestamp-major was introduced to fix.
+
+    So use seq while it is a total order, and fall back to the clock only when
+    it is not. Going timestamp-major unconditionally traded the merge bug for a
+    clock-skew bug: on a plain linear history, a machine whose clock ran slow
+    sorted its later events before earlier ones from another machine.
     """
+    if _seq_is_authoritative(rows):
 
-    def key(row: dict[str, Any]) -> tuple[str, int, str]:
-        seq = row.get("seq")
-        return (
-            str(row.get("created_at") or ""),
-            int(seq) if seq is not None else -1,
-            str(row.get("event_id") or ""),
-        )
+        def key(row: dict[str, Any]) -> tuple[int, str, str]:
+            return (
+                int(row["seq"]),
+                str(row.get("created_at") or ""),
+                str(row.get("event_id") or ""),
+            )
+
+    else:
+
+        def key(row: dict[str, Any]) -> tuple[str, int, str]:  # type: ignore[misc]
+            seq = row.get("seq")
+            return (
+                str(row.get("created_at") or ""),
+                int(seq) if seq is not None else -1,
+                str(row.get("event_id") or ""),
+            )
 
     return sorted(rows, key=key)
 
