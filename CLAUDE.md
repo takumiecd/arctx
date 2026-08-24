@@ -232,6 +232,17 @@ and its output Node inherits the Step's lane. Verbs: `lane create` / `switch` /
 
 Old files `edges.jsonl`, `input_transitions.jsonl`, `output_transitions.jsonl`, `dags.jsonl`, `states.jsonl` do not exist in the current schema.
 
+`append_batch` re-checks the batch **inside the run lock, against a fresh read**
+and raises `ConcurrentWriteRejected` if applying it would leave a node with two
+active producing steps. The lock only ever covered the append, not the decision
+that produced it, so two writers that loaded the same state both concluded they
+were the only one retiring a node's producer, and both appended — silently.
+The check is deliberately narrow: only the invariant a stale snapshot can break,
+computed without lane membership so it stays cheap on a path every write takes.
+Pre-existing breakage does not block an unrelated write. Callers reload and
+retry; `validate=False` skips it and exists for callers that have already done
+the equivalent.
+
 `JsonlRunStore` is the only store. Do not reintroduce a second backend: storage
 is git-native, so a store git cannot carry is not an alternative canon — the
 removed `SqliteRunStore` wrote to a gitignored `run.db`, which meant selecting it

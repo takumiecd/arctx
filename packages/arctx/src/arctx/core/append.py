@@ -34,6 +34,30 @@ class AppendBatch:
     events: tuple[WorkEvent, ...]
 
 
+def apply_to_graph(graph, batch: "AppendBatch") -> None:
+    """Add *batch*'s records to *graph* in place, skipping ids it already has.
+
+    Used to ask "what would this batch make the run look like?" against a graph
+    freshly read from disk, so a writer's decision can be checked against the
+    state it will actually land in rather than the snapshot it was made on.
+    """
+    if batch.lane.lane_id not in graph.lanes:
+        graph.add_lane(batch.lane)
+    for envelope in batch.records:
+        if envelope.record_kind == "node":
+            if envelope.record_id not in graph.nodes:
+                graph.nodes[envelope.record_id] = envelope.record
+        elif envelope.record_kind == "step":
+            if envelope.record_id not in graph.steps:
+                graph.add_step(envelope.record)
+        elif envelope.record_id not in graph.payloads:
+            graph.attach_payload(envelope.record)
+    known = {event.event_id for event in graph.work_events}
+    for event in batch.events:
+        if event.event_id not in known:
+            graph.add_work_event(event)
+
+
 @dataclass(frozen=True)
 class AppendResult:
     """Result returned after an append batch is committed."""

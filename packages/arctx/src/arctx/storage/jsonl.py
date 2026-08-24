@@ -23,6 +23,20 @@ from arctx.storage._cache import fingerprint as _fingerprint, load_cache, save_c
 from arctx.storage._locking import exclusive_lock
 
 
+class ConcurrentWriteRejected(RuntimeError):
+    """A batch was built against a run state that is no longer current.
+
+    The run lock is taken for the append, not for the decision that produced it
+    — so two writers can both read the same state, both conclude they are the
+    only one changing it, and both append. `reparent` is the clearest case:
+    each retires what it saw as the node's single active producer and adds its
+    own, and the node ends with two active producers, silently.
+
+    Re-checking inside the lock turns that into this error, which the caller
+    can act on: reload and try again.
+    """
+
+
 class BrokenRunFileError(ValueError):
     """A line in a run file could not be parsed.
 
@@ -154,13 +168,19 @@ class JsonlRunStore:
 
         return run_path
 
-    def append_batch(self, batch: AppendBatch) -> AppendResult:
+    def append_batch(self, batch: AppendBatch, *, validate: bool = True) -> AppendResult:
         """Append one lane batch to an existing run, all of it or none of it.
 
         The batch spans four files. It is written to the journal whole before
         any file is touched, so an interrupted apply leaves a record of what was
         meant to happen rather than records the work-event ledger never heard
         of. See `_JOURNAL_NAME`.
+
+        The batch is also checked against the run *as it is on disk right now*,
+        inside the lock — not against the snapshot the caller decided on. A
+        batch that would introduce a consistency error the run does not already
+        have raises :class:`ConcurrentWriteRejected` and nothing is written.
+        Pass ``validate=False`` only for a caller that has already done this.
         """
         run_path = self.run_path(batch.run_id)
         if not (run_path / "run.json").exists():
@@ -171,6 +191,9 @@ class JsonlRunStore:
             # Finish anyone else's interrupted batch before adding to it, so
             # `existing` describes a whole run and seq numbering stays dense.
             _recover_journal(run_path)
+
+            if validate:
+                self._reject_if_stale(batch)
 
             existing = _existing_ids(run_path)
             plan: dict[str, list[dict[str, Any]]] = {}
@@ -219,6 +242,65 @@ class JsonlRunStore:
                 record_ids=tuple(appended_records),
                 event_ids=tuple(event_ids),
                 event_seqs=tuple(event_seqs),
+            )
+
+    def _reject_if_stale(self, batch: AppendBatch) -> None:
+        """Refuse a batch that introduces a new *staleness-sensitive* error.
+
+        Called under the run lock, against a fresh read, so "new" is measured
+        against what the batch will actually land in. Pre-existing errors are
+        not the writer's fault and do not block it — the same policy the
+        post-write check uses.
+
+        Only the one invariant a stale decision actually breaks is checked, not
+        every lane rule. Two distinctions matter.
+
+        Correctness: "a node has two active producers" is the "each writer
+        believed it was the only one" failure — precisely what a stale snapshot
+        produces. Something like `node_without_lane` means the caller passed no
+        lane, which is true whether or not anyone else wrote; rejecting it here
+        would fail legitimate low-level writes for a reason unrelated to
+        concurrency.
+
+        Cost: this runs inside the lock on every append. The producer check
+        needs the cut fixpoint and one pass over the nodes, and no lane
+        membership — so it is a fraction of a full `validate_lanes`, which an
+        ordinary write already runs several times.
+
+        Cheap in the uncontended case: the load cache is keyed on a content
+        fingerprint, so when nothing changed since the caller's own read this
+        is a hash of the run files and a cache hit. The expensive path is a
+        real reload, which is exactly the case that needs one.
+        """
+        from arctx.core.append import apply_to_graph  # noqa: PLC0415
+        from arctx.core.cuts import (  # noqa: PLC0415
+            nodes_with_multiple_active_producers,
+        )
+
+        try:
+            current = self.load_run(batch.run_id)
+        except Exception:  # noqa: BLE001 — never block a write on a read problem
+            return
+
+        baseline = {
+            node_id
+            for node_id, _ in nodes_with_multiple_active_producers(current.run_graph)
+        }
+        apply_to_graph(current.run_graph, batch)
+        introduced = [
+            node_id
+            for node_id, _ in nodes_with_multiple_active_producers(current.run_graph)
+            if node_id not in baseline
+        ]
+        if introduced:
+            # Report what would break, not how to repair it — nothing was
+            # written, so there is nothing to repair. The caller's move is to
+            # reload and redo the decision against the current state.
+            raise ConcurrentWriteRejected(
+                "another write landed first, and this one was decided against "
+                "the run as it was before that: applying it now would leave "
+                f"{introduced[0]} with two active producing steps. Nothing was "
+                "written. Re-read the run and try again."
             )
 
     def load_run(self, run_id: str) -> RunHandle:
