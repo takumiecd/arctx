@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arctx-cli"
-version = "0.4.8b1"
+version = "0.4.9b1"
 description = "CLI for ARCTX — append-only DAG editing and refactoring"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "arctx==0.4.8b1",
+    "arctx==0.4.9b1",
     # py3.11 has tomllib in the stdlib; 3.10 does not, and the alias layer is
     # imported on every invocation. Without this, `arctx --help` itself dies
     # on a supported interpreter.
