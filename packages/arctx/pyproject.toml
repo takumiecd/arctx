@@ -14,6 +14,8 @@ authors = [
 ]
 keywords = ["dag", "agents", "multi-agent", "reasoning", "traceability", "workflow", "history", "graph"]
 classifiers = [
+    # Reject accidental PyPI uploads; source/local installs remain supported.
+    "Private :: Do Not Upload",
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",

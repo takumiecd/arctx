@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: D103
-"""Prepare ARCTX package releases.
+"""Prepare local ARCTX package builds. Registry publishing is disabled.
 
 The release surface is arctx + arctx-cli, which is now the whole repo.
 """
@@ -171,17 +171,6 @@ def check_dist() -> None:
     run([uv(), "tool", "run", "twine", "check", *files])
 
 
-def upload_dist(repository: str | None) -> None:
-    files = dist_files()
-    if not files:
-        raise RuntimeError("No distribution files found under dist/")
-    cmd = [uv(), "tool", "run", "twine", "upload"]
-    if repository:
-        cmd.extend(["--repository", repository])
-    cmd.extend(files)
-    run(cmd)
-
-
 def package_selection(args: argparse.Namespace) -> tuple[str, ...]:
     selected = tuple(args.package or ALL_PACKAGES)
     unknown = sorted(set(selected) - set(ALL_PACKAGES))
@@ -192,7 +181,7 @@ def package_selection(args: argparse.Namespace) -> tuple[str, ...]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Bump ARCTX package versions and optionally build/upload distributions."
+        description="Bump ARCTX package versions and build local distributions (no publishing)."
     )
     parser.add_argument("version", help="Release version, for example 0.3.1b1")
     parser.add_argument(
@@ -207,7 +196,7 @@ def main() -> int:
         "--package",
         action="append",
         choices=ALL_PACKAGES,
-        help="Package to build/upload. May be repeated. Defaults to arctx and arctx-cli.",
+        help="Package to build. May be repeated. Defaults to arctx and arctx-cli.",
     )
     parser.add_argument("--no-clean", action="store_true", help="Do not remove dist directories")
     parser.add_argument("--skip-tests", action="store_true", help="Skip pytest during --prepare")
@@ -229,12 +218,6 @@ def main() -> int:
         help="Deprecated no-op kept for old release commands",
     )
     parser.add_argument("--check", action="store_true", help="Run twine check after build")
-    parser.add_argument("--upload", action="store_true", help="Upload dist/* with twine")
-    parser.add_argument(
-        "--repository",
-        default=None,
-        help="Twine repository name, for example testpypi. Omit for production PyPI.",
-    )
     args = parser.parse_args()
 
     packages = package_selection(args)
@@ -249,9 +232,6 @@ def main() -> int:
         build_packages(packages)
     if args.check or args.prepare:
         check_dist()
-    if args.upload:
-        upload_dist(args.repository)
-
     print(f"Prepared ARCTX {args.version}: {', '.join(packages)}")
     return 0
 

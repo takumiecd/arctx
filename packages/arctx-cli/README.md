@@ -6,11 +6,16 @@ the Web GUI.
 
 ## Installation
 
+PyPI releases are paused (2026-10-28); the existing PyPI project is being
+archived. The GitHub repository remains available for source use and personal
+development, with no promised release or support schedule. From the repository
+root, using Python 3.10+ in a virtual environment:
+
 ```bash
-pip install arctx-cli
+python -m pip install -e ./packages/arctx -e ./packages/arctx-cli
 ```
 
-This also installs `arctx` as a dependency.
+Install both packages together so the CLI uses the matching local core.
 
 ## Usage
 

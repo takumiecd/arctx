@@ -28,6 +28,11 @@ Docs are Japanese-first and should match the current implementation:
 
 ## Version And Compatibility
 
+PyPI publishing is paused as of 2026-10-28. Keep GitHub available for source
+use and personal development. Do not add publishing workflows, restore upload
+commands, or remove `Private :: Do Not Upload` classifiers unless the user
+explicitly requests resuming publication. Local builds and CI remain supported.
+
 This project is `0.3.1b4` beta. Breaking changes are acceptable and expected. Do not add compatibility shims for removed APIs unless explicitly requested. Old run storage schemas do not need migration support by default.
 
 ## Architecture

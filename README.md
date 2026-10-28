@@ -1,5 +1,10 @@
 # ARCTX
 
+> **Distribution status (2026-10-28):** PyPI releases are paused; the existing
+> PyPI projects are being archived. This GitHub repository remains available
+> for source use and personal development. No release or support schedule is
+> promised. Install the current source from the repository as shown below.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/arctx-mark-dark.svg">
@@ -30,12 +35,17 @@ git clone https://github.com/takumiecd/arctx && cd arctx
 
 The primary surface is two packages — **`arctx` (core) and `arctx-cli`**.
 
-| Package | Install | Import | Purpose |
+| Package | PyPI (existing releases) | Import | Purpose |
 |---------|---------|--------|---------|
 | `arctx` | `pip install arctx` | `import arctx` | Core API, storage, extensions (no CLI deps) |
 | `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` command, argparse CLI |
 
-`arctx-cli` depends on `arctx`. For normal use, install `arctx-cli` (it pulls in `arctx`).
+`arctx-cli` depends on `arctx`. For the current source, use Python 3.10+ in a
+virtual environment and install both packages from the repository root:
+
+```bash
+python -m pip install -e ./packages/arctx -e ./packages/arctx-cli
+```
 
 ```python
 import arctx
@@ -52,7 +62,7 @@ It is the graph layer for research, optimization, debugging, and agent work.
 
 *Two AI agents (Claude and Codex) working against the same run in parallel. Each gets an isolated `lane`; both branches land as sibling steps in the same `RunGraph` — no race, no overwrite.*
 
-> 0.4 beta — the DAG core (Node / Step / Payload) is stabilizing. Storage and API changes may still happen, but they will be documented in release notes.
+> 0.4 beta — storage and API changes may still happen. PyPI releases are paused.
 
 *日本語版は [README.ja.md](README.ja.md) を参照してください。*
 
