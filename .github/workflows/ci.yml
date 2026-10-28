@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# CI validates source and local builds; it does not publish packages.
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref (saves CI minutes on rapid pushes).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

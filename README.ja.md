@@ -1,5 +1,10 @@
 # ARCTX
 
+> **配布状況（2026-10-28）:** PyPI へのリリースを休止し、既存の PyPI
+> プロジェクトはアーカイブする方針です。GitHub はソースの参照・利用と個人開発のために
+> 残します。リリース・サポートの予定は保証しません。現在のソースを使う場合は、
+> 下記の方法でリポジトリからインストールしてください。
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/arctx-mark-dark.svg">
@@ -30,12 +35,17 @@ git clone https://github.com/takumiecd/arctx && cd arctx
 
 本線は **`arctx`（コア）と `arctx-cli`** の 2 パッケージです。
 
-| パッケージ | インストール | インポート | 用途 |
+| パッケージ | PyPI（既存版） | インポート | 用途 |
 |---------|---------|--------|---------|
 | `arctx` | `pip install arctx` | `import arctx` | コア API・ストレージ・拡張（CLI 依存なし）|
 | `arctx-cli` | `pip install arctx-cli` | `import arctx_cli` | `arctx` コマンド、argparse CLI |
 
-`arctx-cli` は `arctx` に依存します。通常は `arctx-cli` を入れれば `arctx` も入ります。
+`arctx-cli` は `arctx` に依存します。現在のソースは Python 3.10 以上の仮想環境で、
+リポジトリのルートから両パッケージを指定してインストールします。
+
+```bash
+python -m pip install -e ./packages/arctx -e ./packages/arctx-cli
+```
 
 ```python
 import arctx
@@ -52,7 +62,7 @@ ARCTX は agent framework でも planner でも executor でも **ありませ�
 
 *同じ run に対して 2 つの AI エージェント（Claude と Codex）が並列に作業。各自が独立した `lane` を持ち、両ブランチは同じ `RunGraph` に兄弟 step として着地する — レースも上書きもなし。*
 
-> 0.4 beta — DAG コア（Node / Step / Payload）は安定化しつつあります。ストレージや API の変更はまだあり得ますが、リリースノートに記載します。
+> 0.4 beta — ストレージや API の変更はまだあり得ます。PyPI へのリリースは休止中です。
 
 *English version: [README.md](README.md).*
 

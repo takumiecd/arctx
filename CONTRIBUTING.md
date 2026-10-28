@@ -106,41 +106,28 @@ We don't enforce a strict format, but please:
 - Start with a module prefix when obvious (`docs:`, `cli:`, `core:`, `git:`)
 - Explain the "why" in the body if the change is non-obvious
 
-## Release Process
+## 配布方針 / Distribution policy
 
-PyPI versions come from the package metadata, not from Git tags. Update the
-version first, commit that change, then tag the release commit. Do not reuse a
-version that has already been uploaded to PyPI.
+2026-10-28 より PyPI へのリリースを休止します。既存の PyPI プロジェクト
+（`arctx` / `arctx-cli`）は所有者が管理画面からアーカイブし、GitHub はソースの
+参照・利用と個人開発のために残します。リリース・サポートの予定は保証しません。
+アーカイブ後も PyPI の既存版はインストール可能です。
 
-Release automation lives in `scripts/release.py` and uses `uv`. The release
-surface is `arctx` plus `arctx-cli`, which is the whole repo.
+PyPI releases are paused. The owner handles PyPI archival separately; this
+repository remains available for source use and personal development, without
+a promised release or support schedule.
 
-The standard release path builds the web GUI, copies `web/dist` into
-`packages/arctx/src/arctx/web/static`, builds the selected packages into root
-`dist/`, and runs `twine check`:
+- GitHub Actions はテストとビルド確認のみで、公開ジョブはありません。
+- `scripts/release.py` はローカルでのバージョン更新・ビルド・検査用です。
+  `--upload` / `--repository` は削除済みで、引数解析時に拒否します。
+- 両パッケージの `Private :: Do Not Upload` classifier は誤公開の防止用です。
+  GitHub の公開状態やローカルインストールには影響しません。
+- 再公開は所有者が明示的に判断した場合のみ行います。
+
+現在のソースは Python 3.10 以上の仮想環境で、リポジトリのルートから入れます。
 
 ```bash
-# Bump package versions, clear old dist files, build web/package artifacts,
-# and validate the distributions.
-uv run scripts/release.py 0.3.1b4 --prepare
-
-# Review and commit the release bump.
-git diff
-git add packages/arctx/pyproject.toml \
-  packages/arctx-cli/pyproject.toml \
-  packages/arctx/src/arctx/__init__.py \
-  uv.lock web/package.json CLAUDE.md
-git commit -m "release: prepare 0.3.1b4"
-
-# Tag the commit that contains the matching pyproject.toml versions.
-git tag -a v0.3.1b4 -m "Release v0.3.1b4"
-git push origin main --tags
-
-# Upload the validated distributions to TestPyPI first.
-uv run scripts/release.py 0.3.1b4 --no-clean --upload --repository testpypi
-
-# Then publish the same dist/ contents to PyPI.
-uv run scripts/release.py 0.3.1b4 --no-clean --upload
+python -m pip install -e ./packages/arctx -e ./packages/arctx-cli
 ```
 
 ## Questions?
